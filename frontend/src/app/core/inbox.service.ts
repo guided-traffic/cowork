@@ -2,7 +2,8 @@ import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
 import { listMyInbox, markMyInboxRead, markNotificationRead } from '../api/functions';
-import { EventStreamService } from './event-stream.service';
+import { ConditionalPages } from './conditional';
+import { changesExistence, changesVisibility, EventStreamService } from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
 
@@ -40,7 +41,8 @@ export const personPageSize = 50;
 /**
  * The person's inbox (docs/adr/0020): the unread count of the bell in the top bar — loaded once the
  * person is known, kept by the person-level stream's `inbox.changed` (docs/adr/0054 D2) and loaded
- * again on `resync` and the fallback's `poll` — and marking notifications read. The inbox spans the
+ * again on `resync`, the fallback's `poll` and a change of what the person sees in any of their
+ * tenants — and marking notifications read. The inbox spans the
  * person's tenants (D1), so this service follows no tenant.
  */
 @Injectable({ providedIn: 'root' })
@@ -48,6 +50,7 @@ export class InboxService {
   private readonly api = inject(Api);
   private readonly session = inject(SessionService);
   private readonly injector = inject(Injector);
+  private readonly pages = new ConditionalPages(this.api);
 
   /**
    * The person's id, a primitive: `me` loaded again with the same person leaves the count alone
@@ -55,12 +58,15 @@ export class InboxService {
    */
   private readonly person = computed(() => this.session.person()?.id);
 
-  /** The unread count; the answer of one entry of the inbox carries it. */
+  /**
+   * The unread count; the answer of one entry of the inbox carries it, and a poll that finds it
+   * unchanged is answered `304` (docs/adr/0054 D7).
+   */
   readonly unread: ResourceRef<number | undefined> = resource({
     params: () => this.person(),
     loader: () =>
       keepShown(this.unread, () =>
-        this.api.invoke(listMyInbox, { limit: 1 }).then((list) => list.unread),
+        this.pages.load((page) => page(listMyInbox, { limit: 1 })).then((list) => list.unread),
       ),
   });
 
@@ -70,7 +76,14 @@ export class InboxService {
       .subscribe((event) => {
         if (event.name === 'inbox.changed') {
           this.unread.set(event.unread);
-        } else if (event.name === 'resync' || event.name === 'poll') {
+        } else if (
+          event.name === 'resync' ||
+          event.name === 'poll' ||
+          (event.name === 'membership.changed' && changesVisibility(event, this.person())) ||
+          changesExistence(event)
+        ) {
+          // A tenant left, a project hidden, or a ticket deleted or restored takes its notifications
+          // out of the count or puts them back, and tells the inbox nothing.
           refresh(this.unread, this.injector);
         }
       });

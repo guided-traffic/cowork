@@ -204,6 +204,7 @@ describe('AccessList', () => {
     it.each<StreamEvent>([
       { name: 'membership.changed', id: 'e1', personId: 'p2', projectId: 'j1' },
       { name: 'membership.changed', id: 'e1', projectId: 'j1' },
+      { name: 'membership.changed', id: 'e1', tenant: 'acme', projectId: 'j1' },
       { name: 'resync' },
       { name: 'poll' },
     ])('loads the list again on %j', async (event) => {
@@ -214,6 +215,33 @@ describe('AccessList', () => {
       http.expectOne('/api/v1/me').flush(person());
       await settle();
 
+      expect(names()).toEqual(['Ada', 'Bob']);
+    });
+
+    it("leaves the list alone on an act of another of the person's tenants, which the person-level stream carries (docs/adr/0054 D1)", async () => {
+      stream.next({ name: 'membership.changed', id: 'e1', tenant: 'beta', projectId: 'j1' });
+      await settle();
+
+      http.expectNone((request) => request.url === url());
+      http.expectNone('/api/v1/me');
+    });
+
+    it("sends the list's weak ETag on a poll and keeps the entries on a 304 (docs/adr/0054 D7)", async () => {
+      stream.next({ name: 'resync' });
+      await settle();
+      page().flush(pageOf(['Ada', 'Bob'], null), { headers: { ETag: 'W/"one"' } });
+      http.expectOne('/api/v1/me').flush(person());
+      await settle();
+
+      stream.next({ name: 'poll' });
+      await settle();
+      const again = page();
+      expect(again.request.headers.get('If-None-Match')).toBe('W/"one"');
+      again.flush(null, { status: 304, statusText: 'Not Modified' });
+      http.expectOne('/api/v1/me').flush(person());
+      await settle();
+
+      expect(access.entries.status()).toBe('resolved');
       expect(names()).toEqual(['Ada', 'Bob']);
     });
 

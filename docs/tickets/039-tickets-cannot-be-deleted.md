@@ -1,11 +1,11 @@
 ---
 id: T39
 title: tickets cannot be deleted, restored or purged
-state: decided
+state: in-progress
 severity: medium
-security: none
-threat:
-urgency: later        # rule 4: decided fix
+security: hardening
+threat: a leaked administrator token with admin scope can still delete every ticket it sees; each stays restorable in the bin for thirty days, and the purge takes a browser session
+urgency: later        # rule 4: decided fix; what is left is an end-to-end path and the owner's word
 effort: M
 blocked-by:
 filed-from: T26
@@ -16,17 +16,63 @@ done:
 
 ## Current state
 
-`tickets` has no deletion column and no route deletes a ticket.
-[ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
-D1–D3, D7 — soft deletion by a tenant administrator, the purge after thirty days by a job or an
-explicit act, the application filter on every list — is carried over from phase 2.
+Built: [ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D1–D3 and D7 for tickets, as its Status records — migration 32 with the marker, the restrictive
+policies of the purge and the owner's function that empties a purged ticket's audit rows; the
+deletion filter beside the visibility predicate in every query, the search's and the person-level
+lists' included, held by `TestEveryReadOfTicketsCarriesTheDeletionFilter`; `DELETE …/{number}`, the
+bin `GET …/deleted-tickets` with its weak `ETag`, `PUT …/deleted-tickets/{key}/restore` and
+`DELETE …/deleted-tickets/{key}` — the purge in a browser session only, Q1's answer
+([`api/deletion.go`](../../backend/internal/api/deletion.go)); the purge job `ticket-purge`
+([`store/deletion.go`](../../backend/internal/store/deletion.go)); in the browser the deletion on the
+ticket's page ([`ticket-delete.ts`](../../frontend/src/app/features/ticket/ticket-delete.ts)), the
+deleted tickets page ([`deleted-tickets.ts`](../../frontend/src/app/features/tenant/deleted-tickets.ts)),
+and the inbox, its count and the open decisions read again on a deletion or a restoration in any of
+the person's tenants (`changesExistence`); integration tests in
+[`api_deletion_test.go`](../../backend/test/integration/api_deletion_test.go) — among them
+`TestPurgingTakesABrowserSession` and `TestADeletedTicketLeavesSearchAndThePersonLevelLists` — and
+`TestTheToolsNeverDeleteAndMissADeletedTicket`.
+
+Outstanding:
+
+- **No end-to-end path** walks the deletion, the bin, the restoration and the purge: the images
+  could not be built where the feature was made, so a spec in `frontend/e2e/` would have run
+  nowhere.
+- **Three decisions of the implementer** wait for the owner's objection or acceptance: ADR 0026
+  D3 as amended 2026-10-05 (the purge's function runs inside the transaction that records the act
+  instead of writing the act itself), and two consequences ADR 0024's Status names — a purged
+  ticket's children become roots, and a block that waited on it waits on its key as an external
+  reference, an act on that ticket.
 
 ## Required changes
 
-1. The column, the delete, restore and purge routes with D7's rules, the filter on every list
-   and on the key resolver, the purge job ([ADR 0027](../adr/0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md) D5),
-   recorded and published.
-2. In the browser: delete with a confirmation, the administrator's view of deleted tickets with
-   restore and purge.
-3. Integration tests that a deleted ticket answers like a missing one everywhere but the
-   administrator's view.
+1. An end-to-end spec in `frontend/e2e/`: an administrator deletes a ticket from its page after the
+   question, a member gets *No such ticket* at its address and does not find it in the backlog, the
+   administrator restores it from the deleted tickets, deletes it again and purges it with the two
+   questions; `make docker-build e2e`.
+2. The owner's word on the three decisions; an objection amends ADR 0026 or ADR 0024 in place and
+   changes `store/deletion.go` and migration 32's function in a new migration.
+
+## Open questions
+
+### Q1: Should the explicit purge take a browser session only?
+
+A purge is the one irreversible act on a ticket. As first built, `DELETE …/deleted-tickets/{key}`
+took an administrator's token with `admin` scope like the deletion, and a leaked `admin` token could
+delete and purge every ticket it saw, two requests each.
+
+- **(a) Session only for the purge**: `purgeTicket` joins the session-only operations; scripts
+  delete and restore with a token and leave the purge to the browser or the job.
+- **(b) Leave it as built**: the rule stays one rule; the gap stays documented, mitigated by not
+  handing scripts `admin` tokens.
+- **(c) Session only for the deletion and the purge**: a leaked token cannot even hide a ticket;
+  every deletion is a browser act.
+
+Recommended: **(a)** — the purge is what cannot be undone, the job purges anyway after thirty days,
+and no workflow of a script needs to purge early; the deletion stays reversible for thirty days and
+needs no session.
+
+**Answer:** (a) — the purge takes a browser session; deleting and restoring stay open to an
+`admin`-scope token. Built on the recommendation, the owner reviewing the result (2026-10-05).
+Recorded in ADR 0024 D7 and ADR 0035 D5 as amended 2026-10-05; what a leaked token can still do is
+[tenancy.md](../security/tenancy.md#h-54) H-54.

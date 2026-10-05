@@ -117,7 +117,7 @@ D3 as amended; `authenticateSession` in [`api/session.go`](../../backend/interna
 The chat in the UI marks its tool calls so ([chat.md](chat.md)); a request without the header is the
 person's.
 
-- **Sixteen routes take a session only** and answer a token `403 session_required`
+- **Seventeen routes take a session only** and answer a token `403 session_required`
   ([ADR 0035](../adr/0035-personal-access-tokens.md) D5, [ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
   D1, D5): creating a token (`POST /api/v1/me/tokens`), creating a tenant
   (`POST /api/v1/tenants`), creating a local account (`POST …/accounts`), resetting its
@@ -126,15 +126,17 @@ person's.
   that can give access — adding a member, setting a grant, making or changing a group mapping,
   restricting or opening a project, putting a person on a project's access list —, a turn of the
   chat (`POST …/chat`) and stopping the person's turns (`DELETE …/chat/turns`), choosing the chat's
-  capabilities (`PUT /api/v1/me/chat`), and a global administrator's list of every tenant
-  (`GET /api/v1/tenants`). What the first twelve and the chat's capabilities make would outlive the
-  revocation of a leaked token, a turn acts with the person's session and its stop ends the session's
+  capabilities (`PUT /api/v1/me/chat`), a global administrator's list of every tenant
+  (`GET /api/v1/tenants`), and purging a deleted ticket (`DELETE …/deleted-tickets/{key}`,
+  [ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+  D7). What the first twelve and the chat's capabilities make, and what a purge destroys, would
+  outlive the revocation of a leaked token, a turn acts with the person's session and its stop ends the session's
   person's turns, and the list shows a global administrator's view across the installation's
   clients, which a token of theirs does not get; the table and the rule are
   [tokens.md](tokens.md#what-only-a-session-does). The API document declares them with
-  `sessionCookie` alone, and a unit test over the document holds the set to exactly these sixteen
+  `sessionCookie` alone, and a unit test over the document holds the set to exactly these seventeen
   ([`backend/api/document_test.go`](../../backend/api/document_test.go)). A session's request the
-  agent header marks is refused all sixteen with `403 agent_forbidden`. Every other operation
+  agent header marks is refused all seventeen with `403 agent_forbidden`. Every other operation
   that names a person takes either credential.
 - **A turn of the chat presents the session again with every tool call.** Each call is a request of
   its own through the whole pipeline with the person's cookie ([chat.md](chat.md)): it is

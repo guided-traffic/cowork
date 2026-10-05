@@ -13,6 +13,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
+	"github.com/guided-traffic/cowork/backend/internal/richtext"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 )
@@ -49,52 +50,60 @@ type mine struct {
 // ListMyNext answers what the person could take up next across their tenants
 // (docs/adr/0018 D3 as amended 2026-10-05): the open tickets assigned to them
 // or to nobody, in the projects they see; another person's ticket is not
-// "for me".
+// "for me". A weak ETag answers an unchanged page with 304 (docs/adr/0054 D7).
 func (s *Server) ListMyNext(ctx context.Context, req apigen.ListMyNextRequestObject) (apigen.ListMyNextResponseObject, error) {
 	p := principal(ctx)
-	items, next, err := s.listMine(ctx, mine{op: "listMyNext", tenant: req.Params.Tenant, project: req.Params.Project,
+	out, err := s.listMine(ctx, mine{op: "listMyNext", tenant: req.Params.Tenant, project: req.Params.Project,
 		cursor: req.Params.Cursor, limit: req.Params.Limit,
 		filter: store.TicketFilter{Assignees: store.PersonSet{In: []uuid.UUID{p.PersonID}, None: true}}})
 	if err != nil {
 		return nil, err
 	}
-	return apigen.ListMyNext200JSONResponse{Items: items, NextCursor: nullableString(next)}, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListMyNext304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListMyNext200JSONResponse{Body: out, Headers: apigen.ListMyNext200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // ListMyAssigned answers the open tickets assigned to the person across their
-// tenants (docs/adr/0018 D3).
+// tenants (docs/adr/0018 D3), with a weak ETag and 304 as ListMyNext.
 func (s *Server) ListMyAssigned(ctx context.Context, req apigen.ListMyAssignedRequestObject) (apigen.ListMyAssignedResponseObject, error) {
 	p := principal(ctx)
-	items, next, err := s.listMine(ctx, mine{op: "listMyAssigned", tenant: req.Params.Tenant, cursor: req.Params.Cursor,
+	out, err := s.listMine(ctx, mine{op: "listMyAssigned", tenant: req.Params.Tenant, cursor: req.Params.Cursor,
 		limit: req.Params.Limit, filter: store.TicketFilter{Assignees: store.PersonSet{In: []uuid.UUID{p.PersonID}}}})
 	if err != nil {
 		return nil, err
 	}
-	return apigen.ListMyAssigned200JSONResponse{Items: items, NextCursor: nullableString(next)}, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListMyAssigned304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListMyAssigned200JSONResponse{Body: out, Headers: apigen.ListMyAssigned200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // listMine reads a person-level list of tickets: each tenant's part in the
 // score's order after the cursor, a page of it at most, with each ticket's
 // place; the parts merged in the same order and cut to the page.
-func (s *Server) listMine(ctx context.Context, l mine) ([]apigen.MyTicket, *string, error) {
+func (s *Server) listMine(ctx context.Context, l mine) (apigen.MyTicketList, error) {
 	if l.project != nil && l.tenant == nil {
-		return nil, nil, problem.Field("query:project", "a project is named within a tenant: name the tenant as well")
+		return apigen.MyTicketList{}, problem.Field("query:project", "a project is named within a tenant: name the tenant as well")
 	}
 	scope := principal(ctx).PersonID.String() + "/" + deref(l.tenant) + "/" + deref(l.project)
 	after := ""
 	if l.cursor != nil {
 		raw, perr := s.cursors.decode(l.op, scope, *l.cursor)
 		if perr != nil {
-			return nil, nil, perr
+			return apigen.MyTicketList{}, perr
 		}
 		if _, _, err := store.ParseScorePosition(raw); err != nil {
-			return nil, nil, invalidCursor()
+			return apigen.MyTicketList{}, invalidCursor()
 		}
 		after = raw
 	}
 	tenants, err := s.h.personTenants(ctx, l.tenant)
 	if err != nil {
-		return nil, nil, err
+		return apigen.MyTicketList{}, err
 	}
 	if l.project != nil {
 		l.filter.Projects = store.ValueSet{In: []string{*l.project}}
@@ -104,18 +113,19 @@ func (s *Server) listMine(ctx context.Context, l mine) ([]apigen.MyTicket, *stri
 	for _, t := range tenants {
 		part, err := s.mineIn(ctx, t, l.filter, store.TicketPage{Order: store.ByScore, After: after, Limit: size + 1})
 		if err != nil {
-			return nil, nil, err
+			return apigen.MyTicketList{}, err
 		}
 		rows = append(rows, part...)
 	}
 	slices.SortFunc(rows, func(a, b myTicket) int { return byScore(a.row.ScoreKey, b.row.ScoreKey, a.row.ID, b.row.ID) })
 	rows, next := page(s.h, rows, size, l.op, scope, func(m myTicket) string { return store.ScorePosition(m.row.ScoreKey, m.row.ID) })
 	now := s.h.opts.Now()
-	items := make([]apigen.MyTicket, 0, len(rows))
+	out := apigen.MyTicketList{Items: make([]apigen.MyTicket, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, m := range rows {
-		items = append(items, apigen.MyTicket{Tenant: m.tenant.ref(), Ticket: ticketView(m.tenant.scope(), m.row, now), Place: int(m.place)})
+		out.Items = append(out.Items, apigen.MyTicket{Tenant: m.tenant.ref(), Ticket: ticketView(m.tenant.scope(), m.row, now),
+			Place: int(m.place)})
 	}
-	return items, next, nil
+	return out, nil
 }
 
 // mineIn reads one tenant's part of a person-level list of tickets and the
@@ -156,10 +166,12 @@ func byScore(a, b float64, idA, idB uuid.UUID) int {
 	return bytes.Compare(idA[:], idB[:])
 }
 
-// decision is an open question of a person-level list with its tenant.
+// decision is an open question of a person-level list with its tenant and
+// the images its ticket's texts may show.
 type decision struct {
 	tenant personTenant
 	row    readq.ListOpenDecisionsRow
+	images richtext.Images
 }
 
 // decisionPosition is where the open decisions resume: the score's key of the
@@ -213,8 +225,16 @@ func (s *Server) ListMyDecisions(ctx context.Context, req apigen.ListMyDecisions
 		params.TenantID, params.UserID, params.PageSize = t.id, p.PersonID, limitArg(size)
 		err := s.db.InTenant(ctx, t.id, func(r *store.Reader) error {
 			list, err := r.ListOpenDecisions(ctx, params)
+			if err != nil {
+				return err
+			}
+			tickets := map[uuid.UUID]ticketAt{}
 			for _, row := range list {
-				rows = append(rows, decision{tenant: t, row: row})
+				tickets[row.TicketID] = ticketAt{project: row.ProjectKey, number: row.TicketNumber}
+			}
+			images, err := imagesOf(ctx, r, t.scope(), tickets)
+			for _, row := range list {
+				rows = append(rows, decision{tenant: t, row: row, images: images[row.TicketID]})
 			}
 			return err
 		})
@@ -229,11 +249,15 @@ func (s *Server) ListMyDecisions(ctx context.Context, req apigen.ListMyDecisions
 		return cmp.Compare(a.row.Number, b.row.Number)
 	})
 	rows, next := page(s.h, rows, size, op, scope, decisionPosition)
-	out := apigen.ListMyDecisions200JSONResponse{Items: make([]apigen.Decision, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.DecisionList{Items: make([]apigen.Decision, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, d := range rows {
 		out.Items = append(out.Items, decisionView(d))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListMyDecisions304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListMyDecisions200JSONResponse{Body: out, Headers: apigen.ListMyDecisions200ResponseHeaders{ETag: &tag}}, nil
 }
 
 func decisionView(d decision) apigen.Decision {
@@ -251,6 +275,6 @@ func decisionView(d decision) apigen.Decision {
 			AnsweredByName: q.AnsweredByName, AnsweredAt: q.AnsweredAt, RecordedByAgent: q.RecordedByAgent,
 			AnsweredByTokenID: q.AnsweredByTokenID, AnsweredByTokenName: q.AnsweredByTokenName,
 			WithdrawnAt: q.WithdrawnAt, Version: q.Version, CreatedAt: q.CreatedAt, UpdatedAt: q.UpdatedAt,
-		}),
+		}, d.images),
 	}
 }

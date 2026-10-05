@@ -21,7 +21,7 @@ score of D3–D5 and the rebalancing of the Consequences are built and tested in
 integration tier:
 
 - **The score** is version 1 of [`domain.ScoreKey`](../../backend/internal/domain/score.go), stored
-  as a key time does not move with its version ([migration 33](../../backend/internal/store/migrations/000033_ticket_score.up.sql)),
+  as a key time does not move with its version ([migration 34](../../backend/internal/store/migrations/000034_ticket_score.up.sql)),
   scored again by the write that changes an input — a filing, the severity, the horizon, a stake
   ([`api/score.go`](../../backend/internal/api/score.go) `refreshScore`) — and shown on the ticket as
   `score` and `score_version`. `TestTheScoreFollowsItsInputs`, `TestScoreMigrationScoresEveryTicket`,

@@ -39,7 +39,7 @@ FROM attachments a
 JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 LEFT JOIN users u ON u.id = a.uploaded_by
 WHERE a.tenant_id = $1 AND a.ticket_id = $2 AND a.id = $3
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type GetAttachmentParams struct {
@@ -94,7 +94,7 @@ FROM attachments a
 JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 LEFT JOIN users u ON u.id = a.uploaded_by
 WHERE a.tenant_id = $1 AND a.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND ($3::uuid IS NULL OR a.id > $3::uuid)
 ORDER BY a.id
 LIMIT $4
@@ -153,6 +153,48 @@ func (q *Queries) ListAttachments(ctx context.Context, arg ListAttachmentsParams
 			&i.TokenName,
 			&i.CreatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTicketImages = `-- name: ListTicketImages :many
+SELECT a.ticket_id, a.id, a.content_type
+FROM attachments a
+JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
+WHERE a.tenant_id = $1 AND a.ticket_id = ANY($2::uuid[])
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+ORDER BY a.ticket_id, a.id
+`
+
+type ListTicketImagesParams struct {
+	TenantID  uuid.UUID
+	TicketIds []uuid.UUID
+}
+
+type ListTicketImagesRow struct {
+	TicketID    uuid.UUID
+	ID          uuid.UUID
+	ContentType string
+}
+
+// The attachments of the tickets a rendered text may show as images, with
+// their type; the caller keeps the raster ones (docs/adr/0016 D7).
+func (q *Queries) ListTicketImages(ctx context.Context, arg ListTicketImagesParams) ([]ListTicketImagesRow, error) {
+	rows, err := q.db.Query(ctx, listTicketImages, arg.TenantID, arg.TicketIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTicketImagesRow{}
+	for rows.Next() {
+		var i ListTicketImagesRow
+		if err := rows.Scan(&i.TicketID, &i.ID, &i.ContentType); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

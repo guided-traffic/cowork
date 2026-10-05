@@ -94,7 +94,7 @@ func (s *Server) SortProjectRank(ctx context.Context, req apigen.SortProjectRank
 		// (docs/adr/0015 D1); each is one the caller sees.
 		w.Record(store.Event{EntityType: entityProject, EntityID: p.ID, Action: actionRanked,
 			After: map[string]any{"by": sortedBy, "score_version": domain.ScoreVersion, "moved": moved},
-			Refs:  ids, Project: &store.ProjectChange{ID: p.ID, Key: t.Slug + "/" + p.Key}})
+			Refs:  ids, ProjectRank: &store.ProjectChange{ID: p.ID, Key: t.Slug + "/" + p.Key}})
 		return nil
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {

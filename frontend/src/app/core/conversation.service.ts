@@ -35,10 +35,15 @@ import { routeOf } from './ticket-actions.service';
 export class Conversation {
   private readonly api = inject(Api);
 
-  comment(key: string, body: string): Promise<Comment> {
+  /**
+   * Comments on the ticket. The idempotency key is the form's, one for each content it holds, so
+   * a retry of a lost answer is answered again instead of commenting twice (docs/adr/0045 D3); so
+   * is the one of a question.
+   */
+  comment(key: string, body: string, idempotencyKey: string): Promise<Comment> {
     return this.api.invoke(addComment, {
       ...routeOf(key),
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body: { body },
     });
   }
@@ -71,10 +76,10 @@ export class Conversation {
     return this.api.invoke(withdrawComment, { ...routeOf(key), comment: comment.id });
   }
 
-  ask(key: string, question: QuestionCreate): Promise<Question> {
+  ask(key: string, question: QuestionCreate, idempotencyKey: string): Promise<Question> {
     return this.api.invoke(askQuestion, {
       ...routeOf(key),
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body: question,
     });
   }

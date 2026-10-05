@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
 import { addMember, listMembers, removeMemberGrant, setMemberGrant } from '../api/functions';
 import { Member, Role } from '../api/models';
+import { ConditionalPages } from './conditional';
 import { changesMemberships, EventStreamService } from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
@@ -19,20 +20,23 @@ export class MembersService {
   private readonly api = inject(Api);
   private readonly session = inject(SessionService);
   private readonly injector = inject(Injector);
+  private readonly pages = new ConditionalPages(this.api);
 
   readonly members: ResourceRef<Member[] | undefined> = resource({
     params: () => this.session.tenant() ?? undefined,
     loader: ({ params: tenant }) =>
-      keepShown(this.members, async () => {
-        const members: Member[] = [];
-        let cursor: string | undefined;
-        do {
-          const page = await this.api.invoke(listMembers, { tenant, cursor, limit: 200 });
-          members.push(...page.items);
-          cursor = page.next_cursor ?? undefined;
-        } while (cursor);
-        return members;
-      }),
+      keepShown(this.members, () =>
+        this.pages.load(async (page) => {
+          const members: Member[] = [];
+          let cursor: string | undefined;
+          do {
+            const next = await page(listMembers, { tenant, cursor, limit: 200 });
+            members.push(...next.items);
+            cursor = next.next_cursor ?? undefined;
+          } while (cursor);
+          return members;
+        }),
+      ),
   });
 
   readonly list = computed<Member[]>(() => (this.members.hasValue() ? this.members.value() : []));
@@ -41,7 +45,7 @@ export class MembersService {
     inject(EventStreamService)
       .events.pipe(takeUntilDestroyed())
       .subscribe((event) => {
-        if (changesMemberships(event)) {
+        if (changesMemberships(event, this.session.tenant())) {
           refresh(this.members, this.injector);
         }
       });

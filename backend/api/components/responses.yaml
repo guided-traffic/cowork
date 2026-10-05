@@ -1,3 +1,10 @@
+NotModified:
+  description: |
+    The page is unchanged since the weak `ETag` in `If-None-Match`; the client keeps what it holds
+    (docs/adr/0054 D7)
+  headers:
+    ETag:
+      $ref: './headers.yaml#/ListETag'
 Problem:
   description: |
     An RFC 9457 problem details body with a stable `code`, the `request_id`

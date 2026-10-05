@@ -59,6 +59,10 @@ flowchart LR
 - 📜 **Contract first** — the OpenAPI 3.1 document in `backend/api/` generates the server, is served at `/api/v1/openapi.json` and validates every request; every error is RFC 9457 problem details with a stable `code`.
 - 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; every act made through a token shows it on the ticket — the agent's mark, or the token's name — so nothing a script or a model does reads as the person's own; `ETag` and `If-Match` keep two writers from overwriting each other.
 - 📡 **Live updates** — server-sent events per tenant carry keys and versions, never content, filtered by what the reader may see; a reconnect replays what it missed.
+- 🗑️ **Deletion that waits thirty days** — a tenant administrator deletes a ticket, never an agent; from then on it answers like a missing one everywhere but the tenant's bin, which restores it as it was, until the purge — a job thirty days later, or an administrator's second confirmation in a browser session, which no token gives — removes it with its files, keeping in the audit record only its key, who did what and when.
+- 🔖 **Saved filters** — the list filters under a name, the person's own or shared with the tenant with its owner beside it, applied, saved and shared from the backlog's filter bar; a value that no longer holds is a warning, and a shared filter that names what the reader cannot see is shown without its conditions.
+- 🔎 **Search with snippets** — PostgreSQL full text over titles, bodies, comments, questions and file names, keys by their beginning and titles by trigram, one ranked hit per ticket with the words found marked; a tenant's from its pages, every tenant's of the person from anywhere, each hit held to what the reader may see.
+- 📝 **Markdown rendered on the server** — the body, comments, options and answers rendered with goldmark and held to an allow-list by bluemonday: raw HTML shown as text, links with `rel="noopener noreferrer nofollow"`, images only of the ticket's own raster attachments; Angular's sanitiser runs over it again.
 - 🔔 **An inbox and the lists across tenants** — a notification for an assignment, a question asked of you, your question answered, a state change or a comment on a ticket you watch, a blocker closed and an urgent need, written with the act and shown from it; a bell with the unread count, live; and "next for me" — the start page —, "assigned to me" and "open decisions" across every tenant of the person, each item beside its tenant.
 - 🎯 **Rank is the decision, score is the warning** — each project's backlog is ranked by hand, grouped by horizon; a versioned score of severity, horizon, stakes and age marks where it disagrees, can be adopted in one recorded act, and orders the lists across tenants.
 - 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
@@ -123,7 +127,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Username | 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit; unique in the installation; the identity is `local:<username>`, which `POST …/members` takes as well | `ada.lovelace` |
 | Person of the identity provider | the issuer and the ID token's `sub`; no username | — |
 | Group name | as the provider's groups claim carries it, matched exactly, case and all; in a mapping 1–256 characters with no white space at either end | `cowork-users` `# example` |
-| System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry` | `system:identity-provider` |
+| System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge` | `system:identity-provider` |
 | Local account origin | `config` — the one account `COWORK_LOCAL_ADMIN_*` names — or `tenant` — one a tenant administrator created and that tenant manages | — |
 | Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
 | Agent header of the chat | `chat/<model>/<conversation>`: the picked provider's model, its `/` written `:`, and the conversation's id the browser made | `chat/qwen:qwen3-30b-a3b-2507/0199a3c2-1d2e-7f00-8000-000000000042` |
@@ -505,7 +509,7 @@ refuses the start, naming itself. Chart values are `auth.oidc.*` in
 | `COWORK_MAX_JSON_BODY` | `1MiB` `# default` | a size; `0` disables | A larger JSON body is `413 payload_too_large` |
 | `COWORK_REQUEST_TIMEOUT` | `30s` `# default` | a duration, not negative; `0` disables | A request still running is cancelled and answered `504 timeout`; the event stream is exempt |
 | `COWORK_MAX_PAGE_SIZE` | `200` `# default` | a count; `0` disables | The largest page a list returns; a larger `limit` is clamped, not refused |
-| `COWORK_MAX_QUERY_LENGTH` | `256` `# default` | a count of characters; `0` disables | A longer full-text query `q` is `400 validation_failed` |
+| `COWORK_MAX_QUERY_LENGTH` | `256` `# default` | a count of characters; `0` disables | A longer full-text query `q` — the ticket lists' filter and the search — is `400 validation_failed` |
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` `# default` | a size; `0` disables | The largest upload; above it `413`, before anything is stored. Uploads are buffered in memory: with `0` one upload at a time is read whole, whatever its size ([docs/security/attachments.md](docs/security/attachments.md#h-12)) |
 | `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` `# default` | a count; `0` disables | The attachments one ticket takes; one more is `409 attachment_limit` |
 
@@ -617,7 +621,7 @@ A key is `tenant/PROJECT-n`, or `PROJECT-n` in a bound session.
 |---|---|---|---|
 | `session_start` | — | the session block of `session-context`, again; the binding it finds is the session's | — |
 | `get_ticket` | `key`, `comments` (10), `activity` (10) | the ticket's context document and the commit strings for it; read only | — |
-| `search` | `query` (optional in one project: without it, the project's tickets in rank order), `scope` (`project`, `tenant`, `all`), `project`, `state[]`, `type[]`, `assigned_to_me`, `include_terminal` | full text over titles and bodies, at most 20 hits; read only | — |
+| `search` | `query` (optional in one project: without it, the project's tickets in rank order), `scope` (`project`, `tenant`, `all`), `project`, `state[]`, `type[]`, `assigned_to_me`, `include_terminal` | full text over titles and bodies through the ticket lists' `q` filter, combined with the other filters, at most 20 hits in the list's order — a project's rank, a tenant's newest first — not the ranked search of `GET …/search`; read only | — |
 | `file_ticket` | `type`, `title`, `severity`, `security`, `effort`, `body`, `threat`, `parent`, `project`, `links[]`, `horizon` (`later`), `after`, `before` | files a ticket in the bound or the named project into its horizon, directly after or before a ticket of that horizon or at its end, then its links | `override-urgency` for a horizon other than `later`, `rank` for a place |
 | `record_state` | `key`, `body`, `comment` | replaces the body as a whole with `If-Match` of the version it read | — |
 | `comment` | `key`, `text` | comments, in the person's name with the agent's mark | — |
@@ -652,12 +656,13 @@ full.
   `Authorization` header is a token's, whatever cookie it carries. Without a valid credential the
   answer is `401` (`unauthenticated`, `token_expired`, `token_revoked`, and `not_allowed` for a
   token whose person the identity provider's gate no longer admits) with
-  `WWW-Authenticate: Bearer realm="cowork"`. Sixteen routes take a **session only** and answer a
+  `WWW-Authenticate: Bearer realm="cowork"`. Seventeen routes take a **session only** and answer a
   token `403 session_required`: creating a token, a tenant or a local account, resetting or
   changing a password, logging out, a turn of the chat and stopping one, choosing the chat's
-  capabilities, a global administrator's list of every tenant, and the administration acts that can give access — adding a
+  capabilities, a global administrator's list of every tenant, purging a deleted ticket, and the administration acts that can give access — adding a
   member, setting a grant, making or changing a group mapping, restricting or opening a project,
   putting a person on its access list ([ADR 0035](docs/adr/0035-personal-access-tokens.md) D5,
+  [ADR 0024](docs/adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7,
   [tokens](docs/security/tokens.md#what-only-a-session-does)). A **write of a session** must come
   from `COWORK_BASE_URL` — its `Origin`, or without one its `Referer` — and carry
   `X-Requested-With: cowork`, else `403 csrf`; a token's writes need neither
@@ -687,13 +692,19 @@ full.
   `POST` safe to retry for 24 hours — the same request replays the stored answer, another one
   is `422`; an agent's creating `POST` must carry one.
 - **Lists.** `limit` (default 50, clamped to `COWORK_MAX_PAGE_SIZE`) and `cursor`, from the
-  previous page's `next_cursor`. The ticket lists and the tenant's time entries also take
-  numbered pages, `page` and `per_page` (`25`, `50`, `100`), with a total, up to row 10 000;
-  the ticket lists answer `304` to an unchanged page's weak `ETag` in `If-None-Match`. A query
+  previous page's `next_cursor`. The ticket lists, the tenant's time entries, the audit record,
+  the members, the person's tokens and the projects also take numbered pages, `page` and
+  `per_page` (`25`, `50`, `100`; `50` without it, clamped like `limit`), answered with `total`,
+  `page` and `per_page`, up to row 10 000 — not together with `cursor` or `limit`;
+  the ticket lists, the projects, the members, the group mappings, a project's access list, the
+  lists of a ticket — comments, activity, questions, links, interest, attachments, time entries,
+  the prerequisite tree —, the person's inbox, "next for me", assigned tickets and decisions, the bin of deleted
+  tickets and the saved filters answer a weak `ETag`, the caller's page, and `304` without a body
+  to it in `If-None-Match`. A query
   parameter the route does not declare is `400`; a path parameter that cannot name anything is
   `404`. The person-level lists under `/api/v1/me/` — the inbox, "next for me", the tickets assigned
-  to the person, the open decisions — span every tenant of the person, name the tenant on every item,
-  take `tenant=<slug>` to narrow to one (`404 not_found` for a slug that names none of theirs, as for an
+  to the person, the open decisions, the search — span every tenant of the person, name the tenant on
+  every item, take `tenant=<slug>` to narrow to one (`404 not_found` for a slug that names none of theirs, as for an
   unknown one) and carry cursors only; a token restricted to a tenant or a project reads that
   tenant or that project alone. The lists of tickets follow the score
   ([ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md) D5), highest first.
@@ -713,17 +724,17 @@ full.
 | `GET /api/v1/schemas/cowork-yaml.json` | the JSON Schema (draft 2020-12) of a repository's `.cowork.yaml`: `tenant` and `project` required, `path` and `url` optional, nothing else; no authentication |
 | a known path with another method | `405 method_not_allowed`, `Allow` names the methods the API document declares there; the document declares no `HEAD`, so `HEAD` on the API is `405` (the health endpoints answer it) |
 | any other path | `404 not_found`, `detail: no route <METHOD> <path>` |
-| `GET /auth/options` | `200 {"local": bool, "oidc": bool, "oidc_name": string or null, "password_min_length": int}` — what the login page offers: the local form while an active local account exists; the identity provider's button while one is configured and its gate names a group, with its name (`COWORK_OIDC_DISPLAY_NAME`; `null` without a provider); and the minimum password length every password form follows (`COWORK_PASSWORD_MIN_LENGTH`); no authentication |
+| `GET /auth/options` | `200 {"local": bool, "oidc": bool, "oidc_name": string or null, "password_min_length": int, "token_max_lifetime_days": int}` — what the login page offers: the local form while an active local account exists; the identity provider's button while one is configured and its gate names a group, with its name (`COWORK_OIDC_DISPLAY_NAME`; `null` without a provider); the minimum password length every password form follows (`COWORK_PASSWORD_MIN_LENGTH`); and the longest lifetime of a new token in whole days, rounded down (`COWORK_TOKEN_MAX_LIFETIME`; `0` under a day), the bound of the token form; no authentication |
 | `GET /auth/oidc/login?return_to=<path>` | a browser navigation: `302` to the identity provider's authorization endpoint for the code flow with PKCE (`S256`), a `state` and a `nonce`, setting the state cookie `__Host-cowork-oidc` for ten minutes; `303` to `/login?error=oidc_unavailable` without a provider or with a gate that admits nobody. `return_to` is a path of this installation — one leading `/`, no `//`, `/\`, backslash or control character, at most 2048 bytes — or `/`; no authentication |
 | `GET /auth/callback` | the provider's return, the redirect URI: the state cookie (at most ten minutes old) and its `state`, the code redeemed with the PKCE verifier, the ID token verified, the groups read and judged by the gate, the person found by issuer and subject or made, their memberships derived from the tenants' group mappings, the session made; `303` to `return_to` with the session cookie, or `303` to `/login?error=<code>&return=<path>` with `oidc_failed`, `not_allowed`, `not_initialised` or `oidc_unavailable` — the state cookie cleared either way. Parameters the provider adds (`iss`, `session_state`) are taken and not read; no authentication |
 | `POST /auth/local` | `{"username","password"}` → `200 {"password_change_required": bool}` and the session cookie; every failure is `401 invalid_credentials`, the same answer in the same time for an unknown username, a wrong password, a locked or a deactivated account; `429 too_many_attempts` from the address throttle; `403 not_initialised` for a person who is not a global administrator while no tenant exists; `403 csrf` unless the `Origin` is `COWORK_BASE_URL`; no authentication |
 | `POST /auth/logout` | a session, CSRF-checked: ends it, clears the cookie, `204` — or, for a session of the identity provider whose discovery names an `end_session_endpoint`, `200 {"end_session_url"}`: that endpoint with `client_id` and `post_logout_redirect_uri` = `COWORK_BASE_URL` + `/login`, for the browser to go to; cowork does not call it |
 | `GET /api/v1/me` | the calling person and their memberships — each with the effective role and its `origins`, `mapping` and `grant` with their own roles — whether they are a global administrator (`global_admin`), have a local account (`local`) and must change a temporary password (`password_change_required`) |
 | `PUT /api/v1/me/password` | a session only: `{"current_password","new_password"}`; the current password counts like a login attempt towards the lockout; the new one meets `COWORK_PASSWORD_MIN_LENGTH` and differs; every other session of the account ends; `204`. Not for the local administrator, whose password is the configuration's, nor for a person of the identity provider, who has none (`403 forbidden`) |
-| `GET /api/v1/me/tokens` | the person's tokens, revoked and expired ones included — metadata only |
+| `GET /api/v1/me/tokens` | the person's tokens, newest first, revoked and expired ones included, numbered pages with a total — metadata only: a restriction names its tenant by slug (`restricted_tenant`) and its project by key (`restricted_project`, `null` where the person no longer sees the project or belongs to its tenant — the token reaches nothing then); `restricted_project_id`, the project's id, is deprecated and kept in `/api/v1` |
 | `POST /api/v1/me/tokens` | a session only: `{"name","scope"}` and optionally `agent`, `capabilities`, `tenant`, `project`, `lifetime_days`; `201` with the token **and its plaintext, once** — a replay for an `Idempotency-Key` answers without it. The lifetime defaults to `COWORK_TOKEN_DEFAULT_LIFETIME` and is shortened to `COWORK_TOKEN_MAX_LIFETIME`; an agent token has at most `write` scope and every capability when `capabilities` is left out — an empty list is none, the baseline only. The `name` shows on every act made through the token, to whoever reads the act |
 | `DELETE /api/v1/me/tokens/{token_id}` | revoke one; a token may always revoke itself, another needs `write`, an agent revokes only its own |
-| `GET /api/v1/me/token` | the token the request presents: its metadata as the list shows it, `restricted_project`, and `request` — whether the request is an agent's, the agent its acts record and the capabilities it holds; a browser session presents none, `404 not_found` |
+| `GET /api/v1/me/token` | the token the request presents: its metadata as the list shows it, and `request` — whether the request is an agent's, the agent its acts record and the capabilities it holds; a browser session presents none, `404 not_found` |
 | `GET /api/v1/me/chat` | the capabilities the person gives the chat in the UI: `{"capabilities": [...], "chosen": bool}` — `chosen` false is the default, every capability but `decide`, `close`, `drop` and `record-answer` |
 | `PUT /api/v1/me/chat` | a session only, never an agent-marked one: `{"capabilities": [...]}`, the whole set, unique — empty leaves the chat the baseline; `200` with the set in the catalogue's order; the chat's next request holds it; no `If-Match`; a change is the person's recorded act |
 | `GET /api/v1/me/repositories/lookup` | `remote` (1–10, repeatable, in order of preference) and `path` → `status` `bound`, `ambiguous` or `unbound`; the remotes with their identities (`null` for one that names no host); the bindings of the first remote that has one covering `path`, in the projects the caller sees across the person's tenants — a restricted token's only; for `unbound` a `proposal` (identity, name, the tenant and the reason `only-tenant`, `remote-owner` or `choose`, a free key per tenant) or `proposal_unavailable` saying why not. A remote's credentials are dropped, and a proxy's log may still carry the query |
@@ -733,6 +744,7 @@ full.
 | `GET /api/v1/me/next` | "next for me": the open tickets — neither `done` nor `dropped` — assigned to the person or to nobody, in the projects they see across their tenants; another person's is not in it: `{"items": [{"tenant": {slug, name}, "ticket": {...}, "place"}], "next_cursor"}`, by the score, highest first — a ticket without one last — then by the ticket's id; `place` is the ticket's place in its project's rank among the open tickets of its horizon the caller sees, 1 for the first; `tenant`, `project` (a project key within `tenant`, which it needs: `400` without), `limit`, `cursor` |
 | `GET /api/v1/me/assigned` | the open tickets — neither `done` nor `dropped` — assigned to the person across their tenants: `{"items": [{"tenant": {slug, name}, "ticket": {...}, "place"}], "next_cursor"}`, by the score as `/me/next` is; `tenant`, `limit`, `cursor` |
 | `GET /api/v1/me/decisions` | the open questions asked of the person and those open in their tenants — asked of nobody —, on tickets they see: `{"items": [{"tenant", "ticket": {key, title, state}, "question": {...}}], "next_cursor"}`, by the score of the ticket — `done` and `dropped` tickets after the others — then the ticket's id and the question's number; `tenant`, `limit`, `cursor` |
+| `GET /api/v1/me/search` | the search of `GET …/search` below over every tenant of the person — one read per tenant, merged by rank, each hit naming its tenant: `q` (required, white space alone is `400 validation_failed`), `tenant`, `limit`, `cursor`; a restricted token searches its tenant or its project alone |
 | `GET /api/v1/tenants` | a global administrator, session only: every tenant of the installation by slug, `{"slug","name","role"}` — `role` the caller's, the higher of mapping and grant, `null` where they hold none; `limit` and `cursor`. Anybody else `403 forbidden`; a token `403 session_required` |
 | `POST /api/v1/tenants` | a global administrator, session only: `{"slug","name"}` → `201`; the creator becomes the tenant's first administrator by a marked grant, in the same transaction; `409 tenant_slug_taken` |
 | `GET /api/v1/tickets/{tenant}/{key}` | a ticket by its short key, `<PROJECT>-<number>` — the body and `ETag` of its own route |
@@ -779,7 +791,7 @@ announced on the event stream as `membership.changed`.
 
 | Method and path | Does |
 |---|---|
-| `GET …/members` | every member reads it, and a global administrator without a role in the tenant, in a session: the members by person id, each with the effective role — the higher of the mapped and the granted one — every origin with its own role (`mapping`, `grant`), `local` for a person with a local account, and `email`: the person's address for the tenant's administrators, `null` for everyone else and for a person without one |
+| `GET …/members` | every member reads it, and a global administrator without a role in the tenant, in a session: the members by person id, each with the effective role — the higher of the mapped and the granted one — every origin with its own role (`mapping`, `grant`), `local` for a person with a local account, and `email`: the person's address for the tenant's administrators, `null` for everyone else and for a person without one; numbered pages with a total |
 | `POST …/members` | a session only: `{"person","role"}` grants a role to a person who exists — an e-mail address, compared without regard to case with the address the identity provider asserted at the person's last login — only one it marked verified, or, with `COWORK_OIDC_EMAIL_TRUSTED=true`, one it said nothing about; never one it marked unverified — among the persons of the configured issuer, or a local account's username, with or without `local:`; `201` with the member; `404 person_not_found`, `409 person_ambiguous` (an address several persons share), `409 grant_exists`; takes an `Idempotency-Key` |
 | `PUT …/members/{person_id}/grant` | a session only: `{"role"}` creates the member's grant or changes its role; the mapped membership is never touched; `404 person_not_found` for a person who is no member. A global administrator who does not hold `admin` in the tenant — no role there, or a lower one — sets their own grant here, their own id and any role: a marked grant made or its role changed, recorded in the tenant with them as its actor, never `409 last_admin`; a grant to anybody else is `403 forbidden` |
 | `DELETE …/members/{person_id}/grant` | removes the grant; a mapped membership stays; `204`, also when there was none |
@@ -815,9 +827,9 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 |---|---|
 | `GET …` | the tenant and its settings; also to a global administrator without a role in the tenant, in a session |
 | `PATCH …` | change the name or the settings — an administrator with `admin` scope, never an agent; `If-Match` |
-| `GET …/audit` | the audit record, newest first, for administrators, each act with `token_id` and the token's name, `token_name`; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; CSV on `Accept: text/csv`, `token_name` its last column, after the columns released before |
-| `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)) — `project.changed {"key": "<tenant>/<PROJECT>", "kind"}` among them, a project's rank sorted by the score; with `me=true` the person-level stream, which adds `inbox.changed {"unread": n}` — when it opens and whenever the person's inbox changes — and the `question.changed` of a question asked of the person in another of their tenants, while they belong to it and see its ticket; neither carries an `id:` |
-| `GET …/projects` | the projects the caller can see, by key; `include_archived` |
+| `GET …/audit` | the audit record, newest first, for administrators, each act with `token_id` and the token's name, `token_name`; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; numbered pages with a total; CSV on `Accept: text/csv`, `token_name` its last column, after the columns released before — a CSV page carries no cursor, so a client reads several as numbered pages with `to` held at the moment it began |
+| `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)) — `project.changed {"key": "<tenant>/<PROJECT>", "kind"}` among them, a project's rank sorted by the score; with `me=true` the person-level stream: every event of every tenant the person belongs to that the tenant's own stream would carry to them, each with its `id:` and replayed across the tenants after a reconnect, and `inbox.changed {"unread": n}` — when it opens and whenever the person's inbox changes, without an `id:`; a token restricted to a tenant hears its tenant alone. `membership.changed` names its tenant: `{"tenant", "person_id", "project_id", "mapping_id"}`, each key but `tenant` where it applies |
+| `GET …/projects` | the projects the caller can see, by key; `include_archived`; numbered pages with a total |
 | `POST …/projects` | create one — `write`; a member while the tenant allows it, an administrator always, an agent with `create-project`. With `repository` (`remote`, optionally `path`) the repository is bound in the same act, and when a project of the tenant binds it already the answer is `200` with that project and nothing is created — `409 repository_bound` when the caller cannot see it |
 | `GET …/projects/{project}` | one project |
 | `PATCH …/projects/{project}` | change its name, its description or its advisory WIP limits per state — `analysed`, `decided`, `in-progress`, `review`, `blocked` — a member with `write`, an agent too; `If-Match` |
@@ -829,19 +841,22 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 </details>
 
 <details>
-<summary>Tickets — 22 routes</summary>
+<summary>Tickets — 25 routes</summary>
 
 | Method and path | Does |
 |---|---|
-| `GET …/tickets` | the tenant's tickets across its projects, newest first; filters `project`, `state`, `type`, `severity`, `security`, `urgency`, `effort`, `assignee`, `reporter`, `parent`, `progress_min`, `progress_max` (the implementation stage), `opened_after`, `opened_before`, `updated_after`, `updated_before`, `done_after` (done after it — like the four timestamps before it, the bound itself excluded), `q`, `include_terminal`, `blocked`, `has_open_questions`, `interest` ([ADR 0049](docs/adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md)) |
+| `GET …/tickets` | the tenant's tickets across its projects, newest first; filters `project`, `state`, `type`, `severity`, `security`, `urgency`, `effort`, `assignee`, `reporter`, `parent`, `progress_min`, `progress_max` (the implementation stage), `opened_after`, `opened_before`, `updated_after`, `updated_before`, `done_after` (done after it — like the four timestamps before it, the bound itself excluded), `q` (every word in the title and body, a filter in the list's order, no rank and no snippet), `include_terminal`, `blocked`, `has_open_questions`, `interest` ([ADR 0049](docs/adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md)) |
+| `GET …/search` | search the tenant's tickets ([ADR 0025](docs/adr/0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)): `q` (required) by full text — the `simple` dictionary after `unaccent`, every word in one text — over the title and body, the comments but a withdrawn one, the questions and the file names; a key by its beginning (`COW-1`, `acme/COW-12`), a title by trigram. `{"items": [...], "next_cursor"}`, one hit per ticket at its best match, the best first — a key, the title, the body, then comments, questions and file names, a title by trigram last: `tenant`, `key`, `title`, `type`, `state`, `found_in` (`key`, `ticket`, `comment`, `question`, `attachment`), `comment` (its id) or `question` (its number) where it matched, and `snippet`, `[{"text","match"}]`, the found words marked — text, never HTML. What the caller cannot see is not searched, snippets included; `limit`, `cursor` — a cursor belongs to its query; a project-restricted token searches its project |
 | `GET …/projects/{project}/tickets` | the project's tickets in its rank: the ranked by their key, then the unranked — done and dropped, and open ones a release before the rank filed — by number ([ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md)); the same filters but `project`; a cursor from before the rank is `400 invalid_cursor` |
 | `POST …/projects/{project}/tickets` | file a ticket (`type`, `title`, `severity`, `security`, `effort`); its number is the project's next. `urgency` is its horizon, `later` when left out; `after` or `before` names an open ticket of that horizon it is placed directly next to, the bottom of the rank — the end of its horizon — when left out ([ADR 0010](docs/adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3, [ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md) D2); an agent needs `override-urgency` for a horizon other than `later` and `rank` for a place |
 | `GET …/{number}` | one ticket: its state — `filed`, `analysed`, `decided`, `in-progress`, `review`, `blocked`, `done`, `dropped` — its three progress stages `progress_refinement`, `progress` (implementation) and `progress_review`, derived from its children while it has any, `done_from` and `done_by_hand` while it is done, `open_prerequisites`, the open tickets that block it which the caller can see, and `score` with `score_version` — the weights of the severity (critical 8, high 5, medium 3, low 1, cosmetic 0), the horizon (now 8, release 5, next 3, later 1, icebox −5) and the stakes (need 1, urgent 2), plus one for every thirty days since `opened_at`, to one decimal at the moment of the read; `null` while the ticket is done or dropped ([ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md) D4) |
 | `PATCH …/{number}` | change its fields; `If-Match`. A stage takes 0–100 in steps of five in every state but `dropped`, never on a ticket with children. The change that brings the last of the three stages of a ticket without children to 100 is the done act: it needs `note`, the verification, and over open prerequisites it is `409 open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent needs `close` and a ticket in `in-progress` or `review`. The change that lowers a stage of a ticket done by its stages reopens it to `done_from` with a `reason`, ranked at the bottom; a ticket done by hand stays done while its stages change; an open ticket whose three stages are full already — a parent whose last child left — is closed by hand |
+| `GET …/{number}/body` | its body, `{"body","body_html","version"}`: the Markdown as written and the HTML rendered and sanitised on the server — raw HTML shown as text; a link only to an `http`, `https`, `mailto` or relative address, with `rel="noopener noreferrer nofollow"` and `target="_blank"`; an image only of one of the ticket's own raster attachments, from that attachment's path, any other image a link to its address. The `ETag` is the ticket's ([rendered Markdown](docs/security/rendered-markdown.md)) |
 | `PUT …/{number}/body` | replace its body as a whole; `If-Match` |
 | `PUT …/{number}/urgency-override` | set the ticket's horizon — `now`, `release`, `next`, `later` or `icebox`, a planning category independent of the state, which nothing derives: the derived value is `later` for every ticket — until it is withdrawn or replaced; the reason is optional for a person and required of an agent, which needs `override-urgency`; `If-Match` |
 | `DELETE …/{number}/urgency-override` | return the ticket to `later`, the derived horizon; `If-Match` |
 | `PUT …/{number}/confidential` | set or lift the confidential flag — an administrator with `admin` scope, never an agent; lifting needs a reason; `If-Match` |
+| `DELETE …/{number}` | delete it into the tenant's bin — an administrator with `admin` scope, never an agent (`403 agent_forbidden`, `hard-off: deleting, restoring or purging`); `204`. From then on it answers like a missing ticket everywhere but the bin: every route of it and under it `404`, absent from every list, tree, person-level list, inbox and context, its links hidden, its parent's derived stages without it; its key stays taken. Not refused when other tickets depend on it; a ticket already deleted is `404` |
 | `POST …/{number}/transitions` | move it to another state: forward one step to `review`, back with a reason, into `blocked` and out to where it came from, `dropped` with a reason and back to `filed`; `from` must be the current state, else `409 state_conflict`. To `done` is done by hand — from any open state for a person, from `in-progress` or `review` for an agent with `close` — with a verification note, and over open prerequisites it is `409 open_prerequisites` unless a person overrides with a reason; done → `done_from` with a reason withdraws it, unless it has no children and its three stages are full, when the ticket stays done by them; a ticket done by its stages leaves done only by a lower stage. An agent needs `decide`, `close` or `drop` for those moves; done and dropped take the rank away, leaving them ranks the ticket at the bottom |
 | `PUT …/{number}/rank` | place it directly after or before another open ticket of the project, `{"after": n}` or `{"before": n}`: one key written between the neighbour's and the next one's on that side, those the caller cannot see counted, recorded as `ranked` with the neighbour, the version raised — the key itself is never shown, the list's order is the rank; a ticket already there among those the caller can see is `200` unchanged; no `If-Match` — the last move wins; an agent needs `rank`; a done or dropped ticket or neighbour is `409 state_conflict`, a neighbour the caller cannot see the `400` of one that does not exist. Before a gap between two keys runs out, the project's keys are spread again, every ticket keeping its place, with no act and no version |
 | `PUT …/projects/{project}/rank` | "sort by score": `{"by": "score"}` — the open tickets of the project the caller sees take the places they hold among themselves in the score's order, highest first, each scored anew, so every horizon and every parent's children read by score; a ticket the caller cannot see keeps its key and its place. `200 {"moved", "score_version"}`; one act `ranked` on the project naming the tickets it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets a new version; `moved: 0`, and nothing recorded, when the rank follows the score already. A member, `write` scope; an agent needs `rank`; no `If-Match` ([ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md) D3) |
@@ -859,17 +874,54 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 </details>
 
 <details>
+<summary>The bin of deleted tickets — 3 routes</summary>
+
+For the tenant's administrators, never an agent
+([ADR 0024](docs/adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D1, D2, D7); the purge, the one act on a ticket nothing undoes, in a browser session only. A
+token restricted to a project is refused like an unknown tenant. `{key}` is a short key,
+`<PROJECT>-<number>`, of a ticket in the bin; any other key — a ticket that is not deleted
+included — is `404 not_found`.
+
+| Method and path | Does |
+|---|---|
+| `GET …/deleted-tickets` | `read` scope: the deleted tickets the caller can see, the last deleted first — `key`, `project`, `number`, `type`, `title`, `state`, `confidential`, `deleted_at`, `deleted_by`, `purge_at` (thirty days after the deletion); `limit` and `cursor` |
+| `PUT …/deleted-tickets/{key}/restore` | `admin` scope: bring it back as it was — its links, comments, stakes and place in the rank with it; `200` with the ticket and its `ETag`, the version raised; recorded as `restored` |
+| `DELETE …/deleted-tickets/{key}` | a browser session only — a token, an administrator's `admin` token included, is `403 session_required`: purge it now — the ticket, its comments and their revisions, questions, links, stakes, time entries and their revisions, notifications and attachments, then the attachments' objects; its children become roots, and a block that waited on it waits on its key as an external reference; its audit rows stay with their content emptied; `204`, recorded as `purged`. The job `ticket-purge` does the same thirty days after the deletion |
+
+</details>
+
+<details>
+<summary>Saved filters — 5 routes</summary>
+
+A saved filter is a named set of the ticket lists' filter parameters
+([ADR 0018](docs/adr/0018-the-views-of-the-first-release.md) D5,
+[ADR 0049](docs/adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md)
+D6, D7), the owner's, and shared with every member of the tenant when `shared`. A token restricted
+to a project is refused like an unknown tenant.
+
+| Method and path | Does |
+|---|---|
+| `GET …/filters` | `read` scope: the caller's filters and those shared with the tenant, oldest first — `id`, `name`, `owner`, `shared`, `parameters`, `warnings` (a value that no longer holds, checked as it is read), `redacted` (another member's filter that names a project or a ticket the caller cannot see, or one that is gone: shown without `parameters` and `warnings`), `version`; `limit` and `cursor` |
+| `POST …/filters` | any role, `write` scope: `{"name","parameters"}` and optionally `shared`; `parameters` takes the lists' filter parameters as a JSON object — `state`, `type`, `severity`, `security`, `urgency`, `effort`, `assignee`, `reporter`, `parent`, `interest`, `project` as arrays, `progress_min`, `progress_max`, the time bounds, `q`, `include_terminal`, `blocked`, `has_open_questions` — and refuses what the lists refuse, `400` at `/parameters/<name>`; `me` stays `me`, whoever applies it; `201` with `ETag` and `Location`; `Idempotency-Key` |
+| `GET …/filters/{filter}` | one of the caller's or a shared one; `ETag` |
+| `PATCH …/filters/{filter}` | the owner, `write` scope: `name`, `parameters` (the whole set) and `shared`; `If-Match`; another member's shared filter is `403 forbidden`, a filter the caller cannot see `404` |
+| `DELETE …/filters/{filter}` | the owner, `write` scope; `204`; another member's shared filter is `403 forbidden` |
+
+</details>
+
+<details>
 <summary>Questions and comments — 12 routes</summary>
 
 | Method and path | Does |
 |---|---|
-| `GET …/{number}/questions` | its questions, by number |
+| `GET …/{number}/questions` | its questions, by number; every question, wherever the API answers one, carries `options_html` and `answer_html` (`null` without an answer) beside the Markdown, rendered as the body is |
 | `POST …/{number}/questions` | ask one; the person asked must be able to see the ticket — without one the question is open to the tenant |
 | `GET …/{number}/questions/{question}` | one question |
 | `PATCH …/{number}/questions/{question}` | edit it while open — the asker; `If-Match` |
 | `PUT …/{number}/questions/{question}/answer` | answer it, or change one's answer — a person decides; an agent with `record-answer` writes down its person's answer; `If-Match` once answered |
 | `PUT …/{number}/questions/{question}/withdrawal` | withdraw an open question — the asker |
-| `GET …/{number}/comments` | the comment thread, oldest first (`order=desc` for newest) |
+| `GET …/{number}/comments` | the comment thread, oldest first (`order=desc` for newest); every comment carries `body_html` beside the Markdown, rendered as the body is, `null` once withdrawn |
 | `POST …/{number}/comments` | comment |
 | `GET …/{number}/comments/{comment}` | one comment |
 | `PATCH …/{number}/comments/{comment}` | edit it — its author, or the person whose agent wrote it; the old text is kept; `If-Match` |

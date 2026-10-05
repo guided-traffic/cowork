@@ -47,7 +47,7 @@ LEFT JOIN users ab ON ab.id = q.asked_by
 LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = $1 AND q.ticket_id = $2 AND q.number = $3
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type GetQuestionParams struct {
@@ -130,7 +130,7 @@ SELECT q.id, q.number, q.question, q.options, q.recommendation, q.answer, q.stat
        q.answered_at, q.recorded_by_agent, q.answered_by_token_id, q.answered_by_token_name,
        q.withdrawn_at, q.version, q.created_at, q.updated_at,
        p.key AS project_key, t.number AS ticket_number, t.title AS ticket_title, t.state AS ticket_state,
-       t.id AS ticket_id,
+       q.ticket_id,
        (CASE WHEN t.state IN ('done', 'dropped') THEN '-Infinity'::double precision ELSE t.score_key END)::double precision
            AS ticket_score_key
 FROM questions q
@@ -141,7 +141,7 @@ LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = $1 AND q.status = 'open'
   AND (q.asked_of = $2::uuid OR q.asked_of IS NULL)
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND (NOT $3::boolean
        OR (CASE WHEN t.state IN ('done', 'dropped') THEN '-Infinity'::double precision ELSE t.score_key END)
           < $4::double precision
@@ -284,7 +284,7 @@ LEFT JOIN users ab ON ab.id = q.asked_by
 LEFT JOIN users ao ON ao.id = q.asked_of
 LEFT JOIN users an ON an.id = q.answered_by
 WHERE q.tenant_id = $1 AND q.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND ($3::integer IS NULL OR q.number > $3::integer)
 ORDER BY q.number
 LIMIT $4

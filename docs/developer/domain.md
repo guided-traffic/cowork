@@ -102,7 +102,9 @@ stream applies the confidential rule once more in Go, to each event it holds
 
 What a reader may not see does not exist for them: its routes answer `404`, lists, links and
 the event stream leave it out, and an act that names it is shown without its payload
-([ADR 0065] D5). The SQL is [data-access.md](data-access.md#visibility-in-sql).
+([ADR 0065] D5). A deleted ticket is the same for everybody, its tenant's administrators included,
+everywhere but the bin ([deletion](#deletion-the-bin-and-the-purge)). The SQL is
+[data-access.md](data-access.md#visibility-in-sql).
 
 ## Parent
 
@@ -328,7 +330,8 @@ A project's open tickets have a manual order, the rank ([ADR 0014] D1, D2); the 
   be longer than `domain.RankRebalanceLength`, 32 characters, or for which none fits, first spreads
   the project's keys again (`rebalanceRank`, `crowded` in [`rank.go`](../../backend/internal/api/rank.go))
   and then decides the place on the gap as it is. `ListRankKeys` reads every ticket that holds a
-  key, in the key's order, those the caller cannot see included; the open ones get
+  key, in the key's order, those the caller cannot see and the deleted ones included — a restoration
+  brings a deleted ticket back at its place —; the open ones get
   `domain.RankSpread(n)` — n keys of one width, evenly spaced with at least 62 places between two,
   as migration 17 spread the first keys — and a key a release before the rank left on a done or
   dropped ticket is taken away. `ReleaseRanks` frees every key first, because the unique index is
@@ -337,10 +340,10 @@ A project's open tickets have a manual order, the rank ([ADR 0014] D1, D2); the 
 - **The sort by the score** — `PUT …/projects/{project}/rank` with `{"by": "score"}`,
   `SortProjectRank` in [`score.go`](../../backend/internal/api/score.go), a member's act with
   `write` scope, an agent's with `rank` (`rankNeed`) — takes the rank lock, ranks the unranked,
-  reads the open ranked tickets the caller sees (`ListScoredTickets`), scores each anew where its
+  reads the open ranked tickets the caller sees, a deleted one left out (`ListScoredTickets`), scores each anew where its
   stored score differs from the function's, and gives them the keys they hold among themselves in
   the score's order, highest first, an equal score keeping the rank's order (`sortByScore`). A
-  hidden ticket's key and place stay. The tickets whose key changed get a new version
+  hidden or deleted ticket's key and place stay. The tickets whose key changed get a new version
   (`SetRanks` with `moved`); one act `ranked` on the project with
   `{"by": "score", "score_version", "moved"}` names them in `Refs`, which their activity reads
   (`ListTicketActivity`), and is published as `project.changed`. Nothing to move answers
@@ -360,7 +363,7 @@ release 5, next 3, later 1, icebox −5), one per `need` and two per `urgent` st
 - **Stored as a key time does not move.** The age is elapsed time, not whole days, so time adds
   the same to every ticket and the order of two scores changes only with an input. The ticket
   stores `score_key` — the weights less `opened_at` in units of thirty days since the Unix epoch —
-  and `score_version` ([migration 33](../../backend/internal/store/migrations/000033_ticket_score.up.sql));
+  and `score_version` ([migration 34](../../backend/internal/store/migrations/000034_ticket_score.up.sql));
   `domain.ScoreAt(key, now)` is the score at a moment, rounded to one decimal, which `ticketView`
   shows as `score` with `score_version`, both `null` for a done or dropped ticket and for one with
   version 0 — filed by a release before the score, its key `-Infinity`, below every scored one.
@@ -373,7 +376,7 @@ release 5, next 3, later 1, icebox −5), one per `need` and two per `urgent` st
   index `tickets_by_score`), the open decisions by their ticket's key, a done or dropped ticket's
   as `-Infinity`.
 - **A new version** is a new function and a migration that writes it out in SQL once more and
-  scores every ticket, held to the function by an integration test, as migration 33 is
+  scores every ticket, held to the function by an integration test, as migration 34 is
   (`TestScoreMigrationScoresEveryTicket`).
 - **The secondary indicator** of the person-level lists is a ticket's place in its project's rank
   among the open tickets of its horizon that the reader sees (`ListRankPlaces`), counted under the
@@ -541,10 +544,41 @@ it ([ADR 0065] D5). The table and the store's side are
 [data-access.md](data-access.md#notifications). A mention in a comment tells nobody yet: how a
 comment names a person is not decided.
 
+## Deletion, the bin and the purge
+
+[ADR 0024] D1–D3, D7; [`api/deletion.go`](../../backend/internal/api/deletion.go), the store's side
+[data-access.md](data-access.md#deletion-and-the-purge):
+
+- **Who.** Deleting, restoring and purging are a tenant administrator's acts with `admin` scope —
+  the tenant role, not a project's — and never an agent's: the hard-off rule `deleting, restoring
+  or purging` refuses an agent-marked request with `403 agent_forbidden` (ADR 0043 D3). The purge
+  takes a browser session besides: the document declares `purgeTicket` with the session cookie
+  alone, so a token — an administrator's `admin` token included — is `403 session_required`
+  (D7 as amended 2026-10-05). The bin is read with `read` scope.
+- **Deleting** (`DELETE …/{number}`, `deleted`) puts the ticket into the bin. From then on it
+  answers like a missing ticket everywhere but the bin: its routes are `404` — a second deletion
+  too, its rendered body among them —, it leaves every list, the boards, the search, the
+  prerequisite trees, the person-level lists, the inbox and its count, the context and the Markdown
+  export, a link to it is hidden from the other end and an act that
+  names it is redacted, a block that names it names no ticket, a child shows its parent as hidden,
+  its parent's derived stages leave it out, and a ticket it blocks no longer counts it as an open
+  prerequisite. Nothing is removed. Its number stays taken. It is not refused when open tickets
+  depend on it; the browser names them and asks.
+- **Restoring** (`PUT …/deleted-tickets/{key}/restore`, `restored`) brings it back as it was — its
+  links, comments, stakes, its key in the rank — and raises its version.
+- **Purging** (`DELETE …/deleted-tickets/{key}`, `purged`; or the job, thirty days after the
+  deletion, as `system:ticket-purge`) removes it and everything that belongs only to it, its
+  attachments' objects last; its children become roots, a block that waited on it waits on its key
+  as an external reference — an `updated` act on that ticket, its version raised —, and its audit
+  rows keep its key, the actor and the act, their content emptied. Its number is never handed out
+  again: the project's counter only grows.
+- **Concurrent acts** answer as a later request would: a deletion that lost the race is `404`; of a
+  purge and a restoration at once, one wins and the other is `404`.
+
 ## Not built
 
-There is no `deleted_at` and
-no deletion or purge ([ADR 0024]). No route creates memberships, entries on a restricted
+The deletion of a project and of a tenant ([ADR 0024] D4, D6) is not built. No route creates
+memberships, entries on a restricted
 project's list or tokens; the tests and `make dev-seed` write them over the administrative
 connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 

@@ -74,11 +74,15 @@ func (s *Server) ListPrerequisites(ctx context.Context, req apigen.ListPrerequis
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(n treeNode) string { return encodeTreePath(n.Path) })
-	out := apigen.ListPrerequisites200JSONResponse{Items: []apigen.PrerequisiteNode{}, NextCursor: nullableString(next), Open: open}
+	out := apigen.PrerequisiteTree{Items: []apigen.PrerequisiteNode{}, NextCursor: nullableString(next), Open: open}
 	for _, n := range rows {
 		out.Items = append(out.Items, treeNodeView(t.Slug, n))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListPrerequisites304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListPrerequisites200JSONResponse{Body: out, Headers: apigen.ListPrerequisites200ResponseHeaders{ETag: &tag}}, nil
 }
 
 const treeOp = "listPrerequisites"

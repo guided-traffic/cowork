@@ -23,16 +23,22 @@ session use the server key gets later.
 **Partly built** (phase 2, 2026-10-02): D1, D3, D5–D7 on every list route, the project's
 tickets in its rank since 2026-10-03, the unranked after the ranked by number
 ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md));
-D2's numbered pages on the two ticket lists and the tenant's time entries — the audit view,
-members, tokens and projects carry the cursor only so far; D4's markings and client helpers
-arrive with the generated frontend client. *(2026-10-04:)* D3's inbox, `/me/assigned` and
-`/me/decisions`, cursor only and merged across the person's tenants — the inbox by the
-notifications' ids, the other two ~~in the interim order of
+D2's numbered pages on the two ticket lists and the tenant's time entries — ~~the audit view,
+members, tokens and projects carry the cursor only so far~~ *(built 2026-10-04: the audit view,
+the members, the person's tokens and the projects take them as well,
+[`api/cursor.go`](../../backend/internal/api/cursor.go) `tablePage`; the tenant's audit page in
+the browser reads them with page numbers and a choice of 25, 50 or 100, as D4 has tables do)*; D4's
+markings and client helpers arrive with the generated frontend client. *(2026-10-04:)* D3's inbox,
+`/me/assigned` and `/me/decisions`, cursor only and merged across the person's tenants — the inbox by
+the notifications' ids, the other two ~~in the interim order of
 [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s Status rather than D1's
 `(score, id)`, their position the tenant's slug, the project's key and the rank's place sealed as a
-project's list seals it~~ *(2026-10-05: in D1's `(score, id)`, below)*; a cursor names its person and its narrowing, and the `cursor` parameter
-takes up to 1024 characters for these positions. *(2026-10-05:)* D1's `(score, id)` for
-`/me/next` and `/me/assigned` — the score's stored key, whose order is the score's at every moment
+project's list seals it~~ *(2026-10-05: in D1's `(score, id)`, below)*; a cursor names its person
+and its narrowing, and the `cursor` parameter takes up to 1024 characters for these positions.
+*(2026-10-05:)* D3's search, cursor only, its position D1's `(rank, id)` — the rank written
+exactly, unsealed, since the reader sees every text it was computed over — and its cursor bound to
+a hash of its query as well. *(2026-10-05:)* D1's `(score, id)` for `/me/next` and `/me/assigned`
+— the score's stored key, whose order is the score's at every moment
 ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D4), and the ticket's id, unique
 across tenants, so every tenant's part resumes at the same place of one order — and
 `(score, ticket id, question number)` for `/me/decisions`; the position is not sealed, since a score

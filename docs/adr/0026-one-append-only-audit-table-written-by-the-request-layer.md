@@ -10,7 +10,10 @@ action `login_refused`, the column `source_hash`, the system actor `system:ident
 the security review, no e-mail address in `before` or `after`; by the owner's answer on the groups,
 no group of a person in them either; by the owner's decision that every act made through a token is
 shown as such, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
-D6, the column `token_name`; D6: the tenant's view shows it beside the token's id).
+D6, the column `token_name`; D6: the tenant's view shows it beside the token's id) and 2026-10-05
+(D3: the purge's function runs inside the transaction that records its act instead of writing the
+act itself — the first implementation found that a function cannot know the token, the agent, the
+request and the source hash the row must carry; not yet put to the owner, see the Status below).
 Date: 2026-10-01. Decided by the owner as the answer to the catalog
 question "audit log — which form?": one table for every mutation of every entity, over a
 history table per entity and over trigger-written rows. The rules of D6–D7 were put to the
@@ -41,7 +44,20 @@ Since 2026-10-04 D2's notifications reference their act's row
 ([ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D3,
 [migration 30](../../backend/internal/store/migrations/000030_notifications.up.sql)), and marking
 one's notifications read is the act `read` (added to D1's list below), in the tenant of the
-notifications.
+notifications. Since the same day the tenant's view of D6 has numbered pages with a total and a
+page in the browser for the tenant's administrators — its filters, its pages and its CSV
+([`features/tenant/audit.ts`](../../frontend/src/app/features/tenant/audit.ts)); the per-token view
+and the global administrator's reading still arrive with their routes.
+
+**D3's purge built** (2026-10-05): `purge_ticket_audit`
+([migration 32](../../backend/internal/store/migrations/000032_ticket_deletion.up.sql)), owned by
+the owner role, executable by the runtime role alone, its `search_path` fixed with `pg_temp` last,
+empties `before`, `after`, `reason` and `note` of the current tenant's rows of one deleted ticket in
+a transaction that names the purge, and refuses everything else; the policy `audit_purge` admits
+that update to the owner role. The purge's own act is written by D2's wrapper in the same transaction
+(D3 as amended). The amendment is the implementer's and is open to the owner's objection: a function
+that wrote the row itself would need the request's facts handed in, and would trust them no more than
+the wrapper does. The tenant deletion's function is not built.
 
 ## Context
 
@@ -94,8 +110,13 @@ publishes each row of a ticket's act with `NOTIFY` in that transaction
 **D3 — Append-only is a grant, not a convention.** The application role has `INSERT` and
 `SELECT` on `audit_events` and nothing else. The two writes that are not inserts — the
 purge's emptying of content fields and the tenant deletion of ADR 0024 D6 — run through
-`SECURITY DEFINER` functions owned by the migration role, each of which writes its own audit
-row first.
+`SECURITY DEFINER` functions owned by the migration role, ~~each of which writes its own audit
+row first~~ *(amended 2026-10-05, built with the purge: each of which runs only inside the
+transaction that records its act through D2's wrapper, so that the act and the change commit
+together or not at all, and refuses outside its own case — the purge's function outside a
+transaction that names the purge, and for any ticket that is not deleted; the function cannot write
+the act itself, because the token, the agent mark, the request and the source hash the row carries
+are the request layer's, D2)*.
 
 **D4 — Row-level security applies as everywhere** ([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md));
 rows with `tenant_id IS NULL` are readable by global administrators only, through a policy

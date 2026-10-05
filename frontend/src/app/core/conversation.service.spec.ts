@@ -7,7 +7,8 @@ import { Conversation } from './conversation.service';
 
 const base = '/api/v1/tenants/acme/projects/VKO/tickets/12';
 const key = 'acme/VKO-12';
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** The key a form holds for its content (docs/adr/0045 D3). */
+const formKey = '0199aaaa-0000-7000-8000-00000000f0f0';
 
 function question(overrides: Partial<Question> = {}): Question {
   return {
@@ -15,9 +16,11 @@ function question(overrides: Partial<Question> = {}): Question {
     number: 3,
     question: 'Which way?',
     options: '',
+    options_html: '',
     recommendation: '',
     status: 'open',
     answer: null,
+    answer_html: null,
     answered_at: null,
     answered_by: null,
     asked_by: { id: 'p1', display_name: 'Hans' },
@@ -55,35 +58,20 @@ describe('Conversation', () => {
   });
 
   describe('comment', () => {
-    it('posts the text to the comments of the ticket, with a key of its own for the act', async () => {
-      const done = conversation.comment(key, 'Looks right.');
+    it("posts the text to the comments of the ticket, with the form's key (docs/adr/0045 D3)", async () => {
+      const done = conversation.comment(key, 'Looks right.', formKey);
 
       const sent = http.expectOne(`${base}/comments`);
       expect(sent.request.method).toBe('POST');
       expect(sent.request.body).toEqual({ body: 'Looks right.' });
-      expect(sent.request.headers.get('Idempotency-Key')).toMatch(uuid);
+      expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
       sent.flush({ id: 'c1', body: 'Looks right.' });
 
       expect(await done).toMatchObject({ id: 'c1' });
     });
 
-    it('sends another key for the next comment', async () => {
-      const first = conversation.comment(key, 'One');
-      const one = http.expectOne(`${base}/comments`);
-      one.flush({ id: 'c1' });
-      await first;
-      const second = conversation.comment(key, 'Two');
-      const two = http.expectOne(`${base}/comments`);
-      two.flush({ id: 'c2' });
-      await second;
-
-      expect(one.request.headers.get('Idempotency-Key')).not.toBe(
-        two.request.headers.get('Idempotency-Key'),
-      );
-    });
-
     it('rejects with the HTTP error', async () => {
-      const outcome = conversation.comment(key, 'x').then(
+      const outcome = conversation.comment(key, 'x', formKey).then(
         () => null,
         (error: unknown) => error,
       );
@@ -97,12 +85,12 @@ describe('Conversation', () => {
   });
 
   describe('ask', () => {
-    it('posts the question to the questions of the ticket, with a key of its own for the act', async () => {
-      const done = conversation.ask(key, {
-        question: 'Which way?',
-        options: 'A or B',
-        recommendation: 'A',
-      });
+    it("posts the question to the questions of the ticket, with the form's key (docs/adr/0045 D3)", async () => {
+      const done = conversation.ask(
+        key,
+        { question: 'Which way?', options: 'A or B', recommendation: 'A' },
+        formKey,
+      );
 
       const sent = http.expectOne(`${base}/questions`);
       expect(sent.request.method).toBe('POST');
@@ -111,7 +99,7 @@ describe('Conversation', () => {
         options: 'A or B',
         recommendation: 'A',
       });
-      expect(sent.request.headers.get('Idempotency-Key')).toMatch(uuid);
+      expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
       sent.flush(question());
 
       expect((await done).number).toBe(3);
@@ -273,7 +261,7 @@ describe('Conversation', () => {
   });
 
   it('addresses every call through the tenant, the project and the number of the key', async () => {
-    const done = conversation.comment('globex/COW-3', 'x');
+    const done = conversation.comment('globex/COW-3', 'x', formKey);
 
     http.expectOne('/api/v1/tenants/globex/projects/COW/tickets/3/comments').flush({ id: 'c1' });
     await done;

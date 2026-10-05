@@ -13,6 +13,27 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
 
+const countProjects = `-- name: CountProjects :one
+SELECT count(*)::bigint AS projects
+FROM projects
+WHERE tenant_id = $1
+  AND app_project_visible(id)
+  AND ($2::boolean OR archived_at IS NULL)
+`
+
+type CountProjectsParams struct {
+	TenantID        uuid.UUID
+	IncludeArchived bool
+}
+
+// The projects the caller can see, for a numbered page's total.
+func (q *Queries) CountProjects(ctx context.Context, arg CountProjectsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countProjects, arg.TenantID, arg.IncludeArchived)
+	var projects int64
+	err := row.Scan(&projects)
+	return projects, err
+}
+
 const getProjectAccessRole = `-- name: GetProjectAccessRole :one
 SELECT role
 FROM project_access
@@ -83,13 +104,14 @@ WHERE tenant_id = $1
   AND ($2::boolean OR archived_at IS NULL)
   AND ($3::text IS NULL OR key > $3::text)
 ORDER BY key
-LIMIT $4
+LIMIT $5 OFFSET $4
 `
 
 type ListProjectsParams struct {
 	TenantID        uuid.UUID
 	IncludeArchived bool
 	After           *string
+	PageOffset      int32
 	PageSize        int32
 }
 
@@ -106,12 +128,14 @@ type ListProjectsRow struct {
 	UpdatedAt   time.Time
 }
 
-// The projects the caller can see, by key.
+// The projects the caller can see, by key: after a cursor's key, or a
+// numbered page by offset (docs/adr/0048 D1, D2).
 func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]ListProjectsRow, error) {
 	rows, err := q.db.Query(ctx, listProjects,
 		arg.TenantID,
 		arg.IncludeArchived,
 		arg.After,
+		arg.PageOffset,
 		arg.PageSize,
 	)
 	if err != nil {
@@ -133,6 +157,44 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]L
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listVisibleProjectKeys = `-- name: ListVisibleProjectKeys :many
+SELECT id, key
+FROM projects
+WHERE tenant_id = $1 AND id = ANY ($2::uuid[]) AND app_project_visible(id)
+`
+
+type ListVisibleProjectKeysParams struct {
+	TenantID uuid.UUID
+	Ids      []uuid.UUID
+}
+
+type ListVisibleProjectKeysRow struct {
+	ID  uuid.UUID
+	Key string
+}
+
+// The keys of the given projects the caller sees: how the person's tokens name
+// the project each is restricted to (docs/adr/0035 D3).
+func (q *Queries) ListVisibleProjectKeys(ctx context.Context, arg ListVisibleProjectKeysParams) ([]ListVisibleProjectKeysRow, error) {
+	rows, err := q.db.Query(ctx, listVisibleProjectKeys, arg.TenantID, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListVisibleProjectKeysRow{}
+	for rows.Next() {
+		var i ListVisibleProjectKeysRow
+		if err := rows.Scan(&i.ID, &i.Key); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

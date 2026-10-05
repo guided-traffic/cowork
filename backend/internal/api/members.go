@@ -427,11 +427,15 @@ func (s *Server) ListGroupMappings(ctx context.Context, req apigen.ListGroupMapp
 		return nil, err
 	}
 	rows, next := page(s.h, rows, s.h.pageSize(req.Params.Limit), op, scope, func(m readq.ListGroupMappingsRow) string { return m.GroupName })
-	out := apigen.ListGroupMappings200JSONResponse{Items: []apigen.GroupMapping{}, NextCursor: nullableString(next)}
+	out := apigen.GroupMappingList{Items: []apigen.GroupMapping{}, NextCursor: nullableString(next)}
 	for _, m := range rows {
 		out.Items = append(out.Items, groupMappingView(m.ID, m.GroupName, m.Role, m.Version, m.CreatedAt, m.UpdatedAt, mine))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListGroupMappings304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListGroupMappings200JSONResponse{Body: out, Headers: apigen.ListGroupMappings200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // readGroupMapping reads one mapping of the tenant for an answer, and its
@@ -720,7 +724,7 @@ func (s *Server) ListProjectAccess(ctx context.Context, req apigen.ListProjectAc
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(a readq.ListProjectAccessRow) string { return a.UserID.String() })
-	out := apigen.ListProjectAccess200JSONResponse{Items: []apigen.ProjectAccessEntry{}, NextCursor: nullableString(next)}
+	out := apigen.ProjectAccessList{Items: []apigen.ProjectAccessEntry{}, NextCursor: nullableString(next)}
 	for _, a := range rows {
 		out.Items = append(out.Items, apigen.ProjectAccessEntry{
 			Person:    apigen.Person{Id: a.UserID, Username: nullableOf(a.Username), DisplayName: a.DisplayName},
@@ -729,7 +733,11 @@ func (s *Server) ListProjectAccess(ctx context.Context, req apigen.ListProjectAc
 			CreatedAt: a.CreatedAt,
 		})
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListProjectAccess304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListProjectAccess200JSONResponse{Body: out, Headers: apigen.ListProjectAccess200ResponseHeaders{ETag: &tag}}, nil
 }
 
 func accessChange(person, projectID uuid.UUID) *store.MembershipChange {

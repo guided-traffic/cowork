@@ -1,6 +1,6 @@
 ---
 id: T29
-title: the end-to-end tier lacks the phase path with two identities, its job has not run on a runner, and the ruleset does not require it
+title: the end-to-end tier lacks the phase path with two identities, and the ruleset does not require it
 state: in-progress
 severity: medium
 security: none
@@ -55,7 +55,9 @@ suite 17.3 s with four workers, 29.5 s with two (`CI=true`); the suite three tim
 stack, 102 passed; a failing run exits non-zero, keeps the containers' logs and removes the stack;
 the dark pictures pass in the Linux image `mcr.microsoft.com/playwright:v1.63.0-noble` (arm64);
 `make frontend-lint` and `make frontend-test` pass; `actionlint` reports nothing in the lines the
-job added.
+job added. On a runner, first on 2026-10-05 (run 37267795406): passed in 3 min 9 s, the Linux
+pictures holding on amd64. That `make e2e` runs a stack of its own, not `make dev-up`'s containers,
+is settled on the recommendation (ADR 0056 D1), the owner reviewing the result.
 
 ## Required changes
 
@@ -67,30 +69,6 @@ job added.
 2. The `main` ruleset requires `End-to-End Tests` — the owner's change
    ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)
    D6); then ADR 0073's Status and its index row say so.
-3. The job's first run on a runner, recorded here and in ADR 0056's Status: that the stack's two
-   ports on `127.0.0.1` reach the runner as the integration job's do, that the browsers install
-   with `--with-deps`, its duration against the ten minutes, and that the Linux pictures hold on
-   amd64.
-
-## Open questions
-
-### Q1: does `make e2e` run a stack of its own, or against the containers of `make dev-up`?
-
-ADR 0056 D1 said locally `make e2e` runs "against `make dev-up` plus locally built images"; the
-tier was built with a stack of its own instead, and D1 is amended so with the reasons, not yet put
-to the owner. The options:
-
-- **A stack of its own, as built** (recommended): the same script in CI and locally; the backend in
-  a container reaches Dex at the browser's `http://localhost:5557/dex` only inside Dex's network
-  namespace, which `make dex-up`'s container cannot lend because its ports are fixed when it is
-  made; the run's tenants and people never enter the development database; it costs about five
-  seconds of start per run and an image pull the first time.
-- **`make dev-up`'s PostgreSQL and MinIO with a database and a bucket of the run's, and a Dex of
-  its own:** reuses two containers, but needs their published ports from inside the backend's
-  container (`host.docker.internal` locally, something else on a runner) and keeps CI and the
-  local run different.
-
-**Answer:** _open_
 
 ## Related
 

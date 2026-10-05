@@ -1,0 +1,35 @@
+@let key = project().key;
+<header class="head">
+  <h2 [id]="'lane-' + key">
+    <a [routerLink]="['/t', tenant(), 'p', key, 'board']" data-testid="lane-project"
+      ><span class="key">{{ key }}</span
+      ><span class="name">{{ project().name }}</span></a
+    >
+  </h2>
+  <span class="muted tabular count" data-testid="lane-count">{{ countText() }}</span>
+</header>
+
+@if (failure(); as message) {
+  <p class="failure" role="alert" data-testid="lane-failure">{{ message }}</p>
+}
+
+<app-board-columns
+  [view]="view()"
+  [tenant]="tenant()"
+  [loading]="loading()"
+  [loaded]="loaded()"
+  [hold]="dragFrom() !== null"
+  [idPrefix]="'lane-' + key + '-'"
+  [headingLevel]="3"
+  [reload]="reload"
+  (dragStart)="dragStart.emit($event)"
+  (dragMove)="dragMove.emit($event)"
+  (dragEnd)="dragEnd.emit($event)"
+/>
+
+<!-- While a card of another swimlane is over this one, it says no; the toast says it again when the card is let go. -->
+@if (refusing()) {
+  <p class="refusal" aria-hidden="true" data-testid="lane-refusal">
+    <span><i class="pi pi-ban"></i>A ticket never changes project on a board</span>
+  </p>
+}

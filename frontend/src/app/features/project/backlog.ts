@@ -34,7 +34,7 @@ import { Menu } from 'primeng/menu';
 import { Select } from 'primeng/select';
 import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Tooltip } from 'primeng/tooltip';
-import { Ticket, TicketState, Urgency } from '../../api/models';
+import { SavedFilter, SavedFilterParameters, Ticket, TicketState, Urgency } from '../../api/models';
 import { ProblemService } from '../../core/problem.service';
 import { refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
@@ -66,6 +66,8 @@ import {
   withMoves,
 } from './backlog-model';
 import { ProjectHeader } from './project-header';
+import { fromBacklog, listParameters, toBacklog } from './saved-filter-model';
+import { SavedFilters } from './saved-filters';
 
 /** The states of the open tickets, in the order of the vocabulary: the filter is for the groups. */
 const openStates = (Object.keys(meanings.state) as TicketState[]).filter(
@@ -107,6 +109,7 @@ function timeOf(value: string | undefined): string | undefined {
     NgTemplateOutlet,
     ProjectHeader,
     RouterLink,
+    SavedFilters,
     SecurityBadge,
     Select,
     SeverityBadge,
@@ -152,6 +155,23 @@ export class Backlog {
   protected readonly selectedStates = signal<TicketState[]>([]);
   protected readonly query = signal('');
   private readonly debouncedQuery = signal('');
+  /**
+   * The saved filter applied, and its conditions beyond the search and the states, which the lists
+   * take as they are (docs/adr/0018 D5). A saved filter is the tenant's: another tenant's page
+   * starts without one.
+   */
+  protected readonly applied = linkedSignal<string | null, SavedFilter | null>({
+    source: () => this.session.tenant(),
+    computation: () => null,
+  });
+  private readonly extra = linkedSignal<string | null, Omit<SavedFilterParameters, 'project'>>({
+    source: () => this.session.tenant(),
+    computation: () => ({}),
+  });
+  /** What the backlog applies now, as a saved filter keeps it. */
+  protected readonly currentFilter = computed(() =>
+    fromBacklog(this.query(), this.selectedStates(), this.extra()),
+  );
   protected readonly showClosed = linkedSignal(() => this.closed() === 'true');
   /** The time the closed tickets are narrowed to, from the address, until the person drops it. */
   protected readonly doneAfter = linkedSignal(() => timeOf(this.done_after()));
@@ -167,13 +187,12 @@ export class Backlog {
     if (!tenant) {
       return undefined;
     }
-    const states = this.selectedStates();
     const q = this.debouncedQuery().trim();
     return {
+      ...listParameters(this.extra(), this.selectedStates()),
       tenant,
       project: this.project(),
       pages: this.pages(),
-      state: states.length > 0 ? states : undefined,
       q: q === '' ? undefined : q,
     };
   });
@@ -185,7 +204,10 @@ export class Backlog {
     }
     const q = this.debouncedQuery().trim();
     const doneAfter = this.doneAfter();
+    const extra = { ...this.extra() };
+    delete extra.state;
     return {
+      ...extra,
       tenant,
       project: this.project(),
       pages: this.closedPages(),
@@ -336,6 +358,23 @@ export class Backlog {
   protected onStates(states: TicketState[]): void {
     this.selectedStates.set(states);
     this.pages.set(1);
+  }
+
+  /**
+   * Applies a saved filter, or none: its search and the open states it names go into the bar,
+   * everything else to the lists as it is; none clears all of it. The lists start at one page.
+   */
+  protected applyFilter(filter: SavedFilter | null): void {
+    const b = filter
+      ? toBacklog(filter.parameters, openStates)
+      : { q: '', states: [] as TicketState[], extra: {} };
+    this.applied.set(filter);
+    this.extra.set(b.extra);
+    this.query.set(b.q);
+    this.debouncedQuery.set(b.q);
+    this.selectedStates.set(b.states);
+    this.pages.set(1);
+    this.closedPages.set(1);
   }
 
   protected loadMore(): void {

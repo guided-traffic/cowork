@@ -63,6 +63,7 @@ type GetScoreInputsRow struct {
 // urgent stake (docs/adr/0013 D3), and when it was opened — read after the
 // write in this transaction that changed one of them.
 // visibility: exempt (a ticket the caller read through the predicate in this transaction)
+// deletion: exempt (a ticket the caller read through the filter in this transaction)
 func (q *Queries) GetScoreInputs(ctx context.Context, arg GetScoreInputsParams) (GetScoreInputsRow, error) {
 	row := q.db.QueryRow(ctx, getScoreInputs, arg.TenantID, arg.ID)
 	var i GetScoreInputsRow
@@ -93,6 +94,7 @@ type GetTicketRankRow struct {
 
 // A ticket's state and key as they are under the rank lock.
 // visibility: exempt (a ticket the caller read through the predicate in this transaction)
+// deletion: exempt (a ticket the caller read through the filter in this transaction)
 func (q *Queries) GetTicketRank(ctx context.Context, arg GetTicketRankParams) (GetTicketRankRow, error) {
 	row := q.db.QueryRow(ctx, getTicketRank, arg.TenantID, arg.ID)
 	var i GetTicketRankRow
@@ -116,16 +118,16 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
         JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
         WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
           AND ps.state NOT IN ('done', 'dropped')
-          AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+          AND ps.deleted_at IS NULL AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
        t.version, t.created_at, t.updated_at
 FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
 LEFT JOIN users au ON au.id = t.assignee_id
 LEFT JOIN tickets pt ON pt.tenant_id = t.tenant_id AND pt.id = t.parent_id
-     AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
+     AND pt.deleted_at IS NULL AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
 LEFT JOIN tickets bt ON bt.tenant_id = t.tenant_id AND bt.id = t.block_ticket_id
-     AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
+     AND bt.deleted_at IS NULL AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
 LEFT JOIN projects bp ON bp.tenant_id = bt.tenant_id AND bp.id = bt.project_id
 WHERE t.tenant_id = $1 AND t.id = $2
 `
@@ -199,6 +201,7 @@ type GetWrittenTicketRow struct {
 // ticket reassigned away from its assignee), and the answer then shows what
 // the writer sent and read a moment ago. Linked tickets keep their predicate.
 // visibility: exempt (the writer's reread of the row it wrote)
+// deletion: exempt (the writer's reread of the row it wrote; the tickets it names keep the filter)
 func (q *Queries) GetWrittenTicket(ctx context.Context, arg GetWrittenTicketParams) (GetWrittenTicketRow, error) {
 	row := q.db.QueryRow(ctx, getWrittenTicket, arg.TenantID, arg.ID)
 	var i GetWrittenTicketRow
@@ -353,6 +356,7 @@ type LastRankParams struct {
 // whatever the caller can see and whatever its state, so a key is never handed
 // out twice.
 // visibility: exempt (the rank keys of the project the caller writes in, never shown)
+// deletion: exempt (a deleted ticket keeps its key, which its restoration brings back)
 func (q *Queries) LastRank(ctx context.Context, arg LastRankParams) (string, error) {
 	row := q.db.QueryRow(ctx, lastRank, arg.TenantID, arg.ProjectID)
 	var last string
@@ -377,9 +381,10 @@ type ListRankKeysRow struct {
 }
 
 // Every ticket of the project that holds a key, in the key's order, whoever
-// can see it and whatever its state: what a rebalancing spreads again
-// (docs/adr/0014 Consequences).
+// can see it, whatever its state and whether or not it is deleted: what a
+// rebalancing spreads again (docs/adr/0014 Consequences).
 // visibility: exempt (the rank keys of the project the caller writes in, never shown)
+// deletion: exempt (a deleted ticket keeps its key, spread with the others, which its restoration brings back)
 func (q *Queries) ListRankKeys(ctx context.Context, arg ListRankKeysParams) ([]ListRankKeysRow, error) {
 	rows, err := q.db.Query(ctx, listRankKeys, arg.TenantID, arg.ProjectID)
 	if err != nil {
@@ -410,7 +415,7 @@ SELECT t.id, t.rank::text AS rank, t.severity, coalesce(t.urgency_override, t.ur
 FROM tickets t
 WHERE t.tenant_id = $1 AND t.project_id = $2
   AND t.rank IS NOT NULL AND t.state NOT IN ('done', 'dropped')
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 ORDER BY t.rank
 `
 
@@ -433,8 +438,8 @@ type ListScoredTicketsRow struct {
 
 // The open, ranked tickets of a project that the caller can see, in the order
 // of the rank, with what their scores read: what a sort by the score reorders
-// (docs/adr/0014 D3). The caller holds the rank lock and has ranked the
-// unranked ones.
+// (docs/adr/0014 D3). A deleted ticket keeps its key and its place, as a hidden
+// one does. The caller holds the rank lock and has ranked the unranked ones.
 func (q *Queries) ListScoredTickets(ctx context.Context, arg ListScoredTicketsParams) ([]ListScoredTicketsRow, error) {
 	rows, err := q.db.Query(ctx, listScoredTickets, arg.TenantID, arg.ProjectID)
 	if err != nil {
@@ -481,6 +486,7 @@ type ListUnrankedTicketsParams struct {
 // before the rank (docs/adr/0028 D3) — in number order: they are ranked at the
 // bottom before the next key is handed out, where the list already shows them.
 // visibility: exempt (the rank keys of the project the caller writes in, never shown)
+// deletion: exempt (a deleted ticket takes its key too, so that its restoration finds one)
 func (q *Queries) ListUnrankedTickets(ctx context.Context, arg ListUnrankedTicketsParams) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listUnrankedTickets, arg.TenantID, arg.ProjectID)
 	if err != nil {
@@ -564,6 +570,7 @@ type NextRankedTicketParams struct {
 // caller can see and whatever its state: a new key lies strictly between two
 // keys that exist, so it never equals or passes one the caller cannot see.
 // visibility: exempt (the rank keys of the project the caller writes in, never shown)
+// deletion: exempt (a deleted ticket keeps its key, which its restoration brings back)
 func (q *Queries) NextRankedTicket(ctx context.Context, arg NextRankedTicketParams) (string, error) {
 	row := q.db.QueryRow(ctx, nextRankedTicket, arg.TenantID, arg.ProjectID, arg.After)
 	var rank string
@@ -575,7 +582,7 @@ const nextSeenRankedTicket = `-- name: NextSeenRankedTicket :one
 SELECT t.id FROM tickets t
 WHERE t.tenant_id = $1 AND t.project_id = $2
   AND t.rank > $3::text AND t.state NOT IN ('done', 'dropped')
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 ORDER BY t.rank
 LIMIT 1
 `
@@ -635,6 +642,7 @@ type PreviousRankedTicketParams struct {
 // The key of the last ticket before a key in the project's rank, as
 // NextRankedTicket.
 // visibility: exempt (the rank keys of the project the caller writes in, never shown)
+// deletion: exempt (a deleted ticket keeps its key, which its restoration brings back)
 func (q *Queries) PreviousRankedTicket(ctx context.Context, arg PreviousRankedTicketParams) (string, error) {
 	row := q.db.QueryRow(ctx, previousRankedTicket, arg.TenantID, arg.ProjectID, arg.Before)
 	var rank string
@@ -646,7 +654,7 @@ const previousSeenRankedTicket = `-- name: PreviousSeenRankedTicket :one
 SELECT t.id FROM tickets t
 WHERE t.tenant_id = $1 AND t.project_id = $2
   AND t.rank < $3::text AND t.state NOT IN ('done', 'dropped')
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 ORDER BY t.rank DESC
 LIMIT 1
 `
@@ -890,6 +898,7 @@ type TicketFactsRow struct {
 // What a published act carries of its ticket: the project, the version and
 // the confidential rule's inputs (docs/adr/0054 D2, D3).
 // visibility: exempt (the publication of a committed act; subscribers filter)
+// deletion: exempt (a deletion and a restoration are published too)
 func (q *Queries) TicketFacts(ctx context.Context, arg TicketFactsParams) (TicketFactsRow, error) {
 	row := q.db.QueryRow(ctx, ticketFacts, arg.TenantID, arg.ID)
 	var i TicketFactsRow

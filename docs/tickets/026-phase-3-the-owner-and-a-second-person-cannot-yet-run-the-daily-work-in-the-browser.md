@@ -28,8 +28,8 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   in 0.3.0; phase 3 is the open phase before phase 6
   ([project-plan.md](../planning/project-plan.md)).
 - **What the goal still lacks:** "assigned to me" and the inbox, through which the phase's
-  verification goes, exist, and so does "next for me" as the start page; what is left of them is the
-  person-level pages following every tenant (T35) and the mention (T36). The
+  verification goes, exist, and so does "next for me" as the start page, each following every
+  tenant of the person; what is left of them is their end-to-end paths (T35) and the mention (T36). The
   end-to-end tier (T29) is built with the login's paths, filing and moving, the board and the
   backlog; its path with two identities through "assigned to me" and the inbox, and its required
   check, are left. And what is left of each child below.
@@ -63,8 +63,8 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
 - **Carried over from phase 2:** rank (built, with its score and the rebalancing of its keys; their
   end-to-end path is T34),
   deletion and purge (T39), numbered pages on the audit view, members, tokens and projects (T40),
-  the attachment quota (T32), the server-side
-  Markdown sanitiser (T33).
+  the attachment quota (T32); the server-side Markdown sanitiser is built, its end-to-end check is
+  T33.
 - **Not in phase 3:** import and the cut-over (phase 6).
 
 ## Required changes
@@ -84,18 +84,20 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
      end-to-end path of T29 (the editors, the withdrawal and the tree are built)
    - T32 — the attachment quota (the upload to a comment, the raster preview and the correction
      of a time entry are built)
-   - T33 — the rendered Markdown body and the server-side sanitiser
+   - T33 — the rendered Markdown's end-to-end check under the shell's content-security policy (the
+     renderer, the sanitiser and the rendered texts of the ticket page are built)
    - T34 — the end-to-end path of the score's marker and the sort by score, and the owner's look at
      them (the score, the sort, the marker and the rebalancing are built)
-   - T35 — the person-level pages following every tenant (next for me and the score's order are
-     built)
+   - T35 — the end-to-end paths of the person-level pages and of the start page ("next for me", the
+     score's order and the person-level stream across every tenant are built)
    - T36 — the mention in a comment, and the inbox's end-to-end path
-   - T37 — search
+   - T37 — the search's end-to-end check, and where "that tenant first" puts the other tenants (the
+     search routes, the box and the results page are built)
    - T38 — saved filters
    - T39 — ticket deletion and the purge
    - T40 — numbered pages on the administration lists, the audit page and the tenant's tokens
    - T41 — done (the project board's end-to-end path); its move to the archive is left
-   - T42 — the tenant board with swimlanes
+   - T42 — the tenant board's end-to-end run (the board is built, its path written)
    - T43 — the fixed dashboard
 2. **The phase verification**, recorded here with what was run, against what, with what result:
    the owner files a ticket, assigns it to a second identity, that identity sees it in "assigned

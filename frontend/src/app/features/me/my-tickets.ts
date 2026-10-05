@@ -15,6 +15,7 @@ import { Tooltip } from 'primeng/tooltip';
 import { Api } from '../../api/api';
 import { listMyAssigned, listMyNext } from '../../api/functions';
 import { MyTicket } from '../../api/models';
+import { ConditionalPages } from '../../core/conditional';
 import { followPages, personPageSize, PersonPages } from '../../core/inbox.service';
 import { ProblemService } from '../../core/problem.service';
 import { keepShown } from '../../core/refresh';
@@ -48,8 +49,9 @@ const lists: Record<MyList, { title: string; lead: string; empty: string; op: ty
  * beside its tenant: "next for me" — their open tickets and the unassigned open tickets of the
  * projects they see, the start page (docs/adr/0023 D4) — and "assigned to me". Both are in the
  * score's order, the place in the project's backlog beside it (docs/adr/0014 D5). A list loads
- * again when the person-level stream says it may have changed: the person's inbox, a ticket, a
- * stake — which moves a score — or a project's rank, and on `resync` and `poll`.
+ * again when a ticket of any of the person's tenants changes, a stake — which moves a score — or a
+ * project's rank, and on what {@link reloadOn} follows for every person-level page; a load sends the
+ * weak `ETag`s of the pages it holds, and a poll that finds them unchanged moves nothing.
  */
 @Component({
   selector: 'app-my-tickets',
@@ -157,6 +159,9 @@ export class MyTickets {
   /** The person's id, a primitive, so that `me` loaded again leaves the list alone. */
   private readonly person = computed(() => this.session.person()?.id);
 
+  /** The weak `ETag`s of the pages the list holds, for a poll that finds them unchanged. */
+  private readonly conditional = new ConditionalPages(this.api);
+
   protected readonly pages: ResourceRef<PersonPages<MyTicket> | undefined> = resource({
     params: () => {
       const person = this.person();
@@ -164,8 +169,10 @@ export class MyTickets {
     },
     loader: ({ params }) =>
       keepShown(this.pages, () =>
-        followPages(params.pages, (cursor) =>
-          this.api.invoke(lists[params.list].op, { cursor, limit: personPageSize }),
+        this.conditional.load((page) =>
+          followPages(params.pages, (cursor) =>
+            page(lists[params.list].op, { cursor, limit: personPageSize }),
+          ),
         ),
       ),
   });
@@ -189,7 +196,6 @@ export class MyTickets {
     reloadOn(
       this.pages,
       (event) =>
-        event.name === 'inbox.changed' ||
         event.name === 'ticket.changed' ||
         event.name === 'interest.changed' ||
         event.name === 'project.changed',

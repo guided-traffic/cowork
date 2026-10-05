@@ -657,6 +657,74 @@ describe('TicketsService', () => {
     });
   });
 
+  describe('a poll that finds a list unchanged (docs/adr/0054 D7)', () => {
+    const notModified = { status: 304, statusText: 'Not Modified' };
+
+    describe.each([
+      ['projectTickets', projectUrl, () => projectList()],
+      [
+        'projectTicketPages',
+        projectUrl,
+        () =>
+          TestBed.runInInjectionContext(() =>
+            service.projectTicketPages(() => ({ tenant: 'acme', project: 'VKO', pages: 1 })),
+          ),
+      ],
+      ['tenantTickets', tenantUrl, () => tenantList()],
+    ] as const)('made by %s', (_, url, open) => {
+      it("sends the list's weak ETag and keeps the keys on a 304", async () => {
+        const list = open();
+        await settle();
+        http
+          .expectOne((request) => request.url === url)
+          .flush(listOf([ticket('acme/VKO-2'), ticket('acme/VKO-1')]), {
+            headers: { ETag: 'W/"one"' },
+          });
+        await settle();
+
+        stream.next({ name: 'poll' });
+        await wait(listReloadDelay);
+        const again = http.expectOne((request) => request.url === url);
+        expect(again.request.headers.get('If-None-Match')).toBe('W/"one"');
+        again.flush(null, notModified);
+        await settle();
+
+        expect(list.status()).toBe('resolved');
+        expect(list.value()?.keys).toEqual(['acme/VKO-2', 'acme/VKO-1']);
+        expect(service.cache.value('acme/VKO-1')).toBeDefined();
+      });
+    });
+
+    it('sends the tag of each page a list follows, cursor by cursor', async () => {
+      const list = TestBed.runInInjectionContext(() =>
+        service.projectTicketPages(() => ({ tenant: 'acme', project: 'VKO', pages: 2 })),
+      );
+      await settle();
+      http
+        .expectOne((r) => r.url === projectUrl && !r.params.has('cursor'))
+        .flush(listOf([ticket('acme/VKO-1')], 'c1'), { headers: { ETag: 'W/"one"' } });
+      await settle();
+      http
+        .expectOne((r) => r.url === projectUrl && r.params.get('cursor') === 'c1')
+        .flush(listOf([ticket('acme/VKO-2')]), { headers: { ETag: 'W/"two"' } });
+      await settle();
+
+      stream.next({ name: 'poll' });
+      await wait(listReloadDelay);
+      const first = http.expectOne((r) => r.url === projectUrl && !r.params.has('cursor'));
+      expect(first.request.headers.get('If-None-Match')).toBe('W/"one"');
+      first.flush(null, notModified);
+      await settle();
+      const second = http.expectOne((r) => r.url === projectUrl && r.params.get('cursor') === 'c1');
+      expect(second.request.headers.get('If-None-Match')).toBe('W/"two"');
+      second.flush(null, notModified);
+      await settle();
+
+      expect(list.value()?.keys).toEqual(['acme/VKO-1', 'acme/VKO-2']);
+      expect(list.value()?.nextCursor).toBeNull();
+    });
+  });
+
   describe('refresh', () => {
     it('fetches the ticket by its canonical key into the cache and hands it back', async () => {
       const done = service.refresh('acme/VKO-12');
@@ -1423,6 +1491,14 @@ describe('TicketsService', () => {
     it.each<[string, StreamEvent]>([
       ["somebody else's membership", { name: 'membership.changed', id: 'e1', personId: 'p2' }],
       ['a group mapping', { name: 'membership.changed', id: 'e1', mappingId: 'm1' }],
+      [
+        "a restriction in another of the person's tenants, which the person-level stream carries (docs/adr/0054 D1)",
+        { name: 'membership.changed', id: 'e1', tenant: 'beta', projectId: 'j1' },
+      ],
+      [
+        "the person's own role in another of their tenants",
+        { name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p1' },
+      ],
     ])('leaves the tickets and the lists alone on %s', async (_what, event) => {
       await show('acme/VKO-1', 2);
       projectList();

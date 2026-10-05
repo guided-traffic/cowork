@@ -24,7 +24,9 @@ among them —, and the tenant's consent field gone with the consent; built the 
 2026-10-04 by the owner's decision on the routing recorded in
 [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D3
 (D2: the hop in front of the backend is the Ingress controller, and the chart ships no
-NetworkPolicy; built the same day). Date: 2026-10-01. Decided by the owner as the answer to the
+NetworkPolicy; built the same day), and on 2026-10-05 by the decision on the purge recorded in
+[ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D7, built on the recommendation (D5: seventeen operations, purging a deleted ticket among them). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "personal access token design?" at its three contested points: three hierarchical scopes
 with optional tenant and project restriction; mandatory expiry with a ninety-day default and
 a one-year maximum; creation only by the person themselves in a browser session, never by an
@@ -72,6 +74,12 @@ gate on the tokens of the identity provider's persons
 ([`api/identity.go`](../../backend/internal/api/identity.go) `tokenGate`); D5's rule extended to
 the administration acts that give access ([docs/security/tokens.md](../security/tokens.md#what-only-a-session-does)).
 Still not built: D5's administrator view and revocation of the members' tokens.
+
+**Built** (phase 3, 2026-10-04): the person's token list names D2's project restriction by key,
+`restricted_project`, as the token's own answer does — only while the person sees the project in a
+tenant they belong to — and keeps the project's id beside it, deprecated, for the clients of
+`/api/v1` ([`api/me.go`](../../backend/internal/api/me.go) `projectKeys`); D4's maximum reaches the
+token form before it asks: `GET /auth/options` names it in whole days, `token_max_lifetime_days`.
 
 ## Context
 
@@ -192,8 +200,14 @@ same day: ~~fourteen~~ sixteen operations. Stopping the person's running turns o
 starts none. Choosing the chat's capabilities, `setMyChat` (`PUT /api/v1/me/chat`), takes a session
 by the rule itself: the set is what the person's agent in the browser may do in every tenant of the
 person, access that would outlive a leaked token's revocation; reading it, `getMyChat`, takes either
-credential. A session the agent header marks is refused all sixteen — the chat cannot stop turns or
-widen its own capabilities.)*
+credential. A session the agent header marks is refused all ~~sixteen~~ — the chat cannot stop turns or
+widen its own capabilities.)* *(Amended 2026-10-05 by the decision recorded in
+[ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D7, built on the recommendation: ~~sixteen~~ seventeen operations. Purging a deleted ticket,
+`purgeTicket`, takes a session by the rule itself: nothing undoes a purge, so what a leaked token did
+there would outlive its revocation. Deleting a ticket and restoring it, which the bin undoes, stay
+open to an administrator's `admin`-scope token. A session the agent header marks is refused all
+seventeen.)*
 
 **D6 — Revocation is immediate and keeps the row.** Revoked and expired tokens stay listed
 with their state; a revoked token answers `401` with the reason. *(Amended 2026-10-02: a

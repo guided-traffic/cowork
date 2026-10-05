@@ -19,6 +19,11 @@ import {
   LinkAdder,
 } from './conversation-forms';
 
+/** Any Idempotency-Key a form makes: a UUID (docs/adr/0045 D3). */
+const formKey = expect.stringMatching(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+);
+
 const ada: Member = {
   role: 'admin',
   person: { id: 'p1', display_name: 'Ada Lovelace', username: 'local:ada' },
@@ -42,9 +47,11 @@ function question(overrides: Partial<Question> = {}): Question {
     number: 2,
     question: 'Which flicker is it?',
     options: '',
+    options_html: '',
     recommendation: '',
     status: 'open',
     answer: null,
+    answer_html: null,
     answered_at: null,
     answered_by: null,
     asked_by: ada.person,
@@ -178,6 +185,7 @@ describe('conversation forms', () => {
       expect(conversation.comment).toHaveBeenCalledExactlyOnceWith(
         key,
         'Reproduced on the second board.',
+        formKey,
       );
       expect((el(fixture, byTestId('comment-text')) as HTMLTextAreaElement).value).toBe('');
       expect(button(fixture, byTestId('comment-send'))?.disabled).toBe(true);
@@ -205,6 +213,34 @@ describe('conversation forms', () => {
         'A very long comment',
       );
       expect(button(fixture, byTestId('comment-send'))?.disabled).toBe(false);
+    });
+
+    it('sends the same Idempotency-Key again after a lost answer, and a new one for another text or the next comment (docs/adr/0045 D3)', async () => {
+      conversation.comment.mockRejectedValueOnce(
+        new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+      );
+      conversation.comment.mockRejectedValueOnce(
+        new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+      );
+      const fixture = await compose();
+      typeInto(fixture, byTestId('comment-text'), 'Reproduced.');
+      submit(fixture);
+      await settle(fixture);
+      submit(fixture);
+      await settle(fixture);
+      const keys = () => conversation.comment.mock.calls.map((call) => call[2]);
+      expect(keys()[1]).toBe(keys()[0]);
+
+      typeInto(fixture, byTestId('comment-text'), 'Reproduced twice.');
+      submit(fixture);
+      await settle(fixture);
+      expect(keys()[2]).not.toBe(keys()[0]);
+
+      // Written: the same text again is another comment.
+      typeInto(fixture, byTestId('comment-text'), 'Reproduced twice.');
+      submit(fixture);
+      await settle(fixture);
+      expect(keys()[3]).not.toBe(keys()[2]);
     });
 
     it('sends nothing twice while a comment is on its way', async () => {
@@ -275,9 +311,13 @@ describe('conversation forms', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(conversation.ask).toHaveBeenCalledExactlyOnceWith(key, {
-        question: 'Which flicker is it?',
-      });
+      expect(conversation.ask).toHaveBeenCalledExactlyOnceWith(
+        key,
+        {
+          question: 'Which flicker is it?',
+        },
+        formKey,
+      );
       expect(conversation.ask.mock.calls[0][1]).toStrictEqual({ question: 'Which flicker is it?' });
     });
 
@@ -293,12 +333,39 @@ describe('conversation forms', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(conversation.ask).toHaveBeenCalledExactlyOnceWith(key, {
-        question: 'Which flicker is it?',
-        options: 'Repaint, or reflow',
-        recommendation: 'Repaint',
-        asked_of: 'p2',
-      });
+      expect(conversation.ask).toHaveBeenCalledExactlyOnceWith(
+        key,
+        {
+          question: 'Which flicker is it?',
+          options: 'Repaint, or reflow',
+          recommendation: 'Repaint',
+          asked_of: 'p2',
+        },
+        formKey,
+      );
+    });
+
+    it('asks again with the same Idempotency-Key after a lost answer, and with a new one for another content (docs/adr/0045 D3)', async () => {
+      conversation.ask.mockRejectedValueOnce(
+        new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+      );
+      conversation.ask.mockRejectedValueOnce(
+        new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+      );
+      const fixture = await ask();
+      await open(fixture);
+      typeInto(fixture, byTestId('ask-question'), 'Which flicker is it?');
+      submit(fixture);
+      await settle(fixture);
+      submit(fixture);
+      await settle(fixture);
+      const keys = () => conversation.ask.mock.calls.map((call) => call[2]);
+      expect(keys()[1]).toBe(keys()[0]);
+
+      typeInto(fixture, 'textarea[aria-label="Options"]', 'Repaint, or reflow');
+      submit(fixture);
+      await settle(fixture);
+      expect(keys()[2]).not.toBe(keys()[0]);
     });
 
     it('offers the members of the tenant, by name, to ask', async () => {
@@ -891,7 +958,7 @@ describe('conversation forms', () => {
       write.resolve({} as Comment);
       await settle(fixture);
 
-      expect(conversation.comment).toHaveBeenCalledExactlyOnceWith(key, 'For COW-12');
+      expect(conversation.comment).toHaveBeenCalledExactlyOnceWith(key, 'For COW-12', formKey);
       expect((el(fixture, byTestId('comment-text')) as HTMLTextAreaElement).value).toBe(
         'For COW-13',
       );

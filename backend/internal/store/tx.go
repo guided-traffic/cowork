@@ -36,6 +36,11 @@ type Writer struct {
 	*writeq.Queries
 	events []Event
 	result *Result
+	// caller is the system actor of a job, whose acts a job that works tenant
+	// by tenant writes in each tenant (RunJob, flushIn); flushed says it wrote
+	// some, so the job commits.
+	caller  Caller
+	flushed bool
 }
 
 // Event is one act, written as one audit row with the caller's facts in the
@@ -72,16 +77,34 @@ type Event struct {
 	// Membership announces the act on the tenant's event stream as
 	// membership.changed (docs/adr/0054 D2); nil for every other act.
 	Membership *MembershipChange
-	// Project announces an act on a project as a whole — the sort of its rank
+	// NewProject is the project the act created: published so that the
+	// tenant's streams admit its events before the next one is filtered, and
+	// sent to no client (docs/adr/0054 D3); uuid.Nil for every other act.
+	NewProject uuid.UUID
+	// ProjectRank announces an act on a project's rank as a whole — the sort
 	// by the score (docs/adr/0014 D3) — as project.changed; nil for every
 	// other act.
-	Project *ProjectChange
+	ProjectRank *ProjectChange
 	// Notices are whom the act tells in their inbox and why
 	// (docs/adr/0020 D2); none for an act that tells nobody.
 	Notices []Notice
 	// InboxOf is the person whose inbox the act changed without a notice —
 	// their own notifications marked read —, whose streams hear it.
 	InboxOf uuid.UUID
+	// Published is what the act's publication tells of its ticket when the
+	// ticket is gone by the time the act is written — a purge's; nil reads the
+	// ticket's facts at publication.
+	Published *TicketFacts
+}
+
+// TicketFacts are what a published act carries of its ticket: the project,
+// the version and the confidential rule's inputs (docs/adr/0054 D2, D3).
+type TicketFacts struct {
+	Project      uuid.UUID
+	Version      int32
+	Confidential bool
+	Assignee     *uuid.UUID
+	Reporter     uuid.UUID
 }
 
 // Record adds an act to the mutation.
@@ -325,8 +348,30 @@ func (w *Writer) writeEvents(ctx context.Context, tenantID uuid.UUID, caller Cal
 // actors, writes each batch in its own context.
 func (w *Writer) flush(ctx context.Context, tenantID uuid.UUID, caller Caller) error {
 	err := w.writeEvents(ctx, tenantID, caller, Idempotency{}, false)
+	w.flushed = w.flushed || len(w.events) > 0
 	w.events = nil
 	return err
+}
+
+// inTenant binds a job's transaction to one tenant for fn — the settings the
+// policies read and the Reader's tenant — writes the acts fn recorded there as
+// the job's, and binds it to no tenant again (docs/adr/0021 D3, D4).
+func (w *Writer) inTenant(ctx context.Context, tenantID uuid.UUID, fn func() error) error {
+	if _, err := w.tx.Exec(ctx, "SELECT set_config('app.tenant_id', $1, true)", tenantID.String()); err != nil {
+		return fmt.Errorf("bind the job to its tenant: %w", err)
+	}
+	w.TenantID = tenantID
+	if err := fn(); err != nil {
+		return err
+	}
+	if err := w.flush(ctx, tenantID, w.caller); err != nil {
+		return err
+	}
+	w.TenantID = uuid.Nil
+	if _, err := w.tx.Exec(ctx, "SELECT set_config('app.tenant_id', '', true)"); err != nil {
+		return fmt.Errorf("release the job from its tenant: %w", err)
+	}
+	return nil
 }
 
 // storeResult writes the keyed response; false means a concurrent request

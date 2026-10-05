@@ -158,7 +158,7 @@ TokenState:
   enum: [active, expired, revoked]
 Token:
   type: object
-  required: [id, name, scope, agent, capabilities, created_at, expires_at, state]
+  required: [id, name, scope, agent, capabilities, restricted_project, created_at, expires_at, state]
   properties:
     id: {type: string, format: uuid}
     name: {type: string}
@@ -174,10 +174,20 @@ Token:
     restricted_tenant:
       type: [string, 'null']
       description: The slug of the tenant the token is restricted to
+    restricted_project:
+      type: [string, 'null']
+      description: |
+        The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
+        without a project restriction, and for one whose project the person no longer sees or
+        whose tenant they no longer belong to — such a token reaches nothing
     restricted_project_id:
       type: [string, 'null']
       format: uuid
-      description: The id of the project the token is restricted to
+      deprecated: true
+      description: |
+        The id of the project the token is restricted to. Replaced by `restricted_project`, which
+        names the project by its key, as a person knows it; kept in `/api/v1` for the clients that
+        read it, since taking a field away is a breaking change (docs/adr/0046 D7)
     created_at: {type: string, format: date-time}
     expires_at: {type: string, format: date-time}
     last_used_on:
@@ -250,16 +260,17 @@ TokenList:
         $ref: '#/Token'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 CurrentToken:
   description: The token a request presents, and what it makes of the request (docs/adr/0043 D6)
   allOf:
     - $ref: '#/Token'
     - type: object
-      required: [restricted_project, request]
+      required: [request]
       properties:
-        restricted_project:
-          type: [string, 'null']
-          description: The key of the project the token is restricted to
         request:
           $ref: '#/RequestMark'
 RequestMark:
@@ -354,6 +365,10 @@ MemberList:
         $ref: '#/Member'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 MemberAdd:
   type: object
   additionalProperties: false
@@ -491,6 +506,10 @@ AuditList:
         $ref: '#/AuditEvent'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 WipLimits:
   type: object
   additionalProperties: false
@@ -553,6 +572,10 @@ ProjectList:
         $ref: '#/Project'
     next_cursor:
       type: [string, 'null']
+      description: The cursor of the next page; null at the end, and on a numbered page
+    total: {type: integer, description: With page and per_page only}
+    page: {type: integer}
+    per_page: {type: integer}
 ProjectRestrictionSet:
   type: object
   additionalProperties: false
@@ -964,6 +987,16 @@ TicketPatch:
       minLength: 1
       maxLength: 100000
       description: A comment that explains this act, written with it; the act points at it (docs/adr/0015 D2)
+TicketBody:
+  type: object
+  required: [body, body_html, version]
+  properties:
+    body: {type: string, description: 'Markdown, as written (docs/adr/0011 D1)'}
+    body_html:
+      type: string
+      description: |
+        The body rendered and sanitised on the server (docs/adr/0011 D6); empty for an empty body
+    version: {type: integer, description: The ticket's version the body belongs to}
 TicketBodyReplace:
   type: object
   additionalProperties: false
@@ -1070,7 +1103,8 @@ BlockSet:
     external_ref: {type: string, minLength: 1, maxLength: 500}
 Comment:
   type: object
-  required: [id, author, agent, token, body, withdrawn, withdrawn_at, edited, explains, version, created_at, updated_at]
+  required: [id, author, agent, token, body, body_html, withdrawn, withdrawn_at, edited, explains, version, created_at,
+    updated_at]
   properties:
     id: {type: string, format: uuid}
     author:
@@ -1082,6 +1116,11 @@ Comment:
         - $ref: '#/TokenMark'
         - type: 'null'
     body: {type: [string, 'null'], description: 'Markdown; null once withdrawn (docs/adr/0015 D3)'}
+    body_html:
+      type: [string, 'null']
+      description: |
+        The body rendered and sanitised on the server, as the ticket's body is (docs/adr/0011 D6), beside
+        the Markdown; null once withdrawn
     withdrawn: {type: boolean}
     withdrawn_at: {type: [string, 'null'], format: date-time}
     edited: {type: boolean, description: The comment has an edit history}
@@ -1353,16 +1392,22 @@ QuestionStatus:
   description: docs/adr/0011 D2
 Question:
   type: object
-  required: [id, number, question, options, recommendation, answer, status, asked_by, asked_by_agent,
-    asked_by_token, asked_of, answered_by, answered_at, recorded_by_agent, answered_by_token, withdrawn_at, version,
-    created_at, updated_at]
+  required: [id, number, question, options, options_html, recommendation, answer, answer_html, status, asked_by,
+    asked_by_agent, asked_by_token, asked_of, answered_by, answered_at, recorded_by_agent, answered_by_token,
+    withdrawn_at, version, created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     number: {type: integer, description: 'Stable within the ticket: Q<n> (docs/adr/0011 D4)'}
     question: {type: string}
     options: {type: string, description: 'Markdown: the context and the options'}
+    options_html:
+      type: string
+      description: The options rendered and sanitised on the server (docs/adr/0011 D6); empty without options
     recommendation: {type: string}
     answer: {type: [string, 'null'], description: Markdown}
+    answer_html:
+      type: [string, 'null']
+      description: The answer rendered and sanitised on the server (docs/adr/0011 D6); null without an answer
     status:
       $ref: '#/QuestionStatus'
     asked_by:
@@ -1535,9 +1580,130 @@ TicketList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+DeletedTicket:
+  type: object
+  description: |
+    A ticket in its tenant's bin (docs/adr/0024 D1): what an administrator needs to restore or
+    purge it.
+  required: [key, project, number, type, title, state, confidential, deleted_at, deleted_by, purge_at]
+  properties:
+    key: {type: string, description: '<tenant>/<PROJECT>-<number>'}
+    project: {type: string}
+    number: {type: integer}
+    type:
+      $ref: '#/TicketType'
+    title: {type: string}
+    state:
+      $ref: '#/TicketState'
+    confidential: {type: boolean}
+    deleted_at: {type: string, format: date-time}
+    deleted_by:
+      $ref: '#/Person'
+    purge_at:
+      type: string
+      format: date-time
+      description: When the purge job removes it for good, thirty days after the deletion (docs/adr/0024 D2)
+DeletedTicketList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/DeletedTicket'
+    next_cursor:
+      type: [string, 'null']
+SavedFilterParameters:
+  type: object
+  description: |
+    The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each
+    repeatable parameter an array of its values — `!` negates one —, the bounds and the booleans
+    single values. What a list's query string would carry, without the paging.
+  additionalProperties: false
+  properties:
+    project: {type: array, maxItems: 50, items: {type: string, maxLength: 16}}
+    state: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    type: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    severity: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    security: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    urgency: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    effort: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
+    assignee: {type: array, maxItems: 50, items: {type: string, maxLength: 64}}
+    reporter: {type: array, maxItems: 50, items: {type: string, maxLength: 64}}
+    parent: {type: array, maxItems: 50, items: {type: string, maxLength: 80}}
+    interest: {type: array, maxItems: 50, items: {type: string, maxLength: 8}}
+    progress_min: {type: integer, minimum: 0, maximum: 100}
+    progress_max: {type: integer, minimum: 0, maximum: 100}
+    opened_after: {type: string, format: date-time}
+    opened_before: {type: string, format: date-time}
+    updated_after: {type: string, format: date-time}
+    updated_before: {type: string, format: date-time}
+    done_after: {type: string, format: date-time}
+    q: {type: string, minLength: 1, maxLength: 4096}
+    include_terminal: {type: boolean}
+    blocked: {type: boolean}
+    has_open_questions: {type: boolean}
+SavedFilterWarning:
+  type: object
+  description: A value of a saved filter that does not hold any more, checked as the filter is read (docs/adr/0049 D7)
+  required: [parameter, message]
+  properties:
+    parameter: {type: string}
+    message: {type: string}
+SavedFilter:
+  type: object
+  required: [id, name, owner, shared, parameters, redacted, warnings, version, created_at, updated_at]
+  properties:
+    id: {type: string, format: uuid}
+    name: {type: string}
+    owner:
+      $ref: '#/Person'
+    shared: {type: boolean, description: 'Shown to every member of the tenant, with its owner'}
+    parameters:
+      $ref: '#/SavedFilterParameters'
+    redacted:
+      type: boolean
+      description: |
+        Another person's filter names a project or a ticket the caller cannot see, or one that no
+        longer exists; its parameters and warnings are withheld (docs/adr/0065 D5)
+    warnings:
+      type: array
+      items:
+        $ref: '#/SavedFilterWarning'
+    version: {type: integer}
+    created_at: {type: string, format: date-time}
+    updated_at: {type: string, format: date-time}
+SavedFilterCreate:
+  type: object
+  additionalProperties: false
+  required: [name, parameters]
+  properties:
+    name: {type: string, minLength: 1, maxLength: 100}
+    parameters:
+      $ref: '#/SavedFilterParameters'
+    shared: {type: boolean, default: false}
+SavedFilterPatch:
+  type: object
+  additionalProperties: false
+  minProperties: 1
+  properties:
+    name: {type: string, minLength: 1, maxLength: 100}
+    parameters:
+      $ref: '#/SavedFilterParameters'
+    shared: {type: boolean}
+SavedFilterList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/SavedFilter'
+    next_cursor:
+      type: [string, 'null']
 AuthOptions:
   type: object
-  required: [local, oidc, oidc_name, password_min_length]
+  required: [local, oidc, oidc_name, password_min_length, token_max_lifetime_days]
   properties:
     local:
       type: boolean
@@ -1555,6 +1721,14 @@ AuthOptions:
       type: integer
       minimum: 1
       description: The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it
+    token_max_lifetime_days:
+      type: integer
+      minimum: 0
+      description: |
+        The longest lifetime a new token gets, `COWORK_TOKEN_MAX_LIFETIME`, in whole days, rounded
+        down (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the
+        maximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A
+        form that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes
 LocalLoginRequest:
   type: object
   additionalProperties: false
@@ -1989,5 +2163,51 @@ DecisionList:
       type: array
       items:
         $ref: '#/Decision'
+    next_cursor:
+      type: [string, 'null']
+SearchFoundIn:
+  type: string
+  enum: [key, ticket, comment, question, attachment]
+  description: |
+    Where a search hit matched (docs/adr/0025 D5): the ticket's key; its own text, the title and
+    the body; one of its comments; one of its questions; an attachment's file name
+SnippetPart:
+  type: object
+  required: [text, match]
+  properties:
+    text: {type: string, description: 'A piece of the matched text, as text'}
+    match: {type: boolean, description: The piece is a word the query found}
+SearchHit:
+  type: object
+  required: [tenant, key, title, type, state, found_in, comment, question, snippet]
+  properties:
+    tenant:
+      $ref: '#/TenantRef'
+    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number> (docs/adr/0007 D2)'}
+    title: {type: string}
+    type:
+      $ref: '#/TicketType'
+    state:
+      $ref: '#/TicketState'
+    found_in:
+      $ref: '#/SearchFoundIn'
+    comment: {type: [string, 'null'], format: uuid, description: The comment the hit is in}
+    question: {type: [integer, 'null'], description: The number of the question the hit is in}
+    snippet:
+      type: array
+      description: |
+        The text the hit is in around the words found, in pieces (`ts_headline`, docs/adr/0025 D4):
+        the body for a hit in the ticket's own text or its key, the comment, the question with its
+        options, recommendation and answer, the file name. Text, never HTML; empty where that text is
+      items:
+        $ref: '#/SnippetPart'
+SearchHitList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/SearchHit'
     next_cursor:
       type: [string, 'null']

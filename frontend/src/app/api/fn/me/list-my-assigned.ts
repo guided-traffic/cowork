@@ -26,6 +26,11 @@ export interface ListMyAssigned$Params {
  * Items per page; the server caps it at its configured maximum
  */
   limit?: number;
+
+/**
+ * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+ */
+  'If-None-Match'?: string;
 }
 
 export function listMyAssigned(http: HttpClient, rootUrl: string, params?: ListMyAssigned$Params, context?: HttpContext): Observable<StrictHttpResponse<MyTicketList>> {
@@ -34,6 +39,7 @@ export function listMyAssigned(http: HttpClient, rootUrl: string, params?: ListM
     rb.query('tenant', params.tenant, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
+    rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
   return http.request(

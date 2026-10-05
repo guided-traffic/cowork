@@ -10,10 +10,11 @@ import { Select } from 'primeng/select';
 import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Tooltip } from 'primeng/tooltip';
 import type { Mock, MockInstance } from 'vitest';
-import { Problem, Project, Ticket, TicketState, Urgency } from '../../api/models';
+import { Problem, Project, SavedFilter, Ticket, TicketState, Urgency } from '../../api/models';
 import { EntityCache } from '../../core/entity-cache';
 import { MembersService } from '../../core/members.service';
 import { ProjectsService } from '../../core/projects.service';
+import { SavedFiltersService } from '../../core/saved-filters.service';
 import { SessionService } from '../../core/session.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
 import { ProjectTicketPagesParams, TicketPage, TicketsService } from '../../core/tickets.service';
@@ -21,6 +22,7 @@ import { Clock, dateTime } from '../../shared/time';
 import { Backlog } from './backlog';
 import { Group } from './backlog-model';
 import { ProjectHeader } from './project-header';
+import { SavedFilters } from './saved-filters';
 
 const now = Date.parse('2026-10-03T12:00:00Z');
 const ada = { id: 'p1', display_name: 'Ada Lovelace', username: 'local:ada' };
@@ -135,9 +137,11 @@ describe('Backlog', () => {
   let warn: MockInstance<typeof console.warn>;
   /** How many lists the pages of this test have asked for. */
   let created: number;
+  let savedFilters: WritableSignal<SavedFilter[]>;
 
   beforeEach(() => {
     created = 0;
+    savedFilters = signal<SavedFilter[]>([]);
     warn = vi.spyOn(console, 'warn');
     tenant = signal<string | null>('acme');
     projects = signal<Project[]>([cowork]);
@@ -184,7 +188,20 @@ describe('Backlog', () => {
           useValue: { create: vi.fn(), rank, overrideUrgency, withdrawUrgency, sortByScore },
         },
         { provide: MembersService, useValue: { list: signal([]) } },
-        { provide: SessionService, useValue: { tenant, membership } },
+        {
+          provide: SessionService,
+          useValue: { tenant, membership, person: signal({ id: 'p-ada' }) },
+        },
+        {
+          provide: SavedFiltersService,
+          useValue: {
+            list: savedFilters,
+            reload: vi.fn(),
+            create: vi.fn(),
+            update: vi.fn(),
+            remove: vi.fn(),
+          },
+        },
         {
           provide: ProjectsService,
           useValue: { byKey: (key: string) => projects().find((p) => p.key === key) },
@@ -723,6 +740,87 @@ describe('Backlog', () => {
         chooseStates(fixture, value);
 
         expect(openParams()?.state).toBeUndefined();
+      });
+    });
+
+    describe('a saved filter (docs/adr/0018 D5)', () => {
+      const saved = (parameters: SavedFilter['parameters']): SavedFilter => ({
+        id: 'f-1',
+        name: 'Bugs',
+        owner: { id: 'p-ada', display_name: 'Ada', username: 'ada' },
+        shared: false,
+        parameters,
+        redacted: false,
+        warnings: [],
+        version: 1,
+        created_at: '2026-10-01T00:00:00Z',
+        updated_at: '2026-10-01T00:00:00Z',
+      });
+      const bar = (fixture: ComponentFixture<Backlog>) =>
+        fixture.debugElement.query(By.directive(SavedFilters)).componentInstance as SavedFilters;
+      const apply = async (fixture: ComponentFixture<Backlog>, filter: SavedFilter | null) => {
+        bar(fixture).chosen.emit(filter);
+        fixture.detectChanges();
+        await fixture.whenStable();
+      };
+
+      it('puts its text and open states into the bar and hands the rest to the lists as it is', async () => {
+        const { fixture, page } = await render();
+        fixture.debugElement
+          .query(By.css('[data-testid="show-closed"]'))
+          .triggerEventHandler('ngModelChange', true);
+
+        await apply(
+          fixture,
+          saved({
+            q: 'flicker',
+            state: ['blocked', '!review'],
+            severity: ['high'],
+            assignee: ['me'],
+            project: ['OPS'],
+          }),
+        );
+
+        expect(openParams()).toEqual({
+          tenant: 'acme',
+          project: 'COW',
+          pages: 1,
+          q: 'flicker',
+          state: ['blocked', '!review'],
+          severity: ['high'],
+          assignee: ['me'],
+        });
+        expect(closedParams()).toMatchObject({
+          severity: ['high'],
+          assignee: ['me'],
+          q: 'flicker',
+        });
+        expect(closedParams()?.state).toEqual(['done', 'dropped']);
+        expect(page.querySelector<HTMLInputElement>('[data-testid="search"]')?.value).toBe(
+          'flicker',
+        );
+        const select = fixture.debugElement.query(By.css('[data-testid="state-filter"]'))
+          .componentInstance as Select;
+        expect(select.value).toEqual(['blocked']);
+      });
+
+      it('offers the conditions the bar applies now, to save', async () => {
+        const { fixture } = await render();
+        await apply(fixture, saved({ severity: ['high'] }));
+        chooseStates(fixture, ['filed']);
+        fixture.detectChanges();
+
+        expect(bar(fixture).current()).toEqual({ severity: ['high'], state: ['filed'] });
+      });
+
+      it('clears every condition when none is chosen', async () => {
+        const { fixture } = await render();
+        await apply(fixture, saved({ q: 'flicker', state: ['blocked'], severity: ['high'] }));
+
+        await apply(fixture, null);
+
+        expect(openParams()).toEqual({ tenant: 'acme', project: 'COW', pages: 1 });
+        expect(bar(fixture).applied()).toBeNull();
       });
     });
 

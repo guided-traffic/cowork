@@ -341,7 +341,7 @@ func TestNextForMeAcrossTenants(t *testing.T) {
 	assert.Equal(t, []string{unassigned.Key, mine.Key, secretMine.Key}, byProject)
 }
 
-// docs/adr/0014 D4, docs/adr/0028 D3: migration 33 scores every ticket with
+// docs/adr/0014 D4, docs/adr/0028 D3: migration 34 scores every ticket with
 // version 1 as the function does, and restores the forced row-level security
 // it lifts for its backfill.
 func TestScoreMigrationScoresEveryTicket(t *testing.T) {
@@ -359,7 +359,7 @@ func TestScoreMigrationScoresEveryTicket(t *testing.T) {
 	ownerURL, err := withUserAndDatabase(env.AdminURL, ownerRole, ownerRole, name)
 	require.NoError(t, err)
 
-	migrateTo(t, ownerURL, 30)
+	migrateTo(t, ownerURL, 33)
 	f, err := fixture.Connect(ctx, adminURL)
 	require.NoError(t, err)
 	t.Cleanup(f.Close)

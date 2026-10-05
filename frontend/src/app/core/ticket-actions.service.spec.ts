@@ -62,7 +62,8 @@ const transitionUrl = `${route}/transitions`;
 const rankUrl = `${route}/rank`;
 const overrideUrl = `${route}/urgency-override`;
 const readUrl = '/api/v1/tickets/acme/VKO-12';
-const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** The key a form holds for its content (docs/adr/0045 D3). */
+const formKey = '0199aaaa-0000-7000-8000-00000000f0f0';
 
 const problem = (status: number, extra: object = {}) => ({
   type: 'about:blank',
@@ -186,7 +187,7 @@ describe('TicketActions', () => {
     };
 
     it('posts the ticket to its project, puts the answer into the cache and hands it back', async () => {
-      const done = actions.create('acme', 'VKO', body);
+      const done = actions.create('acme', 'VKO', body, formKey);
 
       const sent = request(createUrl);
       expect(sent.request.method).toBe('POST');
@@ -198,24 +199,16 @@ describe('TicketActions', () => {
       expect(tickets.cache.etag(key)).toBe('"1"');
     });
 
-    it('sends an Idempotency-Key of its own for every act (docs/adr/0045 D3)', async () => {
-      const first = actions.create('acme', 'VKO', body);
-      const firstKey = request(createUrl);
-      firstKey.flush(ticket('acme/VKO-1'));
-      await first;
-      const second = actions.create('acme', 'VKO', body);
-      const secondKey = request(createUrl);
-      secondKey.flush(ticket('acme/VKO-2'));
-      await second;
-
-      const keys = [firstKey, secondKey].map((r) => r.request.headers.get('Idempotency-Key'));
-      expect(keys[0]).toMatch(uuid);
-      expect(keys[1]).toMatch(uuid);
-      expect(keys[0]).not.toBe(keys[1]);
+    it("sends the form's Idempotency-Key, one for each content it holds (docs/adr/0045 D3)", async () => {
+      const done = actions.create('acme', 'VKO', body, formKey);
+      const sent = request(createUrl);
+      expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
+      sent.flush(ticket('acme/VKO-1'));
+      await done;
     });
 
     it('rejects with the HTTP error and leaves the cache alone', async () => {
-      const outcome = rejection(actions.create('acme', 'VKO', body));
+      const outcome = rejection(actions.create('acme', 'VKO', body, formKey));
 
       request(createUrl).flush(problem(422), failed(422, 'Unprocessable Entity'));
       const error = await outcome;
@@ -225,7 +218,7 @@ describe('TicketActions', () => {
     });
 
     it('is not followed by a refetch when its own event arrives', async () => {
-      const done = actions.create('acme', 'VKO', body);
+      const done = actions.create('acme', 'VKO', body, formKey);
       request(createUrl).flush(ticket(key, 1));
       await done;
 
@@ -985,6 +978,52 @@ describe('TicketActions', () => {
 
       expect(error).toBeInstanceOf(StaleWrite);
       none(flagUrl);
+    });
+  });
+
+  describe('delete (docs/adr/0024 D1)', () => {
+    it('deletes the ticket by its route and drops it from the cache', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+      const done = actions.delete(key);
+
+      await settle();
+      const sent = request(route);
+      expect(sent.request.method).toBe('DELETE');
+      sent.flush(null, { status: 204, statusText: 'No Content' });
+      await done;
+
+      expect(tickets.cache.value(key)).toBeUndefined();
+    });
+
+    it('keeps the ticket in the cache when the deletion is refused', async () => {
+      tickets.cache.put(key, ticket(key, 5));
+      const done = rejection(actions.delete(key));
+
+      await settle();
+      request(route).flush(problem(403), failed(403, 'Forbidden'));
+
+      expect(await done).toBeInstanceOf(HttpErrorResponse);
+      expect(tickets.cache.value(key)?.version).toBe(5);
+    });
+
+    it('names the open tickets that wait on it directly, a step up its tree', async () => {
+      const names = actions.dependents(key);
+
+      await settle();
+      const sent = request(`${route}/prerequisites`);
+      expect(sent.request.params.get('direction')).toBe('up');
+      sent.flush({
+        open: 2,
+        next_cursor: null,
+        items: [
+          { key: 'acme/VKO-13', depth: 1, state: 'filed' },
+          { key: 'acme/OPS-2', depth: 1, state: 'done' },
+          { key: 'acme/VKO-20', depth: 2, state: 'filed' },
+          { key: 'acme/OPS-3', depth: 1, state: 'blocked' },
+        ],
+      });
+
+      expect(await names).toEqual(['VKO-13', 'OPS-3']);
     });
   });
 });

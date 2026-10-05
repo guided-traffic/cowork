@@ -49,7 +49,10 @@ token, is [chat.md](chat.md).
   answer never held. The lifetime is `COWORK_TOKEN_DEFAULT_LIFETIME` (90 days) unless the
   request asks for fewer days, and never more than `COWORK_TOKEN_MAX_LIFETIME` (one year): a
   longer request is shortened and the answer says what the token got
-  (`TestATokensLifetimeIsClampedToTheMaximum`). An agent token has at most `write` scope and
+  (`TestATokensLifetimeIsClampedToTheMaximum`); the token form knows the bound before it asks, from
+  `GET /auth/options`, which names it in whole days — public, like the password policy beside it:
+  it tells an anonymous reader how long a token of the installation can live at most, and nothing
+  of any token (`TestAuthOptions`). An agent token has at most `write` scope and
   every capability when the request leaves `capabilities` out; a list is the capabilities, and
   an empty one is none, the baseline only (ADR 0043 D4's nine switches all off); a restriction names a tenant the person belongs to
   and a project of it they see, and a tenant or project they cannot reach is "no such" in the
@@ -76,7 +79,12 @@ token, is [chat.md](chat.md).
   development database only.
 - **Listing.** `GET /api/v1/me/tokens` shows the person's tokens with their metadata — name,
   scope, agent flag, capabilities, restriction, dates, state — never the hash or the
-  plaintext; revoked and expired tokens stay listed (ADR 0035 D6).
+  plaintext; revoked and expired tokens stay listed (ADR 0035 D6). A restriction names its
+  project by key only while the person sees the project in a tenant they belong to — read in that
+  tenant's transaction under the project predicate — and `null` otherwise, so the list names no
+  project the person could not read (`projectKeys` in [`api/me.go`](../../backend/internal/api/me.go),
+  `TestATokenNamesItsProjectByKey`); the project's id, deprecated beside it, is the token's own
+  column.
 
 ## What a request with a token may do
 
@@ -95,14 +103,14 @@ reaches further than its person does at that moment.
 |---|---|
 | `read` | every read of what the person may see, the tenant's member list included; for a tenant administrator also the tenant's audit view, its group mappings and a project's access list ([`api/members.go`](../../backend/internal/api/members.go) `adminRead`) |
 | `write` | additionally what a member does: filing and editing tickets, transitions, links, comments, questions and answers, stakes, progress, uploads, booking time; creating a project where the person may ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D9); revoking another of the person's tokens |
-| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)) — never the acts that only a session makes ([below](#what-only-a-session-does)) |
+| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, deleting a ticket and restoring it, which the bin undoes for thirty days ([tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one), [H-54](tenancy.md#h-54)) — never purging it, which takes a session —, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)) — never the acts that only a session makes ([below](#what-only-a-session-does)) |
 
 ## What only a session does
 
-Sixteen operations take a browser session only, and answer a token — whatever its scope, an
+Seventeen operations take a browser session only, and answer a token — whatever its scope, an
 administrator's `admin` token included — `403 session_required` before anything is written. The API
 document declares them with the session cookie alone, and a unit test over the document holds the
-set to exactly these sixteen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
+set to exactly these seventeen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
 `sessionOnly`; [ADR 0035](../adr/0035-personal-access-tokens.md) D5):
 
 | Operation | Route | What a leaked token would leave behind |
@@ -123,6 +131,7 @@ set to exactly these sixteen ([`backend/api/document_test.go`](../../backend/api
 | `stopChatTurns` | `DELETE …/chat/turns` | — it stops the session's person's turns, which a token never starts ([chat.md](chat.md#stop)) |
 | `setMyChat` | `PUT /api/v1/me/chat` | what the person's agent in the browser may do, in every tenant of the person ([chat.md](chat.md#the-chats-mark-its-capabilities-and-what-only-a-session-does)) |
 | `listTenants` | `GET /api/v1/tenants` | — it leaves nothing; it shows a global administrator every client of the installation, which a token of theirs does not reach ([tenancy.md](tenancy.md#a-global-administrator-without-a-role)) |
+| `purgeTicket` | `DELETE …/deleted-tickets/{key}` | a ticket gone for good — its texts, its files and its time, its audit rows emptied; nothing undoes a purge ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7 as amended 2026-10-05, [tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one)) |
 
 **The rule: an act that can give access, or make something that outlives the token's revocation,
 takes a session; an act that only takes access away does not.** A route that does both — a grant
@@ -131,11 +140,14 @@ stays open to an administrator's `admin`-scope token removes or restricts access
 behind: listing, unlocking, deactivating a local account and ending its sessions
 ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person
 from a project's access list (`TestGrantsAndTheLastAdministrator`, `TestGroupMappingsDeriveAtOnce`,
-`TestProjectRestrictionAndAccessList`). No agent makes any administration act: an agent token's
+`TestProjectRestrictionAndAccessList`). Deleting a ticket and restoring it stay open as well,
+because the bin undoes either for thirty days; the purge, which nothing undoes, does not
+(`TestPurgingTakesABrowserSession`; what a leaked token can still delete is
+[tenancy.md H-54](tenancy.md#h-54)). No agent makes any administration act: an agent token's
 scope is at most `write`, and a plain token marked by the header meets the hard-off rule
 "administration".
 
-A session's request that the agent header marks is refused all sixteen,
+A session's request that the agent header marks is refused all seventeen,
 with `403 agent_forbidden`: what only a session does is a person's act, never an agent's
 ([`api/api.go`](../../backend/internal/api/api.go) `sessionRules`).
 
@@ -290,7 +302,8 @@ the columns released before keep their places. The mark tells, it does not bind:
   the time report and the audit view are reads like any other.
 - The answer to an abused token is the record and revocation (ADR 0039 D4): an administrator
   filters the tenant's audit view (`GET …/audit`) by token, person, action, entity type and
-  period, as JSON or CSV. In CSV, a cell a spreadsheet would read as a formula — one starting
+  period, as JSON or CSV — in the browser on the tenant's audit page, where an act's token is one
+  click away from the acts it made ([`features/tenant/audit.ts`](../../frontend/src/app/features/tenant/audit.ts)). In CSV, a cell a spreadsheet would read as a formula — one starting
   with `=`, `+`, `-`, `@`, a tab or a carriage return — is prefixed with an apostrophe
   ([`api/tenants.go`](../../backend/internal/api/tenants.go) `neutralise`).
 
@@ -356,6 +369,7 @@ and back, and the acts of H-6. An agent's urgency override needs a reason as wel
 | overriding the prerequisite refusal | `override_prerequisites` on the done act: a transition to `done`, or the `PATCH` that fills the last progress stage |
 | setting or lifting the confidential flag | `PUT …/confidential` |
 | token administration | revoking another token of the person |
+| deleting, restoring or purging | `DELETE …/{number}`, `PUT …/deleted-tickets/{key}/restore`, `DELETE …/deleted-tickets/{key}` ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7) — the purge refuses an agent before this rule is reached: a token by `session_required`, a marked session as [above](#what-only-a-session-does) |
 
 Four rules live in the handlers and answer `agent_forbidden` with their own detail: an agent
 edits or withdraws only comments an agent of the same person wrote
@@ -414,19 +428,28 @@ the capability set that applied:
   `mayEdit`).
 - **Editing a project's** name, description and WIP limits, while creating one needs
   `create-project` ([`api/projects.go`](../../backend/internal/api/projects.go) `edit`).
+- **Saving, changing, sharing and deleting its person's saved filter** ([`api/filters.go`](../../backend/internal/api/filters.go)):
+  a shared filter shows every member of the tenant its name and conditions, with the person as its
+  owner.
 
-The integration tests assert all six as allowed, so closing one is a deliberate change. Nobody can switch them off per installation; a person who wants none of them gives an
+The integration tests assert the first six as allowed and an agent's saved filter as its marked act, so closing one is a deliberate change. Nobody can switch them off per installation; a person who wants none of them gives an
 agent a `read` token, and an administrator finds them in the tenant's audit view by token.
 
 <a id="h-7"></a>
 ### H-7 — An open event stream outlives a revocation by up to one heartbeat
 
-Live today. A stream checks its token — or its session — and its person's membership at every
+Live today. A stream checks its token — or its session — and its person's memberships at every
 heartbeat, every twenty seconds; the interval is not configurable. Between two heartbeats a
-stream whose token was revoked or expired, whose session ended, whose person left the tenant,
-or whose person lost a project still receives the events its filter admitted at the last
-heartbeat — the keys, versions and kinds of the acts, no content. Every request the client
-makes with the dead token or session is refused at once; the window is the stream's alone.
+stream whose token was revoked or expired, whose session ended or whose person was deactivated
+still receives the events its filters admitted at the last heartbeat — the keys, versions and
+kinds of the acts, no content, of every tenant a person-level stream follows. A person who leaves a
+tenant or loses a project by an act — a grant removed, a membership derived away, a restriction, an
+access entry — loses it at the stream before that tenant's next event, because every such act makes
+the stream compute its filter of the tenant again
+([tenancy.md](tenancy.md#the-event-stream-carries-what-its-subscriber-could-read),
+[the person-level stream](tenancy.md#the-person-level-stream)); only such a change made in the
+database past the API waits for the heartbeat. Every request the
+client makes with the dead token or session is refused at once; the window is the stream's alone.
 
 <a id="h-30"></a>
 ### H-30 — With the server key, an audit row's address hash gives the address back

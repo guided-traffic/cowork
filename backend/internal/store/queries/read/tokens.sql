@@ -19,16 +19,25 @@ WHERE tenant_id IS NULL
 
 -- name: ListTokensOfUser :many
 -- The person's tokens, newest first, revoked and expired ones included
--- (docs/adr/0035 D6); only one of them for a restricted token.
-SELECT t.id, t.name, t.scope, t.agent, t.capabilities, t.restricted_project_id, t.created_at,
-       t.expires_at, t.last_used_on, t.revoked_at, rt.slug AS restricted_tenant_slug
+-- (docs/adr/0035 D6); only one of them for a restricted token. By id after a
+-- cursor, or a numbered page by offset (docs/adr/0048 D1, D2).
+SELECT t.id, t.name, t.scope, t.agent, t.capabilities, t.restricted_tenant_id, t.restricted_project_id,
+       t.created_at, t.expires_at, t.last_used_on, t.revoked_at, rt.slug AS restricted_tenant_slug
 FROM tokens t
 LEFT JOIN tenants rt ON rt.id = t.restricted_tenant_id
 WHERE t.user_id = sqlc.arg(user_id)
   AND (sqlc.narg(only_id)::uuid IS NULL OR t.id = sqlc.narg(only_id)::uuid)
   AND (sqlc.narg(before)::uuid IS NULL OR t.id < sqlc.narg(before)::uuid)
 ORDER BY t.id DESC
-LIMIT sqlc.arg(page_size);
+LIMIT sqlc.arg(page_size) OFFSET sqlc.arg(page_offset);
+
+-- name: CountTokensOfUser :one
+-- The person's tokens, for a numbered page's total; one for a restricted
+-- token.
+SELECT count(*)::bigint AS tokens
+FROM tokens t
+WHERE t.user_id = sqlc.arg(user_id)
+  AND (sqlc.narg(only_id)::uuid IS NULL OR t.id = sqlc.narg(only_id)::uuid);
 
 -- name: GetTokenOfUser :one
 SELECT id, revoked_at

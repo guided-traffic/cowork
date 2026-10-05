@@ -1,0 +1,128 @@
+# Saved filters (docs/adr/0018 D5, docs/adr/0049 D6, D7): a named set of the
+# ticket lists' filter parameters, owned by a person in a tenant, optionally
+# shared with the tenant.
+savedFilters:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: listSavedFilters
+    tags: [filters]
+    summary: The caller's saved filters and those shared with the tenant
+    description: |
+      The caller's own filters and every filter a member shared with the tenant, oldest first, each
+      with its owner. Every filter is checked against the vocabularies as it is read
+      (docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody
+      else that names a project or a ticket the caller cannot see — or one that no longer exists —
+      is answered `redacted`, without its parameters, as an act that names a hidden ticket is
+      (docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of saved filters
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/SavedFilterList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: createSavedFilter
+    tags: [filters]
+    summary: Save a filter
+    description: |
+      The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+      (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+      outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+      the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+      it. Recorded as `created`.
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/SavedFilterCreate'
+    responses:
+      '201':
+        description: The saved filter
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/SavedFilter'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+savedFilter:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/SavedFilterID'
+  get:
+    operationId: getSavedFilter
+    tags: [filters]
+    summary: One saved filter
+    description: The caller's own, or a shared one; any other is 404.
+    responses:
+      '200':
+        description: The saved filter
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/SavedFilter'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  patch:
+    operationId: updateSavedFilter
+    tags: [filters]
+    summary: Rename, change, share or unshare a saved filter
+    description: |
+      Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+      shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+      the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/SavedFilterPatch'
+    responses:
+      '200':
+        description: The changed filter
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/SavedFilter'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: deleteSavedFilter
+    tags: [filters]
+    summary: Delete a saved filter
+    description: |
+      Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
+      filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+    responses:
+      '204':
+        description: Deleted
+      default:
+        $ref: './components/responses.yaml#/Problem'

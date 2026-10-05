@@ -11,13 +11,16 @@ import { ProblemService } from '../../core/problem.service';
 import { TicketRecords } from '../../core/ticket-records.service';
 import { AgentMark } from '../../shared/agent-mark';
 import { ConflictNote } from '../../shared/conflict-note';
+import { RenderedText } from '../../shared/rendered-text';
 import { ago, Clock, dateTime } from '../../shared/time';
 import { FilePreview } from './file-preview';
 import { fileIcon } from './records-cards';
+import { UploadKey } from '../../shared/upload-key';
 
 /**
  * One comment of the thread (docs/adr/0015): its author, the agent or the token it came through,
- * its text — or that it was withdrawn — and its files (docs/adr/0016 D1), a raster image with its
+ * its text as the server rendered it (docs/adr/0011 D6), as text where the answer has no rendering —
+ * or that it was withdrawn — and its files (docs/adr/0016 D1), a raster image with its
  * preview. Its author edits it, over the version the editing began with (docs/adr/0050 D3), and
  * attaches files to it; its author or a tenant administrator withdraws it, which hides the text
  * from everybody and keeps the entry (D3); an edited comment shows its earlier texts on request.
@@ -27,7 +30,16 @@ import { fileIcon } from './records-cards';
 @Component({
   selector: 'app-comment',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AgentMark, ButtonDirective, ConflictNote, FilePreview, FormsModule, Textarea, Tooltip],
+  imports: [
+    AgentMark,
+    ButtonDirective,
+    ConflictNote,
+    FilePreview,
+    FormsModule,
+    RenderedText,
+    Textarea,
+    Tooltip,
+  ],
   template: `
     <p class="meta muted">
       <strong>{{ comment().author.display_name }}</strong>
@@ -96,8 +108,14 @@ import { fileIcon } from './records-cards';
           </button>
         </div>
       </form>
+    } @else if (comment().body_html; as html) {
+      <app-rendered-text
+        class="text"
+        [attr.data-testid]="'comment-text-' + comment().id"
+        [html]="html"
+      />
     } @else {
-      <p class="text">{{ comment().body }}</p>
+      <p class="text plain">{{ comment().body }}</p>
     }
     @if (files().length > 0) {
       <ul class="files">
@@ -184,7 +202,7 @@ import { fileIcon } from './records-cards';
     .meta {
       font-size: 0.75rem;
     }
-    .text {
+    p.text {
       white-space: pre-wrap;
     }
     .link {
@@ -258,6 +276,8 @@ export class CommentItem {
   private readonly conversation = inject(Conversation);
   private readonly records = inject(TicketRecords);
   private readonly problems = inject(ProblemService);
+  /** The key of an upload whose answer did not come, for the same file picked again. */
+  private readonly uploadKey = new UploadKey();
   private readonly confirm = inject(ConfirmationService);
   private readonly clock = inject(Clock);
 
@@ -358,20 +378,33 @@ export class CommentItem {
     });
   }
 
+  /**
+   * Uploads a file picked to the comment, with the key of an upload of the same file to the same
+   * comment whose answer did not come (`UploadKey`).
+   */
   protected async attach(picker: HTMLInputElement): Promise<void> {
     const file = picker.files?.[0];
     picker.value = '';
-    if (file) {
-      await this.guard(() => this.records.attach(this.ticketKey(), file, this.comment().id));
+    if (!file) {
+      return;
+    }
+    const ticket = this.ticketKey();
+    const comment = this.comment().id;
+    const key = this.uploadKey.for(`${ticket}\n${comment}`, file);
+    if (await this.guard(() => this.records.attach(ticket, file, key, comment))) {
+      this.uploadKey.answered();
     }
   }
 
-  private async guard(write: () => Promise<unknown>): Promise<void> {
+  /** Runs a write, reports its problem, and says whether it went through. */
+  private async guard(write: () => Promise<unknown>): Promise<boolean> {
     this.busy.set(true);
     try {
       await write();
+      return true;
     } catch (error) {
       this.problems.report(error);
+      return false;
     } finally {
       this.busy.set(false);
     }

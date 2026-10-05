@@ -3,6 +3,8 @@ import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
 import {
   createTicket,
+  deleteTicket,
+  listPrerequisites,
   moveTicketRank,
   overrideUrgency,
   replaceTicketBody,
@@ -68,11 +70,20 @@ export class TicketActions {
   private readonly tickets = inject(TicketsService);
   private readonly problems = inject(ProblemService);
 
-  async create(tenant: string, project: string, body: TicketCreate): Promise<Ticket> {
+  /**
+   * Files a ticket. The key is the form's, one for each content it holds, so a retry of a lost
+   * answer is answered again instead of filing the ticket twice (docs/adr/0045 D3).
+   */
+  async create(
+    tenant: string,
+    project: string,
+    body: TicketCreate,
+    idempotencyKey: string,
+  ): Promise<Ticket> {
     const ticket = await this.api.invoke(createTicket, {
       tenant,
       project,
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body,
     });
     this.tickets.cache.put(ticket.key, ticket);
@@ -243,5 +254,32 @@ export class TicketActions {
     });
     this.tickets.cache.put(ticket.key, ticket);
     return ticket;
+  }
+
+  /**
+   * Puts the ticket into the tenant's bin (docs/adr/0024 D1): a tenant administrator's act. From
+   * then on it answers like a missing ticket everywhere but the bin, so it leaves the cache, and
+   * every view that showed it with it.
+   */
+  async delete(key: string): Promise<void> {
+    await this.api.invoke(deleteTicket, routeOf(key));
+    this.tickets.cache.delete(key);
+  }
+
+  /**
+   * The open tickets that wait on the ticket — its dependents a step up the prerequisite tree,
+   * those it blocks directly (docs/adr/0012 D6) — which a deletion names before it asks
+   * (docs/adr/0024 D7). The first page of the tree is enough to name them: the tree lists the
+   * nearest ones first.
+   */
+  async dependents(key: string): Promise<string[]> {
+    const tree = await this.api.invoke(listPrerequisites, {
+      ...routeOf(key),
+      direction: 'up',
+      limit: 50,
+    });
+    return tree.items
+      .filter((node) => node.depth === 1 && node.state !== 'done' && node.state !== 'dropped')
+      .map((node) => splitKey(node.key).key);
   }
 }

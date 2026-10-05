@@ -23,7 +23,7 @@ FROM comments c
 JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
 LEFT JOIN users u ON u.id = c.author_id
 WHERE c.tenant_id = $1 AND c.ticket_id = $2 AND c.id = $3
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type GetCommentParams struct {
@@ -115,7 +115,7 @@ JOIN comments c ON c.tenant_id = r.tenant_id AND c.id = r.comment_id
 JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
 LEFT JOIN users u ON u.id = r.edited_by
 WHERE r.tenant_id = $1 AND r.comment_id = $2 AND c.withdrawn_at IS NULL
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND ($3::uuid IS NULL OR r.id > $3::uuid)
 ORDER BY r.id
 LIMIT $4
@@ -188,7 +188,7 @@ FROM comments c
 JOIN tickets t ON t.tenant_id = c.tenant_id AND t.id = c.ticket_id
 LEFT JOIN users u ON u.id = c.author_id
 WHERE c.tenant_id = $1 AND c.ticket_id = $2
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
   AND ($3::uuid IS NULL
        OR ($4::boolean AND c.id < $3::uuid)
        OR (NOT $4::boolean AND c.id > $3::uuid))
@@ -368,7 +368,7 @@ const visibleTickets = `-- name: VisibleTickets :many
 SELECT t.id
 FROM tickets t
 WHERE t.tenant_id = $1 AND t.id = ANY ($2::uuid[])
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type VisibleTicketsParams struct {

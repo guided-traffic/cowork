@@ -7,6 +7,7 @@ import {
   EventStreamService,
   fallback,
   MembershipEvent,
+  ofTenant,
   StreamEvent,
   StreamStatus,
   ticketEventNames,
@@ -460,6 +461,11 @@ describe('EventStreamService', () => {
       ],
       [{ project_id: 'j1' }, { projectId: 'j1' }, 'a restriction set or lifted'],
       [{ mapping_id: 'm1' }, { mappingId: 'm1' }, 'a group mapping'],
+      [
+        { tenant: 'beta', person_id: 'p1' },
+        { tenant: 'beta', personId: 'p1' },
+        'an act of another tenant of the person (docs/adr/0054 D1)',
+      ],
     ])('turns the keys of %j into the event, with its id: %s', (data, keys) => {
       sources[0].send('membership.changed', JSON.stringify(data), 'e1');
 
@@ -487,6 +493,7 @@ describe('EventStreamService', () => {
       ['a person id that is a number', '{"person_id":12}'],
       ['a project id that is null', '{"person_id":"p1","project_id":null}'],
       ['a mapping id that is an object', '{"mapping_id":{}}'],
+      ['a tenant that is a number', '{"tenant":3,"person_id":"p1"}'],
     ])('ignores %s', (_description, data) => {
       sources[0].send('membership.changed', data);
 
@@ -513,15 +520,51 @@ describe('EventStreamService', () => {
     });
   });
 
+  describe('ofTenant', () => {
+    it.each<[StreamEvent, string | null, boolean]>([
+      [
+        { name: 'ticket.changed', id: 'e1', key: 'acme/VKO-1', version: 2, kind: 'edited' },
+        'acme',
+        true,
+      ],
+      [
+        { name: 'ticket.changed', id: 'e1', key: 'beta/VKO-1', version: 2, kind: 'edited' },
+        'acme',
+        false,
+      ],
+      [
+        { name: 'question.changed', id: 'e1', key: 'acme-two/VKO-1', version: 2, kind: 'x' },
+        'acme',
+        false,
+      ],
+      [
+        { name: 'ticket.changed', id: 'e1', key: 'acme/VKO-1', version: 2, kind: 'edited' },
+        null,
+        false,
+      ],
+      [{ name: 'membership.changed', id: 'e1', tenant: 'acme', personId: 'p1' }, 'acme', true],
+      [{ name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p1' }, 'acme', false],
+      [{ name: 'membership.changed', id: 'e1', personId: 'p1' }, 'acme', true],
+      [{ name: 'membership.changed', id: 'e1', personId: 'p1' }, null, true],
+      [{ name: 'membership.changed', id: 'e1', tenant: 'acme', personId: 'p1' }, null, false],
+      [{ name: 'inbox.changed', unread: 2 }, 'acme', false],
+      [{ name: 'resync' }, 'acme', true],
+      [{ name: 'poll' }, null, true],
+    ])('says whether %j concerns a page of %s: %s', (event, tenant, expected) => {
+      expect(ofTenant(event, tenant)).toBe(expected);
+    });
+  });
+
   describe('changesMemberships', () => {
     it.each<[StreamEvent, boolean]>([
-      [{ name: 'membership.changed', id: 'e1', personId: 'p1' }, true],
+      [{ name: 'membership.changed', id: 'e1', tenant: 'acme', personId: 'p1' }, true],
+      [{ name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p1' }, false],
       [{ name: 'resync' }, true],
       [{ name: 'poll' }, true],
       [{ name: 'ticket.changed', id: 'e1', key: 'acme/VKO-1', version: 2, kind: 'edited' }, false],
       [{ name: 'comment.changed', id: 'e1', key: 'acme/VKO-1', version: 2, kind: 'x' }, false],
-    ])('says whether %j may have changed who belongs to the tenant: %s', (event, expected) => {
-      expect(changesMemberships(event)).toBe(expected);
+    ])('says whether %j may have changed who belongs to acme: %s', (event, expected) => {
+      expect(changesMemberships(event, 'acme')).toBe(expected);
     });
   });
 

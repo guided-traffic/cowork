@@ -38,7 +38,7 @@ const ticketSelect = `SELECT t.id, t.project_id, p.key AS project_key, t.number,
         JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
         WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
           AND ps.state NOT IN ('done', 'dropped')
-          AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+          AND ps.deleted_at IS NULL AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
        t.version, t.created_at, t.updated_at`
 
 const ticketFrom = `FROM tickets t
@@ -46,9 +46,9 @@ JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
 LEFT JOIN users au ON au.id = t.assignee_id
 LEFT JOIN tickets pt ON pt.tenant_id = t.tenant_id AND pt.id = t.parent_id
-     AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
+     AND pt.deleted_at IS NULL AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
 LEFT JOIN tickets bt ON bt.tenant_id = t.tenant_id AND bt.id = t.block_ticket_id
-     AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
+     AND bt.deleted_at IS NULL AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
 LEFT JOIN projects bp ON bp.tenant_id = bt.tenant_id AND bp.id = bt.project_id`
 
 // ValueSet is one repeatable filter parameter: any of In, none of NotIn
@@ -208,12 +208,14 @@ type TicketList struct {
 }
 
 // ListTickets renders a ticket list under the tenant and visibility
-// predicates (docs/adr/0021 D4, docs/adr/0034 D4, docs/adr/0065 D4): the one
-// place in the data layer that builds SQL at run time (docs/adr/0027 D4).
+// predicates (docs/adr/0021 D4, docs/adr/0034 D4, docs/adr/0065 D4) and
+// without the deleted tickets (docs/adr/0024 D3): the one place in the data
+// layer that builds SQL at run time (docs/adr/0027 D4).
 func (r *Reader) ListTickets(ctx context.Context, f TicketFilter, page TicketPage) (TicketList, error) {
 	b := &queryBuilder{}
 	b.where("t.tenant_id = " + b.arg(r.TenantID))
 	b.where("app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)")
+	b.live()
 	b.filter(f)
 
 	var out TicketList
@@ -281,6 +283,10 @@ func (b *queryBuilder) arg(v any) string {
 }
 
 func (b *queryBuilder) where(cond string) { b.conds = append(b.conds, cond) }
+
+// live leaves the deleted tickets out, as every named query does
+// (docs/adr/0024 D3).
+func (b *queryBuilder) live() { b.where("t.deleted_at IS NULL") }
 
 // after is the cursor's condition: the position the previous page ended at.
 func (b *queryBuilder) after(o TicketOrder, after string) (string, error) {
@@ -399,7 +405,7 @@ const openBlocker = `EXISTS (SELECT 1 FROM ticket_links bl
         JOIN tickets bs ON bs.tenant_id = bl.tenant_id AND bs.id = bl.source_id
         WHERE bl.tenant_id = t.tenant_id AND bl.target_id = t.id AND bl.type = 'blocks'
           AND bs.state NOT IN ('done', 'dropped')
-          AND app_ticket_visible(bs.project_id, bs.confidential, bs.assignee_id, bs.reporter_id))`
+          AND bs.deleted_at IS NULL AND app_ticket_visible(bs.project_id, bs.confidential, bs.assignee_id, bs.reporter_id))`
 
 func (b *queryBuilder) textSet(expr string, s ValueSet) {
 	if len(s.In) > 0 {

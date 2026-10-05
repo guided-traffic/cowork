@@ -60,19 +60,19 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
         JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
         WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
           AND ps.state NOT IN ('done', 'dropped')
-          AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+          AND ps.deleted_at IS NULL AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
        t.version, t.created_at, t.updated_at
 FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
 LEFT JOIN users au ON au.id = t.assignee_id
 LEFT JOIN tickets pt ON pt.tenant_id = t.tenant_id AND pt.id = t.parent_id
-     AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
+     AND pt.deleted_at IS NULL AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
 LEFT JOIN tickets bt ON bt.tenant_id = t.tenant_id AND bt.id = t.block_ticket_id
-     AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
+     AND bt.deleted_at IS NULL AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
 LEFT JOIN projects bp ON bp.tenant_id = bt.tenant_id AND bp.id = bt.project_id
 WHERE t.tenant_id = $1 AND t.project_id = $2 AND t.number = $3
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type GetTicketByNumberParams struct {
@@ -215,11 +215,12 @@ SELECT t.id,
            AND coalesce(o.urgency_override, o.urgency_derived) = coalesce(t.urgency_override, t.urgency_derived)
            AND (o.rank < t.rank OR (o.rank IS NOT NULL AND t.rank IS NULL)
                 OR (o.rank IS NULL AND t.rank IS NULL AND o.number < t.number))
+           AND o.deleted_at IS NULL
            AND app_ticket_visible(o.project_id, o.confidential, o.assignee_id, o.reporter_id)) + 1)::integer AS place
 FROM tickets t
 WHERE t.tenant_id = $1 AND t.id = ANY ($2::uuid[])
   AND t.state NOT IN ('done', 'dropped')
-  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 `
 
 type ListRankPlacesParams struct {
@@ -235,10 +236,10 @@ type ListRankPlacesRow struct {
 // Each ticket's place in its project's rank among the open tickets of its
 // horizon that the caller can see, 1 for the first: the place the backlog's
 // group shows it at, and the secondary indicator of the person-level lists
-// (docs/adr/0014 D5, docs/adr/0018 D1). A ticket the caller cannot see is
-// never counted, so the place tells nothing of one; the unranked open tickets
-// of a release before the rank follow the ranked by number, as the list shows
-// them.
+// (docs/adr/0014 D5, docs/adr/0018 D1). A ticket the caller cannot see, or a
+// deleted one, is never counted, so the place tells nothing of one; the
+// unranked open tickets of a release before the rank follow the ranked by
+// number, as the list shows them.
 func (q *Queries) ListRankPlaces(ctx context.Context, arg ListRankPlacesParams) ([]ListRankPlacesRow, error) {
 	rows, err := q.db.Query(ctx, listRankPlaces, arg.TenantID, arg.Ids)
 	if err != nil {

@@ -35,7 +35,7 @@ score's order of D5 replaced it.)*
 
 *(2026-10-05:)* **D3–D5 built.** The score is version 1 of [`domain.ScoreKey`](../../backend/internal/domain/score.go),
 stored on the ticket as its key with the version that computed it (`score_key`, `score_version`,
-[migration 33](../../backend/internal/store/migrations/000033_ticket_score.up.sql), which scored every
+[migration 34](../../backend/internal/store/migrations/000034_ticket_score.up.sql), which scored every
 ticket); the write that changes an input scores the ticket again in its own transaction — a filing,
 a severity, a horizon set or withdrawn, a stake set or removed (`refreshScore` in
 [`api/score.go`](../../backend/internal/api/score.go)) — and a ticket shows `score` and
@@ -146,7 +146,7 @@ and a cursor resumes by; a ticket shows the key plus the age at the moment of th
 decimal. A done or dropped ticket shows none; one filed by a release before the score shows none
 until an input of it changes. The function is [`domain.ScoreKey`](../../backend/internal/domain/score.go);
 the migration that recomputes writes it out once more in SQL, and an integration test holds the
-two equal, as [migration 33](../../backend/internal/store/migrations/000033_ticket_score.up.sql) does
+two equal, as [migration 34](../../backend/internal/store/migrations/000034_ticket_score.up.sql) does
 for version 1.)*
 
 **D5 — The person-level lists are ordered by score.** "Next for me" and "assigned to me"
@@ -225,5 +225,5 @@ cannot see is never counted.)*
 - [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) — rank and `blocked`
 - [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3 — the person-level lists
 - [ADR 0050](0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md) D1, D4 — a move raises the version and takes no `If-Match`
-- [`backend/internal/domain/score.go`](../../backend/internal/domain/score.go), [`backend/internal/api/score.go`](../../backend/internal/api/score.go), [migration 33](../../backend/internal/store/migrations/000033_ticket_score.up.sql) — the score and the sort
+- [`backend/internal/domain/score.go`](../../backend/internal/domain/score.go), [`backend/internal/api/score.go`](../../backend/internal/api/score.go), [migration 34](../../backend/internal/store/migrations/000034_ticket_score.up.sql) — the score and the sort
 - [`backend/internal/domain/rank.go`](../../backend/internal/domain/rank.go), [`backend/internal/api/rank.go`](../../backend/internal/api/rank.go), [migration 17](../../backend/internal/store/migrations/000017_ticket_rank.up.sql) — the implementation

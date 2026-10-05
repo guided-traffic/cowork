@@ -26,6 +26,11 @@
       ariaLabel="States"
       data-testid="state-filter"
     />
+    <app-saved-filters
+      [current]="currentFilter()"
+      [applied]="applied()"
+      (chosen)="applyFilter($event)"
+    />
     <span class="spacer"></span>
     @if (mayRank()) {
       <button

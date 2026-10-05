@@ -13,7 +13,7 @@ the records gave the list its scope and its order but not its members, whether i
 person's own open tickets only, which would repeat "assigned to me", their own and the unassigned
 open tickets of the projects they see, or every open ticket they can see, colleagues' assigned work
 included; the owner chose the second, as recommended: it is the set a person picks from, and the
-one `session_start` offers an agent).
+one `session_start` offers an agent; D4: the tenant board's columns are the project board's of D1).
 Date: 2026-09-29. Decided by the owner as the answer to the catalog question "which views are
 v1?": the widest option — the minimum the earlier records require, plus a
 tenant-wide board with swimlanes per project, saved filters, and dashboards. The
@@ -37,6 +37,15 @@ progress stages of [ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-perc
 D2. The rest of the amended D1 — the drags between the columns, a child's place outside its
 parent's group, the count that stands in for `done` — is this record's proposal and stays
 open to objection until the board is built.
+
+The amendment of 2026-10-05 is the owner's answer to which columns the tenant board has, put
+when it was built, since D4 still read "columns are the states" after D1's amendment of
+2026-10-03 had given the project board its columns. The owner chose **the project board's
+columns in every swimlane** — `next`, Refinement, Ready, In Progress, Blocked and Review, over the
+same tickets, one model for both boards, so that a card stands in the same column on both — over
+one column per state as D4 read, which would have been a second model with the `done` column the
+owner turned down on the project board, and over the project board's five columns without
+`next`, which would have left `next` to each project's board.
 
 **Partly built** (phase 3, 2026-10-03): D1 as amended 2026-10-04 — the project opening on its
 board, whose tab stands left of the backlog's, and the backlog's groups named as horizons
@@ -66,7 +75,29 @@ of the person as a union of per-tenant reads with the tenant beside each key, in
 every person (`/me/assigned`, `/me/decisions`, `/me/inbox`, [`features/me/`](../../frontend/src/app/features/me/));
 ~~"assigned to me" and "open decisions" are ordered by the tenant, the project and the project's rank
 until the score exists — the interim order written in [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)'s
-Status.~~ ~~Not built: the score's marker in the backlog, D3's "next for me", D4–D7.~~
+Status.~~ *(2026-10-05:)* D4 as amended the same day — the tenant board at `/t/{slug}/board`, in
+the navigation beside the tenant's front page: a swimlane per non-archived project the person sees,
+each with the project board's columns, cards, counts against its own project's WIP limits, card
+menu and dialogs, made from the same parts as the project board
+([`board-columns.ts`](../../frontend/src/app/features/project/board-columns.ts),
+[`board-moves.ts`](../../frontend/src/app/features/project/board-moves.ts),
+[`board-list.ts`](../../frontend/src/app/features/project/board-list.ts),
+[`tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts)); a swimlane loads its
+list only while it is in view or a screen's height from it; the project filter is the address's
+repeated `project`; a drag between swimlanes is refused visibly — the swimlane under the card says
+no, and a toast says that a ticket never changes project on a board — and holds every swimlane
+still while a card is dragged. *(2026-10-05:)* D7's search — a search box in the top bar that
+searches, inside a tenant, that tenant first and offers every tenant of the person, anywhere else
+every tenant, and a page of results with where each hit was found and its snippet, linked to the
+comment or question it is in ([`features/search/`](../../frontend/src/app/features/search/),
+[ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)); and D2's
+body, comments, options and answers shown as the server rendered them
+([ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6).
+*(2026-10-05:)* D5 on the backlog: saved filters as named parameter sets of the lists
+([ADR 0049](0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md) D6, D7), a
+person's own or shared with the tenant with the owner beside it, applied, saved, shared and deleted
+from the backlog's filter bar ([`api/filters.go`](../../backend/internal/api/filters.go),
+[`features/project/saved-filters.ts`](../../frontend/src/app/features/project/saved-filters.ts)).
 *(2026-10-05:)* D1's score marker — among the siblings of each horizon's group, "score says higher"
 or "lower" — and the sort by the score, which the page asks before it sends
 ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D3); D3's "next for me" as amended,
@@ -74,7 +105,9 @@ or "lower" — and the sort by the score, which the page asks before it sends
 ([ADR 0023](0023-the-tenant-is-in-the-path.md) D4 as amended 2026-10-05), each ticket beside its
 tenant and its place in its project's backlog; "next for me", "assigned to me" and "open decisions"
 in the score's order ([`my-tickets.ts`](../../frontend/src/app/features/me/my-tickets.ts),
-[`backlog.ts`](../../frontend/src/app/features/project/backlog.ts)). Not built: D4–D7.
+[`backlog.ts`](../../frontend/src/app/features/project/backlog.ts)).
+Not built: ~~the score's marker in the backlog, D3's "next for me",~~ D5 on the tenant list view —
+no page lists a tenant's tickets — and on the tenant board, and D6.
 
 ## Context
 
@@ -147,7 +180,11 @@ in my tenants), and the inbox. Each is a union of per-tenant queries (ADR 0005 D
 the projects they see** — what the person, or their agent, could take up next; another person's
 ticket is not "for me". The owner's words, 2026-10-05.
 
-**D4 — Per tenant: a board with one swimlane per project.** Columns are the states, rows the
+**D4 — Per tenant: a board with one swimlane per project.** ~~Columns are the states~~
+*(amended 2026-10-05: the columns are the project board's of D1 — `next`, Refinement, Ready, In
+Progress, Blocked and Review —, in every swimlane, over the same tickets: the open leaves of the
+horizons `now` and `release` in the columns of their states, those of `next` in `next`; one model
+for both boards, so a card stands in the same column on both)*, rows the
 non-archived projects, cards as in D1. A drag between columns is a transition; **a drag
 between rows is refused** — a ticket never changes project on a board. Rank is not edited on
 this board; the backlog owns rank. The board loads lazily per swimlane and offers a project
@@ -168,7 +205,11 @@ dashboard exists; a new tile is an amendment of this record.
 
 **D7 — Search.** Full-text over title, body, comments and question texts within a tenant,
 from the tenant's pages; the person-level pages search across the person's tenants as a
-union.
+union. *(Made concrete 2026-10-05, built on the recommendation, the owner reviewing the result:)*
+inside a tenant the search box opens that tenant's results, one list in one order with one cursor,
+and every tenant of the person is one link away; the alternative — one page with the tenant's hits
+on top and the other tenants' under them — was not built, since it shows another client's tenant
+before the person asks for it.
 
 **D8 — Not in the first release, by this record:** custom dashboards, a portfolio view across
 tenants beyond D3, Gantt or timeline views, a calendar.

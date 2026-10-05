@@ -18,7 +18,18 @@ export interface Token {
   name: string;
 
   /**
-   * The id of the project the token is restricted to
+   * The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
+   * without a project restriction, and for one whose project the person no longer sees or
+   * whose tenant they no longer belong to — such a token reaches nothing
+   */
+  restricted_project: (string | null);
+
+  /**
+   * The id of the project the token is restricted to. Replaced by `restricted_project`, which
+   * names the project by its key, as a person knows it; kept in `/api/v1` for the clients that
+   * read it, since taking a field away is a breaking change (docs/adr/0046 D7)
+   *
+   * @deprecated
    */
   restricted_project_id?: (string | null);
 

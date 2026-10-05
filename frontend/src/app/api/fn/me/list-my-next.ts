@@ -33,6 +33,11 @@ export interface ListMyNext$Params {
  * Items per page; the server caps it at its configured maximum
  */
   limit?: number;
+
+/**
+ * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+ */
+  'If-None-Match'?: string;
 }
 
 export function listMyNext(http: HttpClient, rootUrl: string, params?: ListMyNext$Params, context?: HttpContext): Observable<StrictHttpResponse<MyTicketList>> {
@@ -42,6 +47,7 @@ export function listMyNext(http: HttpClient, rootUrl: string, params?: ListMyNex
     rb.query('project', params.project, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
+    rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
   return http.request(

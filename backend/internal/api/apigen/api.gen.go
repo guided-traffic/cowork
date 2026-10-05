@@ -773,6 +773,33 @@ func (e Scope) Valid() bool {
 	}
 }
 
+// Defines values for SearchFoundIn.
+const (
+	SearchFoundInAttachment SearchFoundIn = "attachment"
+	SearchFoundInComment    SearchFoundIn = "comment"
+	SearchFoundInKey        SearchFoundIn = "key"
+	SearchFoundInQuestion   SearchFoundIn = "question"
+	SearchFoundInTicket     SearchFoundIn = "ticket"
+)
+
+// Valid indicates whether the value is a known member of the SearchFoundIn enum.
+func (e SearchFoundIn) Valid() bool {
+	switch e {
+	case SearchFoundInAttachment:
+		return true
+	case SearchFoundInComment:
+		return true
+	case SearchFoundInKey:
+		return true
+	case SearchFoundInQuestion:
+		return true
+	case SearchFoundInTicket:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SecurityClass.
 const (
 	SecurityClassBoundary  SecurityClass = "boundary"
@@ -1016,6 +1043,90 @@ func (e PerPage) Valid() bool {
 	case PerPageN25:
 		return true
 	case PerPageN50:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListMyTokensParamsPerPage.
+const (
+	ListMyTokensParamsPerPageN100 ListMyTokensParamsPerPage = 100
+	ListMyTokensParamsPerPageN25  ListMyTokensParamsPerPage = 25
+	ListMyTokensParamsPerPageN50  ListMyTokensParamsPerPage = 50
+)
+
+// Valid indicates whether the value is a known member of the ListMyTokensParamsPerPage enum.
+func (e ListMyTokensParamsPerPage) Valid() bool {
+	switch e {
+	case ListMyTokensParamsPerPageN100:
+		return true
+	case ListMyTokensParamsPerPageN25:
+		return true
+	case ListMyTokensParamsPerPageN50:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListAuditParamsPerPage.
+const (
+	ListAuditParamsPerPageN100 ListAuditParamsPerPage = 100
+	ListAuditParamsPerPageN25  ListAuditParamsPerPage = 25
+	ListAuditParamsPerPageN50  ListAuditParamsPerPage = 50
+)
+
+// Valid indicates whether the value is a known member of the ListAuditParamsPerPage enum.
+func (e ListAuditParamsPerPage) Valid() bool {
+	switch e {
+	case ListAuditParamsPerPageN100:
+		return true
+	case ListAuditParamsPerPageN25:
+		return true
+	case ListAuditParamsPerPageN50:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListMembersParamsPerPage.
+const (
+	ListMembersParamsPerPageN100 ListMembersParamsPerPage = 100
+	ListMembersParamsPerPageN25  ListMembersParamsPerPage = 25
+	ListMembersParamsPerPageN50  ListMembersParamsPerPage = 50
+)
+
+// Valid indicates whether the value is a known member of the ListMembersParamsPerPage enum.
+func (e ListMembersParamsPerPage) Valid() bool {
+	switch e {
+	case ListMembersParamsPerPageN100:
+		return true
+	case ListMembersParamsPerPageN25:
+		return true
+	case ListMembersParamsPerPageN50:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListProjectsParamsPerPage.
+const (
+	ListProjectsParamsPerPageN100 ListProjectsParamsPerPage = 100
+	ListProjectsParamsPerPageN25  ListProjectsParamsPerPage = 25
+	ListProjectsParamsPerPageN50  ListProjectsParamsPerPage = 50
+)
+
+// Valid indicates whether the value is a known member of the ListProjectsParamsPerPage enum.
+func (e ListProjectsParamsPerPage) Valid() bool {
+	switch e {
+	case ListProjectsParamsPerPageN100:
+		return true
+	case ListProjectsParamsPerPageN25:
+		return true
+	case ListProjectsParamsPerPageN50:
 		return true
 	default:
 		return false
@@ -1320,8 +1431,15 @@ type AuditEvent struct {
 
 // AuditList defines model for AuditList.
 type AuditList struct {
-	Items      []AuditEvent              `json:"items"`
+	Items []AuditEvent `json:"items"`
+
+	// NextCursor The cursor of the next page; null at the end, and on a numbered page
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	Page       *int                      `json:"page,omitempty"`
+	PerPage    *int                      `json:"per_page,omitempty"`
+
+	// Total With page and per_page only
+	Total *int `json:"total,omitempty"`
 }
 
 // AuthOptions defines model for AuthOptions.
@@ -1339,6 +1457,12 @@ type AuthOptions struct {
 
 	// PasswordMinLength The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it
 	PasswordMinLength int `json:"password_min_length"`
+
+	// TokenMaxLifetimeDays The longest lifetime a new token gets, `COWORK_TOKEN_MAX_LIFETIME`, in whole days, rounded
+	// down (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the
+	// maximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A
+	// form that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes
+	TokenMaxLifetimeDays int `json:"token_max_lifetime_days"`
 }
 
 // Block defines model for Block.
@@ -1549,7 +1673,11 @@ type Comment struct {
 	Author Person                    `json:"author"`
 
 	// Body Markdown; null once withdrawn (docs/adr/0015 D3)
-	Body      nullable.Nullable[string] `json:"body"`
+	Body nullable.Nullable[string] `json:"body"`
+
+	// BodyHtml The body rendered and sanitised on the server, as the ticket's body is (docs/adr/0011 D6), beside
+	// the Markdown; null once withdrawn
+	BodyHtml  nullable.Nullable[string] `json:"body_html"`
 	CreatedAt time.Time                 `json:"created_at"`
 
 	// Edited The comment has an edit history
@@ -1618,10 +1746,15 @@ type CurrentToken struct {
 	Name         string                                `json:"name"`
 	Request      RequestMark                           `json:"request"`
 
-	// RestrictedProject The key of the project the token is restricted to
+	// RestrictedProject The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
+	// without a project restriction, and for one whose project the person no longer sees or
+	// whose tenant they no longer belong to — such a token reaches nothing
 	RestrictedProject nullable.Nullable[string] `json:"restricted_project"`
 
-	// RestrictedProjectId The id of the project the token is restricted to
+	// RestrictedProjectId The id of the project the token is restricted to. Replaced by `restricted_project`, which
+	// names the project by its key, as a person knows it; kept in `/api/v1` for the clients that
+	// read it, since taking a field away is a breaking change (docs/adr/0046 D7)
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	RestrictedProjectId nullable.Nullable[openapi_types.UUID] `json:"restricted_project_id,omitempty"`
 
 	// RestrictedTenant The slug of the tenant the token is restricted to
@@ -1643,6 +1776,35 @@ type Decision struct {
 // DecisionList defines model for DecisionList.
 type DecisionList struct {
 	Items      []Decision                `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// DeletedTicket A ticket in its tenant's bin (docs/adr/0024 D1): what an administrator needs to restore or
+// purge it.
+type DeletedTicket struct {
+	Confidential bool      `json:"confidential"`
+	DeletedAt    time.Time `json:"deleted_at"`
+	DeletedBy    Person    `json:"deleted_by"`
+
+	// Key <tenant>/<PROJECT>-<number>
+	Key     string `json:"key"`
+	Number  int    `json:"number"`
+	Project string `json:"project"`
+
+	// PurgeAt When the purge job removes it for good, thirty days after the deletion (docs/adr/0024 D2)
+	PurgeAt time.Time `json:"purge_at"`
+
+	// State docs/adr/0009 D1
+	State TicketState `json:"state"`
+	Title string      `json:"title"`
+
+	// Type docs/adr/0008 D1
+	Type TicketType `json:"type"`
+}
+
+// DeletedTicketList defines model for DeletedTicketList.
+type DeletedTicketList struct {
+	Items      []DeletedTicket           `json:"items"`
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
 }
 
@@ -1900,8 +2062,15 @@ type MemberGrantSet struct {
 
 // MemberList defines model for MemberList.
 type MemberList struct {
-	Items      []Member                  `json:"items"`
+	Items []Member `json:"items"`
+
+	// NextCursor The cursor of the next page; null at the end, and on a numbered page
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	Page       *int                      `json:"page,omitempty"`
+	PerPage    *int                      `json:"per_page,omitempty"`
+
+	// Total With page and per_page only
+	Total *int `json:"total,omitempty"`
 }
 
 // Membership defines model for Membership.
@@ -2084,8 +2253,15 @@ type ProjectCreate struct {
 
 // ProjectList defines model for ProjectList.
 type ProjectList struct {
-	Items      []Project                 `json:"items"`
+	Items []Project `json:"items"`
+
+	// NextCursor The cursor of the next page; null at the end, and on a numbered page
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	Page       *int                      `json:"page,omitempty"`
+	PerPage    *int                      `json:"per_page,omitempty"`
+
+	// Total With page and per_page only
+	Total *int `json:"total,omitempty"`
 }
 
 // ProjectPatch defines model for ProjectPatch.
@@ -2139,7 +2315,10 @@ type ProposalTenant struct {
 // Question defines model for Question.
 type Question struct {
 	// Answer Markdown
-	Answer     nullable.Nullable[string]    `json:"answer"`
+	Answer nullable.Nullable[string] `json:"answer"`
+
+	// AnswerHtml The answer rendered and sanitised on the server (docs/adr/0011 D6); null without an answer
+	AnswerHtml nullable.Nullable[string]    `json:"answer_html"`
 	AnsweredAt nullable.Nullable[time.Time] `json:"answered_at"`
 
 	// AnsweredBy The person whose answer it is, also when an agent wrote it down
@@ -2165,7 +2344,10 @@ type Question struct {
 	Number int `json:"number"`
 
 	// Options Markdown: the context and the options
-	Options        string `json:"options"`
+	Options string `json:"options"`
+
+	// OptionsHtml The options rendered and sanitised on the server (docs/adr/0011 D6); empty without options
+	OptionsHtml    string `json:"options_html"`
 	Question       string `json:"question"`
 	Recommendation string `json:"recommendation"`
 
@@ -2306,14 +2488,147 @@ type RequestMark struct {
 // Role A tenant role, lowest first (docs/adr/0034 D1)
 type Role string
 
+// SavedFilter defines model for SavedFilter.
+type SavedFilter struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+	Name      string             `json:"name"`
+	Owner     Person             `json:"owner"`
+
+	// Parameters The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each
+	// repeatable parameter an array of its values — `!` negates one —, the bounds and the booleans
+	// single values. What a list's query string would carry, without the paging.
+	Parameters SavedFilterParameters `json:"parameters"`
+
+	// Redacted Another person's filter names a project or a ticket the caller cannot see, or one that no
+	// longer exists; its parameters and warnings are withheld (docs/adr/0065 D5)
+	Redacted bool `json:"redacted"`
+
+	// Shared Shown to every member of the tenant, with its owner
+	Shared    bool                 `json:"shared"`
+	UpdatedAt time.Time            `json:"updated_at"`
+	Version   int                  `json:"version"`
+	Warnings  []SavedFilterWarning `json:"warnings"`
+}
+
+// SavedFilterCreate defines model for SavedFilterCreate.
+type SavedFilterCreate struct {
+	Name string `json:"name"`
+
+	// Parameters The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each
+	// repeatable parameter an array of its values — `!` negates one —, the bounds and the booleans
+	// single values. What a list's query string would carry, without the paging.
+	Parameters SavedFilterParameters `json:"parameters"`
+	Shared     *bool                 `json:"shared,omitempty"`
+}
+
+// SavedFilterList defines model for SavedFilterList.
+type SavedFilterList struct {
+	Items      []SavedFilter             `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// SavedFilterParameters The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each
+// repeatable parameter an array of its values — `!` negates one —, the bounds and the booleans
+// single values. What a list's query string would carry, without the paging.
+type SavedFilterParameters struct {
+	Assignee         *[]string  `json:"assignee,omitempty"`
+	Blocked          *bool      `json:"blocked,omitempty"`
+	DoneAfter        *time.Time `json:"done_after,omitempty"`
+	Effort           *[]string  `json:"effort,omitempty"`
+	HasOpenQuestions *bool      `json:"has_open_questions,omitempty"`
+	IncludeTerminal  *bool      `json:"include_terminal,omitempty"`
+	Interest         *[]string  `json:"interest,omitempty"`
+	OpenedAfter      *time.Time `json:"opened_after,omitempty"`
+	OpenedBefore     *time.Time `json:"opened_before,omitempty"`
+	Parent           *[]string  `json:"parent,omitempty"`
+	ProgressMax      *int       `json:"progress_max,omitempty"`
+	ProgressMin      *int       `json:"progress_min,omitempty"`
+	Project          *[]string  `json:"project,omitempty"`
+	Q                *string    `json:"q,omitempty"`
+	Reporter         *[]string  `json:"reporter,omitempty"`
+	Security         *[]string  `json:"security,omitempty"`
+	Severity         *[]string  `json:"severity,omitempty"`
+	State            *[]string  `json:"state,omitempty"`
+	Type             *[]string  `json:"type,omitempty"`
+	UpdatedAfter     *time.Time `json:"updated_after,omitempty"`
+	UpdatedBefore    *time.Time `json:"updated_before,omitempty"`
+	Urgency          *[]string  `json:"urgency,omitempty"`
+}
+
+// SavedFilterPatch defines model for SavedFilterPatch.
+type SavedFilterPatch struct {
+	Name *string `json:"name,omitempty"`
+
+	// Parameters The filter parameters of the ticket lists (docs/adr/0049 D1, D2) as a JSON object: each
+	// repeatable parameter an array of its values — `!` negates one —, the bounds and the booleans
+	// single values. What a list's query string would carry, without the paging.
+	Parameters *SavedFilterParameters `json:"parameters,omitempty"`
+	Shared     *bool                  `json:"shared,omitempty"`
+}
+
+// SavedFilterWarning A value of a saved filter that does not hold any more, checked as the filter is read (docs/adr/0049 D7)
+type SavedFilterWarning struct {
+	Message   string `json:"message"`
+	Parameter string `json:"parameter"`
+}
+
 // Scope A token's scope (docs/adr/0035 D3)
 type Scope string
+
+// SearchFoundIn Where a search hit matched (docs/adr/0025 D5): the ticket's key; its own text, the title and
+// the body; one of its comments; one of its questions; an attachment's file name
+type SearchFoundIn string
+
+// SearchHit defines model for SearchHit.
+type SearchHit struct {
+	// Comment The comment the hit is in
+	Comment nullable.Nullable[openapi_types.UUID] `json:"comment"`
+
+	// FoundIn Where a search hit matched (docs/adr/0025 D5): the ticket's key; its own text, the title and
+	// the body; one of its comments; one of its questions; an attachment's file name
+	FoundIn SearchFoundIn `json:"found_in"`
+
+	// Key The canonical key, <tenant>/<PROJECT>-<number> (docs/adr/0007 D2)
+	Key string `json:"key"`
+
+	// Question The number of the question the hit is in
+	Question nullable.Nullable[int] `json:"question"`
+
+	// Snippet The text the hit is in around the words found, in pieces (`ts_headline`, docs/adr/0025 D4):
+	// the body for a hit in the ticket's own text or its key, the comment, the question with its
+	// options, recommendation and answer, the file name. Text, never HTML; empty where that text is
+	Snippet []SnippetPart `json:"snippet"`
+
+	// State docs/adr/0009 D1
+	State  TicketState `json:"state"`
+	Tenant TenantRef   `json:"tenant"`
+	Title  string      `json:"title"`
+
+	// Type docs/adr/0008 D1
+	Type TicketType `json:"type"`
+}
+
+// SearchHitList defines model for SearchHitList.
+type SearchHitList struct {
+	Items      []SearchHit               `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
 
 // SecurityClass defines model for SecurityClass.
 type SecurityClass string
 
 // Severity defines model for Severity.
 type Severity string
+
+// SnippetPart defines model for SnippetPart.
+type SnippetPart struct {
+	// Match The piece is a word the query found
+	Match bool `json:"match"`
+
+	// Text A piece of the matched text, as text
+	Text string `json:"text"`
+}
 
 // Tenant defines model for Tenant.
 type Tenant struct {
@@ -2460,6 +2775,18 @@ type Ticket struct {
 	// UrgencyRule The rule that derived the urgency: v2:default, whose value is later, since 2026-10-04 (docs/adr/0010 D3)
 	UrgencyRule string `json:"urgency_rule"`
 	Version     int    `json:"version"`
+}
+
+// TicketBody defines model for TicketBody.
+type TicketBody struct {
+	// Body Markdown, as written (docs/adr/0011 D1)
+	Body string `json:"body"`
+
+	// BodyHtml The body rendered and sanitised on the server (docs/adr/0011 D6); empty for an empty body
+	BodyHtml string `json:"body_html"`
+
+	// Version The ticket's version the body belongs to
+	Version int `json:"version"`
 }
 
 // TicketBodyReplace defines model for TicketBodyReplace.
@@ -2668,7 +2995,15 @@ type Token struct {
 	LastUsedOn   nullable.Nullable[openapi_types.Date] `json:"last_used_on,omitempty"`
 	Name         string                                `json:"name"`
 
-	// RestrictedProjectId The id of the project the token is restricted to
+	// RestrictedProject The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
+	// without a project restriction, and for one whose project the person no longer sees or
+	// whose tenant they no longer belong to — such a token reaches nothing
+	RestrictedProject nullable.Nullable[string] `json:"restricted_project"`
+
+	// RestrictedProjectId The id of the project the token is restricted to. Replaced by `restricted_project`, which
+	// names the project by its key, as a person knows it; kept in `/api/v1` for the clients that
+	// read it, since taking a field away is a breaking change (docs/adr/0046 D7)
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	RestrictedProjectId nullable.Nullable[openapi_types.UUID] `json:"restricted_project_id,omitempty"`
 
 	// RestrictedTenant The slug of the tenant the token is restricted to
@@ -2718,7 +3053,15 @@ type TokenCreated struct {
 	LastUsedOn   nullable.Nullable[openapi_types.Date] `json:"last_used_on,omitempty"`
 	Name         string                                `json:"name"`
 
-	// RestrictedProjectId The id of the project the token is restricted to
+	// RestrictedProject The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
+	// without a project restriction, and for one whose project the person no longer sees or
+	// whose tenant they no longer belong to — such a token reaches nothing
+	RestrictedProject nullable.Nullable[string] `json:"restricted_project"`
+
+	// RestrictedProjectId The id of the project the token is restricted to. Replaced by `restricted_project`, which
+	// names the project by its key, as a person knows it; kept in `/api/v1` for the clients that
+	// read it, since taking a field away is a breaking change (docs/adr/0046 D7)
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	RestrictedProjectId nullable.Nullable[openapi_types.UUID] `json:"restricted_project_id,omitempty"`
 
 	// RestrictedTenant The slug of the tenant the token is restricted to
@@ -2737,8 +3080,15 @@ type TokenCreated struct {
 
 // TokenList defines model for TokenList.
 type TokenList struct {
-	Items      []Token                   `json:"items"`
+	Items []Token `json:"items"`
+
+	// NextCursor The cursor of the next page; null at the end, and on a numbered page
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	Page       *int                      `json:"page,omitempty"`
+	PerPage    *int                      `json:"per_page,omitempty"`
+
+	// Total With page and per_page only
+	Total *int `json:"total,omitempty"`
 }
 
 // TokenMark The personal access token an act came through (docs/adr/0036 D6): its id and its name as the act
@@ -2947,8 +3297,17 @@ type QuestionNumber = int
 // RepositoryID defines model for RepositoryID.
 type RepositoryID = openapi_types.UUID
 
+// SavedFilterID defines model for SavedFilterID.
+type SavedFilterID = openapi_types.UUID
+
+// SearchQuery defines model for SearchQuery.
+type SearchQuery = string
+
 // TenantSlug defines model for TenantSlug.
 type TenantSlug = string
+
+// TicketKeyPath defines model for TicketKeyPath.
+type TicketKeyPath = string
 
 // TicketNumber defines model for TicketNumber.
 type TicketNumber = int
@@ -2988,6 +3347,9 @@ type ListMyAssignedParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListMyDecisionsParams defines parameters for ListMyDecisions.
@@ -3001,6 +3363,9 @@ type ListMyDecisionsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListMyInboxParams defines parameters for ListMyInbox.
@@ -3014,6 +3379,9 @@ type ListMyInboxParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // MarkMyInboxReadParams defines parameters for MarkMyInboxRead.
@@ -3039,6 +3407,9 @@ type ListMyNextParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // LookupRepositoryParams defines parameters for LookupRepository.
@@ -3050,6 +3421,23 @@ type LookupRepositoryParams struct {
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
+// SearchMyTenantsParams defines parameters for SearchMyTenants.
+type SearchMyTenantsParams struct {
+	// Q The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length
+	// is capped by the server, and a query of white space alone is `validation_failed`
+	Q SearchQuery `form:"q" json:"q"`
+
+	// Tenant Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names
+	// none of them is `404 not_found`, whether or not the tenant exists
+	Tenant *MeTenant `form:"tenant,omitempty" json:"tenant,omitempty"`
+
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListMyTokensParams defines parameters for ListMyTokens.
 type ListMyTokensParams struct {
 	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -3057,7 +3445,14 @@ type ListMyTokensParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Page A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+	Page    *Page                      `form:"page,omitempty" json:"page,omitempty"`
+	PerPage *ListMyTokensParamsPerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
 }
+
+// ListMyTokensParamsPerPage defines parameters for ListMyTokens.
+type ListMyTokensParamsPerPage int
 
 // CreateMyTokenParams defines parameters for CreateMyToken.
 type CreateMyTokenParams struct {
@@ -3126,6 +3521,51 @@ type ListAuditParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Page A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+	Page    *Page                   `form:"page,omitempty" json:"page,omitempty"`
+	PerPage *ListAuditParamsPerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
+}
+
+// ListAuditParamsPerPage defines parameters for ListAudit.
+type ListAuditParamsPerPage int
+
+// ListDeletedTicketsParams defines parameters for ListDeletedTickets.
+type ListDeletedTicketsParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
+}
+
+// ListSavedFiltersParams defines parameters for ListSavedFilters.
+type ListSavedFiltersParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
+}
+
+// CreateSavedFilterParams defines parameters for CreateSavedFilter.
+type CreateSavedFilterParams struct {
+	// IdempotencyKey A UUID the client generates per act and repeats on every retry of it; an
+	// agent's POST requires one (docs/adr/0045 D3, D4).
+	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
+}
+
+// UpdateSavedFilterParams defines parameters for UpdateSavedFilter.
+type UpdateSavedFilterParams struct {
+	// IfMatch The `ETag` of the version the client read. Required on overwriting writes:
+	// without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
+	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
 // ListGroupMappingsParams defines parameters for ListGroupMappings.
@@ -3135,6 +3575,9 @@ type ListGroupMappingsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // CreateGroupMappingParams defines parameters for CreateGroupMapping.
@@ -3158,7 +3601,17 @@ type ListMembersParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Page A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+	Page    *Page                     `form:"page,omitempty" json:"page,omitempty"`
+	PerPage *ListMembersParamsPerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
+
+// ListMembersParamsPerPage defines parameters for ListMembers.
+type ListMembersParamsPerPage int
 
 // AddMemberParams defines parameters for AddMember.
 type AddMemberParams struct {
@@ -3176,7 +3629,17 @@ type ListProjectsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Page A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+	Page    *Page                      `form:"page,omitempty" json:"page,omitempty"`
+	PerPage *ListProjectsParamsPerPage `form:"per_page,omitempty" json:"per_page,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
+
+// ListProjectsParamsPerPage defines parameters for ListProjects.
+type ListProjectsParamsPerPage int
 
 // CreateProjectParams defines parameters for CreateProject.
 type CreateProjectParams struct {
@@ -3199,6 +3662,9 @@ type ListProjectAccessParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListRepositoriesParams defines parameters for ListRepositories.
@@ -3252,7 +3718,10 @@ type ListProjectTicketsParams struct {
 	// DoneAfter Done after this time: done_at is later than it, the bound excluded as in opened_after and updated_after (docs/adr/0018 D1); with state=done or include_terminal
 	DoneAfter *DoneAfter `form:"done_after,omitempty" json:"done_after,omitempty"`
 
-	// Q Full text over title and body (docs/adr/0025); its length is capped by the server
+	// Q A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold
+	// every word, in the list's own order, without a rank or a snippet — the ranked search over
+	// comments, questions, file names and keys as well is `GET …/search`. Its length is capped by
+	// the server
 	Q *Query `form:"q,omitempty" json:"q,omitempty"`
 
 	// IncludeTerminal Include done and dropped tickets; without it they show only when state names them
@@ -3308,6 +3777,9 @@ type ListActivityParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListActivityParamsOrder defines parameters for ListActivity.
@@ -3320,6 +3792,9 @@ type ListAttachmentsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // UploadAttachmentMultipartBody defines parameters for UploadAttachment.
@@ -3358,6 +3833,9 @@ type ListCommentsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListCommentsParamsOrder defines parameters for ListComments.
@@ -3409,6 +3887,9 @@ type ListInterestParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListTicketLinksParams defines parameters for ListTicketLinks.
@@ -3418,6 +3899,9 @@ type ListTicketLinksParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListPrerequisitesParams defines parameters for ListPrerequisites.
@@ -3430,6 +3914,9 @@ type ListPrerequisitesParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // ListPrerequisitesParamsDirection defines parameters for ListPrerequisites.
@@ -3442,6 +3929,9 @@ type ListQuestionsParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // AskQuestionParams defines parameters for AskQuestion.
@@ -3472,6 +3962,9 @@ type ListTicketTimeParams struct {
 
 	// Limit Items per page; the server caps it at its configured maximum
 	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
 // BookTimeParams defines parameters for BookTime.
@@ -3518,6 +4011,19 @@ type OverrideUrgencyParams struct {
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
 
+// SearchTenantParams defines parameters for SearchTenant.
+type SearchTenantParams struct {
+	// Q The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length
+	// is capped by the server, and a query of white space alone is `validation_failed`
+	Q SearchQuery `form:"q" json:"q"`
+
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListTenantTicketsParams defines parameters for ListTenantTickets.
 type ListTenantTicketsParams struct {
 	// Project A project key, negatable with !
@@ -3549,7 +4055,10 @@ type ListTenantTicketsParams struct {
 	// DoneAfter Done after this time: done_at is later than it, the bound excluded as in opened_after and updated_after (docs/adr/0018 D1); with state=done or include_terminal
 	DoneAfter *DoneAfter `form:"done_after,omitempty" json:"done_after,omitempty"`
 
-	// Q Full text over title and body (docs/adr/0025); its length is capped by the server
+	// Q A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold
+	// every word, in the list's own order, without a rank or a snippet — the ranked search over
+	// comments, questions, file names and keys as well is `GET …/search`. Its length is capped by
+	// the server
 	Q *Query `form:"q,omitempty" json:"q,omitempty"`
 
 	// IncludeTerminal Include done and dropped tickets; without it they show only when state names them
@@ -3674,6 +4183,12 @@ type CreateAccountJSONRequestBody = AccountCreate
 
 // ResetAccountPasswordJSONRequestBody defines body for ResetAccountPassword for application/json ContentType.
 type ResetAccountPasswordJSONRequestBody = AccountPasswordReset
+
+// CreateSavedFilterJSONRequestBody defines body for CreateSavedFilter for application/json ContentType.
+type CreateSavedFilterJSONRequestBody = SavedFilterCreate
+
+// UpdateSavedFilterJSONRequestBody defines body for UpdateSavedFilter for application/json ContentType.
+type UpdateSavedFilterJSONRequestBody = SavedFilterPatch
 
 // CreateGroupMappingJSONRequestBody defines body for CreateGroupMapping for application/json ContentType.
 type CreateGroupMappingJSONRequestBody = GroupMappingCreate
@@ -4021,6 +4536,17 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
 	LookupRepository(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// SearchMyTenants Search the tickets of every tenant of the person
+	//
+	// The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —
+	// one read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit
+	// names its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that
+	// tenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator
+	// without a role in a tenant searches nothing of it (docs/adr/0034 D2).
+	//
+	// Corresponds with GET /api/v1/me/search (the `SearchMyTenants` operationId).
+	SearchMyTenants(ctx context.Context, params *SearchMyTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetMyToken The token this request presents, and what it makes of the request
 	//
 	// The token's metadata as the list shows it, the key of the project it is
@@ -4037,7 +4563,8 @@ type ClientInterface interface {
 	// ListMyTokens The person's tokens, revoked and expired ones included
 	//
 	// Metadata only; a token's plaintext is shown once, at creation
-	// (docs/adr/0035 D1, D6).
+	// (docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with
+	// a total (docs/adr/0048 D2).
 	//
 	// Corresponds with GET /api/v1/me/tokens (the `ListMyTokens` operationId).
 	ListMyTokens(ctx context.Context, params *ListMyTokensParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4311,8 +4838,12 @@ type ClientInterface interface {
 	// ListAudit The tenant's audit record (docs/adr/0026 D6)
 	//
 	// For the tenant's administrators. Filters combine with AND; a repeated
-	// `action` with OR. `Accept: text/csv` returns the same rows as CSV, every
-	// cell that could start a formula prefixed with an apostrophe.
+	// `action` with OR. Newest first, paged by cursor, or by number with a total
+	// (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
+	// cell that could start a formula prefixed with an apostrophe. A CSV answer
+	// carries no cursor: a client that reads more than one page as CSV asks for
+	// numbered pages, with `to` held at the moment it began, so that a newer
+	// row does not move the rows between two pages.
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/audit (the `ListAudit` operationId).
 	ListAudit(ctx context.Context, tenant TenantSlug, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4344,6 +4875,117 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
 	StopChatTurns(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListDeletedTickets The tenant's bin of deleted tickets
+	//
+	// The tenant administrators' view of the deleted tickets they can see, the last deleted first,
+	// each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
+	// list in which a deleted ticket exists. An administrator's, with `read` scope; a token
+	// restricted to a project is refused like an unknown tenant.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/deleted-tickets (the `ListDeletedTickets` operationId).
+	ListDeletedTickets(ctx context.Context, tenant TenantSlug, params *ListDeletedTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PurgeTicket Purge a deleted ticket for good
+	//
+	// A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+	// **in a browser session only**: the one irreversible act on a ticket, so a token — an
+	// administrator's `admin` token included — answers `403 session_required`, and the purge job
+	// does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
+	// ticket of the bin only — any other key is 404. The ticket, its
+	// comments, questions, links, stakes, time entries, notifications and attachments are removed,
+	// and the attachments' objects after them; its children become roots, and a block that waited
+	// on it waits on its key as an external reference. Its audit rows stay with their content
+	// emptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.
+	// Irreversible: the browser asks a second time. Recorded as `purged` and published.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key} (the `PurgeTicket` operationId).
+	PurgeTicket(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RestoreTicket Restore a deleted ticket from the bin
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+	// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
+	// as it was, its links, comments and place in the rank with it; the version rises. Recorded as
+	// `restored` and published.
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
+	RestoreTicket(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListSavedFilters The caller's saved filters and those shared with the tenant
+	//
+	// The caller's own filters and every filter a member shared with the tenant, oldest first, each
+	// with its owner. Every filter is checked against the vocabularies as it is read
+	// (docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody
+	// else that names a project or a ticket the caller cannot see — or one that no longer exists —
+	// is answered `redacted`, without its parameters, as an act that names a hidden ticket is
+	// (docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/filters (the `ListSavedFilters` operationId).
+	ListSavedFilters(ctx context.Context, tenant TenantSlug, params *ListSavedFiltersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSavedFilterWithBody Save a filter
+	//
+	// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+	// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+	// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+	// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+	// it. Recorded as `created`.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+	CreateSavedFilterWithBody(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateSavedFilter Save a filter
+	//
+	// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+	// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+	// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+	// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+	// it. Recorded as `created`.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+	CreateSavedFilter(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, body CreateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteSavedFilter Delete a saved filter
+	//
+	// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
+	// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
+	DeleteSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSavedFilter One saved filter
+	//
+	// The caller's own, or a shared one; any other is 404.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/filters/{filter} (the `GetSavedFilter` operationId).
+	GetSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSavedFilterWithBody Rename, change, share or unshare a saved filter
+	//
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+	UpdateSavedFilterWithBody(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateSavedFilter Rename, change, share or unshare a saved filter
+	//
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+	UpdateSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, body UpdateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListGroupMappings The tenant's group mappings, by group
 	//
@@ -4443,7 +5085,8 @@ type ClientInterface interface {
 	// address that tells two persons of one name apart, for the tenant's
 	// administrators; everyone else reads null — a global administrator who
 	// holds no role in the tenant and reads the list as part of its
-	// administration too (docs/adr/0034 D2).
+	// administration too (docs/adr/0034 D2). Paged by cursor, or by number
+	// with a total (docs/adr/0048 D2).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/members (the `ListMembers` operationId).
 	ListMembers(ctx context.Context, tenant TenantSlug, params *ListMembersParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4540,6 +5183,8 @@ type ClientInterface interface {
 	SetMemberGrant(ctx context.Context, tenant TenantSlug, personId PersonID, body SetMemberGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListProjects The projects the caller can see
+	//
+	// By key, paged by cursor, or by number with a total (docs/adr/0048 D2).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects (the `ListProjects` operationId).
 	ListProjects(ctx context.Context, tenant TenantSlug, params *ListProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -4814,6 +5459,21 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/tickets (the `CreateTicket` operationId).
 	CreateTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, params *CreateTicketParams, body CreateTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteTicket Delete a ticket into the tenant's bin
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+	// docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
+	// like a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of
+	// it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
+	// lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
+	// (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
+	// published. A restoration brings everything back; thirty days after the deletion the purge job
+	// removes it for good (D2). Deleting a ticket that others depend on is not refused — the browser
+	// shows the dependents and asks first (D7).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `DeleteTicket` operationId).
+	DeleteTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetTicket One ticket
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `GetTicket` operationId).
@@ -4911,6 +5571,22 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content (the `DownloadAttachment` operationId).
 	DownloadAttachment(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, attachment AttachmentID, params *DownloadAttachmentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTicketBody The ticket's body, as Markdown and rendered
+	//
+	// The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+	// own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+	// is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+	// as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+	// installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+	// image shows only when it names a raster attachment of this ticket, from that attachment's
+	// own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+	// Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+	// replacement of the body names in `If-Match`; the HTML changes with the ticket's
+	// attachments as well, which raise no version.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body (the `GetTicketBody` operationId).
+	GetTicketBody(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ReplaceTicketBodyWithBody Replace the ticket's body
 	//
@@ -5385,6 +6061,34 @@ type ClientInterface interface {
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
 	OverrideUrgency(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, body OverrideUrgencyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// SearchTenant Search the tenant's tickets
+	//
+	// Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
+	// over a ticket's title and body, its comments but a withdrawn one, its questions (the question,
+	// the options, the recommendation and the answer) and its attachments' file names; a text
+	// matches when it holds every word of `q`. A ticket's key matches by its beginning as well —
+	// `COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram
+	// similarity, so a word half typed or misspelt still finds it (D3).
+	//
+	// One hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the
+	// title above the body above comments, questions and file names, a title found by trigram
+	// below them (D4). A hit names the ticket — its key, title, type and state —, where it matched
+	// (`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an
+	// attachment's name) and a snippet of that text with the matched words marked (`ts_headline`,
+	// D5). The snippet is text in parts, never HTML: a client shows every part as text.
+	//
+	// Only what the caller can see is searched, snippets included: a restricted project they are
+	// not on, a confidential ticket of which they are neither a tenant administrator, the assignee
+	// nor the reporter, and a project-restricted token's other projects find nothing
+	// (docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a
+	// cursor belongs to its query.
+	//
+	// The `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose
+	// title and body hold every word, in the list's own order, with no rank and no snippet.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/search (the `SearchTenant` operationId).
+	SearchTenant(ctx context.Context, tenant TenantSlug, params *SearchTenantParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListTenantTickets The tenant's tickets across its projects, newest first
 	//
 	// The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
@@ -5573,7 +6277,9 @@ type ClientInterface interface {
 	// `oidc_name`", when one is configured and its gate admits somebody —
 	// `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
 	// (docs/adr/0030 D1, D8). The minimum password length is the policy every
-	// password form follows (docs/adr/0033 D3).
+	// password form follows (docs/adr/0033 D3), and the longest lifetime of a
+	// new token the bound of the token form (docs/adr/0035 D4) — the policies
+	// of the installation, public like the rest of this answer.
 	//
 	// Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
 	GetAuthOptions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5910,6 +6616,27 @@ func (c *Client) LookupRepository(ctx context.Context, params *LookupRepositoryP
 	return c.Client.Do(req)
 }
 
+// SearchMyTenants Search the tickets of every tenant of the person
+//
+// The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —
+// one read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit
+// names its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that
+// tenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator
+// without a role in a tenant searches nothing of it (docs/adr/0034 D2).
+//
+// Corresponds with GET /api/v1/me/search (the `SearchMyTenants` operationId).
+func (c *Client) SearchMyTenants(ctx context.Context, params *SearchMyTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSearchMyTenantsRequest(c.Server, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetMyToken The token this request presents, and what it makes of the request
 //
 // The token's metadata as the list shows it, the key of the project it is
@@ -5936,7 +6663,8 @@ func (c *Client) GetMyToken(ctx context.Context, reqEditors ...RequestEditorFn) 
 // ListMyTokens The person's tokens, revoked and expired ones included
 //
 // Metadata only; a token's plaintext is shown once, at creation
-// (docs/adr/0035 D1, D6).
+// (docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with
+// a total (docs/adr/0048 D2).
 //
 // Corresponds with GET /api/v1/me/tokens (the `ListMyTokens` operationId).
 func (c *Client) ListMyTokens(ctx context.Context, params *ListMyTokensParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6410,8 +7138,12 @@ func (c *Client) EndAccountSessions(ctx context.Context, tenant TenantSlug, user
 // ListAudit The tenant's audit record (docs/adr/0026 D6)
 //
 // For the tenant's administrators. Filters combine with AND; a repeated
-// `action` with OR. `Accept: text/csv` returns the same rows as CSV, every
-// cell that could start a formula prefixed with an apostrophe.
+// `action` with OR. Newest first, paged by cursor, or by number with a total
+// (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
+// cell that could start a formula prefixed with an apostrophe. A CSV answer
+// carries no cursor: a client that reads more than one page as CSV asks for
+// numbered pages, with `to` held at the moment it began, so that a newer
+// row does not move the rows between two pages.
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/audit (the `ListAudit` operationId).
 func (c *Client) ListAudit(ctx context.Context, tenant TenantSlug, params *ListAuditParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6464,6 +7196,217 @@ func (c *Client) GetChatAvailability(ctx context.Context, tenant TenantSlug, req
 // Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
 func (c *Client) StopChatTurns(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewStopChatTurnsRequest(c.Server, tenant)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListDeletedTickets The tenant's bin of deleted tickets
+//
+// The tenant administrators' view of the deleted tickets they can see, the last deleted first,
+// each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
+// list in which a deleted ticket exists. An administrator's, with `read` scope; a token
+// restricted to a project is refused like an unknown tenant.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/deleted-tickets (the `ListDeletedTickets` operationId).
+func (c *Client) ListDeletedTickets(ctx context.Context, tenant TenantSlug, params *ListDeletedTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListDeletedTicketsRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PurgeTicket Purge a deleted ticket for good
+//
+// A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+// **in a browser session only**: the one irreversible act on a ticket, so a token — an
+// administrator's `admin` token included — answers `403 session_required`, and the purge job
+// does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
+// ticket of the bin only — any other key is 404. The ticket, its
+// comments, questions, links, stakes, time entries, notifications and attachments are removed,
+// and the attachments' objects after them; its children become roots, and a block that waited
+// on it waits on its key as an external reference. Its audit rows stay with their content
+// emptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.
+// Irreversible: the browser asks a second time. Recorded as `purged` and published.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key} (the `PurgeTicket` operationId).
+func (c *Client) PurgeTicket(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPurgeTicketRequest(c.Server, tenant, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RestoreTicket Restore a deleted ticket from the bin
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
+// as it was, its links, comments and place in the rank with it; the version rises. Recorded as
+// `restored` and published.
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
+func (c *Client) RestoreTicket(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRestoreTicketRequest(c.Server, tenant, key)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListSavedFilters The caller's saved filters and those shared with the tenant
+//
+// The caller's own filters and every filter a member shared with the tenant, oldest first, each
+// with its owner. Every filter is checked against the vocabularies as it is read
+// (docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody
+// else that names a project or a ticket the caller cannot see — or one that no longer exists —
+// is answered `redacted`, without its parameters, as an act that names a hidden ticket is
+// (docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/filters (the `ListSavedFilters` operationId).
+func (c *Client) ListSavedFilters(ctx context.Context, tenant TenantSlug, params *ListSavedFiltersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListSavedFiltersRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSavedFilterWithBody Save a filter
+//
+// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+// it. Recorded as `created`.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+func (c *Client) CreateSavedFilterWithBody(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSavedFilterRequestWithBody(c.Server, tenant, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateSavedFilter Save a filter
+//
+// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+// it. Recorded as `created`.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+func (c *Client) CreateSavedFilter(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, body CreateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateSavedFilterRequest(c.Server, tenant, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteSavedFilter Delete a saved filter
+//
+// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
+// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
+func (c *Client) DeleteSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteSavedFilterRequest(c.Server, tenant, filter)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetSavedFilter One saved filter
+//
+// The caller's own, or a shared one; any other is 404.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/filters/{filter} (the `GetSavedFilter` operationId).
+func (c *Client) GetSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSavedFilterRequest(c.Server, tenant, filter)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSavedFilterWithBody Rename, change, share or unshare a saved filter
+//
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+func (c *Client) UpdateSavedFilterWithBody(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSavedFilterRequestWithBody(c.Server, tenant, filter, params, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UpdateSavedFilter Rename, change, share or unshare a saved filter
+//
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+func (c *Client) UpdateSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, body UpdateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateSavedFilterRequest(c.Server, tenant, filter, params, body)
 	if err != nil {
 		return nil, err
 	}
@@ -6632,7 +7575,8 @@ func (c *Client) UpdateGroupMapping(ctx context.Context, tenant TenantSlug, mapp
 // address that tells two persons of one name apart, for the tenant's
 // administrators; everyone else reads null — a global administrator who
 // holds no role in the tenant and reads the list as part of its
-// administration too (docs/adr/0034 D2).
+// administration too (docs/adr/0034 D2). Paged by cursor, or by number
+// with a total (docs/adr/0048 D2).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/members (the `ListMembers` operationId).
 func (c *Client) ListMembers(ctx context.Context, tenant TenantSlug, params *ListMembersParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -6789,6 +7733,8 @@ func (c *Client) SetMemberGrant(ctx context.Context, tenant TenantSlug, personId
 }
 
 // ListProjects The projects the caller can see
+//
+// By key, paged by cursor, or by number with a total (docs/adr/0048 D2).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects (the `ListProjects` operationId).
 func (c *Client) ListProjects(ctx context.Context, tenant TenantSlug, params *ListProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7283,6 +8229,31 @@ func (c *Client) CreateTicket(ctx context.Context, tenant TenantSlug, project Pr
 	return c.Client.Do(req)
 }
 
+// DeleteTicket Delete a ticket into the tenant's bin
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+// docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
+// like a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of
+// it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
+// lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
+// (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
+// published. A restoration brings everything back; thirty days after the deletion the purge job
+// removes it for good (D2). Deleting a ticket that others depend on is not refused — the browser
+// shows the dependents and asks first (D7).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `DeleteTicket` operationId).
+func (c *Client) DeleteTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteTicketRequest(c.Server, tenant, project, number)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetTicket One ticket
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `GetTicket` operationId).
@@ -7451,6 +8422,32 @@ func (c *Client) GetAttachment(ctx context.Context, tenant TenantSlug, project P
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content (the `DownloadAttachment` operationId).
 func (c *Client) DownloadAttachment(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, attachment AttachmentID, params *DownloadAttachmentParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDownloadAttachmentRequest(c.Server, tenant, project, number, attachment, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTicketBody The ticket's body, as Markdown and rendered
+//
+// The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+// own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+// is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+// as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+// installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+// image shows only when it names a raster attachment of this ticket, from that attachment's
+// own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+// Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+// replacement of the body names in `If-Match`; the HTML changes with the ticket's
+// attachments as well, which raise no version.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body (the `GetTicketBody` operationId).
+func (c *Client) GetTicketBody(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTicketBodyRequest(c.Server, tenant, project, number)
 	if err != nil {
 		return nil, err
 	}
@@ -8394,6 +9391,44 @@ func (c *Client) OverrideUrgency(ctx context.Context, tenant TenantSlug, project
 	return c.Client.Do(req)
 }
 
+// SearchTenant Search the tenant's tickets
+//
+// Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
+// over a ticket's title and body, its comments but a withdrawn one, its questions (the question,
+// the options, the recommendation and the answer) and its attachments' file names; a text
+// matches when it holds every word of `q`. A ticket's key matches by its beginning as well —
+// `COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram
+// similarity, so a word half typed or misspelt still finds it (D3).
+//
+// One hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the
+// title above the body above comments, questions and file names, a title found by trigram
+// below them (D4). A hit names the ticket — its key, title, type and state —, where it matched
+// (`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an
+// attachment's name) and a snippet of that text with the matched words marked (`ts_headline`,
+// D5). The snippet is text in parts, never HTML: a client shows every part as text.
+//
+// Only what the caller can see is searched, snippets included: a restricted project they are
+// not on, a confidential ticket of which they are neither a tenant administrator, the assignee
+// nor the reporter, and a project-restricted token's other projects find nothing
+// (docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a
+// cursor belongs to its query.
+//
+// The `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose
+// title and body hold every word, in the list's own order, with no rank and no snippet.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/search (the `SearchTenant` operationId).
+func (c *Client) SearchTenant(ctx context.Context, tenant TenantSlug, params *SearchTenantParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSearchTenantRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListTenantTickets The tenant's tickets across its projects, newest first
 //
 // The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
@@ -8682,7 +9717,9 @@ func (c *Client) LoginOidc(ctx context.Context, params *LoginOidcParams, reqEdit
 // `oidc_name`", when one is configured and its gate admits somebody —
 // `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
 // (docs/adr/0030 D1, D8). The minimum password length is the policy every
-// password form follows (docs/adr/0033 D3).
+// password form follows (docs/adr/0033 D3), and the longest lifetime of a
+// new token the bound of the token form (docs/adr/0035 D4) — the policies
+// of the installation, public like the rest of this answer.
 //
 // Corresponds with GET /auth/options (the `GetAuthOptions` operationId).
 func (c *Client) GetAuthOptions(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -8797,6 +9834,21 @@ func NewListMyAssignedRequest(server string, params *ListMyAssignedParams) (*htt
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -8944,6 +9996,21 @@ func NewListMyDecisionsRequest(server string, params *ListMyDecisionsParams) (*h
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -9020,6 +10087,21 @@ func NewListMyInboxRequest(server string, params *ListMyInboxParams) (*http.Requ
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -9213,6 +10295,21 @@ func NewListMyNextRequest(server string, params *ListMyNextParams) (*http.Reques
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -9322,6 +10419,92 @@ func NewLookupRepositoryRequest(server string, params *LookupRepositoryParams) (
 	return req, nil
 }
 
+// NewSearchMyTenantsRequest constructs an http.Request for the SearchMyTenants method
+func NewSearchMyTenantsRequest(server string, params *SearchMyTenantsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/search")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Tenant != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tenant", *params.Tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetMyTokenRequest constructs an http.Request for the GetMyToken method
 func NewGetMyTokenRequest(server string) (*http.Request, error) {
 	var err error
@@ -9392,6 +10575,30 @@ func NewListMyTokensRequest(server string, params *ListMyTokensParams) (*http.Re
 		if params.Limit != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PerPage != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "per_page", *params.PerPage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -10218,6 +11425,30 @@ func NewListAuditRequest(server string, tenant TenantSlug, params *ListAuditPara
 
 		}
 
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PerPage != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "per_page", *params.PerPage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -10300,6 +11531,477 @@ func NewStopChatTurnsRequest(server string, tenant TenantSlug) (*http.Request, e
 	return req, nil
 }
 
+// NewListDeletedTicketsRequest constructs an http.Request for the ListDeletedTickets method
+func NewListDeletedTicketsRequest(server string, tenant TenantSlug, params *ListDeletedTicketsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/deleted-tickets", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewPurgeTicketRequest constructs an http.Request for the PurgeTicket method
+func NewPurgeTicketRequest(server string, tenant TenantSlug, key TicketKeyPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/deleted-tickets/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRestoreTicketRequest constructs an http.Request for the RestoreTicket method
+func NewRestoreTicketRequest(server string, tenant TenantSlug, key TicketKeyPath) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "key", key, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/deleted-tickets/%s/restore", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListSavedFiltersRequest constructs an http.Request for the ListSavedFilters method
+func NewListSavedFiltersRequest(server string, tenant TenantSlug, params *ListSavedFiltersParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/filters", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewCreateSavedFilterRequest calls the generic CreateSavedFilter builder with application/json body
+func NewCreateSavedFilterRequest(server string, tenant TenantSlug, params *CreateSavedFilterParams, body CreateSavedFilterJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateSavedFilterRequestWithBody(server, tenant, params, "application/json", bodyReader)
+}
+
+// NewCreateSavedFilterRequestWithBody constructs an http.Request for the CreateSavedFilter method, with any body, and a specified content type
+func NewCreateSavedFilterRequestWithBody(server string, tenant TenantSlug, params *CreateSavedFilterParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/filters", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IdempotencyKey != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "Idempotency-Key", *params.IdempotencyKey, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: "uuid"})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("Idempotency-Key", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewDeleteSavedFilterRequest constructs an http.Request for the DeleteSavedFilter method
+func NewDeleteSavedFilterRequest(server string, tenant TenantSlug, filter SavedFilterID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "filter", filter, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/filters/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetSavedFilterRequest constructs an http.Request for the GetSavedFilter method
+func NewGetSavedFilterRequest(server string, tenant TenantSlug, filter SavedFilterID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "filter", filter, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/filters/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateSavedFilterRequest calls the generic UpdateSavedFilter builder with application/json body
+func NewUpdateSavedFilterRequest(server string, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, body UpdateSavedFilterJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateSavedFilterRequestWithBody(server, tenant, filter, params, "application/json", bodyReader)
+}
+
+// NewUpdateSavedFilterRequestWithBody constructs an http.Request for the UpdateSavedFilter method, with any body, and a specified content type
+func NewUpdateSavedFilterRequestWithBody(server string, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "filter", filter, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/filters/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPatch, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	if params != nil {
+
+		if params.IfMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
 // NewListGroupMappingsRequest constructs an http.Request for the ListGroupMappings method
 func NewListGroupMappingsRequest(server string, tenant TenantSlug, params *ListGroupMappingsParams) (*http.Request, error) {
 	var err error
@@ -10368,6 +12070,21 @@ func NewListGroupMappingsRequest(server string, tenant TenantSlug, params *ListG
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -10604,6 +12321,30 @@ func NewListMembersRequest(server string, tenant TenantSlug, params *ListMembers
 
 		}
 
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PerPage != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "per_page", *params.PerPage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -10613,6 +12354,21 @@ func NewListMembersRequest(server string, tenant TenantSlug, params *ListMembers
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -10846,6 +12602,30 @@ func NewListProjectsRequest(server string, tenant TenantSlug, params *ListProjec
 
 		}
 
+		if params.Page != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "page", *params.Page, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.PerPage != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "per_page", *params.PerPage, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -10855,6 +12635,21 @@ func NewListProjectsRequest(server string, tenant TenantSlug, params *ListProjec
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -11107,6 +12902,21 @@ func NewListProjectAccessRequest(server string, tenant TenantSlug, project Proje
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -12022,6 +13832,54 @@ func NewCreateTicketRequestWithBody(server string, tenant TenantSlug, project Pr
 	return req, nil
 }
 
+// NewDeleteTicketRequest constructs an http.Request for the DeleteTicket method
+func NewDeleteTicketRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetTicketRequest constructs an http.Request for the GetTicket method
 func NewGetTicketRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber) (*http.Request, error) {
 	var err error
@@ -12242,6 +14100,21 @@ func NewListActivityRequest(server string, tenant TenantSlug, project ProjectKey
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -12327,6 +14200,21 @@ func NewListAttachmentsRequest(server string, tenant TenantSlug, project Project
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -12522,6 +14410,54 @@ func NewDownloadAttachmentRequest(server string, tenant TenantSlug, project Proj
 	return req, nil
 }
 
+// NewGetTicketBodyRequest constructs an http.Request for the GetTicketBody method
+func NewGetTicketBodyRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s/body", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewReplaceTicketBodyRequest calls the generic ReplaceTicketBody builder with application/json body
 func NewReplaceTicketBodyRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ReplaceTicketBodyParams, body ReplaceTicketBodyJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -12692,6 +14628,21 @@ func NewListCommentsRequest(server string, tenant TenantSlug, project ProjectKey
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -13355,6 +15306,21 @@ func NewListInterestRequest(server string, tenant TenantSlug, project ProjectKey
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -13501,6 +15467,21 @@ func NewListTicketLinksRequest(server string, tenant TenantSlug, project Project
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -13774,6 +15755,21 @@ func NewListPrerequisitesRequest(server string, tenant TenantSlug, project Proje
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
 	return req, nil
 }
 
@@ -13859,6 +15855,21 @@ func NewListQuestionsRequest(server string, tenant TenantSlug, project ProjectKe
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -14359,6 +16370,21 @@ func NewListTicketTimeRequest(server string, tenant TenantSlug, project ProjectK
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -14937,6 +16963,87 @@ func NewOverrideUrgencyRequestWithBody(server string, tenant TenantSlug, project
 			req.Header.Set("If-Match", headerParam0)
 		}
 
+	}
+
+	return req, nil
+}
+
+// NewSearchTenantRequest constructs an http.Request for the SearchTenant method
+func NewSearchTenantRequest(server string, tenant TenantSlug, params *SearchTenantParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/search", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "q", params.Q, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
 	}
 
 	return req, nil
@@ -16153,6 +18260,19 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/me/repositories/lookup (the `LookupRepository` operationId).
 	LookupRepositoryWithResponse(ctx context.Context, params *LookupRepositoryParams, reqEditors ...RequestEditorFn) (*LookupRepositoryResponse, error)
 
+	// SearchMyTenantsWithResponse Search the tickets of every tenant of the person
+	//
+	// The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —
+	// one read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit
+	// names its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that
+	// tenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator
+	// without a role in a tenant searches nothing of it (docs/adr/0034 D2).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/me/search (the `SearchMyTenants` operationId).
+	SearchMyTenantsWithResponse(ctx context.Context, params *SearchMyTenantsParams, reqEditors ...RequestEditorFn) (*SearchMyTenantsResponse, error)
+
 	// GetMyTokenWithResponse The token this request presents, and what it makes of the request
 	//
 	// The token's metadata as the list shows it, the key of the project it is
@@ -16171,7 +18291,8 @@ type ClientWithResponsesInterface interface {
 	// ListMyTokensWithResponse The person's tokens, revoked and expired ones included
 	//
 	// Metadata only; a token's plaintext is shown once, at creation
-	// (docs/adr/0035 D1, D6).
+	// (docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with
+	// a total (docs/adr/0048 D2).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -16465,8 +18586,12 @@ type ClientWithResponsesInterface interface {
 	// ListAuditWithResponse The tenant's audit record (docs/adr/0026 D6)
 	//
 	// For the tenant's administrators. Filters combine with AND; a repeated
-	// `action` with OR. `Accept: text/csv` returns the same rows as CSV, every
-	// cell that could start a formula prefixed with an apostrophe.
+	// `action` with OR. Newest first, paged by cursor, or by number with a total
+	// (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
+	// cell that could start a formula prefixed with an apostrophe. A CSV answer
+	// carries no cursor: a client that reads more than one page as CSV asks for
+	// numbered pages, with `to` held at the moment it began, so that a newer
+	// row does not move the rows between two pages.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -16504,6 +18629,129 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/chat/turns (the `StopChatTurns` operationId).
 	StopChatTurnsWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*StopChatTurnsResponse, error)
+
+	// ListDeletedTicketsWithResponse The tenant's bin of deleted tickets
+	//
+	// The tenant administrators' view of the deleted tickets they can see, the last deleted first,
+	// each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
+	// list in which a deleted ticket exists. An administrator's, with `read` scope; a token
+	// restricted to a project is refused like an unknown tenant.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/deleted-tickets (the `ListDeletedTickets` operationId).
+	ListDeletedTicketsWithResponse(ctx context.Context, tenant TenantSlug, params *ListDeletedTicketsParams, reqEditors ...RequestEditorFn) (*ListDeletedTicketsResponse, error)
+
+	// PurgeTicketWithResponse Purge a deleted ticket for good
+	//
+	// A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+	// **in a browser session only**: the one irreversible act on a ticket, so a token — an
+	// administrator's `admin` token included — answers `403 session_required`, and the purge job
+	// does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
+	// ticket of the bin only — any other key is 404. The ticket, its
+	// comments, questions, links, stakes, time entries, notifications and attachments are removed,
+	// and the attachments' objects after them; its children become roots, and a block that waited
+	// on it waits on its key as an external reference. Its audit rows stay with their content
+	// emptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.
+	// Irreversible: the browser asks a second time. Recorded as `purged` and published.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key} (the `PurgeTicket` operationId).
+	PurgeTicketWithResponse(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*PurgeTicketResponse, error)
+
+	// RestoreTicketWithResponse Restore a deleted ticket from the bin
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+	// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
+	// as it was, its links, comments and place in the rank with it; the version rises. Recorded as
+	// `restored` and published.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
+	RestoreTicketWithResponse(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*RestoreTicketResponse, error)
+
+	// ListSavedFiltersWithResponse The caller's saved filters and those shared with the tenant
+	//
+	// The caller's own filters and every filter a member shared with the tenant, oldest first, each
+	// with its owner. Every filter is checked against the vocabularies as it is read
+	// (docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody
+	// else that names a project or a ticket the caller cannot see — or one that no longer exists —
+	// is answered `redacted`, without its parameters, as an act that names a hidden ticket is
+	// (docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/filters (the `ListSavedFilters` operationId).
+	ListSavedFiltersWithResponse(ctx context.Context, tenant TenantSlug, params *ListSavedFiltersParams, reqEditors ...RequestEditorFn) (*ListSavedFiltersResponse, error)
+
+	// CreateSavedFilterWithBodyWithResponse Save a filter
+	//
+	// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+	// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+	// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+	// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+	// it. Recorded as `created`.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+	CreateSavedFilterWithBodyWithResponse(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSavedFilterResponse, error)
+
+	// CreateSavedFilterWithResponse Save a filter
+	//
+	// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+	// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+	// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+	// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+	// it. Recorded as `created`.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+	CreateSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, body CreateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSavedFilterResponse, error)
+
+	// DeleteSavedFilterWithResponse Delete a saved filter
+	//
+	// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
+	// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
+	DeleteSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*DeleteSavedFilterResponse, error)
+
+	// GetSavedFilterWithResponse One saved filter
+	//
+	// The caller's own, or a shared one; any other is 404.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/filters/{filter} (the `GetSavedFilter` operationId).
+	GetSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*GetSavedFilterResponse, error)
+
+	// UpdateSavedFilterWithBodyWithResponse Rename, change, share or unshare a saved filter
+	//
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+	UpdateSavedFilterWithBodyWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSavedFilterResponse, error)
+
+	// UpdateSavedFilterWithResponse Rename, change, share or unshare a saved filter
+	//
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+	UpdateSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, body UpdateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSavedFilterResponse, error)
 
 	// ListGroupMappingsWithResponse The tenant's group mappings, by group
 	//
@@ -16607,7 +18855,8 @@ type ClientWithResponsesInterface interface {
 	// address that tells two persons of one name apart, for the tenant's
 	// administrators; everyone else reads null — a global administrator who
 	// holds no role in the tenant and reads the list as part of its
-	// administration too (docs/adr/0034 D2).
+	// administration too (docs/adr/0034 D2). Paged by cursor, or by number
+	// with a total (docs/adr/0048 D2).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -16708,6 +18957,8 @@ type ClientWithResponsesInterface interface {
 	SetMemberGrantWithResponse(ctx context.Context, tenant TenantSlug, personId PersonID, body SetMemberGrantJSONRequestBody, reqEditors ...RequestEditorFn) (*SetMemberGrantResponse, error)
 
 	// ListProjectsWithResponse The projects the caller can see
+	//
+	// By key, paged by cursor, or by number with a total (docs/adr/0048 D2).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -16998,6 +19249,23 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/tickets (the `CreateTicket` operationId).
 	CreateTicketWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, params *CreateTicketParams, body CreateTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateTicketResponse, error)
 
+	// DeleteTicketWithResponse Delete a ticket into the tenant's bin
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+	// docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
+	// like a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of
+	// it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
+	// lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
+	// (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
+	// published. A restoration brings everything back; thirty days after the deletion the purge job
+	// removes it for good (D2). Deleting a ticket that others depend on is not refused — the browser
+	// shows the dependents and asks first (D7).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `DeleteTicket` operationId).
+	DeleteTicketWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*DeleteTicketResponse, error)
+
 	// GetTicketWithResponse One ticket
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -17105,6 +19373,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content (the `DownloadAttachment` operationId).
 	DownloadAttachmentWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, attachment AttachmentID, params *DownloadAttachmentParams, reqEditors ...RequestEditorFn) (*DownloadAttachmentResponse, error)
+
+	// GetTicketBodyWithResponse The ticket's body, as Markdown and rendered
+	//
+	// The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+	// own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+	// is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+	// as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+	// installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+	// image shows only when it names a raster attachment of this ticket, from that attachment's
+	// own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+	// Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+	// replacement of the body names in `If-Match`; the HTML changes with the ticket's
+	// attachments as well, which raise no version.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body (the `GetTicketBody` operationId).
+	GetTicketBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*GetTicketBodyResponse, error)
 
 	// ReplaceTicketBodyWithBodyWithResponse Replace the ticket's body
 	//
@@ -17619,6 +19905,36 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
 	OverrideUrgencyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, body OverrideUrgencyJSONRequestBody, reqEditors ...RequestEditorFn) (*OverrideUrgencyResponse, error)
 
+	// SearchTenantWithResponse Search the tenant's tickets
+	//
+	// Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
+	// over a ticket's title and body, its comments but a withdrawn one, its questions (the question,
+	// the options, the recommendation and the answer) and its attachments' file names; a text
+	// matches when it holds every word of `q`. A ticket's key matches by its beginning as well —
+	// `COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram
+	// similarity, so a word half typed or misspelt still finds it (D3).
+	//
+	// One hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the
+	// title above the body above comments, questions and file names, a title found by trigram
+	// below them (D4). A hit names the ticket — its key, title, type and state —, where it matched
+	// (`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an
+	// attachment's name) and a snippet of that text with the matched words marked (`ts_headline`,
+	// D5). The snippet is text in parts, never HTML: a client shows every part as text.
+	//
+	// Only what the caller can see is searched, snippets included: a restricted project they are
+	// not on, a confidential ticket of which they are neither a tenant administrator, the assignee
+	// nor the reporter, and a project-restricted token's other projects find nothing
+	// (docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a
+	// cursor belongs to its query.
+	//
+	// The `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose
+	// title and body hold every word, in the list's own order, with no rank and no snippet.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/search (the `SearchTenant` operationId).
+	SearchTenantWithResponse(ctx context.Context, tenant TenantSlug, params *SearchTenantParams, reqEditors ...RequestEditorFn) (*SearchTenantResponse, error)
+
 	// ListTenantTicketsWithResponse The tenant's tickets across its projects, newest first
 	//
 	// The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
@@ -17823,7 +20139,9 @@ type ClientWithResponsesInterface interface {
 	// `oidc_name`", when one is configured and its gate admits somebody —
 	// `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
 	// (docs/adr/0030 D1, D8). The minimum password length is the policy every
-	// password form follows (docs/adr/0033 D3).
+	// password form follows (docs/adr/0033 D3), and the longest lifetime of a
+	// new token the bound of the token form (docs/adr/0035 D4) — the policies
+	// of the installation, public like the rest of this answer.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -17886,6 +20204,16 @@ func (r GetMeResponse) ContentType() string {
 	return ""
 }
 
+// ListMyAssignedResponse200Headers the declared response headers of an HTTP 200 response for ListMyAssigned
+type ListMyAssignedResponse200Headers struct {
+	ETag *string
+}
+
+// ListMyAssignedResponse304Headers the declared response headers of an HTTP 304 response for ListMyAssigned
+type ListMyAssignedResponse304Headers struct {
+	ETag *string
+}
+
 // ListMyAssignedResponseDefaultHeaders the declared response headers of an HTTP default response for ListMyAssigned
 type ListMyAssignedResponseDefaultHeaders struct {
 	XRequestId *string
@@ -17898,6 +20226,10 @@ type ListMyAssignedResponse struct {
 	JSON200 *MyTicketList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListMyAssignedResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListMyAssignedResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListMyAssignedResponseDefaultHeaders
 }
@@ -18051,6 +20383,16 @@ func (r SetMyChatResponse) ContentType() string {
 	return ""
 }
 
+// ListMyDecisionsResponse200Headers the declared response headers of an HTTP 200 response for ListMyDecisions
+type ListMyDecisionsResponse200Headers struct {
+	ETag *string
+}
+
+// ListMyDecisionsResponse304Headers the declared response headers of an HTTP 304 response for ListMyDecisions
+type ListMyDecisionsResponse304Headers struct {
+	ETag *string
+}
+
 // ListMyDecisionsResponseDefaultHeaders the declared response headers of an HTTP default response for ListMyDecisions
 type ListMyDecisionsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -18063,6 +20405,10 @@ type ListMyDecisionsResponse struct {
 	JSON200 *DecisionList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListMyDecisionsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListMyDecisionsResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListMyDecisionsResponseDefaultHeaders
 }
@@ -18106,6 +20452,16 @@ func (r ListMyDecisionsResponse) ContentType() string {
 	return ""
 }
 
+// ListMyInboxResponse200Headers the declared response headers of an HTTP 200 response for ListMyInbox
+type ListMyInboxResponse200Headers struct {
+	ETag *string
+}
+
+// ListMyInboxResponse304Headers the declared response headers of an HTTP 304 response for ListMyInbox
+type ListMyInboxResponse304Headers struct {
+	ETag *string
+}
+
 // ListMyInboxResponseDefaultHeaders the declared response headers of an HTTP default response for ListMyInbox
 type ListMyInboxResponseDefaultHeaders struct {
 	XRequestId *string
@@ -18118,6 +20474,10 @@ type ListMyInboxResponse struct {
 	JSON200 *InboxList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListMyInboxResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListMyInboxResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListMyInboxResponseDefaultHeaders
 }
@@ -18271,6 +20631,16 @@ func (r MarkNotificationReadResponse) ContentType() string {
 	return ""
 }
 
+// ListMyNextResponse200Headers the declared response headers of an HTTP 200 response for ListMyNext
+type ListMyNextResponse200Headers struct {
+	ETag *string
+}
+
+// ListMyNextResponse304Headers the declared response headers of an HTTP 304 response for ListMyNext
+type ListMyNextResponse304Headers struct {
+	ETag *string
+}
+
 // ListMyNextResponseDefaultHeaders the declared response headers of an HTTP default response for ListMyNext
 type ListMyNextResponseDefaultHeaders struct {
 	XRequestId *string
@@ -18283,6 +20653,10 @@ type ListMyNextResponse struct {
 	JSON200 *MyTicketList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListMyNextResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListMyNextResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListMyNextResponseDefaultHeaders
 }
@@ -18423,6 +20797,61 @@ func (r LookupRepositoryResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r LookupRepositoryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SearchMyTenantsResponseDefaultHeaders the declared response headers of an HTTP default response for SearchMyTenants
+type SearchMyTenantsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type SearchMyTenantsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SearchHitList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *SearchMyTenantsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SearchMyTenantsResponse) GetJSON200() *SearchHitList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SearchMyTenantsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SearchMyTenantsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SearchMyTenantsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SearchMyTenantsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SearchMyTenantsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -19454,6 +21883,499 @@ func (r StopChatTurnsResponse) ContentType() string {
 	return ""
 }
 
+// ListDeletedTicketsResponse200Headers the declared response headers of an HTTP 200 response for ListDeletedTickets
+type ListDeletedTicketsResponse200Headers struct {
+	ETag *string
+}
+
+// ListDeletedTicketsResponse304Headers the declared response headers of an HTTP 304 response for ListDeletedTickets
+type ListDeletedTicketsResponse304Headers struct {
+	ETag *string
+}
+
+// ListDeletedTicketsResponseDefaultHeaders the declared response headers of an HTTP default response for ListDeletedTickets
+type ListDeletedTicketsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListDeletedTicketsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DeletedTicketList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListDeletedTicketsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListDeletedTicketsResponse304Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListDeletedTicketsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListDeletedTicketsResponse) GetJSON200() *DeletedTicketList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListDeletedTicketsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListDeletedTicketsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListDeletedTicketsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListDeletedTicketsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListDeletedTicketsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PurgeTicketResponseDefaultHeaders the declared response headers of an HTTP default response for PurgeTicket
+type PurgeTicketResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type PurgeTicketResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *PurgeTicketResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r PurgeTicketResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r PurgeTicketResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PurgeTicketResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PurgeTicketResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PurgeTicketResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// RestoreTicketResponse200Headers the declared response headers of an HTTP 200 response for RestoreTicket
+type RestoreTicketResponse200Headers struct {
+	ETag *string
+}
+
+// RestoreTicketResponseDefaultHeaders the declared response headers of an HTTP default response for RestoreTicket
+type RestoreTicketResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type RestoreTicketResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Ticket
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *RestoreTicketResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *RestoreTicketResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RestoreTicketResponse) GetJSON200() *Ticket {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RestoreTicketResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RestoreTicketResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RestoreTicketResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RestoreTicketResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RestoreTicketResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListSavedFiltersResponse200Headers the declared response headers of an HTTP 200 response for ListSavedFilters
+type ListSavedFiltersResponse200Headers struct {
+	ETag *string
+}
+
+// ListSavedFiltersResponse304Headers the declared response headers of an HTTP 304 response for ListSavedFilters
+type ListSavedFiltersResponse304Headers struct {
+	ETag *string
+}
+
+// ListSavedFiltersResponseDefaultHeaders the declared response headers of an HTTP default response for ListSavedFilters
+type ListSavedFiltersResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListSavedFiltersResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SavedFilterList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListSavedFiltersResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListSavedFiltersResponse304Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListSavedFiltersResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListSavedFiltersResponse) GetJSON200() *SavedFilterList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListSavedFiltersResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListSavedFiltersResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListSavedFiltersResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListSavedFiltersResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListSavedFiltersResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CreateSavedFilterResponse201Headers the declared response headers of an HTTP 201 response for CreateSavedFilter
+type CreateSavedFilterResponse201Headers struct {
+	ETag     *string
+	Location *string
+}
+
+// CreateSavedFilterResponseDefaultHeaders the declared response headers of an HTTP default response for CreateSavedFilter
+type CreateSavedFilterResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type CreateSavedFilterResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *SavedFilter
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *CreateSavedFilterResponse201Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *CreateSavedFilterResponseDefaultHeaders
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateSavedFilterResponse) GetJSON201() *SavedFilter {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateSavedFilterResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateSavedFilterResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateSavedFilterResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateSavedFilterResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateSavedFilterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// DeleteSavedFilterResponseDefaultHeaders the declared response headers of an HTTP default response for DeleteSavedFilter
+type DeleteSavedFilterResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type DeleteSavedFilterResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *DeleteSavedFilterResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteSavedFilterResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteSavedFilterResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteSavedFilterResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteSavedFilterResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteSavedFilterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetSavedFilterResponse200Headers the declared response headers of an HTTP 200 response for GetSavedFilter
+type GetSavedFilterResponse200Headers struct {
+	ETag *string
+}
+
+// GetSavedFilterResponseDefaultHeaders the declared response headers of an HTTP default response for GetSavedFilter
+type GetSavedFilterResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetSavedFilterResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SavedFilter
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetSavedFilterResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetSavedFilterResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetSavedFilterResponse) GetJSON200() *SavedFilter {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetSavedFilterResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetSavedFilterResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSavedFilterResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSavedFilterResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSavedFilterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UpdateSavedFilterResponse200Headers the declared response headers of an HTTP 200 response for UpdateSavedFilter
+type UpdateSavedFilterResponse200Headers struct {
+	ETag *string
+}
+
+// UpdateSavedFilterResponseDefaultHeaders the declared response headers of an HTTP default response for UpdateSavedFilter
+type UpdateSavedFilterResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type UpdateSavedFilterResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SavedFilter
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *UpdateSavedFilterResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *UpdateSavedFilterResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r UpdateSavedFilterResponse) GetJSON200() *SavedFilter {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UpdateSavedFilterResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UpdateSavedFilterResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateSavedFilterResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateSavedFilterResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UpdateSavedFilterResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListGroupMappingsResponse200Headers the declared response headers of an HTTP 200 response for ListGroupMappings
+type ListGroupMappingsResponse200Headers struct {
+	ETag *string
+}
+
+// ListGroupMappingsResponse304Headers the declared response headers of an HTTP 304 response for ListGroupMappings
+type ListGroupMappingsResponse304Headers struct {
+	ETag *string
+}
+
 // ListGroupMappingsResponseDefaultHeaders the declared response headers of an HTTP default response for ListGroupMappings
 type ListGroupMappingsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -19466,6 +22388,10 @@ type ListGroupMappingsResponse struct {
 	JSON200 *GroupMappingList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListGroupMappingsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListGroupMappingsResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListGroupMappingsResponseDefaultHeaders
 }
@@ -19682,6 +22608,16 @@ func (r UpdateGroupMappingResponse) ContentType() string {
 	return ""
 }
 
+// ListMembersResponse200Headers the declared response headers of an HTTP 200 response for ListMembers
+type ListMembersResponse200Headers struct {
+	ETag *string
+}
+
+// ListMembersResponse304Headers the declared response headers of an HTTP 304 response for ListMembers
+type ListMembersResponse304Headers struct {
+	ETag *string
+}
+
 // ListMembersResponseDefaultHeaders the declared response headers of an HTTP default response for ListMembers
 type ListMembersResponseDefaultHeaders struct {
 	XRequestId *string
@@ -19694,6 +22630,10 @@ type ListMembersResponse struct {
 	JSON200 *MemberList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListMembersResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListMembersResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListMembersResponseDefaultHeaders
 }
@@ -19895,6 +22835,16 @@ func (r SetMemberGrantResponse) ContentType() string {
 	return ""
 }
 
+// ListProjectsResponse200Headers the declared response headers of an HTTP 200 response for ListProjects
+type ListProjectsResponse200Headers struct {
+	ETag *string
+}
+
+// ListProjectsResponse304Headers the declared response headers of an HTTP 304 response for ListProjects
+type ListProjectsResponse304Headers struct {
+	ETag *string
+}
+
 // ListProjectsResponseDefaultHeaders the declared response headers of an HTTP default response for ListProjects
 type ListProjectsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -19907,6 +22857,10 @@ type ListProjectsResponse struct {
 	JSON200 *ProjectList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListProjectsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListProjectsResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListProjectsResponseDefaultHeaders
 }
@@ -20152,6 +23106,16 @@ func (r UpdateProjectResponse) ContentType() string {
 	return ""
 }
 
+// ListProjectAccessResponse200Headers the declared response headers of an HTTP 200 response for ListProjectAccess
+type ListProjectAccessResponse200Headers struct {
+	ETag *string
+}
+
+// ListProjectAccessResponse304Headers the declared response headers of an HTTP 304 response for ListProjectAccess
+type ListProjectAccessResponse304Headers struct {
+	ETag *string
+}
+
 // ListProjectAccessResponseDefaultHeaders the declared response headers of an HTTP default response for ListProjectAccess
 type ListProjectAccessResponseDefaultHeaders struct {
 	XRequestId *string
@@ -20164,6 +23128,10 @@ type ListProjectAccessResponse struct {
 	JSON200 *ProjectAccessList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListProjectAccessResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListProjectAccessResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListProjectAccessResponseDefaultHeaders
 }
@@ -20793,6 +23761,54 @@ func (r CreateTicketResponse) ContentType() string {
 	return ""
 }
 
+// DeleteTicketResponseDefaultHeaders the declared response headers of an HTTP default response for DeleteTicket
+type DeleteTicketResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type DeleteTicketResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *DeleteTicketResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteTicketResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteTicketResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteTicketResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteTicketResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteTicketResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetTicketResponse200Headers the declared response headers of an HTTP 200 response for GetTicket
 type GetTicketResponse200Headers struct {
 	ETag *string
@@ -20917,6 +23933,16 @@ func (r UpdateTicketResponse) ContentType() string {
 	return ""
 }
 
+// ListActivityResponse200Headers the declared response headers of an HTTP 200 response for ListActivity
+type ListActivityResponse200Headers struct {
+	ETag *string
+}
+
+// ListActivityResponse304Headers the declared response headers of an HTTP 304 response for ListActivity
+type ListActivityResponse304Headers struct {
+	ETag *string
+}
+
 // ListActivityResponseDefaultHeaders the declared response headers of an HTTP default response for ListActivity
 type ListActivityResponseDefaultHeaders struct {
 	XRequestId *string
@@ -20929,6 +23955,10 @@ type ListActivityResponse struct {
 	JSON200 *ActivityList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListActivityResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListActivityResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListActivityResponseDefaultHeaders
 }
@@ -20972,6 +24002,16 @@ func (r ListActivityResponse) ContentType() string {
 	return ""
 }
 
+// ListAttachmentsResponse200Headers the declared response headers of an HTTP 200 response for ListAttachments
+type ListAttachmentsResponse200Headers struct {
+	ETag *string
+}
+
+// ListAttachmentsResponse304Headers the declared response headers of an HTTP 304 response for ListAttachments
+type ListAttachmentsResponse304Headers struct {
+	ETag *string
+}
+
 // ListAttachmentsResponseDefaultHeaders the declared response headers of an HTTP default response for ListAttachments
 type ListAttachmentsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -20984,6 +24024,10 @@ type ListAttachmentsResponse struct {
 	JSON200 *AttachmentList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListAttachmentsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListAttachmentsResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListAttachmentsResponseDefaultHeaders
 }
@@ -21209,6 +24253,68 @@ func (r DownloadAttachmentResponse) ContentType() string {
 	return ""
 }
 
+// GetTicketBodyResponse200Headers the declared response headers of an HTTP 200 response for GetTicketBody
+type GetTicketBodyResponse200Headers struct {
+	ETag *string
+}
+
+// GetTicketBodyResponseDefaultHeaders the declared response headers of an HTTP default response for GetTicketBody
+type GetTicketBodyResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetTicketBodyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TicketBody
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetTicketBodyResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetTicketBodyResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTicketBodyResponse) GetJSON200() *TicketBody {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetTicketBodyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTicketBodyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTicketBodyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTicketBodyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTicketBodyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ReplaceTicketBodyResponse200Headers the declared response headers of an HTTP 200 response for ReplaceTicketBody
 type ReplaceTicketBodyResponse200Headers struct {
 	ETag *string
@@ -21271,6 +24377,16 @@ func (r ReplaceTicketBodyResponse) ContentType() string {
 	return ""
 }
 
+// ListCommentsResponse200Headers the declared response headers of an HTTP 200 response for ListComments
+type ListCommentsResponse200Headers struct {
+	ETag *string
+}
+
+// ListCommentsResponse304Headers the declared response headers of an HTTP 304 response for ListComments
+type ListCommentsResponse304Headers struct {
+	ETag *string
+}
+
 // ListCommentsResponseDefaultHeaders the declared response headers of an HTTP default response for ListComments
 type ListCommentsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -21283,6 +24399,10 @@ type ListCommentsResponse struct {
 	JSON200 *CommentList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListCommentsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListCommentsResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListCommentsResponseDefaultHeaders
 }
@@ -21788,6 +24908,16 @@ func (r RemoveInterestResponse) ContentType() string {
 	return ""
 }
 
+// ListInterestResponse200Headers the declared response headers of an HTTP 200 response for ListInterest
+type ListInterestResponse200Headers struct {
+	ETag *string
+}
+
+// ListInterestResponse304Headers the declared response headers of an HTTP 304 response for ListInterest
+type ListInterestResponse304Headers struct {
+	ETag *string
+}
+
 // ListInterestResponseDefaultHeaders the declared response headers of an HTTP default response for ListInterest
 type ListInterestResponseDefaultHeaders struct {
 	XRequestId *string
@@ -21800,6 +24930,10 @@ type ListInterestResponse struct {
 	JSON200 *InterestList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListInterestResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListInterestResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListInterestResponseDefaultHeaders
 }
@@ -21905,6 +25039,16 @@ func (r SetInterestResponse) ContentType() string {
 	return ""
 }
 
+// ListTicketLinksResponse200Headers the declared response headers of an HTTP 200 response for ListTicketLinks
+type ListTicketLinksResponse200Headers struct {
+	ETag *string
+}
+
+// ListTicketLinksResponse304Headers the declared response headers of an HTTP 304 response for ListTicketLinks
+type ListTicketLinksResponse304Headers struct {
+	ETag *string
+}
+
 // ListTicketLinksResponseDefaultHeaders the declared response headers of an HTTP default response for ListTicketLinks
 type ListTicketLinksResponseDefaultHeaders struct {
 	XRequestId *string
@@ -21917,6 +25061,10 @@ type ListTicketLinksResponse struct {
 	JSON200 *LinkList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListTicketLinksResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListTicketLinksResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListTicketLinksResponseDefaultHeaders
 }
@@ -22125,6 +25273,16 @@ func (r ExportTicketResponse) ContentType() string {
 	return ""
 }
 
+// ListPrerequisitesResponse200Headers the declared response headers of an HTTP 200 response for ListPrerequisites
+type ListPrerequisitesResponse200Headers struct {
+	ETag *string
+}
+
+// ListPrerequisitesResponse304Headers the declared response headers of an HTTP 304 response for ListPrerequisites
+type ListPrerequisitesResponse304Headers struct {
+	ETag *string
+}
+
 // ListPrerequisitesResponseDefaultHeaders the declared response headers of an HTTP default response for ListPrerequisites
 type ListPrerequisitesResponseDefaultHeaders struct {
 	XRequestId *string
@@ -22137,6 +25295,10 @@ type ListPrerequisitesResponse struct {
 	JSON200 *PrerequisiteTree
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListPrerequisitesResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListPrerequisitesResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListPrerequisitesResponseDefaultHeaders
 }
@@ -22180,6 +25342,16 @@ func (r ListPrerequisitesResponse) ContentType() string {
 	return ""
 }
 
+// ListQuestionsResponse200Headers the declared response headers of an HTTP 200 response for ListQuestions
+type ListQuestionsResponse200Headers struct {
+	ETag *string
+}
+
+// ListQuestionsResponse304Headers the declared response headers of an HTTP 304 response for ListQuestions
+type ListQuestionsResponse304Headers struct {
+	ETag *string
+}
+
 // ListQuestionsResponseDefaultHeaders the declared response headers of an HTTP default response for ListQuestions
 type ListQuestionsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -22192,6 +25364,10 @@ type ListQuestionsResponse struct {
 	JSON200 *QuestionList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListQuestionsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListQuestionsResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListQuestionsResponseDefaultHeaders
 }
@@ -22608,6 +25784,16 @@ func (r MoveTicketRankResponse) ContentType() string {
 	return ""
 }
 
+// ListTicketTimeResponse200Headers the declared response headers of an HTTP 200 response for ListTicketTime
+type ListTicketTimeResponse200Headers struct {
+	ETag *string
+}
+
+// ListTicketTimeResponse304Headers the declared response headers of an HTTP 304 response for ListTicketTime
+type ListTicketTimeResponse304Headers struct {
+	ETag *string
+}
+
 // ListTicketTimeResponseDefaultHeaders the declared response headers of an HTTP default response for ListTicketTime
 type ListTicketTimeResponseDefaultHeaders struct {
 	XRequestId *string
@@ -22620,6 +25806,10 @@ type ListTicketTimeResponse struct {
 	JSON200 *TimeEntryList
 	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
 	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListTicketTimeResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListTicketTimeResponse304Headers
 	// HeadersDefault the parsed response headers for an HTTP default response
 	HeadersDefault *ListTicketTimeResponseDefaultHeaders
 }
@@ -23147,6 +26337,61 @@ func (r OverrideUrgencyResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r OverrideUrgencyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// SearchTenantResponseDefaultHeaders the declared response headers of an HTTP default response for SearchTenant
+type SearchTenantResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type SearchTenantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *SearchHitList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *SearchTenantResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r SearchTenantResponse) GetJSON200() *SearchHitList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SearchTenantResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r SearchTenantResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r SearchTenantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SearchTenantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r SearchTenantResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -24045,6 +27290,25 @@ func (c *ClientWithResponses) LookupRepositoryWithResponse(ctx context.Context, 
 	return ParseLookupRepositoryResponse(rsp)
 }
 
+// SearchMyTenantsWithResponse Search the tickets of every tenant of the person
+//
+// The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —
+// one read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit
+// names its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that
+// tenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator
+// without a role in a tenant searches nothing of it (docs/adr/0034 D2).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/me/search (the `SearchMyTenants` operationId).
+func (c *ClientWithResponses) SearchMyTenantsWithResponse(ctx context.Context, params *SearchMyTenantsParams, reqEditors ...RequestEditorFn) (*SearchMyTenantsResponse, error) {
+	rsp, err := c.SearchMyTenants(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSearchMyTenantsResponse(rsp)
+}
+
 // GetMyTokenWithResponse The token this request presents, and what it makes of the request
 //
 // The token's metadata as the list shows it, the key of the project it is
@@ -24069,7 +27333,8 @@ func (c *ClientWithResponses) GetMyTokenWithResponse(ctx context.Context, reqEdi
 // ListMyTokensWithResponse The person's tokens, revoked and expired ones included
 //
 // Metadata only; a token's plaintext is shown once, at creation
-// (docs/adr/0035 D1, D6).
+// (docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with
+// a total (docs/adr/0048 D2).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -24483,8 +27748,12 @@ func (c *ClientWithResponses) EndAccountSessionsWithResponse(ctx context.Context
 // ListAuditWithResponse The tenant's audit record (docs/adr/0026 D6)
 //
 // For the tenant's administrators. Filters combine with AND; a repeated
-// `action` with OR. `Accept: text/csv` returns the same rows as CSV, every
-// cell that could start a formula prefixed with an apostrophe.
+// `action` with OR. Newest first, paged by cursor, or by number with a total
+// (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
+// cell that could start a formula prefixed with an apostrophe. A CSV answer
+// carries no cursor: a client that reads more than one page as CSV asks for
+// numbered pages, with `to` held at the moment it began, so that a newer
+// row does not move the rows between two pages.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -24539,6 +27808,189 @@ func (c *ClientWithResponses) StopChatTurnsWithResponse(ctx context.Context, ten
 		return nil, err
 	}
 	return ParseStopChatTurnsResponse(rsp)
+}
+
+// ListDeletedTicketsWithResponse The tenant's bin of deleted tickets
+//
+// The tenant administrators' view of the deleted tickets they can see, the last deleted first,
+// each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
+// list in which a deleted ticket exists. An administrator's, with `read` scope; a token
+// restricted to a project is refused like an unknown tenant.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/deleted-tickets (the `ListDeletedTickets` operationId).
+func (c *ClientWithResponses) ListDeletedTicketsWithResponse(ctx context.Context, tenant TenantSlug, params *ListDeletedTicketsParams, reqEditors ...RequestEditorFn) (*ListDeletedTicketsResponse, error) {
+	rsp, err := c.ListDeletedTickets(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListDeletedTicketsResponse(rsp)
+}
+
+// PurgeTicketWithResponse Purge a deleted ticket for good
+//
+// A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+// **in a browser session only**: the one irreversible act on a ticket, so a token — an
+// administrator's `admin` token included — answers `403 session_required`, and the purge job
+// does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
+// ticket of the bin only — any other key is 404. The ticket, its
+// comments, questions, links, stakes, time entries, notifications and attachments are removed,
+// and the attachments' objects after them; its children become roots, and a block that waited
+// on it waits on its key as an external reference. Its audit rows stay with their content
+// emptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.
+// Irreversible: the browser asks a second time. Recorded as `purged` and published.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key} (the `PurgeTicket` operationId).
+func (c *ClientWithResponses) PurgeTicketWithResponse(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*PurgeTicketResponse, error) {
+	rsp, err := c.PurgeTicket(ctx, tenant, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePurgeTicketResponse(rsp)
+}
+
+// RestoreTicketWithResponse Restore a deleted ticket from the bin
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+// docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
+// as it was, its links, comments and place in the rank with it; the version rises. Recorded as
+// `restored` and published.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
+func (c *ClientWithResponses) RestoreTicketWithResponse(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*RestoreTicketResponse, error) {
+	rsp, err := c.RestoreTicket(ctx, tenant, key, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRestoreTicketResponse(rsp)
+}
+
+// ListSavedFiltersWithResponse The caller's saved filters and those shared with the tenant
+//
+// The caller's own filters and every filter a member shared with the tenant, oldest first, each
+// with its owner. Every filter is checked against the vocabularies as it is read
+// (docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody
+// else that names a project or a ticket the caller cannot see — or one that no longer exists —
+// is answered `redacted`, without its parameters, as an act that names a hidden ticket is
+// (docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/filters (the `ListSavedFilters` operationId).
+func (c *ClientWithResponses) ListSavedFiltersWithResponse(ctx context.Context, tenant TenantSlug, params *ListSavedFiltersParams, reqEditors ...RequestEditorFn) (*ListSavedFiltersResponse, error) {
+	rsp, err := c.ListSavedFilters(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListSavedFiltersResponse(rsp)
+}
+
+// CreateSavedFilterWithBodyWithResponse Save a filter
+//
+// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+// it. Recorded as `created`.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+func (c *ClientWithResponses) CreateSavedFilterWithBodyWithResponse(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSavedFilterResponse, error) {
+	rsp, err := c.CreateSavedFilterWithBody(ctx, tenant, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSavedFilterResponse(rsp)
+}
+
+// CreateSavedFilterWithResponse Save a filter
+//
+// The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
+// (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
+// outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
+// the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+// it. Recorded as `created`.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/filters (the `CreateSavedFilter` operationId).
+func (c *ClientWithResponses) CreateSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, params *CreateSavedFilterParams, body CreateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSavedFilterResponse, error) {
+	rsp, err := c.CreateSavedFilter(ctx, tenant, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateSavedFilterResponse(rsp)
+}
+
+// DeleteSavedFilterWithResponse Delete a saved filter
+//
+// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
+// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
+func (c *ClientWithResponses) DeleteSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*DeleteSavedFilterResponse, error) {
+	rsp, err := c.DeleteSavedFilter(ctx, tenant, filter, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteSavedFilterResponse(rsp)
+}
+
+// GetSavedFilterWithResponse One saved filter
+//
+// The caller's own, or a shared one; any other is 404.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/filters/{filter} (the `GetSavedFilter` operationId).
+func (c *ClientWithResponses) GetSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*GetSavedFilterResponse, error) {
+	rsp, err := c.GetSavedFilter(ctx, tenant, filter, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSavedFilterResponse(rsp)
+}
+
+// UpdateSavedFilterWithBodyWithResponse Rename, change, share or unshare a saved filter
+//
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+func (c *ClientWithResponses) UpdateSavedFilterWithBodyWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateSavedFilterResponse, error) {
+	rsp, err := c.UpdateSavedFilterWithBody(ctx, tenant, filter, params, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSavedFilterResponse(rsp)
+}
+
+// UpdateSavedFilterWithResponse Rename, change, share or unshare a saved filter
+//
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
+// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
+// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PATCH /api/v1/tenants/{tenant}/filters/{filter} (the `UpdateSavedFilter` operationId).
+func (c *ClientWithResponses) UpdateSavedFilterWithResponse(ctx context.Context, tenant TenantSlug, filter SavedFilterID, params *UpdateSavedFilterParams, body UpdateSavedFilterJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateSavedFilterResponse, error) {
+	rsp, err := c.UpdateSavedFilter(ctx, tenant, filter, params, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateSavedFilterResponse(rsp)
 }
 
 // ListGroupMappingsWithResponse The tenant's group mappings, by group
@@ -24679,7 +28131,8 @@ func (c *ClientWithResponses) UpdateGroupMappingWithResponse(ctx context.Context
 // address that tells two persons of one name apart, for the tenant's
 // administrators; everyone else reads null — a global administrator who
 // holds no role in the tenant and reads the list as part of its
-// administration too (docs/adr/0034 D2).
+// administration too (docs/adr/0034 D2). Paged by cursor, or by number
+// with a total (docs/adr/0048 D2).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -24816,6 +28269,8 @@ func (c *ClientWithResponses) SetMemberGrantWithResponse(ctx context.Context, te
 }
 
 // ListProjectsWithResponse The projects the caller can see
+//
+// By key, paged by cursor, or by number with a total (docs/adr/0048 D2).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -25238,6 +28693,29 @@ func (c *ClientWithResponses) CreateTicketWithResponse(ctx context.Context, tena
 	return ParseCreateTicketResponse(rsp)
 }
 
+// DeleteTicketWithResponse Delete a ticket into the tenant's bin
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+// docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
+// like a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of
+// it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
+// lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
+// (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
+// published. A restoration brings everything back; thirty days after the deletion the purge job
+// removes it for good (D2). Deleting a ticket that others depend on is not refused — the browser
+// shows the dependents and asks first (D7).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} (the `DeleteTicket` operationId).
+func (c *ClientWithResponses) DeleteTicketWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*DeleteTicketResponse, error) {
+	rsp, err := c.DeleteTicket(ctx, tenant, project, number, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteTicketResponse(rsp)
+}
+
 // GetTicketWithResponse One ticket
 //
 // Returns a wrapper object for the known response body format(s).
@@ -25392,6 +28870,30 @@ func (c *ClientWithResponses) DownloadAttachmentWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseDownloadAttachmentResponse(rsp)
+}
+
+// GetTicketBodyWithResponse The ticket's body, as Markdown and rendered
+//
+// The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+// own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+// is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+// as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+// installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+// image shows only when it names a raster attachment of this ticket, from that attachment's
+// own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+// Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+// replacement of the body names in `If-Match`; the HTML changes with the ticket's
+// attachments as well, which raise no version.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body (the `GetTicketBody` operationId).
+func (c *ClientWithResponses) GetTicketBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*GetTicketBodyResponse, error) {
+	rsp, err := c.GetTicketBody(ctx, tenant, project, number, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTicketBodyResponse(rsp)
 }
 
 // ReplaceTicketBodyWithBodyWithResponse Replace the ticket's body
@@ -26183,6 +29685,42 @@ func (c *ClientWithResponses) OverrideUrgencyWithResponse(ctx context.Context, t
 	return ParseOverrideUrgencyResponse(rsp)
 }
 
+// SearchTenantWithResponse Search the tenant's tickets
+//
+// Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
+// over a ticket's title and body, its comments but a withdrawn one, its questions (the question,
+// the options, the recommendation and the answer) and its attachments' file names; a text
+// matches when it holds every word of `q`. A ticket's key matches by its beginning as well —
+// `COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram
+// similarity, so a word half typed or misspelt still finds it (D3).
+//
+// One hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the
+// title above the body above comments, questions and file names, a title found by trigram
+// below them (D4). A hit names the ticket — its key, title, type and state —, where it matched
+// (`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an
+// attachment's name) and a snippet of that text with the matched words marked (`ts_headline`,
+// D5). The snippet is text in parts, never HTML: a client shows every part as text.
+//
+// Only what the caller can see is searched, snippets included: a restricted project they are
+// not on, a confidential ticket of which they are neither a tenant administrator, the assignee
+// nor the reporter, and a project-restricted token's other projects find nothing
+// (docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a
+// cursor belongs to its query.
+//
+// The `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose
+// title and body hold every word, in the list's own order, with no rank and no snippet.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/search (the `SearchTenant` operationId).
+func (c *ClientWithResponses) SearchTenantWithResponse(ctx context.Context, tenant TenantSlug, params *SearchTenantParams, reqEditors ...RequestEditorFn) (*SearchTenantResponse, error) {
+	rsp, err := c.SearchTenant(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSearchTenantResponse(rsp)
+}
+
 // ListTenantTicketsWithResponse The tenant's tickets across its projects, newest first
 //
 // The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
@@ -26447,7 +29985,9 @@ func (c *ClientWithResponses) LoginOidcWithResponse(ctx context.Context, params 
 // `oidc_name`", when one is configured and its gate admits somebody —
 // `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
 // (docs/adr/0030 D1, D8). The minimum password length is the policy every
-// password form follows (docs/adr/0033 D3).
+// password form follows (docs/adr/0033 D3), and the longest lifetime of a
+// new token the bound of the token form (docs/adr/0035 D4) — the policies
+// of the installation, public like the rest of this answer.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -26527,6 +30067,9 @@ func ParseListMyAssignedResponse(rsp *http.Response) (*ListMyAssignedResponse, e
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -26537,6 +30080,26 @@ func ParseListMyAssignedResponse(rsp *http.Response) (*ListMyAssignedResponse, e
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListMyAssignedResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListMyAssignedResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListMyAssignedResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -26665,6 +30228,9 @@ func ParseListMyDecisionsResponse(rsp *http.Response) (*ListMyDecisionsResponse,
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -26675,6 +30241,26 @@ func ParseListMyDecisionsResponse(rsp *http.Response) (*ListMyDecisionsResponse,
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListMyDecisionsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListMyDecisionsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListMyDecisionsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -26711,6 +30297,9 @@ func ParseListMyInboxResponse(rsp *http.Response) (*ListMyInboxResponse, error) 
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -26721,6 +30310,26 @@ func ParseListMyInboxResponse(rsp *http.Response) (*ListMyInboxResponse, error) 
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListMyInboxResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListMyInboxResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListMyInboxResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -26849,6 +30458,9 @@ func ParseListMyNextResponse(rsp *http.Response) (*ListMyNextResponse, error) {
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -26859,6 +30471,26 @@ func ParseListMyNextResponse(rsp *http.Response) (*ListMyNextResponse, error) {
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListMyNextResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListMyNextResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListMyNextResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -26949,6 +30581,52 @@ func ParseLookupRepositoryResponse(rsp *http.Response) (*LookupRepositoryRespons
 	switch {
 	case true:
 		var headers LookupRepositoryResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSearchMyTenantsResponse parses an HTTP response from a SearchMyTenantsWithResponse call
+func ParseSearchMyTenantsResponse(rsp *http.Response) (*SearchMyTenantsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SearchMyTenantsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SearchHitList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers SearchMyTenantsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -27852,6 +31530,459 @@ func ParseStopChatTurnsResponse(rsp *http.Response) (*StopChatTurnsResponse, err
 	return response, nil
 }
 
+// ParseListDeletedTicketsResponse parses an HTTP response from a ListDeletedTicketsWithResponse call
+func ParseListDeletedTicketsResponse(rsp *http.Response) (*ListDeletedTicketsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListDeletedTicketsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeletedTicketList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListDeletedTicketsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListDeletedTicketsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
+	case true:
+		var headers ListDeletedTicketsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePurgeTicketResponse parses an HTTP response from a PurgeTicketWithResponse call
+func ParsePurgeTicketResponse(rsp *http.Response) (*PurgeTicketResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PurgeTicketResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers PurgeTicketResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseRestoreTicketResponse parses an HTTP response from a RestoreTicketWithResponse call
+func ParseRestoreTicketResponse(rsp *http.Response) (*RestoreTicketResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RestoreTicketResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Ticket
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers RestoreTicketResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers RestoreTicketResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListSavedFiltersResponse parses an HTTP response from a ListSavedFiltersWithResponse call
+func ParseListSavedFiltersResponse(rsp *http.Response) (*ListSavedFiltersResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListSavedFiltersResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SavedFilterList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListSavedFiltersResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListSavedFiltersResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
+	case true:
+		var headers ListSavedFiltersResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCreateSavedFilterResponse parses an HTTP response from a CreateSavedFilterWithResponse call
+func ParseCreateSavedFilterResponse(rsp *http.Response) (*CreateSavedFilterResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateSavedFilterResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest SavedFilter
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 201:
+		var headers CreateSavedFilterResponse201Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers201 = &headers
+	case true:
+		var headers CreateSavedFilterResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseDeleteSavedFilterResponse parses an HTTP response from a DeleteSavedFilterWithResponse call
+func ParseDeleteSavedFilterResponse(rsp *http.Response) (*DeleteSavedFilterResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteSavedFilterResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers DeleteSavedFilterResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetSavedFilterResponse parses an HTTP response from a GetSavedFilterWithResponse call
+func ParseGetSavedFilterResponse(rsp *http.Response) (*GetSavedFilterResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSavedFilterResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SavedFilter
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetSavedFilterResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers GetSavedFilterResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUpdateSavedFilterResponse parses an HTTP response from a UpdateSavedFilterWithResponse call
+func ParseUpdateSavedFilterResponse(rsp *http.Response) (*UpdateSavedFilterResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateSavedFilterResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SavedFilter
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers UpdateSavedFilterResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers UpdateSavedFilterResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListGroupMappingsResponse parses an HTTP response from a ListGroupMappingsWithResponse call
 func ParseListGroupMappingsResponse(rsp *http.Response) (*ListGroupMappingsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -27873,6 +32004,9 @@ func ParseListGroupMappingsResponse(rsp *http.Response) (*ListGroupMappingsRespo
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -27883,6 +32017,26 @@ func ParseListGroupMappingsResponse(rsp *http.Response) (*ListGroupMappingsRespo
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListGroupMappingsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListGroupMappingsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListGroupMappingsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -28080,6 +32234,9 @@ func ParseListMembersResponse(rsp *http.Response) (*ListMembersResponse, error) 
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -28090,6 +32247,26 @@ func ParseListMembersResponse(rsp *http.Response) (*ListMembersResponse, error) 
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListMembersResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListMembersResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListMembersResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -28260,6 +32437,9 @@ func ParseListProjectsResponse(rsp *http.Response) (*ListProjectsResponse, error
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -28270,6 +32450,26 @@ func ParseListProjectsResponse(rsp *http.Response) (*ListProjectsResponse, error
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListProjectsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListProjectsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListProjectsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -28505,6 +32705,9 @@ func ParseListProjectAccessResponse(rsp *http.Response) (*ListProjectAccessRespo
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -28515,6 +32718,26 @@ func ParseListProjectAccessResponse(rsp *http.Response) (*ListProjectAccessRespo
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListProjectAccessResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListProjectAccessResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListProjectAccessResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -29059,6 +33282,48 @@ func ParseCreateTicketResponse(rsp *http.Response) (*CreateTicketResponse, error
 	return response, nil
 }
 
+// ParseDeleteTicketResponse parses an HTTP response from a DeleteTicketWithResponse call
+func ParseDeleteTicketResponse(rsp *http.Response) (*DeleteTicketResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteTicketResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers DeleteTicketResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseGetTicketResponse parses an HTTP response from a GetTicketWithResponse call
 func ParseGetTicketResponse(rsp *http.Response) (*GetTicketResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -29192,6 +33457,9 @@ func ParseListActivityResponse(rsp *http.Response) (*ListActivityResponse, error
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -29202,6 +33470,26 @@ func ParseListActivityResponse(rsp *http.Response) (*ListActivityResponse, error
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListActivityResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListActivityResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListActivityResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -29238,6 +33526,9 @@ func ParseListAttachmentsResponse(rsp *http.Response) (*ListAttachmentsResponse,
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -29248,6 +33539,26 @@ func ParseListAttachmentsResponse(rsp *http.Response) (*ListAttachmentsResponse,
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListAttachmentsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListAttachmentsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListAttachmentsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -29448,6 +33759,62 @@ func ParseDownloadAttachmentResponse(rsp *http.Response) (*DownloadAttachmentRes
 	return response, nil
 }
 
+// ParseGetTicketBodyResponse parses an HTTP response from a GetTicketBodyWithResponse call
+func ParseGetTicketBodyResponse(rsp *http.Response) (*GetTicketBodyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTicketBodyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TicketBody
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetTicketBodyResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers GetTicketBodyResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseReplaceTicketBodyResponse parses an HTTP response from a ReplaceTicketBodyWithResponse call
 func ParseReplaceTicketBodyResponse(rsp *http.Response) (*ReplaceTicketBodyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -29525,6 +33892,9 @@ func ParseListCommentsResponse(rsp *http.Response) (*ListCommentsResponse, error
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -29535,6 +33905,26 @@ func ParseListCommentsResponse(rsp *http.Response) (*ListCommentsResponse, error
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListCommentsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListCommentsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListCommentsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -29985,6 +34375,9 @@ func ParseListInterestResponse(rsp *http.Response) (*ListInterestResponse, error
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -29995,6 +34388,26 @@ func ParseListInterestResponse(rsp *http.Response) (*ListInterestResponse, error
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListInterestResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListInterestResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListInterestResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -30084,6 +34497,9 @@ func ParseListTicketLinksResponse(rsp *http.Response) (*ListTicketLinksResponse,
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -30094,6 +34510,26 @@ func ParseListTicketLinksResponse(rsp *http.Response) (*ListTicketLinksResponse,
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListTicketLinksResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListTicketLinksResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListTicketLinksResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -30274,6 +34710,9 @@ func ParseListPrerequisitesResponse(rsp *http.Response) (*ListPrerequisitesRespo
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -30284,6 +34723,26 @@ func ParseListPrerequisitesResponse(rsp *http.Response) (*ListPrerequisitesRespo
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListPrerequisitesResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListPrerequisitesResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListPrerequisitesResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -30320,6 +34779,9 @@ func ParseListQuestionsResponse(rsp *http.Response) (*ListQuestionsResponse, err
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -30330,6 +34792,26 @@ func ParseListQuestionsResponse(rsp *http.Response) (*ListQuestionsResponse, err
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListQuestionsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListQuestionsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListQuestionsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -30709,6 +35191,9 @@ func ParseListTicketTimeResponse(rsp *http.Response) (*ListTicketTimeResponse, e
 		}
 		response.JSON200 = &dest
 
+	case rsp.StatusCode == 304:
+		break // No content-type
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Problem
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -30719,6 +35204,26 @@ func ParseListTicketTimeResponse(rsp *http.Response) (*ListTicketTimeResponse, e
 	}
 
 	switch {
+	case rsp.StatusCode == 200:
+		var headers ListTicketTimeResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListTicketTimeResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
 	case true:
 		var headers ListTicketTimeResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
@@ -31166,6 +35671,52 @@ func ParseOverrideUrgencyResponse(rsp *http.Response) (*OverrideUrgencyResponse,
 		response.Headers200 = &headers
 	case true:
 		var headers OverrideUrgencyResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseSearchTenantResponse parses an HTTP response from a SearchTenantWithResponse call
+func ParseSearchTenantResponse(rsp *http.Response) (*SearchTenantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SearchTenantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest SearchHitList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers SearchTenantResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -31785,6 +36336,9 @@ type ServerInterface interface {
 	// LookupRepository The project a repository is bound to, across the person's tenants
 	// (GET /api/v1/me/repositories/lookup)
 	LookupRepository(w http.ResponseWriter, r *http.Request, params LookupRepositoryParams)
+	// SearchMyTenants Search the tickets of every tenant of the person
+	// (GET /api/v1/me/search)
+	SearchMyTenants(w http.ResponseWriter, r *http.Request, params SearchMyTenantsParams)
 	// GetMyToken The token this request presents, and what it makes of the request
 	// (GET /api/v1/me/token)
 	GetMyToken(w http.ResponseWriter, r *http.Request)
@@ -31842,6 +36396,30 @@ type ServerInterface interface {
 	// StopChatTurns Stop every running turn of the person in the tenant
 	// (DELETE /api/v1/tenants/{tenant}/chat/turns)
 	StopChatTurns(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// ListDeletedTickets The tenant's bin of deleted tickets
+	// (GET /api/v1/tenants/{tenant}/deleted-tickets)
+	ListDeletedTickets(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListDeletedTicketsParams)
+	// PurgeTicket Purge a deleted ticket for good
+	// (DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key})
+	PurgeTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, key TicketKeyPath)
+	// RestoreTicket Restore a deleted ticket from the bin
+	// (PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore)
+	RestoreTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, key TicketKeyPath)
+	// ListSavedFilters The caller's saved filters and those shared with the tenant
+	// (GET /api/v1/tenants/{tenant}/filters)
+	ListSavedFilters(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListSavedFiltersParams)
+	// CreateSavedFilter Save a filter
+	// (POST /api/v1/tenants/{tenant}/filters)
+	CreateSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params CreateSavedFilterParams)
+	// DeleteSavedFilter Delete a saved filter
+	// (DELETE /api/v1/tenants/{tenant}/filters/{filter})
+	DeleteSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID)
+	// GetSavedFilter One saved filter
+	// (GET /api/v1/tenants/{tenant}/filters/{filter})
+	GetSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID)
+	// UpdateSavedFilter Rename, change, share or unshare a saved filter
+	// (PATCH /api/v1/tenants/{tenant}/filters/{filter})
+	UpdateSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID, params UpdateSavedFilterParams)
 	// ListGroupMappings The tenant's group mappings, by group
 	// (GET /api/v1/tenants/{tenant}/group-mappings)
 	ListGroupMappings(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListGroupMappingsParams)
@@ -31911,6 +36489,9 @@ type ServerInterface interface {
 	// CreateTicket File a ticket
 	// (POST /api/v1/tenants/{tenant}/projects/{project}/tickets)
 	CreateTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, params CreateTicketParams)
+	// DeleteTicket Delete a ticket into the tenant's bin
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number})
+	DeleteTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber)
 	// GetTicket One ticket
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number})
 	GetTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber)
@@ -31932,6 +36513,9 @@ type ServerInterface interface {
 	// DownloadAttachment An attachment's bytes
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content)
 	DownloadAttachment(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, attachment AttachmentID, params DownloadAttachmentParams)
+	// GetTicketBody The ticket's body, as Markdown and rendered
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body)
+	GetTicketBody(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber)
 	// ReplaceTicketBody Replace the ticket's body
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body)
 	ReplaceTicketBody(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ReplaceTicketBodyParams)
@@ -32031,6 +36615,9 @@ type ServerInterface interface {
 	// OverrideUrgency Set the horizon
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	OverrideUrgency(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params OverrideUrgencyParams)
+	// SearchTenant Search the tenant's tickets
+	// (GET /api/v1/tenants/{tenant}/search)
+	SearchTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params SearchTenantParams)
 	// ListTenantTickets The tenant's tickets across its projects, newest first
 	// (GET /api/v1/tenants/{tenant}/tickets)
 	ListTenantTickets(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListTenantTicketsParams)
@@ -32134,6 +36721,27 @@ func (siw *ServerInterfaceWrapper) ListMyAssigned(w http.ResponseWriter, r *http
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMyAssigned(w, r, params)
 	}))
@@ -32221,6 +36829,27 @@ func (siw *ServerInterfaceWrapper) ListMyDecisions(w http.ResponseWriter, r *htt
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMyDecisions(w, r, params)
 	}))
@@ -32278,6 +36907,27 @@ func (siw *ServerInterfaceWrapper) ListMyInbox(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32411,6 +37061,27 @@ func (siw *ServerInterfaceWrapper) ListMyNext(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMyNext(w, r, params)
 	}))
@@ -32482,6 +37153,78 @@ func (siw *ServerInterfaceWrapper) LookupRepository(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// SearchMyTenants operation middleware
+func (siw *ServerInterfaceWrapper) SearchMyTenants(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchMyTenantsParams
+
+	// ------------- Required query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tenant" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tenant", r.URL.Query(), &params.Tenant, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tenant"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchMyTenants(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetMyToken operation middleware
 func (siw *ServerInterfaceWrapper) GetMyToken(w http.ResponseWriter, r *http.Request) {
 
@@ -32527,6 +37270,32 @@ func (siw *ServerInterfaceWrapper) ListMyTokens(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "per_page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "per_page", r.URL.Query(), &params.PerPage, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "per_page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "per_page", Err: err})
 		}
 		return
 	}
@@ -33167,6 +37936,32 @@ func (siw *ServerInterfaceWrapper) ListAudit(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "per_page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "per_page", r.URL.Query(), &params.PerPage, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "per_page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "per_page", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListAudit(w, r, tenant, params)
 	}))
@@ -33230,6 +38025,407 @@ func (siw *ServerInterfaceWrapper) StopChatTurns(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListDeletedTickets operation middleware
+func (siw *ServerInterfaceWrapper) ListDeletedTickets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDeletedTicketsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDeletedTickets(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PurgeTicket operation middleware
+func (siw *ServerInterfaceWrapper) PurgeTicket(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "key" -------------
+	var key TicketKeyPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PurgeTicket(w, r, tenant, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestoreTicket operation middleware
+func (siw *ServerInterfaceWrapper) RestoreTicket(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "key" -------------
+	var key TicketKeyPath
+
+	err = runtime.BindStyledParameterWithOptions("simple", "key", r.PathValue("key"), &key, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "key", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreTicket(w, r, tenant, key)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSavedFilters operation middleware
+func (siw *ServerInterfaceWrapper) ListSavedFilters(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSavedFiltersParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSavedFilters(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSavedFilter operation middleware
+func (siw *ServerInterfaceWrapper) CreateSavedFilter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params CreateSavedFilterParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "Idempotency-Key" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("Idempotency-Key")]; found {
+		var IdempotencyKey IdempotencyKey
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "Idempotency-Key", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "Idempotency-Key", valueList[0], &IdempotencyKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: "uuid"})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "Idempotency-Key", Err: err})
+			return
+		}
+
+		params.IdempotencyKey = &IdempotencyKey
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSavedFilter(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteSavedFilter operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSavedFilter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "filter" -------------
+	var filter SavedFilterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "filter", r.PathValue("filter"), &filter, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "filter", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteSavedFilter(w, r, tenant, filter)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSavedFilter operation middleware
+func (siw *ServerInterfaceWrapper) GetSavedFilter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "filter" -------------
+	var filter SavedFilterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "filter", r.PathValue("filter"), &filter, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "filter", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSavedFilter(w, r, tenant, filter)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateSavedFilter operation middleware
+func (siw *ServerInterfaceWrapper) UpdateSavedFilter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "filter" -------------
+	var filter SavedFilterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "filter", r.PathValue("filter"), &filter, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "filter", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params UpdateSavedFilterParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
+			return
+		}
+
+		params.IfMatch = &IfMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateSavedFilter(w, r, tenant, filter, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListGroupMappings operation middleware
 func (siw *ServerInterfaceWrapper) ListGroupMappings(w http.ResponseWriter, r *http.Request) {
 
@@ -33272,6 +38468,27 @@ func (siw *ServerInterfaceWrapper) ListGroupMappings(w http.ResponseWriter, r *h
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33473,6 +38690,53 @@ func (siw *ServerInterfaceWrapper) ListMembers(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "per_page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "per_page", r.URL.Query(), &params.PerPage, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "per_page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "per_page", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListMembers(w, r, tenant, params)
 	}))
@@ -33659,6 +38923,53 @@ func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", r.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "page", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "per_page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "per_page", r.URL.Query(), &params.PerPage, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "per_page"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "per_page", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33867,6 +39178,27 @@ func (siw *ServerInterfaceWrapper) ListProjectAccess(w http.ResponseWriter, r *h
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -34707,6 +40039,50 @@ func (siw *ServerInterfaceWrapper) CreateTicket(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// DeleteTicket operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTicket(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTicket(w, r, tenant, project, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetTicket operation middleware
 func (siw *ServerInterfaceWrapper) GetTicket(w http.ResponseWriter, r *http.Request) {
 
@@ -34894,6 +40270,27 @@ func (siw *ServerInterfaceWrapper) ListActivity(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListActivity(w, r, tenant, project, number, params)
 	}))
@@ -34965,6 +40362,27 @@ func (siw *ServerInterfaceWrapper) ListAttachments(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35176,6 +40594,50 @@ func (siw *ServerInterfaceWrapper) DownloadAttachment(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetTicketBody operation middleware
+func (siw *ServerInterfaceWrapper) GetTicketBody(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTicketBody(w, r, tenant, project, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ReplaceTicketBody operation middleware
 func (siw *ServerInterfaceWrapper) ReplaceTicketBody(w http.ResponseWriter, r *http.Request) {
 
@@ -35317,6 +40779,27 @@ func (siw *ServerInterfaceWrapper) ListComments(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -35910,6 +41393,27 @@ func (siw *ServerInterfaceWrapper) ListInterest(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListInterest(w, r, tenant, project, number, params)
 	}))
@@ -36025,6 +41529,27 @@ func (siw *ServerInterfaceWrapper) ListTicketLinks(w http.ResponseWriter, r *htt
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36281,6 +41806,27 @@ func (siw *ServerInterfaceWrapper) ListPrerequisites(w http.ResponseWriter, r *h
 		return
 	}
 
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListPrerequisites(w, r, tenant, project, number, params)
 	}))
@@ -36352,6 +41898,27 @@ func (siw *ServerInterfaceWrapper) ListQuestions(w http.ResponseWriter, r *http.
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -36797,6 +42364,27 @@ func (siw *ServerInterfaceWrapper) ListTicketTime(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
 		}
 		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -37338,6 +42926,74 @@ func (siw *ServerInterfaceWrapper) OverrideUrgency(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OverrideUrgency(w, r, tenant, project, number, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchTenant operation middleware
+func (siw *ServerInterfaceWrapper) SearchTenant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SearchTenantParams
+
+	// ------------- Required query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchTenant(w, r, tenant, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -38315,6 +43971,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/next", wrapper.ListMyNext)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/password", wrapper.ChangeMyPassword)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/repositories/lookup", wrapper.LookupRepository)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/search", wrapper.SearchMyTenants)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/token", wrapper.GetMyToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/tokens", wrapper.ListMyTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/me/tokens", wrapper.CreateMyToken)
@@ -38334,6 +43991,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/audit", wrapper.ListAudit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat", wrapper.GetChatAvailability)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat/turns", wrapper.StopChatTurns)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets", wrapper.ListDeletedTickets)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets/{key}", wrapper.PurgeTicket)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets/{key}/restore", wrapper.RestoreTicket)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters", wrapper.ListSavedFilters)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters", wrapper.CreateSavedFilter)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters/{filter}", wrapper.DeleteSavedFilter)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters/{filter}", wrapper.GetSavedFilter)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters/{filter}", wrapper.UpdateSavedFilter)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.ListGroupMappings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.CreateGroupMapping)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings/{mapping_id}", wrapper.DeleteGroupMapping)
@@ -38357,6 +44022,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/restriction", wrapper.SetProjectRestriction)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets", wrapper.ListProjectTickets)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets", wrapper.CreateTicket)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", wrapper.DeleteTicket)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", wrapper.GetTicket)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", wrapper.UpdateTicket)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/activity", wrapper.ListActivity)
@@ -38364,6 +44030,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments", wrapper.UploadAttachment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}", wrapper.GetAttachment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content", wrapper.DownloadAttachment)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body", wrapper.GetTicketBody)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body", wrapper.ReplaceTicketBody)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments", wrapper.ListComments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments", wrapper.AddComment)
@@ -38397,6 +44064,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions", wrapper.TransitionTicket)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override", wrapper.WithdrawUrgencyOverride)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override", wrapper.OverrideUrgency)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/search", wrapper.SearchTenant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/tickets", wrapper.ListTenantTickets)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/time-entries", wrapper.ListTenantTime)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/time-report", wrapper.TimeReport)
@@ -38409,6 +44077,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/auth/options", wrapper.GetAuthOptions)
 
 	return m
+}
+
+type NotModifiedResponseHeaders struct {
+	ETag *string
+}
+type NotModifiedResponse struct {
+	Headers NotModifiedResponseHeaders
 }
 
 type ProblemResponseHeaders struct {
@@ -38470,18 +44145,38 @@ type ListMyAssignedResponseObject interface {
 	VisitListMyAssignedResponse(w http.ResponseWriter) error
 }
 
-type ListMyAssigned200JSONResponse MyTicketList
+type ListMyAssigned200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListMyAssigned200JSONResponse struct {
+	Body    MyTicketList
+	Headers ListMyAssigned200ResponseHeaders
+}
 
 func (response ListMyAssigned200JSONResponse) VisitListMyAssignedResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListMyAssigned304Response = NotModifiedResponse
+
+func (response ListMyAssigned304Response) VisitListMyAssignedResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListMyAssigneddefaultApplicationProblemPlusJSONResponse struct {
@@ -38598,18 +44293,38 @@ type ListMyDecisionsResponseObject interface {
 	VisitListMyDecisionsResponse(w http.ResponseWriter) error
 }
 
-type ListMyDecisions200JSONResponse DecisionList
+type ListMyDecisions200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListMyDecisions200JSONResponse struct {
+	Body    DecisionList
+	Headers ListMyDecisions200ResponseHeaders
+}
 
 func (response ListMyDecisions200JSONResponse) VisitListMyDecisionsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListMyDecisions304Response = NotModifiedResponse
+
+func (response ListMyDecisions304Response) VisitListMyDecisionsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListMyDecisionsdefaultApplicationProblemPlusJSONResponse struct {
@@ -38641,18 +44356,38 @@ type ListMyInboxResponseObject interface {
 	VisitListMyInboxResponse(w http.ResponseWriter) error
 }
 
-type ListMyInbox200JSONResponse InboxList
+type ListMyInbox200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListMyInbox200JSONResponse struct {
+	Body    InboxList
+	Headers ListMyInbox200ResponseHeaders
+}
 
 func (response ListMyInbox200JSONResponse) VisitListMyInboxResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListMyInbox304Response = NotModifiedResponse
+
+func (response ListMyInbox304Response) VisitListMyInboxResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListMyInboxdefaultApplicationProblemPlusJSONResponse struct {
@@ -38771,18 +44506,38 @@ type ListMyNextResponseObject interface {
 	VisitListMyNextResponse(w http.ResponseWriter) error
 }
 
-type ListMyNext200JSONResponse MyTicketList
+type ListMyNext200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListMyNext200JSONResponse struct {
+	Body    MyTicketList
+	Headers ListMyNext200ResponseHeaders
+}
 
 func (response ListMyNext200JSONResponse) VisitListMyNextResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListMyNext304Response = NotModifiedResponse
+
+func (response ListMyNext304Response) VisitListMyNextResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListMyNextdefaultApplicationProblemPlusJSONResponse struct {
@@ -38872,6 +44627,49 @@ type LookupRepositorydefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response LookupRepositorydefaultApplicationProblemPlusJSONResponse) VisitLookupRepositoryResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchMyTenantsRequestObject struct {
+	Params SearchMyTenantsParams
+}
+
+type SearchMyTenantsResponseObject interface {
+	VisitSearchMyTenantsResponse(w http.ResponseWriter) error
+}
+
+type SearchMyTenants200JSONResponse SearchHitList
+
+func (response SearchMyTenants200JSONResponse) VisitSearchMyTenantsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchMyTenantsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SearchMyTenantsdefaultApplicationProblemPlusJSONResponse) VisitSearchMyTenantsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -39731,6 +45529,433 @@ func (response StopChatTurnsdefaultApplicationProblemPlusJSONResponse) VisitStop
 	return err
 }
 
+type ListDeletedTicketsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListDeletedTicketsParams
+}
+
+type ListDeletedTicketsResponseObject interface {
+	VisitListDeletedTicketsResponse(w http.ResponseWriter) error
+}
+
+type ListDeletedTickets200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListDeletedTickets200JSONResponse struct {
+	Body    DeletedTicketList
+	Headers ListDeletedTickets200ResponseHeaders
+}
+
+func (response ListDeletedTickets200JSONResponse) VisitListDeletedTicketsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListDeletedTickets304Response = NotModifiedResponse
+
+func (response ListDeletedTickets304Response) VisitListDeletedTicketsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type ListDeletedTicketsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListDeletedTicketsdefaultApplicationProblemPlusJSONResponse) VisitListDeletedTicketsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PurgeTicketRequestObject struct {
+	Tenant TenantSlug    `json:"tenant"`
+	Key    TicketKeyPath `json:"key"`
+}
+
+type PurgeTicketResponseObject interface {
+	VisitPurgeTicketResponse(w http.ResponseWriter) error
+}
+
+type PurgeTicket204Response struct {
+}
+
+func (response PurgeTicket204Response) VisitPurgeTicketResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PurgeTicketdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response PurgeTicketdefaultApplicationProblemPlusJSONResponse) VisitPurgeTicketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreTicketRequestObject struct {
+	Tenant TenantSlug    `json:"tenant"`
+	Key    TicketKeyPath `json:"key"`
+}
+
+type RestoreTicketResponseObject interface {
+	VisitRestoreTicketResponse(w http.ResponseWriter) error
+}
+
+type RestoreTicket200ResponseHeaders struct {
+	ETag *string
+}
+
+type RestoreTicket200JSONResponse struct {
+	Body    Ticket
+	Headers RestoreTicket200ResponseHeaders
+}
+
+func (response RestoreTicket200JSONResponse) VisitRestoreTicketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RestoreTicketdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RestoreTicketdefaultApplicationProblemPlusJSONResponse) VisitRestoreTicketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSavedFiltersRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params ListSavedFiltersParams
+}
+
+type ListSavedFiltersResponseObject interface {
+	VisitListSavedFiltersResponse(w http.ResponseWriter) error
+}
+
+type ListSavedFilters200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListSavedFilters200JSONResponse struct {
+	Body    SavedFilterList
+	Headers ListSavedFilters200ResponseHeaders
+}
+
+func (response ListSavedFilters200JSONResponse) VisitListSavedFiltersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListSavedFilters304Response = NotModifiedResponse
+
+func (response ListSavedFilters304Response) VisitListSavedFiltersResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type ListSavedFiltersdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListSavedFiltersdefaultApplicationProblemPlusJSONResponse) VisitListSavedFiltersResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSavedFilterRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params CreateSavedFilterParams
+	Body   *CreateSavedFilterJSONRequestBody
+}
+
+type CreateSavedFilterResponseObject interface {
+	VisitCreateSavedFilterResponse(w http.ResponseWriter) error
+}
+
+type CreateSavedFilter201ResponseHeaders struct {
+	ETag     *string
+	Location *string
+}
+
+type CreateSavedFilter201JSONResponse struct {
+	Body    SavedFilter
+	Headers CreateSavedFilter201ResponseHeaders
+}
+
+func (response CreateSavedFilter201JSONResponse) VisitCreateSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateSavedFilterdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response CreateSavedFilterdefaultApplicationProblemPlusJSONResponse) VisitCreateSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteSavedFilterRequestObject struct {
+	Tenant TenantSlug    `json:"tenant"`
+	Filter SavedFilterID `json:"filter"`
+}
+
+type DeleteSavedFilterResponseObject interface {
+	VisitDeleteSavedFilterResponse(w http.ResponseWriter) error
+}
+
+type DeleteSavedFilter204Response struct {
+}
+
+func (response DeleteSavedFilter204Response) VisitDeleteSavedFilterResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteSavedFilterdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response DeleteSavedFilterdefaultApplicationProblemPlusJSONResponse) VisitDeleteSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSavedFilterRequestObject struct {
+	Tenant TenantSlug    `json:"tenant"`
+	Filter SavedFilterID `json:"filter"`
+}
+
+type GetSavedFilterResponseObject interface {
+	VisitGetSavedFilterResponse(w http.ResponseWriter) error
+}
+
+type GetSavedFilter200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetSavedFilter200JSONResponse struct {
+	Body    SavedFilter
+	Headers GetSavedFilter200ResponseHeaders
+}
+
+func (response GetSavedFilter200JSONResponse) VisitGetSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetSavedFilterdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetSavedFilterdefaultApplicationProblemPlusJSONResponse) VisitGetSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSavedFilterRequestObject struct {
+	Tenant TenantSlug    `json:"tenant"`
+	Filter SavedFilterID `json:"filter"`
+	Params UpdateSavedFilterParams
+	Body   *UpdateSavedFilterJSONRequestBody
+}
+
+type UpdateSavedFilterResponseObject interface {
+	VisitUpdateSavedFilterResponse(w http.ResponseWriter) error
+}
+
+type UpdateSavedFilter200ResponseHeaders struct {
+	ETag *string
+}
+
+type UpdateSavedFilter200JSONResponse struct {
+	Body    SavedFilter
+	Headers UpdateSavedFilter200ResponseHeaders
+}
+
+func (response UpdateSavedFilter200JSONResponse) VisitUpdateSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateSavedFilterdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response UpdateSavedFilterdefaultApplicationProblemPlusJSONResponse) VisitUpdateSavedFilterResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListGroupMappingsRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params ListGroupMappingsParams
@@ -39740,18 +45965,38 @@ type ListGroupMappingsResponseObject interface {
 	VisitListGroupMappingsResponse(w http.ResponseWriter) error
 }
 
-type ListGroupMappings200JSONResponse GroupMappingList
+type ListGroupMappings200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListGroupMappings200JSONResponse struct {
+	Body    GroupMappingList
+	Headers ListGroupMappings200ResponseHeaders
+}
 
 func (response ListGroupMappings200JSONResponse) VisitListGroupMappingsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListGroupMappings304Response = NotModifiedResponse
+
+func (response ListGroupMappings304Response) VisitListGroupMappingsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListGroupMappingsdefaultApplicationProblemPlusJSONResponse struct {
@@ -39937,18 +46182,38 @@ type ListMembersResponseObject interface {
 	VisitListMembersResponse(w http.ResponseWriter) error
 }
 
-type ListMembers200JSONResponse MemberList
+type ListMembers200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListMembers200JSONResponse struct {
+	Body    MemberList
+	Headers ListMembers200ResponseHeaders
+}
 
 func (response ListMembers200JSONResponse) VisitListMembersResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListMembers304Response = NotModifiedResponse
+
+func (response ListMembers304Response) VisitListMembersResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListMembersdefaultApplicationProblemPlusJSONResponse struct {
@@ -40109,18 +46374,38 @@ type ListProjectsResponseObject interface {
 	VisitListProjectsResponse(w http.ResponseWriter) error
 }
 
-type ListProjects200JSONResponse ProjectList
+type ListProjects200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListProjects200JSONResponse struct {
+	Body    ProjectList
+	Headers ListProjects200ResponseHeaders
+}
 
 func (response ListProjects200JSONResponse) VisitListProjectsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListProjects304Response = NotModifiedResponse
+
+func (response ListProjects304Response) VisitListProjectsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListProjectsdefaultApplicationProblemPlusJSONResponse struct {
@@ -40351,18 +46636,38 @@ type ListProjectAccessResponseObject interface {
 	VisitListProjectAccessResponse(w http.ResponseWriter) error
 }
 
-type ListProjectAccess200JSONResponse ProjectAccessList
+type ListProjectAccess200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListProjectAccess200JSONResponse struct {
+	Body    ProjectAccessList
+	Headers ListProjectAccess200ResponseHeaders
+}
 
 func (response ListProjectAccess200JSONResponse) VisitListProjectAccessResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListProjectAccess304Response = NotModifiedResponse
+
+func (response ListProjectAccess304Response) VisitListProjectAccessResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListProjectAccessdefaultApplicationProblemPlusJSONResponse struct {
@@ -40911,6 +47216,45 @@ func (response CreateTicketdefaultApplicationProblemPlusJSONResponse) VisitCreat
 	return err
 }
 
+type DeleteTicketRequestObject struct {
+	Tenant  TenantSlug   `json:"tenant"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+}
+
+type DeleteTicketResponseObject interface {
+	VisitDeleteTicketResponse(w http.ResponseWriter) error
+}
+
+type DeleteTicket204Response struct {
+}
+
+func (response DeleteTicket204Response) VisitDeleteTicketResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteTicketdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response DeleteTicketdefaultApplicationProblemPlusJSONResponse) VisitDeleteTicketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type GetTicketRequestObject struct {
 	Tenant  TenantSlug   `json:"tenant"`
 	Project ProjectKey   `json:"project"`
@@ -41034,18 +47378,38 @@ type ListActivityResponseObject interface {
 	VisitListActivityResponse(w http.ResponseWriter) error
 }
 
-type ListActivity200JSONResponse ActivityList
+type ListActivity200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListActivity200JSONResponse struct {
+	Body    ActivityList
+	Headers ListActivity200ResponseHeaders
+}
 
 func (response ListActivity200JSONResponse) VisitListActivityResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListActivity304Response = NotModifiedResponse
+
+func (response ListActivity304Response) VisitListActivityResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListActivitydefaultApplicationProblemPlusJSONResponse struct {
@@ -41080,18 +47444,38 @@ type ListAttachmentsResponseObject interface {
 	VisitListAttachmentsResponse(w http.ResponseWriter) error
 }
 
-type ListAttachments200JSONResponse AttachmentList
+type ListAttachments200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListAttachments200JSONResponse struct {
+	Body    AttachmentList
+	Headers ListAttachments200ResponseHeaders
+}
 
 func (response ListAttachments200JSONResponse) VisitListAttachmentsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListAttachments304Response = NotModifiedResponse
+
+func (response ListAttachments304Response) VisitListAttachmentsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListAttachmentsdefaultApplicationProblemPlusJSONResponse struct {
@@ -41308,6 +47692,61 @@ func (response DownloadAttachmentdefaultApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type GetTicketBodyRequestObject struct {
+	Tenant  TenantSlug   `json:"tenant"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+}
+
+type GetTicketBodyResponseObject interface {
+	VisitGetTicketBodyResponse(w http.ResponseWriter) error
+}
+
+type GetTicketBody200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetTicketBody200JSONResponse struct {
+	Body    TicketBody
+	Headers GetTicketBody200ResponseHeaders
+}
+
+func (response GetTicketBody200JSONResponse) VisitGetTicketBodyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetTicketBodydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetTicketBodydefaultApplicationProblemPlusJSONResponse) VisitGetTicketBodyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ReplaceTicketBodyRequestObject struct {
 	Tenant  TenantSlug   `json:"tenant"`
 	Project ProjectKey   `json:"project"`
@@ -41376,18 +47815,38 @@ type ListCommentsResponseObject interface {
 	VisitListCommentsResponse(w http.ResponseWriter) error
 }
 
-type ListComments200JSONResponse CommentList
+type ListComments200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListComments200JSONResponse struct {
+	Body    CommentList
+	Headers ListComments200ResponseHeaders
+}
 
 func (response ListComments200JSONResponse) VisitListCommentsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListComments304Response = NotModifiedResponse
+
+func (response ListComments304Response) VisitListCommentsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListCommentsdefaultApplicationProblemPlusJSONResponse struct {
@@ -41848,18 +48307,38 @@ type ListInterestResponseObject interface {
 	VisitListInterestResponse(w http.ResponseWriter) error
 }
 
-type ListInterest200JSONResponse InterestList
+type ListInterest200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListInterest200JSONResponse struct {
+	Body    InterestList
+	Headers ListInterest200ResponseHeaders
+}
 
 func (response ListInterest200JSONResponse) VisitListInterestResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListInterest304Response = NotModifiedResponse
+
+func (response ListInterest304Response) VisitListInterestResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListInterestdefaultApplicationProblemPlusJSONResponse struct {
@@ -41954,18 +48433,38 @@ type ListTicketLinksResponseObject interface {
 	VisitListTicketLinksResponse(w http.ResponseWriter) error
 }
 
-type ListTicketLinks200JSONResponse LinkList
+type ListTicketLinks200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListTicketLinks200JSONResponse struct {
+	Body    LinkList
+	Headers ListTicketLinks200ResponseHeaders
+}
 
 func (response ListTicketLinks200JSONResponse) VisitListTicketLinksResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListTicketLinks304Response = NotModifiedResponse
+
+func (response ListTicketLinks304Response) VisitListTicketLinksResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListTicketLinksdefaultApplicationProblemPlusJSONResponse struct {
@@ -42161,18 +48660,38 @@ type ListPrerequisitesResponseObject interface {
 	VisitListPrerequisitesResponse(w http.ResponseWriter) error
 }
 
-type ListPrerequisites200JSONResponse PrerequisiteTree
+type ListPrerequisites200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListPrerequisites200JSONResponse struct {
+	Body    PrerequisiteTree
+	Headers ListPrerequisites200ResponseHeaders
+}
 
 func (response ListPrerequisites200JSONResponse) VisitListPrerequisitesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListPrerequisites304Response = NotModifiedResponse
+
+func (response ListPrerequisites304Response) VisitListPrerequisitesResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListPrerequisitesdefaultApplicationProblemPlusJSONResponse struct {
@@ -42207,18 +48726,38 @@ type ListQuestionsResponseObject interface {
 	VisitListQuestionsResponse(w http.ResponseWriter) error
 }
 
-type ListQuestions200JSONResponse QuestionList
+type ListQuestions200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListQuestions200JSONResponse struct {
+	Body    QuestionList
+	Headers ListQuestions200ResponseHeaders
+}
 
 func (response ListQuestions200JSONResponse) VisitListQuestionsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListQuestions304Response = NotModifiedResponse
+
+func (response ListQuestions304Response) VisitListQuestionsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListQuestionsdefaultApplicationProblemPlusJSONResponse struct {
@@ -42598,18 +49137,38 @@ type ListTicketTimeResponseObject interface {
 	VisitListTicketTimeResponse(w http.ResponseWriter) error
 }
 
-type ListTicketTime200JSONResponse TimeEntryList
+type ListTicketTime200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListTicketTime200JSONResponse struct {
+	Body    TimeEntryList
+	Headers ListTicketTime200ResponseHeaders
+}
 
 func (response ListTicketTime200JSONResponse) VisitListTicketTimeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
 		return err
 	}
 	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
 	w.WriteHeader(200)
 	_, err := buf.WriteTo(w)
 	return err
+}
+
+type ListTicketTime304Response = NotModifiedResponse
+
+func (response ListTicketTime304Response) VisitListTicketTimeResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
 }
 
 type ListTicketTimedefaultApplicationProblemPlusJSONResponse struct {
@@ -43067,6 +49626,50 @@ type OverrideUrgencydefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response OverrideUrgencydefaultApplicationProblemPlusJSONResponse) VisitOverrideUrgencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchTenantRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params SearchTenantParams
+}
+
+type SearchTenantResponseObject interface {
+	VisitSearchTenantResponse(w http.ResponseWriter) error
+}
+
+type SearchTenant200JSONResponse SearchHitList
+
+func (response SearchTenant200JSONResponse) VisitSearchTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SearchTenantdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SearchTenantdefaultApplicationProblemPlusJSONResponse) VisitSearchTenantResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -43681,6 +50284,9 @@ type StrictServerInterface interface {
 	// LookupRepository The project a repository is bound to, across the person's tenants
 	// (GET /api/v1/me/repositories/lookup)
 	LookupRepository(ctx context.Context, request LookupRepositoryRequestObject) (LookupRepositoryResponseObject, error)
+	// SearchMyTenants Search the tickets of every tenant of the person
+	// (GET /api/v1/me/search)
+	SearchMyTenants(ctx context.Context, request SearchMyTenantsRequestObject) (SearchMyTenantsResponseObject, error)
 	// GetMyToken The token this request presents, and what it makes of the request
 	// (GET /api/v1/me/token)
 	GetMyToken(ctx context.Context, request GetMyTokenRequestObject) (GetMyTokenResponseObject, error)
@@ -43738,6 +50344,30 @@ type StrictServerInterface interface {
 	// StopChatTurns Stop every running turn of the person in the tenant
 	// (DELETE /api/v1/tenants/{tenant}/chat/turns)
 	StopChatTurns(ctx context.Context, request StopChatTurnsRequestObject) (StopChatTurnsResponseObject, error)
+	// ListDeletedTickets The tenant's bin of deleted tickets
+	// (GET /api/v1/tenants/{tenant}/deleted-tickets)
+	ListDeletedTickets(ctx context.Context, request ListDeletedTicketsRequestObject) (ListDeletedTicketsResponseObject, error)
+	// PurgeTicket Purge a deleted ticket for good
+	// (DELETE /api/v1/tenants/{tenant}/deleted-tickets/{key})
+	PurgeTicket(ctx context.Context, request PurgeTicketRequestObject) (PurgeTicketResponseObject, error)
+	// RestoreTicket Restore a deleted ticket from the bin
+	// (PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore)
+	RestoreTicket(ctx context.Context, request RestoreTicketRequestObject) (RestoreTicketResponseObject, error)
+	// ListSavedFilters The caller's saved filters and those shared with the tenant
+	// (GET /api/v1/tenants/{tenant}/filters)
+	ListSavedFilters(ctx context.Context, request ListSavedFiltersRequestObject) (ListSavedFiltersResponseObject, error)
+	// CreateSavedFilter Save a filter
+	// (POST /api/v1/tenants/{tenant}/filters)
+	CreateSavedFilter(ctx context.Context, request CreateSavedFilterRequestObject) (CreateSavedFilterResponseObject, error)
+	// DeleteSavedFilter Delete a saved filter
+	// (DELETE /api/v1/tenants/{tenant}/filters/{filter})
+	DeleteSavedFilter(ctx context.Context, request DeleteSavedFilterRequestObject) (DeleteSavedFilterResponseObject, error)
+	// GetSavedFilter One saved filter
+	// (GET /api/v1/tenants/{tenant}/filters/{filter})
+	GetSavedFilter(ctx context.Context, request GetSavedFilterRequestObject) (GetSavedFilterResponseObject, error)
+	// UpdateSavedFilter Rename, change, share or unshare a saved filter
+	// (PATCH /api/v1/tenants/{tenant}/filters/{filter})
+	UpdateSavedFilter(ctx context.Context, request UpdateSavedFilterRequestObject) (UpdateSavedFilterResponseObject, error)
 	// ListGroupMappings The tenant's group mappings, by group
 	// (GET /api/v1/tenants/{tenant}/group-mappings)
 	ListGroupMappings(ctx context.Context, request ListGroupMappingsRequestObject) (ListGroupMappingsResponseObject, error)
@@ -43807,6 +50437,9 @@ type StrictServerInterface interface {
 	// CreateTicket File a ticket
 	// (POST /api/v1/tenants/{tenant}/projects/{project}/tickets)
 	CreateTicket(ctx context.Context, request CreateTicketRequestObject) (CreateTicketResponseObject, error)
+	// DeleteTicket Delete a ticket into the tenant's bin
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number})
+	DeleteTicket(ctx context.Context, request DeleteTicketRequestObject) (DeleteTicketResponseObject, error)
 	// GetTicket One ticket
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number})
 	GetTicket(ctx context.Context, request GetTicketRequestObject) (GetTicketResponseObject, error)
@@ -43828,6 +50461,9 @@ type StrictServerInterface interface {
 	// DownloadAttachment An attachment's bytes
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content)
 	DownloadAttachment(ctx context.Context, request DownloadAttachmentRequestObject) (DownloadAttachmentResponseObject, error)
+	// GetTicketBody The ticket's body, as Markdown and rendered
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body)
+	GetTicketBody(ctx context.Context, request GetTicketBodyRequestObject) (GetTicketBodyResponseObject, error)
 	// ReplaceTicketBody Replace the ticket's body
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body)
 	ReplaceTicketBody(ctx context.Context, request ReplaceTicketBodyRequestObject) (ReplaceTicketBodyResponseObject, error)
@@ -43927,6 +50563,9 @@ type StrictServerInterface interface {
 	// OverrideUrgency Set the horizon
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
 	OverrideUrgency(ctx context.Context, request OverrideUrgencyRequestObject) (OverrideUrgencyResponseObject, error)
+	// SearchTenant Search the tenant's tickets
+	// (GET /api/v1/tenants/{tenant}/search)
+	SearchTenant(ctx context.Context, request SearchTenantRequestObject) (SearchTenantResponseObject, error)
 	// ListTenantTickets The tenant's tickets across its projects, newest first
 	// (GET /api/v1/tenants/{tenant}/tickets)
 	ListTenantTickets(ctx context.Context, request ListTenantTicketsRequestObject) (ListTenantTicketsResponseObject, error)
@@ -44290,6 +50929,32 @@ func (sh *strictHandler) LookupRepository(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(LookupRepositoryResponseObject); ok {
 		if err := validResponse.VisitLookupRepositoryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SearchMyTenants operation middleware
+func (sh *strictHandler) SearchMyTenants(w http.ResponseWriter, r *http.Request, params SearchMyTenantsParams) {
+	var request SearchMyTenantsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchMyTenants(ctx, request.(SearchMyTenantsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchMyTenants")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchMyTenantsResponseObject); ok {
+		if err := validResponse.VisitSearchMyTenantsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -44821,6 +51486,237 @@ func (sh *strictHandler) StopChatTurns(w http.ResponseWriter, r *http.Request, t
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(StopChatTurnsResponseObject); ok {
 		if err := validResponse.VisitStopChatTurnsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListDeletedTickets operation middleware
+func (sh *strictHandler) ListDeletedTickets(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListDeletedTicketsParams) {
+	var request ListDeletedTicketsRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListDeletedTickets(ctx, request.(ListDeletedTicketsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListDeletedTickets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListDeletedTicketsResponseObject); ok {
+		if err := validResponse.VisitListDeletedTicketsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PurgeTicket operation middleware
+func (sh *strictHandler) PurgeTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, key TicketKeyPath) {
+	var request PurgeTicketRequestObject
+
+	request.Tenant = tenant
+	request.Key = key
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PurgeTicket(ctx, request.(PurgeTicketRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PurgeTicket")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PurgeTicketResponseObject); ok {
+		if err := validResponse.VisitPurgeTicketResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RestoreTicket operation middleware
+func (sh *strictHandler) RestoreTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, key TicketKeyPath) {
+	var request RestoreTicketRequestObject
+
+	request.Tenant = tenant
+	request.Key = key
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RestoreTicket(ctx, request.(RestoreTicketRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RestoreTicket")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RestoreTicketResponseObject); ok {
+		if err := validResponse.VisitRestoreTicketResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSavedFilters operation middleware
+func (sh *strictHandler) ListSavedFilters(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListSavedFiltersParams) {
+	var request ListSavedFiltersRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSavedFilters(ctx, request.(ListSavedFiltersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSavedFilters")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSavedFiltersResponseObject); ok {
+		if err := validResponse.VisitListSavedFiltersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateSavedFilter operation middleware
+func (sh *strictHandler) CreateSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params CreateSavedFilterParams) {
+	var request CreateSavedFilterRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	var body CreateSavedFilterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateSavedFilter(ctx, request.(CreateSavedFilterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateSavedFilter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateSavedFilterResponseObject); ok {
+		if err := validResponse.VisitCreateSavedFilterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteSavedFilter operation middleware
+func (sh *strictHandler) DeleteSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID) {
+	var request DeleteSavedFilterRequestObject
+
+	request.Tenant = tenant
+	request.Filter = filter
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteSavedFilter(ctx, request.(DeleteSavedFilterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteSavedFilter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteSavedFilterResponseObject); ok {
+		if err := validResponse.VisitDeleteSavedFilterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetSavedFilter operation middleware
+func (sh *strictHandler) GetSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID) {
+	var request GetSavedFilterRequestObject
+
+	request.Tenant = tenant
+	request.Filter = filter
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetSavedFilter(ctx, request.(GetSavedFilterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetSavedFilter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetSavedFilterResponseObject); ok {
+		if err := validResponse.VisitGetSavedFilterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateSavedFilter operation middleware
+func (sh *strictHandler) UpdateSavedFilter(w http.ResponseWriter, r *http.Request, tenant TenantSlug, filter SavedFilterID, params UpdateSavedFilterParams) {
+	var request UpdateSavedFilterRequestObject
+
+	request.Tenant = tenant
+	request.Filter = filter
+	request.Params = params
+
+	var body UpdateSavedFilterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateSavedFilter(ctx, request.(UpdateSavedFilterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateSavedFilter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateSavedFilterResponseObject); ok {
+		if err := validResponse.VisitUpdateSavedFilterResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -45537,6 +52433,34 @@ func (sh *strictHandler) CreateTicket(w http.ResponseWriter, r *http.Request, te
 	}
 }
 
+// DeleteTicket operation middleware
+func (sh *strictHandler) DeleteTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber) {
+	var request DeleteTicketRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Number = number
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteTicket(ctx, request.(DeleteTicketRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteTicket")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteTicketResponseObject); ok {
+		if err := validResponse.VisitDeleteTicketResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // GetTicket operation middleware
 func (sh *strictHandler) GetTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber) {
 	var request GetTicketRequestObject
@@ -45747,6 +52671,34 @@ func (sh *strictHandler) DownloadAttachment(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DownloadAttachmentResponseObject); ok {
 		if err := validResponse.VisitDownloadAttachmentResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetTicketBody operation middleware
+func (sh *strictHandler) GetTicketBody(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber) {
+	var request GetTicketBodyRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Number = number
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetTicketBody(ctx, request.(GetTicketBodyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetTicketBody")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetTicketBodyResponseObject); ok {
+		if err := validResponse.VisitGetTicketBodyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -46799,6 +53751,33 @@ func (sh *strictHandler) OverrideUrgency(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(OverrideUrgencyResponseObject); ok {
 		if err := validResponse.VisitOverrideUrgencyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SearchTenant operation middleware
+func (sh *strictHandler) SearchTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params SearchTenantParams) {
+	var request SearchTenantRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SearchTenant(ctx, request.(SearchTenantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SearchTenant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SearchTenantResponseObject); ok {
+		if err := validResponse.VisitSearchTenantResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
