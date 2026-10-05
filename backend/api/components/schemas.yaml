@@ -1982,3 +1982,232 @@ DecisionList:
         $ref: '#/Decision'
     next_cursor:
       type: [string, 'null']
+Dashboard:
+  type: object
+  description: |
+    The tenant's dashboard, the nine fixed tiles of docs/adr/0018 D6, read in one read-only
+    transaction. Every tile counts only what the caller can see: the visibility predicate holds
+    each ticket, question and time entry it reads, so a restricted project or a confidential
+    ticket the caller cannot see counts nowhere and is named nowhere (docs/adr/0034 D4,
+    docs/adr/0065 D4), and a time entry follows the visibility of time as well (docs/adr/0034
+    D5). *Open* is every state but `done` and `dropped`. The open tiles count the tickets as they
+    stand at the request; throughput and lead time end with the period's last day; the time is
+    the period's (docs/adr/0019 D2). Days are UTC days and weeks ISO weeks of them
+    (docs/adr/0055 D3). The counted projects are the ones the `project` filter names, or, without
+    a plain value, every project the caller sees that is not archived; a negated value leaves its
+    project out, and a key that names no project the caller sees counts nothing.
+  required: [period, open_by_state, open_by_severity, security, blocked, age, throughput, lead_time,
+    decisions, time, recent]
+  properties:
+    period:
+      $ref: '#/DashboardPeriod'
+    open_by_state:
+      type: array
+      description: |
+        Tile 1, open tickets by state: the open tickets of each counted project per state, by
+        project key; a project and state without an open ticket is left out. Their sum per state
+        is the tile, their sum per project the project's open count.
+      items:
+        $ref: '#/DashboardStateCount'
+    open_by_severity:
+      type: array
+      description: |
+        Tile 2, open tickets by severity: every severity of docs/adr/0010 D1 in its order,
+        `critical` first, with the count of open tickets that carry it, zero included.
+      items:
+        $ref: '#/DashboardSeverityCount'
+    security:
+      type: array
+      description: |
+        Tile 3, open security findings: `live`, then `boundary` (docs/adr/0010 D1, D2), each with
+        the count of open tickets of that class and the oldest of them by filing (`opened_at`, the
+        earlier id on a tie), `null` while there is none.
+      items:
+        $ref: '#/DashboardSecurity'
+    blocked:
+      $ref: '#/DashboardBlocked'
+    age:
+      type: array
+      description: |
+        Tile 5, the age distribution of the open tickets, the age being the time since filing
+        (`opened_at`) at the request: five buckets in this order, every one present — under 7
+        days, 7 to under 30, 30 to under 90, 90 to under 365, and 365 days or more, a day being
+        24 hours.
+      items:
+        $ref: '#/DashboardAgeBucket'
+    throughput:
+      type: array
+      description: |
+        Tile 6, throughput: the tickets done per ISO week (docs/adr/0019 D2) for the eight weeks
+        that end with the one holding the period's last day, oldest first, every week present. A
+        ticket counts in the week of its `done_at` while it is done: one reopened since counts
+        nowhere, one done again counts once, in the week of its last done. The last week counts
+        up to the period's last day.
+      items:
+        $ref: '#/DashboardWeek'
+    lead_time:
+      $ref: '#/DashboardLeadTime'
+    decisions:
+      $ref: '#/DashboardDecisions'
+    time:
+      $ref: '#/DashboardTime'
+    recent:
+      type: array
+      description: |
+        Beside the tiles, kept from the front page before the dashboard: the eight open tickets of
+        the counted projects updated last, newest first (the later id on a tie).
+      items:
+        $ref: '#/DashboardRecent'
+DashboardPeriod:
+  type: object
+  description: |
+    The period the request named, or the default: the thirty days that end today, UTC. Both days
+    are inclusive.
+  required: [from, to]
+  properties:
+    from: {type: string, format: date}
+    to: {type: string, format: date}
+DashboardStateCount:
+  type: object
+  required: [project, state, count]
+  properties:
+    project: {type: string, description: The project's key}
+    state:
+      $ref: '#/TicketState'
+    count: {type: integer}
+DashboardSeverityCount:
+  type: object
+  required: [severity, count]
+  properties:
+    severity:
+      $ref: '#/Severity'
+    count: {type: integer}
+DashboardTicket:
+  type: object
+  description: A ticket a tile names, with the time the tile measures it from
+  required: [key, title, since]
+  properties:
+    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number>'}
+    title: {type: string}
+    since: {type: string, format: date-time}
+DashboardSecurity:
+  type: object
+  required: [class, count, oldest]
+  properties:
+    class:
+      $ref: '#/SecurityClass'
+    count: {type: integer}
+    oldest:
+      description: The oldest open ticket of the class; `since` is its filing
+      oneOf:
+        - $ref: '#/DashboardTicket'
+        - type: 'null'
+DashboardBlocked:
+  type: object
+  description: |
+    Tile 4, blocked tickets: the count of open tickets in the state `blocked`, and the one blocked
+    longest with its block's kind (docs/adr/0009 D2) — blocked since its latest recorded
+    transition into `blocked` (docs/adr/0026), or since its last update where no act records one;
+    the earlier id on a tie. `oldest` is `null` while none is blocked.
+  required: [count, oldest]
+  properties:
+    count: {type: integer}
+    oldest:
+      oneOf:
+        - $ref: '#/DashboardBlock'
+        - type: 'null'
+DashboardBlock:
+  type: object
+  required: [key, title, since, kind]
+  properties:
+    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number>'}
+    title: {type: string}
+    since: {type: string, format: date-time, description: When the ticket entered blocked}
+    kind:
+      $ref: '#/BlockKind'
+DashboardAgeBucket:
+  type: object
+  description: The open tickets whose age is at least `from_days` and under `to_days`
+  required: [from_days, to_days, count]
+  properties:
+    from_days: {type: integer}
+    to_days:
+      type: [integer, 'null']
+      description: Null for the last bucket, which has no upper bound
+    count: {type: integer}
+DashboardWeek:
+  type: object
+  required: [week, from, to, done]
+  properties:
+    week: {type: string, description: 'The ISO week, 2026-W40'}
+    from: {type: string, format: date, description: Its Monday}
+    to: {type: string, format: date, description: 'Its Sunday, or the period''s last day for the last week'}
+    done: {type: integer, description: The tickets done in it}
+DashboardLeadTime:
+  type: object
+  description: |
+    Tile 7, lead time: the median time from filing to done (`opened_at` to `done_at`) of the
+    tickets done in the thirty days that end with the period's last day — done now, their
+    `done_at` in that window, as throughput counts them; the median of an even count is the mean
+    of the middle two. `median_seconds` is `null` while no ticket was done in the window.
+  required: [from, to, done, median_seconds]
+  properties:
+    from: {type: string, format: date, description: The window's first day}
+    to: {type: string, format: date, description: 'The window''s last day, the period''s'}
+    done: {type: integer, description: The tickets the median is taken over}
+    median_seconds:
+      type: [integer, 'null']
+      description: Whole seconds, rounded
+DashboardDecisions:
+  type: object
+  description: |
+    Tile 8, open decisions: the count of open questions (docs/adr/0011 D3) on the tickets of the
+    counted projects, whomever they are asked of and whatever state the ticket is in, and the one
+    asked first, the earlier id on a tie; `oldest` is `null` while none is open.
+  required: [count, oldest]
+  properties:
+    count: {type: integer}
+    oldest:
+      oneOf:
+        - $ref: '#/DashboardQuestion'
+        - type: 'null'
+DashboardQuestion:
+  type: object
+  required: [key, title, number, question, since]
+  properties:
+    key: {type: string, description: 'The canonical key of its ticket'}
+    title: {type: string, description: The ticket's title}
+    number: {type: integer, description: The question's number on the ticket}
+    question: {type: string}
+    since: {type: string, format: date-time, description: When it was asked}
+DashboardTime:
+  type: object
+  description: |
+    Tile 9, time booked in the period by project: the minutes of the time entries whose day lies
+    in the period, voided ones left out (docs/adr/0017 D7), per counted project that has any, by
+    project key; only the entries the caller may see count (docs/adr/0034 D5).
+  required: [total_minutes, projects]
+  properties:
+    total_minutes: {type: integer}
+    projects:
+      type: array
+      items:
+        $ref: '#/DashboardProjectTime'
+DashboardProjectTime:
+  type: object
+  required: [project, name, minutes]
+  properties:
+    project: {type: string, description: The project's key}
+    name: {type: string}
+    minutes: {type: integer}
+DashboardRecent:
+  type: object
+  required: [key, type, title, state, updated_at]
+  properties:
+    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number>'}
+    type:
+      $ref: '#/TicketType'
+    title: {type: string}
+    state:
+      $ref: '#/TicketState'
+    updated_at: {type: string, format: date-time}
