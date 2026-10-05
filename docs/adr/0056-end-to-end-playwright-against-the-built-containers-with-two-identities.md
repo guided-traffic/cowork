@@ -26,9 +26,12 @@ the backlog's drag within and between horizons — every one in Chromium and Web
 schemes, and a dark-mode screenshot of a seeded board at 2 % of the pixels, which a light surface
 fails and text turned dark on dark passes, measured; `data-testid` and data seeded through the API
 (D7), a PrimeNG menu item and Dex's form found otherwise. Verified by running it locally on
-2026-10-04. **Not built:** the path with two identities in one test (D2) — filing, assigning, the
+2026-10-04. ~~**Not built:** the path with two identities in one test (D2) — filing, assigning, the
 second identity's "assigned to me" and inbox within the stream's latency, its move and close with a
-verification note — which waits for those pages and stands as a pending test; the init state and
+verification note — which waits for those pages and stands as a pending test;~~ *(2026-10-05: the
+path with two identities is written — [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts),
+each identity in a browser context of its own, the pending mark gone — and has not run yet: the
+images were not built for it; the `e2e` job runs it after the merge.)* **Not built:** the init state and
 the first tenant, the tenant board — whose path, a transition by drag and the refusal across
 swimlanes, is written ([`tenant-board.spec.ts`](../../frontend/e2e/tenant-board.spec.ts),
 2026-10-05) and has not run yet —, a restricted project's third identity, the import and the MCP

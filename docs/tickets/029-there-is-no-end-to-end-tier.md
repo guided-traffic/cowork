@@ -40,9 +40,18 @@ board. The comparison holds one picture per browser for every platform at 2 % of
 measured on 2026-10-04, a light sidebar, light cards or a light top bar fail it, and card titles
 turned dark on the dark cards pass.
 
-The phase's own path is
-[`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts), a `test.fixme` that Playwright lists as
-skipped: "assigned to me" (T35) and the inbox (T36) do not exist.
+The phase's own path, [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts), is written on this
+branch and no longer `fixme`: the administrator makes a local account through the API (its temporary
+password changed, `signInWithNewPassword` in [`support/api.ts`](../../frontend/e2e/support/api.ts))
+and files a ticket with the backlog's dialog, assigned to it; the account — the default `page`, its
+own browser context — waits on "Assigned to me" with its stream live, sees the ticket there and the
+bell count 1 without a reload, finds "assigned it to you" in its inbox, opens the ticket from there,
+moves it to `analysed` and closes it by hand with a verification note; the administrator's page of
+the ticket — a second context, `browser.newContext` with the global setup's session — shows it done.
+The detail page's state badge carries `data-testid="ticket-state"` for it. It is type-checked
+(`make frontend-lint`, a `tsc` over `e2e/`) and listed by `playwright test --list` in the four
+projects; it has **not run**: `make e2e` builds the images, and this work built none. CI's `e2e` job
+runs it after the merge.
 
 CI: each `container-malware-scan` leg hands its scanned image to the job `e2e` (End-to-End Tests)
 as an artefact; `e2e` installs the browsers, runs `make e2e` with ten minutes' budget, uploads
@@ -61,17 +70,14 @@ is settled on the recommendation (ADR 0056 D1), the owner reviewing the result.
 
 ## Required changes
 
-1. With T35 and T36: write the path of `assigned.spec.ts` — the administrator files a ticket and
-   assigns it to a local account it made, which sees it in "assigned to me" and in its inbox within
-   the stream's latency, in a browser context of its own, moves it and closes it with a
-   verification note, while the administrator's page shows it done (ADR 0056 D2) — and remove the
-   `fixme`.
+1. Run `assigned.spec.ts` — the `e2e` job after the merge, or `make e2e` — and fix what the first
+   run shows; then [testing.md](../developer/testing.md#the-suite) and ADR 0056's Status say it ran.
 2. The `main` ruleset requires `End-to-End Tests` — the owner's change
    ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)
    D6); then ADR 0073's Status and its index row say so.
 
 ## Related
 
-- T35, T36 — the pages the pending path walks
+- T35, T36 — the pages the two-identity path walks
 - T41 — the board's path, built here
 - T34 — the backlog's drag path, built here

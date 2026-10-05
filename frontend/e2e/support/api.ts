@@ -55,6 +55,32 @@ export async function signIn(
   );
 }
 
+/**
+ * Signs a browser context in as a local account with its temporary password and changes it, through
+ * the API: the context's pages are then that person's (docs/adr/0033 D4). The context's own request
+ * context shares its cookies, and every call carries what the browser would past the origin check.
+ */
+export async function signInWithNewPassword(
+  context: APIRequestContext,
+  baseURL: string,
+  username: string,
+  temporary: string,
+  chosen: string,
+): Promise<void> {
+  const headers = { Origin: baseURL, 'X-Requested-With': 'cowork' };
+  await ok(
+    `sign in as ${username}`,
+    await context.post('/auth/local', { data: { username, password: temporary }, headers }),
+  );
+  await ok(
+    `change the temporary password of ${username}`,
+    await context.put('/api/v1/me/password', {
+      data: { current_password: temporary, new_password: chosen },
+      headers,
+    }),
+  );
+}
+
 /** What only a session may do. */
 export class Session {
   constructor(readonly context: APIRequestContext) {}
