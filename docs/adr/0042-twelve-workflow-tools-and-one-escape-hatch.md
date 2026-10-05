@@ -21,6 +21,11 @@ records, and a unit test holds every operation a tool calls to the document. The
 surface: `session_start` reads the working directory and is for a terminal; a host inside the
 backend runs the others in process — ~~which credential such a host presents is not decided~~.
 
+Amended 2026-10-05 by the answer on mentions recorded in
+[ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5, built on the
+recommendation, the owner reviewing the result (D1: `comment` takes `mentions`), and built the same
+day in [`tool_tickets.go`](../../backend/internal/tools/tool_tickets.go) `runComment`.
+
 Amended 2026-10-04 (D1: `place_ticket` in place of `set_urgency`, and `file_ticket` into a
 horizon at a place — the owner's answer recorded in [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md)
 D3), and built the same day: `place_ticket` and the horizon of `file_ticket` in
@@ -80,7 +85,10 @@ and `activity`; `search` `scope`, `project`, `state`, `type`, `assigned_to_me`,
 `include_terminal` — and `query` itself is optional in one project, where a search without words lists
 the project's tickets in rank order, and asks for words outside one *(amended 2026-10-04: on a
 live run of the chat a model asked "which tickets are in WEB?" sent an empty query, which the
-required query refused, and the question had no call)*; `file_ticket` `project`; `record_state` `comment`; `transition`
+required query refused, and the question had no call)*; `file_ticket` `project`; `record_state` `comment`; *(added
+2026-10-05 with [ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D5)*
+`comment` `mentions`, the persons the comment mentions as `me`, usernames, display names or ids,
+resolved through the member list as `open_question`'s `asked_of`; `transition`
 `block_kind`, `blocked_by` and `comment`; `api` `if_match`. `session_start` shows the
 candidates in rank order while the score of [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)
 is not built, and no inbox while [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
