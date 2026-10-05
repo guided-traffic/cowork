@@ -29,6 +29,10 @@ const (
 	snippetStop  = '\x03'
 )
 
+// fieldQuery is the pointer of a problem about the words of a search or of a
+// list's q filter.
+const fieldQuery = "query:q"
+
 // keyQuery is a query that is a ticket's key or the beginning of one, in any
 // case: COW-1, cow-12, acme/COW-12 (docs/adr/0025 D3).
 var keyQuery = regexp.MustCompile(`^(?:([a-z0-9][a-z0-9-]{1,62})/)?([A-Za-z][A-Za-z0-9]{1,9}-[0-9]{1,10})$`)
@@ -51,10 +55,10 @@ func (s *Server) searchQuery(q string) (string, error) {
 	switch {
 	case trimmed == "":
 		return "", &problem.Error{Code: problem.ValidationFailed, Detail: "the search has no word to find",
-			Errors: []problem.FieldError{{Pointer: "query:q", Message: "white space only"}}}
+			Errors: []problem.FieldError{{Pointer: fieldQuery, Message: "white space only"}}}
 	case s.h.opts.MaxQueryLength > 0 && utf8.RuneCountInString(q) > s.h.opts.MaxQueryLength:
 		return "", &problem.Error{Code: problem.ValidationFailed, Detail: "the search is too long",
-			Errors: []problem.FieldError{{Pointer: "query:q", Message: "longer than " + strconv.Itoa(s.h.opts.MaxQueryLength) + " characters"}}}
+			Errors: []problem.FieldError{{Pointer: fieldQuery, Message: "longer than " + strconv.Itoa(s.h.opts.MaxQueryLength) + " characters"}}}
 	}
 	return trimmed, nil
 }

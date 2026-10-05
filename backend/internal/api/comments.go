@@ -201,10 +201,7 @@ func (s *Server) AddComment(ctx context.Context, req apigen.AddCommentRequestObj
 		if err != nil {
 			return err
 		}
-		if added, err = w.GetComment(ctx, readq.GetCommentParams{TenantID: t.ID, TicketID: tc.row.ID, ID: id}); err != nil {
-			return err
-		}
-		if images, err = ticketImages(ctx, w.Reader, t, tc); err != nil {
+		if added, images, err = writtenComment(ctx, w.Reader, t, tc, id); err != nil {
 			return err
 		}
 		location = ticketURL(t, tc.project.Key, tc.row.Number) + "/comments/" + id.String()
@@ -288,9 +285,6 @@ func (s *Server) EditComment(ctx context.Context, req apigen.EditCommentRequestO
 		if perr := mayChangeComment(p, tc, c, false); perr != nil {
 			return perr
 		}
-		if images, err = ticketImages(ctx, w.Reader, t, tc); err != nil {
-			return err
-		}
 		if c.WithdrawnAt != nil {
 			return problem.New(problem.StateConflict, "the comment is withdrawn")
 		}
@@ -298,7 +292,7 @@ func (s *Server) EditComment(ctx context.Context, req apigen.EditCommentRequestO
 			return stale(c.Version, map[string]any{fieldBody: c.Body})
 		}
 		if c.Body == req.Body.Body {
-			out, err = w.GetComment(ctx, readq.GetCommentParams{TenantID: t.ID, TicketID: tc.row.ID, ID: c.ID})
+			out, images, err = writtenComment(ctx, w.Reader, t, tc, c.ID)
 			if err == nil {
 				err = store.ErrNoChange
 			}
@@ -318,7 +312,7 @@ func (s *Server) EditComment(ctx context.Context, req apigen.EditCommentRequestO
 			return err
 		}
 		w.Record(store.Event{EntityType: entityComment, EntityID: c.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row), Action: actionEdited})
-		out, err = w.GetComment(ctx, readq.GetCommentParams{TenantID: t.ID, TicketID: tc.row.ID, ID: c.ID})
+		out, images, err = writtenComment(ctx, w.Reader, t, tc, c.ID)
 		return err
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {

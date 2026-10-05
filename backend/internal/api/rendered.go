@@ -89,6 +89,28 @@ func (s *Server) GetTicketBody(ctx context.Context, req apigen.GetTicketBodyRequ
 	}, nil
 }
 
+// writtenComment reads a comment a write left, with the images its text may
+// show.
+func writtenComment(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx, id uuid.UUID) (comment, richtext.Images, error) {
+	c, err := r.GetComment(ctx, readq.GetCommentParams{TenantID: t.ID, TicketID: tc.row.ID, ID: id})
+	if err != nil {
+		return c, nil, err
+	}
+	images, err := ticketImages(ctx, r, t, tc)
+	return c, images, err
+}
+
+// writtenQuestion reads a question a write left, with the images its options
+// and answer may show.
+func writtenQuestion(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx, number int32) (question, richtext.Images, error) {
+	q, err := r.GetQuestion(ctx, readq.GetQuestionParams{TenantID: t.ID, TicketID: tc.row.ID, Number: number})
+	if err != nil {
+		return q, nil, err
+	}
+	images, err := ticketImages(ctx, r, t, tc)
+	return q, images, err
+}
+
 // renderedComment is a comment as the API answers it: with its body rendered
 // beside the Markdown, none once it is withdrawn.
 func renderedComment(c comment, images richtext.Images) apigen.Comment {

@@ -200,10 +200,7 @@ func (s *Server) AskQuestion(ctx context.Context, req apigen.AskQuestionRequestO
 		w.Record(store.Event{EntityType: entityQuestion, EntityID: id, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
 			Action: "asked", After: map[string]any{"number": n, "question": body.Question, "asked_of": body.AskedOf},
 			Notices: told(store.NoticeAsked, body.AskedOf)})
-		if asked, err = w.GetQuestion(ctx, readq.GetQuestionParams{TenantID: t.ID, TicketID: tc.row.ID, Number: n}); err != nil {
-			return err
-		}
-		if images, err = ticketImages(ctx, w.Reader, t, tc); err != nil {
+		if asked, images, err = writtenQuestion(ctx, w.Reader, t, tc, n); err != nil {
 			return err
 		}
 		location = questionURL(t, tc, n)
