@@ -55,7 +55,7 @@ func (s *Server) ListTicketLinks(ctx context.Context, req apigen.ListTicketLinks
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(l readq.ListTicketLinksRow) string { return l.ID.String() })
-	out := apigen.ListTicketLinks200JSONResponse{Items: []apigen.Link{}, NextCursor: nullableString(next)}
+	out := apigen.LinkList{Items: []apigen.Link{}, NextCursor: nullableString(next)}
 	for _, l := range rows {
 		out.Items = append(out.Items, apigen.Link{
 			Id: l.ID, Type: apigen.LinkType(l.Type), Direction: direction(l.Outgoing), Name: l.Type.Name(l.Outgoing),
@@ -64,7 +64,11 @@ func (s *Server) ListTicketLinks(ctx context.Context, req apigen.ListTicketLinks
 			CreatedBy: personView(l.CreatedBy, l.CreatedByUsername, l.CreatedByName), CreatedAt: l.CreatedAt,
 		})
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListTicketLinks304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListTicketLinks200JSONResponse{Body: out, Headers: apigen.ListTicketLinks200ResponseHeaders{ETag: &tag}}, nil
 }
 
 func direction(outgoing bool) apigen.LinkDirection {

@@ -1,5 +1,5 @@
 -- Saved filters (docs/adr/0018 D5): the caller's own and the tenant's shared
--- ones, each with its owner. The policies of migration 36 admit no other row,
+-- ones, each with its owner. The policies of migration 33 admit no other row,
 -- and every query names the owner's rule as well (docs/adr/0021 D4).
 
 -- name: ListSavedFilters :many

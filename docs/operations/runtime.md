@@ -322,7 +322,7 @@ revoking its token. Each limit below is a variable and, in the chart, a `backend
 | `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` | `409 attachment_limit` | no limit |
 | `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled, `504 timeout`; the event stream is exempt, and a turn of the chat after its body is read | no limit |
 | `COWORK_MAX_PAGE_SIZE` | `200` | a larger `limit` is clamped, not refused (without `limit` a page has 50) | no clamp |
-| `COWORK_MAX_QUERY_LENGTH` | `256` characters | a longer full-text `q` is `400 validation_failed` | no limit of its own; the API document still caps `q` at 4096 characters |
+| `COWORK_MAX_QUERY_LENGTH` | `256` characters | a longer full-text `q` — of a ticket list or of a search — is `400 validation_failed` | no limit of its own; the API document still caps `q` at 4096 characters |
 | `COWORK_SSE_MAX_STREAMS_PER_PERSON` | `10`, per replica | the next stream closes the person's oldest with `event: unavailable` | no limit |
 | `COWORK_SSE_REPLAY_WINDOW` | `5m` | a reconnect beyond the window starts with `event: resync` | no replay: a reconnect that missed anything starts with `resync` |
 | `COWORK_CHAT_TURN_TIMEOUT` | `5m` | a turn of the chat ends with the `error` event `timeout` | no limit |
@@ -374,16 +374,21 @@ event: ticket.changed
 data: {"key":"dev/COW-1","version":2,"kind":"transitioned"}
 ```
 
-A change of who belongs to the tenant or who sees a project is `membership.changed`, with the ids of
-what changed — `person_id`, `project_id`, `mapping_id` — and reaches every member, the
+A change of who belongs to the tenant or who sees a project is `membership.changed`, with the
+tenant's slug and the ids of what changed — `tenant`, `person_id`, `project_id`, `mapping_id` — and
+reaches every member, the
 administrators only, or the administrators and the person it names, by what it is
 ([tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).
 
-Opened with `?me=true` — as the browser always opens it — it is the person-level stream: it also
-carries `inbox.changed` with `data: {"unread": n}`, the person's unread notifications in every
-tenant, when it opens and once a burst of changes of the inbox is over (a tenth of a second), and the
-`question.changed` of a question asked of the person in another of their tenants. Neither carries an
-`id:`, so neither is replayed; the browser reloads its person-level pages when the stream opens.
+Opened with `?me=true` — as the browser always opens it — it is the person-level stream: it carries
+the events of every tenant the person belongs to, each as that tenant's own stream would judge it,
+over one connection whatever the number of tenants, and `inbox.changed` with `data: {"unread": n}`,
+the person's unread notifications in every tenant, when it opens and once a burst of changes of the
+inbox is over (a tenth of a second). A reconnect replays the gap of every tenant it follows; the
+count carries no `id:` and is not replayed, and the browser reloads its person-level pages when the
+stream opens. Every tenant it follows costs one database transaction when it opens, at every
+heartbeat and on every act that changes what the person may see there
+([tenancy.md](../security/tenancy.md#the-person-level-stream)).
 
 How it behaves, as somebody running it sees it:
 
@@ -393,6 +398,11 @@ How it behaves, as somebody running it sees it:
 - **A heartbeat every 20 seconds** (`: heartbeat`, an SSE comment) keeps proxies from closing
   a quiet stream and checks the token and the membership again; the stream ends when either
   is gone.
+- **A change of who sees what reaches the open streams at once.** A project created, a membership,
+  a mapping, a restriction or an access entry changed makes every open stream of the tenant read
+  the person's role and the projects they see again — two small queries per stream, once or twice for a
+  burst of such changes — before it passes its next event; the heartbeat repeats it for a change
+  made in the database past the API.
 - **Reconnects replay.** A client that reconnects with `Last-Event-ID` gets what it missed
   while the event is still within `COWORK_SSE_REPLAY_WINDOW` on that replica; otherwise the
   stream starts with `event: resync` and the client refetches its lists.

@@ -1,3 +1,4 @@
+import { HttpHeaders } from '@angular/common/http';
 import { Component, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
@@ -10,6 +11,20 @@ import { EventStreamService, StreamEvent } from '../../core/event-stream.service
 import { InboxService } from '../../core/inbox.service';
 import { SessionService } from '../../core/session.service';
 import { actor, groupByTicket, happening, Inbox } from './inbox';
+
+/**
+ * The Api of the page's specs: `invoke` answers the body, and `invoke$Response`, which the
+ * conditional loads use (docs/adr/0054 D7), the same body with no headers.
+ */
+function apiOf(invoke: ReturnType<typeof vi.fn>) {
+  return {
+    invoke,
+    invoke$Response: async (fn: unknown, params: unknown) => ({
+      body: await (invoke as (fn: unknown, params: unknown) => Promise<unknown>)(fn, params),
+      headers: new HttpHeaders(),
+    }),
+  };
+}
 
 @Component({ template: '' })
 class Page {}
@@ -125,7 +140,7 @@ describe('Inbox', () => {
       providers: [
         provideRouter([{ path: '**', component: Page }]),
         MessageService,
-        { provide: Api, useValue: { invoke } },
+        { provide: Api, useValue: apiOf(invoke) },
         { provide: SessionService, useValue: { person: signal(me) } },
         { provide: InboxService, useValue: { count: () => unread(), markRead, markAllRead } },
         { provide: EventStreamService, useValue: { events: stream.asObservable() } },

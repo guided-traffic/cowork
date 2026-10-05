@@ -69,11 +69,20 @@ export class TicketActions {
   private readonly tickets = inject(TicketsService);
   private readonly problems = inject(ProblemService);
 
-  async create(tenant: string, project: string, body: TicketCreate): Promise<Ticket> {
+  /**
+   * Files a ticket. The key is the form's, one for each content it holds, so a retry of a lost
+   * answer is answered again instead of filing the ticket twice (docs/adr/0045 D3).
+   */
+  async create(
+    tenant: string,
+    project: string,
+    body: TicketCreate,
+    idempotencyKey: string,
+  ): Promise<Ticket> {
     const ticket = await this.api.invoke(createTicket, {
       tenant,
       project,
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body,
     });
     this.tickets.cache.put(ticket.key, ticket);

@@ -21,7 +21,17 @@ the chat in the UI (D9: the shutdown ends the chat's turns as well; built the sa
 `TestTheChatsTurnLimitAndShutdown`), and on 2026-10-04 by the owner's decision on the routing
 recorded in [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 D3 (D6: the Ingress routes the stream to the backend and the frontend's nginx has no location for
-it; built the same day).
+it; built the same day), and on 2026-10-04 for the events a stream dropped until its next heartbeat
+(D3: the stream recomputes what it admits on every act that changes it, before the next event;
+built the same day), and on 2026-10-05 by the owner's answer to how the person-level pages follow
+the changes of every tenant of the person — the person-level stream carries every event of every
+tenant the person belongs to that the tenant's filter admits, over one connection whatever the
+number of tenants — chosen over a stream per tenant on the person-level pages, which a person with
+more tenants than `COWORK_SSE_MAX_STREAMS_PER_PERSON` would close against themselves, and over a
+reload on `inbox.changed` with a fifteen-second poll, the latency this record turned down (D1: the
+person-level stream spans the person's tenants; D3: a filter per tenant, recomputed on every act
+that changes it and at every heartbeat, which checks every membership; D5: a reconnect replays
+across the tenants; built the same day).
 
 **Partly built** (phase 2, 2026-10-02): D1 without ~~`?me=true` (the person-level events arrive
 with the inbox)~~ — built 2026-10-04, below —, D2 without ~~`inbox.changed`~~ — built 2026-10-04,
@@ -32,10 +42,27 @@ membership yet)~~ — built 2026-10-04, below —, D3–D6, D8 and D9 — [`inte
 arrives with that event. D7's client side and D8's hidden tab since phase 3 (2026-10-03):
 [`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts) opens one
 `EventSource` per tenant page, falls back after three failures or `unavailable`, ticks every
-fifteen seconds, retries every minute and holds events while the tab is hidden; a poll still
-reloads the lists in full — the `If-None-Match` of D7 is outstanding. Measured on 2026-10-03
+fifteen seconds, retries every minute and holds events while the tab is hidden; ~~a poll still
+reloads the lists in full — the `If-None-Match` of D7 is outstanding~~ *(built 2026-10-04: every
+list the client loads again answers a weak `ETag` and `304`, and the client sends the tag of each
+page it holds — [`core/conditional.ts`](../../frontend/src/app/core/conditional.ts))*. Measured on 2026-10-03
 through the Angular dev server's proxy: a comment's event reached an open stream 29 ms after the
 write began.
+
+**Built** (phase 3, 2026-10-04): D3's recomputation on the acts that change what a stream admits —
+[`events/hub.go`](../../backend/internal/events/hub.go) `Hub.Changes`, `Hub.Refilter`,
+[`api/events.go`](../../backend/internal/api/events.go) `refilter`; a project's creation is
+published as `store.EntityProject` and refused by every filter. A person-level stream refilters as
+any stream of its tenant; ~~its person's own events of other tenants are judged as they are written~~
+(superseded 2026-10-05, below).
+
+**Built** (2026-10-05): the person-level stream across the person's tenants of D1, D3 and D5 as
+amended that day — [`events/hub.go`](../../backend/internal/events/hub.go) `Subscription`, a filter
+per tenant, `Hub.Refilter` per tenant, the replay merged by `Event.Seq`;
+[`api/events.go`](../../backend/internal/api/events.go) `streamFilters`, `refilter`, `heartbeat`; the
+browser's person-level pages reload on the events of every tenant through
+[`person-list.ts`](../../frontend/src/app/features/me/person-list.ts) `reloadOn`, and its tenant
+pages keep to their tenant.
 
 **Built** (phase 4, 2026-10-04): `membership.changed` of D2, published by every act on who belongs
 to a tenant or who sees a project — an administrator's and the identity provider's alike
@@ -50,9 +77,11 @@ changes is over, and the acts of questions asked of them in their other tenants,
 it is written against that tenant — still a member, the ticket still visible by D3's facts, a
 token restricted to another tenant hearing none ([`api/events.go`](../../backend/internal/api/events.go)
 `writeStreamed`, `Hub.toPerson`). *(Made concrete 2026-10-04:)* neither carries an `id:` nor enters
-D5's ring — a count is a state, and another tenant's event is no place in this tenant's replay — so a
-reconnect replays neither and the client reloads its person-level pages on the count the stream
-sends when it opens. The browser opens every stream as a person-level one, on the tenant its pages
+D5's ring — a count is a state, ~~and another tenant's event is no place in this tenant's replay~~ —
+so a reconnect replays neither and the client reloads its person-level pages on the count the stream
+sends when it opens. *(Superseded 2026-10-05 by the amendment of D1, D3 and D5: the questions of other
+tenants are events of those tenants like any other, judged by their filters and replayed with their
+ids; `writeStreamed` and the questions' routing are gone.)* The browser opens every stream as a person-level one, on the tenant its pages
 show or, on the person-level pages, on the person's first tenant
 ([`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts)). The integration
 tier asserts what the person-level stream never carries: another person's events, a tenant the person
@@ -77,8 +106,14 @@ which is all a client that refetches needs.
 **D1 — One event stream per tenant and person:** `GET /api/v1/tenants/{slug}/events`,
 `text/event-stream`, authenticated like any route (session cookie; a bearer token may
 subscribe too). The stream delivers events of that tenant the person may see, plus the
-person's own events (inbox, questions asked of them) across their tenants when opened with
-`?me=true` from the person-level pages.
+person's own events (inbox, ~~questions asked of them~~) across their tenants when opened with
+`?me=true` from the person-level pages. *(Amended 2026-10-05 by the owner: opened with `?me=true`,
+the stream carries, besides the person's inbox, every event of every tenant the person belongs to
+that D3's filter of that tenant admits — the person-level pages follow all of the person's tenants
+over one connection. A token restricted to a tenant reaches no other
+([ADR 0035](0035-personal-access-tokens.md) D3): its person-level stream carries its tenant
+alone. A membership event names its tenant, `{"tenant": "<slug>", …}`, since the stream no longer
+says it by its address; a ticket's event names it in its key.)*
 
 **D2 — An event carries a key and a version, never content.**
 `event: ticket.changed`, `data: {"key":"acme/VKO-12","version":17,"kind":"transition"}`;
@@ -100,13 +135,30 @@ subscription knows the person's visible projects (computed at connect, recompute
 role, so a project gained or lost by a change no event announces counts within one
 heartbeat)* and drops events of projects the person may not see, so not even the
 existence of a key in a restricted project leaks. *(Amended 2026-10-04: the server recomputes at
-the heartbeat, not on `membership.changed`, and a membership event is judged by its audience alone,
+the heartbeat, ~~not on `membership.changed`~~ *(and on it since the amendment below)*, and a
+membership event is judged by its audience alone,
 whatever project it names ~~— the stream of a project-restricted token included, which therefore
 hears the tenant's membership changes~~.)* *(Amended after the security review, 2026-10-04: except
 on the stream of a project-restricted token, which knows nothing of the tenant beyond its project and
 hears a membership event only when it names that project, or names the token's own person and no
-project ([docs/security/tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).)* Events never cross tenants: a subscription
-is to one tenant, and the person-level `?me=true` events are addressed to the person.
+project ([docs/security/tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).)*
+*(Amended again 2026-10-04, the fix decided on 2026-10-03 for events dropped until the next
+heartbeat: the server recomputes on every act that changes what a stream may admit as well — a
+project created, and every membership act: a grant, a derived membership, a mapping, a project's
+restriction, an access entry — before it filters the next event, so a ticket filed in a project
+created, opened or let into a moment ago reaches the stream, and one restricted away a moment ago
+does not; the heartbeat stays, for a change made past the API. A project's creation is published
+for this and sent to no client.)* ~~Events never cross tenants: a subscription
+is to one tenant, and the person-level `?me=true` events are addressed to the person.~~
+*(Amended 2026-10-05 by the owner, with D1: a person-level stream subscribes to every tenant of its
+person, and an event of each passes that tenant's filter alone — the projects the person sees there,
+their role there, the confidential rule, a project-restricted token's project — so nothing of a
+tenant reaches anybody it would not reach on that tenant's own stream. The filter of each tenant is
+recomputed on every act that changes what the stream may admit of it, and the heartbeat checks every
+membership: a tenant the person left is followed no more, one they joined is. A membership act that
+names the person in a tenant the stream does not follow — a grant into a tenant they had none in —
+makes it follow that tenant at once. The act that takes a tenant away from the person still reaches
+them, as it names them; nothing of that tenant after it does.)*
 
 **D4 — Publication is `NOTIFY` at commit.** The mutation wrapper of ADR 0027 D3 issues
 `NOTIFY cowork_events, '<json>'` inside the transaction; PostgreSQL delivers it when the
@@ -132,7 +184,11 @@ its ring buffers: the acts of the loss never reached them, so an earlier id answ
 *(Amended 2026-10-04: the heartbeat checks a session as well — it exists, neither limit passed,
 its person active — and the identity provider's gate: a provider session's groups refresh when it
 is due, without moving the idle clock, and a provider person's token meets the gate when its check
-is due ([ADR 0035](0035-personal-access-tokens.md) D8).)*
+is due ([ADR 0035](0035-personal-access-tokens.md) D8).)* *(Amended 2026-10-05, with D1: a
+person-level stream replays across its tenants — the hub numbers the events in the order it receives
+them, and a reconnect whose id is in the ring of any tenant the stream follows gets every followed
+tenant's events after it, merged in that order, each through its tenant's filter; an id in none of
+them is `resync` as before. Every event carries its id.)*
 
 **D6 — The proxies are told not to buffer.** The backend sets `X-Accel-Buffering: no`,
 `Cache-Control: no-cache` and `Content-Type: text/event-stream`; ~~the nginx template gets a

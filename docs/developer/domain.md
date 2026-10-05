@@ -500,8 +500,9 @@ comment names a person is not decided.
   read with `read` scope.
 - **Deleting** (`DELETE …/{number}`, `deleted`) puts the ticket into the bin. From then on it
   answers like a missing ticket everywhere but the bin: its routes are `404` — a second deletion
-  too —, it leaves every list, the board, the prerequisite trees, the person-level lists, the inbox,
-  the context and the Markdown export, a link to it is hidden from the other end and an act that
+  too, its rendered body among them —, it leaves every list, the boards, the search, the
+  prerequisite trees, the person-level lists, the inbox and its count, the context and the Markdown
+  export, a link to it is hidden from the other end and an act that
   names it is redacted, a block that names it names no ticket, a child shows its parent as hidden,
   its parent's derived stages leave it out, and a ticket it blocks no longer counts it as an open
   prerequisite. Nothing is removed. Its number stays taken. It is not refused when open tickets

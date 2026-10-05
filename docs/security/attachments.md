@@ -2,7 +2,8 @@
 
 What happens to a file someone attaches to a ticket or a comment — how its type is decided,
 where its bytes live, how they are delivered back, what bounds an upload and what is recorded
-— and what that leaves open, as built on 2026-10-02, the UI's preview on 2026-10-04. Who may read a ticket, and with it its
+— and what that leaves open, as built on 2026-10-02, the UI's preview on 2026-10-04, an image in a
+rendered text on 2026-10-05. Who may read a ticket, and with it its
 attachments, is [tenancy.md](tenancy.md); what a token or an agent may do, uploading included,
 is [tokens.md](tokens.md); the network path between the containers is
 [trust-boundaries.md](trust-boundaries.md).
@@ -85,8 +86,12 @@ ADR 0016 D5):
 - `Cache-Control: no-store`, like every API response.
 
 `TestAttachmentRoundTrip` asserts the type, `nosniff`, `sandbox`, the disposition and the
-`ETag`. Nothing in cowork renders Markdown yet, so ADR 0016 D7's rule for an image embedded in
-a ticket's text has nothing to act on.
+`ETag`. **An image in a ticket's text** (ADR 0016 D7): the server renders the body, a comment, a
+question's options and its answer, and shows an image only when it names a raster attachment of the
+same ticket — from that attachment's own path, so the browser asks nothing of another origin; an SVG,
+another ticket's attachment and an address elsewhere become links, which load nothing until a person
+follows them ([rendered-markdown.md](rendered-markdown.md#images)). Each time a reader's page shows
+such an image, it is a recorded download, as a preview's is.
 
 **The preview in the UI.** The ticket's page shows a raster attachment — the four types delivered
 inline, never an SVG — as an `<img>` of the attachment's own URL

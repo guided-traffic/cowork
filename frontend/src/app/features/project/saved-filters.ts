@@ -235,6 +235,20 @@ export class SavedFilters {
   /** The form starts empty each time it opens. */
   protected readonly name = linkedSignal({ source: this.saving, computation: () => '' });
   protected readonly shared = linkedSignal({ source: this.saving, computation: () => false });
+  /**
+   * The Idempotency-Key of the filter the form saves: one for each content — the name, the sharing,
+   * the conditions and the tenant —, so a retry of a lost answer is answered again rather than
+   * saving a second filter; any change, and the dialog opened again, make a new one
+   * (docs/adr/0045 D3).
+   */
+  private readonly idempotencyKey = linkedSignal(() => {
+    this.session.tenant();
+    this.saving();
+    this.name();
+    this.shared();
+    JSON.stringify(this.current());
+    return crypto.randomUUID();
+  });
 
   protected readonly choices = computed<Choice[]>(() =>
     this.filters.list().map((f) => ({
@@ -266,7 +280,12 @@ export class SavedFilters {
 
   protected async save(): Promise<void> {
     await this.act(async () => {
-      const filter = await this.filters.create(this.name().trim(), this.current(), this.shared());
+      const filter = await this.filters.create(
+        this.name().trim(),
+        this.current(),
+        this.shared(),
+        this.idempotencyKey(),
+      );
       this.saving.set(false);
       this.chosen.emit(filter);
       this.messages.add({

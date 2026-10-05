@@ -8,6 +8,7 @@ import {
   updateSavedFilter,
 } from '../api/functions';
 import { SavedFilter, SavedFilterParameters, SavedFilterPatch } from '../api/models';
+import { ConditionalPages } from './conditional';
 import { etagOf } from './entity-cache';
 import { EventStreamService } from './event-stream.service';
 import { keepShown, refresh } from './refresh';
@@ -26,19 +27,24 @@ export class SavedFiltersService {
   private readonly session = inject(SessionService);
   private readonly injector = inject(Injector);
 
+  /** The weak `ETag`s of the pages: a poll that finds nothing new moves nothing (docs/adr/0054 D7). */
+  private readonly pages = new ConditionalPages(this.api);
+
   readonly filters: ResourceRef<SavedFilter[] | undefined> = resource({
     params: () => this.session.workTenant() ?? undefined,
     loader: ({ params: tenant }) =>
-      keepShown(this.filters, async () => {
-        const filters: SavedFilter[] = [];
-        let cursor: string | undefined;
-        do {
-          const page = await this.api.invoke(listSavedFilters, { tenant, cursor, limit: 200 });
-          filters.push(...page.items);
-          cursor = page.next_cursor ?? undefined;
-        } while (cursor);
-        return filters;
-      }),
+      keepShown(this.filters, () =>
+        this.pages.load(async (page) => {
+          const filters: SavedFilter[] = [];
+          let cursor: string | undefined;
+          do {
+            const next = await page(listSavedFilters, { tenant, cursor, limit: 200 });
+            filters.push(...next.items);
+            cursor = next.next_cursor ?? undefined;
+          } while (cursor);
+          return filters;
+        }),
+      ),
   });
 
   readonly list = computed<SavedFilter[]>(() =>
@@ -60,15 +66,16 @@ export class SavedFiltersService {
     refresh(this.filters, this.injector);
   }
 
-  /** Saves a filter of the person's, with a key of its own (docs/adr/0045). */
+  /** Saves a filter of the person's with the form's key, one per content (docs/adr/0045 D3). */
   async create(
     name: string,
     parameters: SavedFilterParameters,
     shared: boolean,
+    idempotencyKey: string,
   ): Promise<SavedFilter> {
     const filter = await this.api.invoke(createSavedFilter, {
       tenant: this.session.tenant() as string,
-      'Idempotency-Key': crypto.randomUUID(),
+      'Idempotency-Key': idempotencyKey,
       body: { name, parameters, shared },
     });
     refresh(this.filters, this.injector);

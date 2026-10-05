@@ -288,7 +288,7 @@ type ListPurgeDueRow struct {
 }
 
 // The deleted tickets of every tenant whose time in the bin has passed, read by
-// the purge job with no tenant set (migration 35, tickets_purge_due).
+// the purge job with no tenant set (migration 32, tickets_purge_due).
 // visibility: exempt (the purge job reads the deleted tickets of every tenant)
 // deletion: exempt (the purge reads deleted tickets only)
 func (q *Queries) ListPurgeDue(ctx context.Context, arg ListPurgeDueParams) ([]ListPurgeDueRow, error) {
@@ -328,7 +328,7 @@ type MarkTicketDeletedParams struct {
 // Deleting, restoring and purging a ticket (docs/adr/0024 D1–D3, D7). The
 // deletion and the restoration move the marker and the version; the purge
 // removes the ticket and what belongs only to it, inside a transaction that
-// names the purge in app.job, which the restrictive policies of migration 35
+// names the purge in app.job, which the restrictive policies of migration 32
 // demand of every such delete.
 // A ticket the caller read through the predicate goes into the bin; one a
 // concurrent request deleted first is no row.
@@ -345,7 +345,7 @@ SELECT purge_ticket_audit($1)::bigint AS emptied
 
 // The audit rows of the ticket keep its key, the actor and the act, their
 // content emptied (docs/adr/0024 D2), through the owner's function of
-// migration 35.
+// migration 32.
 func (q *Queries) PurgeTicketAudit(ctx context.Context, id uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, purgeTicketAudit, id)
 	var emptied int64

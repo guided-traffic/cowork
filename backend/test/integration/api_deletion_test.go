@@ -105,7 +105,7 @@ func (e ticketEnv) reread(t *testing.T, c caller, tk apigen.Ticket) apigen.Ticke
 // them: every one must answer 404 for a deleted ticket.
 func routesOf(slug string, tk apigen.Ticket) []string {
 	base := ticketPath(slug, tk.Project, tk.Number)
-	return []string{base, base + "/comments", base + "/questions", base + "/questions/1", base + "/links",
+	return []string{base, base + "/body", base + "/comments", base + "/questions", base + "/questions/1", base + "/links",
 		base + "/attachments", base + "/activity", base + "/interest", base + "/time-entries", base + "/prerequisites",
 		base + "/prerequisites?direction=up", base + "/markdown", base + "/context",
 		"/api/v1/tickets/" + slug + "/" + short(tk)}
@@ -252,6 +252,67 @@ func TestADeletedTicketAnswersLikeAMissingOne(t *testing.T) {
 	assert.Empty(t, e.bin(t, s.admin, e.SlugA))
 	assertProblem(t, e.s.do(t, s.admin, http.MethodPut, binPath(e.SlugA, short(s.gone))+"/restore", nil),
 		http.StatusNotFound, "not_found")
+}
+
+// docs/adr/0024 D1, docs/adr/0025, docs/adr/0021 D5, docs/adr/0054 D1: a
+// deleted ticket leaves the tenant's search and the person's across their
+// tenants, the person-level lists and the inbox with its unread count, while
+// the person's other tenant keeps its own; the person-level stream opened in
+// that other tenant carries the deletion, which is what makes a page that
+// follows every tenant read its list again; a restoration brings it back.
+func TestADeletedTicketLeavesSearchAndThePersonLevelLists(t *testing.T) {
+	e := newTicketEnv(t)
+	admin, memberB, both := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
+	inA := e.fileIn(t, admin, e.SlugA, "ALPHA", task("Quasarflux in A", func(b *apigen.TicketCreate) { b.Assignee = &e.Both }))
+	inB := e.fileIn(t, memberB, e.SlugB, "BETA", task("Quasarflux in B", func(b *apigen.TicketCreate) { b.Assignee = &e.Both }))
+	e.send(t, admin, http.StatusCreated, http.MethodPost, ticketPath(e.SlugA, "ALPHA", inA.Number)+"/comments",
+		apigen.CommentWrite{Body: "the nebulameter says so"})
+	asked := e.ask(t, admin, inA, apigen.QuestionCreate{Question: "Which one?", AskedOf: &e.Both})
+	require.Equal(t, http.StatusCreated, asked.StatusCode(), string(asked.Body))
+
+	me := e.openMeStream(t, both, e.SlugB)
+	_, _ = me.until(t, func(m sse) bool { return m.Event == "inbox.changed" })
+	look := func() (tenant, across, comment, assigned, decided []string, inbox apigen.InboxList) {
+		t.Helper()
+		assigned, _ = e.assigned(t, both, "")
+		decided, _ = e.decisions(t, both, "")
+		return hitKeys(e.search(t, both, e.SlugA, "quasarflux", "")), hitKeys(e.search(t, both, "", "quasarflux", "")),
+			hitKeys(e.search(t, both, "", "nebulameter", "")), assigned, decided, e.inbox(t, both, "")
+	}
+	tenant, across, comment, assigned, decided, before := look()
+	require.Equal(t, []string{inA.Key}, tenant)
+	require.ElementsMatch(t, []string{inA.Key, inB.Key}, across)
+	require.Equal(t, []string{inA.Key}, comment)
+	require.Subset(t, assigned, []string{inA.Key, inB.Key})
+	require.Contains(t, decided, inA.Key+" Q1")
+	aboutA := len(reasonsAbout(before, inA.Key))
+	require.Positive(t, aboutA)
+
+	e.send(t, admin, http.StatusNoContent, http.MethodDelete, ticketPath(e.SlugA, "ALPHA", inA.Number), nil)
+	_, m := me.until(t, func(m sse) bool { return m.Event == "ticket.changed" && strings.Contains(m.Data, `"kind":"deleted"`) })
+	assert.Equal(t, inA.Key, eventKey(t, m), "the stream opened in B carries the deletion in A")
+
+	tenant, across, comment, assigned, decided, after := look()
+	assert.Empty(t, tenant, "the tenant's search")
+	assert.Equal(t, []string{inB.Key}, across, "the person's search keeps the other tenant's")
+	assert.Empty(t, comment, "a comment of the deleted ticket is found no more")
+	assert.NotContains(t, assigned, inA.Key)
+	assert.Contains(t, assigned, inB.Key)
+	assert.NotContains(t, decided, inA.Key+" Q1")
+	assert.Empty(t, reasonsAbout(after, inA.Key))
+	assert.NotEmpty(t, reasonsAbout(after, inB.Key))
+	assert.Equal(t, before.Unread-aboutA, after.Unread, "the count leaves its notifications out")
+
+	e.send(t, admin, http.StatusOK, http.MethodPut, binPath(e.SlugA, short(inA))+"/restore", nil)
+	_, m = me.until(t, func(m sse) bool { return m.Event == "ticket.changed" && strings.Contains(m.Data, `"kind":"restored"`) })
+	assert.Equal(t, inA.Key, eventKey(t, m))
+	tenant, across, comment, assigned, decided, restored := look()
+	assert.Equal(t, []string{inA.Key}, tenant)
+	assert.ElementsMatch(t, []string{inA.Key, inB.Key}, across)
+	assert.Equal(t, []string{inA.Key}, comment)
+	assert.Contains(t, assigned, inA.Key)
+	assert.Contains(t, decided, inA.Key+" Q1")
+	assert.Equal(t, before.Unread, restored.Unread)
 }
 
 // docs/adr/0024 D7, docs/adr/0043 D3: deleting, restoring and purging are a

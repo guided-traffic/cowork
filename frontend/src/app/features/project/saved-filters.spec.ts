@@ -71,7 +71,10 @@ describe('SavedFilters', () => {
       providers: [
         MessageService,
         { provide: SavedFiltersService, useValue: { list, create, update, remove, reload } },
-        { provide: SessionService, useValue: { person: signal({ id: 'p-ada' }) } },
+        {
+          provide: SessionService,
+          useValue: { person: signal({ id: 'p-ada' }), tenant: signal('acme') },
+        },
       ],
     });
   });
@@ -180,8 +183,30 @@ describe('SavedFilters', () => {
       'Crashes',
       { state: ['blocked'], q: 'crash' },
       true,
+      expect.stringMatching(/^[0-9a-f-]{36}$/),
     );
     expect(fixture.componentInstance.chosen.at(-1)?.name).toBe('Crashes');
+  });
+
+  it('sends a lost save again under the same key (docs/adr/0045 D3)', async () => {
+    create.mockRejectedValueOnce(new Error('the answer was lost'));
+    const fixture = await render();
+    el(fixture, 'save-filter')?.click();
+    await settle(fixture);
+    const name = document.body.querySelector<HTMLInputElement>('[data-testid="filter-name"]');
+    name!.value = 'Crashes';
+    name!.dispatchEvent(new Event('input'));
+    await settle(fixture);
+    const save = () =>
+      document.body.querySelector<HTMLButtonElement>('[data-testid="filter-save"]')?.click();
+
+    save();
+    await settle(fixture);
+    save();
+    await settle(fixture);
+
+    const [first, second] = create.mock.calls.map((call) => call[3]);
+    expect(second).toBe(first);
   });
 
   it('shows the warnings of the applied filter', async () => {

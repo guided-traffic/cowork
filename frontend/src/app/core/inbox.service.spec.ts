@@ -99,6 +99,87 @@ describe('InboxService', () => {
     expect(service.count()).toBe(2);
   });
 
+  it.each<[string, StreamEvent]>([
+    [
+      'a tenant the person left, in any of their tenants',
+      { name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p1' },
+    ],
+    [
+      'a project restricted in any of their tenants',
+      { name: 'membership.changed', id: 'e1', tenant: 'beta', projectId: 'j1' },
+    ],
+    [
+      'a ticket deleted in any of their tenants (docs/adr/0024 D1)',
+      { name: 'ticket.changed', id: 'e1', key: 'beta/COW-1', version: 4, kind: 'deleted' },
+    ],
+    [
+      'a ticket restored',
+      { name: 'ticket.changed', id: 'e1', key: 'beta/COW-1', version: 5, kind: 'restored' },
+    ],
+  ])(
+    'reads the count again on %s, which tells the inbox nothing (docs/adr/0054 D1)',
+    async (_what, event) => {
+      countRequest().flush({ items: [], next_cursor: null, unread: 4 });
+      await settle();
+
+      stream.next(event);
+      await settle();
+      // The session reads the person again on an act that names them.
+      for (const request of http.match('/api/v1/me')) {
+        request.flush({ id: 'p1', display_name: 'Hans', memberships: [] });
+      }
+      countRequest().flush({ items: [], next_cursor: null, unread: 1 });
+      await settle();
+
+      expect(service.count()).toBe(1);
+    },
+  );
+
+  it("leaves the count alone on somebody else's membership", async () => {
+    countRequest().flush({ items: [], next_cursor: null, unread: 4 });
+    await settle();
+
+    stream.next({ name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p2' });
+    await settle();
+
+    http.expectNone('/api/v1/me/inbox');
+  });
+
+  it('leaves the count alone on any other change of a ticket', async () => {
+    countRequest().flush({ items: [], next_cursor: null, unread: 4 });
+    await settle();
+
+    stream.next({
+      name: 'ticket.changed',
+      id: 'e1',
+      key: 'beta/COW-1',
+      version: 4,
+      kind: 'transitioned',
+    });
+    await settle();
+
+    http.expectNone('/api/v1/me/inbox');
+  });
+
+  it("sends the count's weak ETag on a poll and keeps the count on a 304 (docs/adr/0054 D7)", async () => {
+    countRequest().flush(
+      { items: [], next_cursor: null, unread: 4 },
+      { headers: { ETag: 'W/"four"' } },
+    );
+    await settle();
+
+    stream.next({ name: 'poll' });
+    await settle();
+    http.expectOne('/api/v1/me').flush({ id: 'p1', display_name: 'Hans', memberships: [] });
+    const again = countRequest();
+    expect(again.request.headers.get('If-None-Match')).toBe('W/"four"');
+    again.flush(null, { status: 304, statusText: 'Not Modified' });
+    await settle();
+
+    expect(service.unread.status()).toBe('resolved');
+    expect(service.count()).toBe(4);
+  });
+
   it('marks one notification read and takes the count of the answer', async () => {
     countRequest().flush({ items: [], next_cursor: null, unread: 4 });
     await settle();

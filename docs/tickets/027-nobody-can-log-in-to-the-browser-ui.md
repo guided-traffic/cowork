@@ -21,40 +21,40 @@ the local administrator ([ADR 0032](../adr/0032-bootstrap-from-helm-values-a-loc
 local accounts ([ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)),
 CSRF ([ADR 0037](../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md)),
 the creation of tenants and tokens, and the UI's login, password, tokens, accounts and first-tenant
-pages — "create the first tenant" only while `listTenants` finds none
-([`home.ts`](../../frontend/src/app/features/home/home.ts#L97-L103)). The README reference,
-[sessions.md](../security/sessions.md), [local-accounts.md](../security/local-accounts.md) and
-[csrf.md](../security/csrf.md) describe it, and `make dev` logs the browser in through it over
-HTTPS; the dev server's proxy holds no credential ([`proxy.conf.mjs`](../../frontend/proxy.conf.mjs)).
-Its end-to-end paths run in the tier of T29 — the local form, a temporary password, *Sign in with
-Dex*, the cookie, a write past the CSRF check and the sign-out, in Chromium and WebKit. Left:
+pages. Its end-to-end paths run in the tier of T29 — the local form, a temporary password, *Sign
+in with Dex*, the cookie, a write past the CSRF check and the sign-out, in Chromium and WebKit.
 
-- **A token names its project restriction by id.** `Token` carries `restricted_project_id`
-  ([`schemas.yaml`](../../backend/api/components/schemas.yaml#L177-L180)) beside the tenant's slug,
-  while `CurrentToken` names the project by its key, `restricted_project`
-  ([`token.go`](../../backend/internal/api/token.go#L57-L68)). The tokens page loads every project
-  of each restricting tenant to show a key, and shows the id where that fails
-  ([`tokens.service.ts`](../../frontend/src/app/core/tokens.service.ts#L38-L76)).
-- **The token form does not know the installation's longest lifetime.** It accepts up to the
-  schema's 3650 days ([`new-token-dialog.ts`](../../frontend/src/app/features/me/new-token-dialog.ts#L46-L50));
-  the server shortens a longer request to `COWORK_TOKEN_MAX_LIFETIME` and the page shows the expiry
-  afterwards. No answer carries the bound — `GET /auth/options` carries the password policy
-  (`password_min_length`) and nothing of the tokens.
+Built on this branch, both items of the work list:
+
+- **A token names its project restriction by key.** `Token` carries `restricted_project`, the key,
+  `null` where the person no longer sees the project in a tenant they belong to
+  ([`me.go`](../../backend/internal/api/me.go) `projectKeys`); `restricted_project_id` stays,
+  marked `deprecated` in the API document, because `/api/v1` keeps what a client reads
+  ([ADR 0046](../adr/0046-spec-first-the-openapi-document-is-the-contract.md) D7). The tokens page
+  shows the key and no longer loads the projects of each restricting tenant
+  ([`tokens.service.ts`](../../frontend/src/app/core/tokens.service.ts)).
+- **The token form knows the installation's longest lifetime.** `GET /auth/options` answers
+  `token_max_lifetime_days`, `COWORK_TOKEN_MAX_LIFETIME` in whole days rounded down
+  ([`login.go`](../../backend/internal/api/login.go) `GetAuthOptions`), and the dialog's bound and
+  hint follow it within the schema's 3650 days
+  ([`new-token-dialog.ts`](../../frontend/src/app/features/me/new-token-dialog.ts)).
+
+The README reference, [tokens.md](../security/tokens.md), [frontend.md](../developer/frontend.md)
+and ADR 0035's Status carry both.
 
 ## Required changes
 
-1. `Token` names its project restriction by key, `restricted_project`, as `CurrentToken` does; the
-   tokens page reads it and its lookup goes. The API document says what becomes of
-   `restricted_project_id` ([ADR 0046](../adr/0046-spec-first-the-openapi-document-is-the-contract.md)).
-2. The installation's longest token lifetime reaches the form — an answer names
-   `COWORK_TOKEN_MAX_LIFETIME` as `GET /auth/options` names `COWORK_PASSWORD_MIN_LENGTH` — and the
-   dialog's bound and hint follow it instead of the schema's 3650 days.
-3. Unit tests for the tokens page and the dialog; an integration test for each new field.
+None left. The ticket closes by extraction — done — and moves to the archive once this work is
+merged.
 
 ## Verified
 
-- Playwright against `make dev`: Chromium and WebKit are sent to the login, log in as
-  `dev`, keep `__Host-cowork-session` (Secure, HttpOnly, Lax), open the live stream, write a
-  comment through the session (the CSRF check passes from `https://localhost:4200`), sign out and
-  are sent to the login again. Over plain `http://localhost` WebKit dropped the cookie, which is
-  why development serves HTTPS.
+- `TestATokenNamesItsProjectByKey`, `TestTokenCreationRules` and `TestAuthOptions` (integration);
+  `tokens.service.spec.ts`, `tokens.spec.ts` and `new-token-dialog.spec.ts` (the installation's
+  maximum, a day more refused, an answer that arrives late, a maximum under a day).
+- Playwright against `make dev` (before this branch): Chromium and WebKit are sent to the login,
+  log in as `dev`, keep `__Host-cowork-session` (Secure, HttpOnly, Lax), open the live stream,
+  write a comment through the session (the CSRF check passes from `https://localhost:4200`), sign
+  out and are sent to the login again. Over plain `http://localhost` WebKit dropped the cookie,
+  which is why development serves HTTPS. Not repeated for the work of this ticket: neither
+  `make dev` nor the end-to-end tier, which builds the images, was run for it.

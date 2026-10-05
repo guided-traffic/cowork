@@ -35,6 +35,10 @@ the forced policy hides every row from it: `000017_ticket_rank` and `000019_prog
 lift the force on `tickets` for their backfills and restore it later in the file
 ([ADR 0021] D1). A new enum value cannot be used in the transaction that adds it, so
 `000018_ticket_state_review` adds `review` alone and `000019` uses it.
+`000031_attachment_names_searched_by_their_words` changes the expression of a stored generated
+column (`ALTER COLUMN … SET EXPRESSION`), which rewrites every row of `attachments` with the forced
+policy in place: row-level security governs queries, not the rewrite of a table, so no force is
+lifted (verified on PostgreSQL 18.6 on 2026-10-05).
 `TestLiftedForceIsRestoredInTheSameMigration` holds every lifted force to a restore in the same
 file; the integration tier reads the force back after the run.
 
@@ -43,7 +47,7 @@ on the columns a route may change — table-wide only on `ticket_counters`, `ide
 and `login_locks` — and `DELETE` only on `ticket_links`, `ticket_interest`,
 `project_repositories`, `idempotency_keys`, `sessions`, `login_attempts`, `login_locks`,
 `memberships`, `group_mappings`, `project_access`, `saved_filters` — to its owner, by a restrictive
-policy — and `notifications` — to its retention job and the purge alone —, and, since migration 35,
+policy — and `notifications` — to its retention job and the purge alone —, and, since migration 32,
 on `tickets`, `questions`, `comments`, `comment_revisions`, `attachments`, `time_entries` and
 `time_entry_revisions`, which restrictive policies hold to the purge of a deleted ticket
 ([below](#deletion-and-the-purge)). `audit_events` gets `SELECT, INSERT` and
@@ -111,7 +115,7 @@ wrapper's transaction; an empty value leaves a setting unset.
 | `app.tenant_id` | the wrapper's tenant | `app_tenant_id()`: every `tenant_isolation` policy, the policies of `tenants`, `memberships`, `users`, `audit_events`, the visibility functions |
 | `app.user_id` | `Caller.UserID` | `app_user_id()`: the person's own user row, memberships, tenants, tokens, idempotency keys and installation-level audit rows; the visibility functions |
 | `app.restricted_project_id` | `Caller.RestrictedProjectID` | `app_restricted_project_id()` in `app_project_visible` |
-| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`) | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30 and 35 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry` and `ticket-purge` for the rows those system actors keep (`app_job()`) |
+| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`) | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30 and 32 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry` and `ticket-purge` for the rows those system actors keep (`app_job()`) |
 | `app.token_hash` | `LookupToken`, the hex SHA-256 of the presented token | the `tokens` policy admits exactly that row |
 | `app.session_hash` | `LookupSession`, and `Caller.SessionHash` in every transaction of a session's request: the hex SHA-256 of the presented cookie; in the identity provider's transactions the session a login replaces or a refresh holds | `app_session_hash()`: the `sessions` policies admit exactly that row — to read it, to end it |
 | `app.person_lookup` | `FindPerson` only: the address or username an administrator adds a member by | `app_person_lookup()`: the `users` policy admits the persons it names to an administrator of the current tenant, and no other person of the installation (migration 20) |
@@ -171,7 +175,7 @@ an administrator of its tenant, a mapped membership only in a transaction named
 `identity-provider`. `saved_filters` carries `tenant_id` and the canonical policy, and restrictive
 ones that hold reading to the filter's owner or a shared filter, and inserting, changing and
 deleting to its owner (`owner_id = app_user_id()`,
-[migration 36](../../backend/internal/store/migrations/000036_saved_filters.up.sql);
+[migration 33](../../backend/internal/store/migrations/000033_saved_filters.up.sql);
 `TestTheSavedFilterPoliciesHoldAPersonToTheirOwn`).
 
 ## Mutate: acts, idempotency, publication
@@ -216,6 +220,7 @@ deleting to its owner (`owner_id = app_user_id()`,
 | `IdempotencyKey` | a key recorded, not stored ([ADR 0045] D7) |
 | `System` | a system actor, `system:<name>`, whose act this is though the request's transaction records it; empty for the caller's own act |
 | `Membership` | a `MembershipChange` — the person, the project, the mapping, the audience — which publishes the act as `membership.changed` ([events.md](events.md)); nil for every other act |
+| `NewProject` | the project the act created, published so that the streams admit its events at once and sent to no client ([events.md](events.md#publication)); `uuid.Nil` for every other act |
 | `Notices` | whom the act tells in their inbox and why ([notifications](#notifications)); none for an act that tells nobody |
 | `InboxOf` | the person whose inbox the act changed without a notice — their own notifications marked read — whose person-level streams hear `inbox.changed` |
 | `Published` | what the act's publication tells of its ticket — the project, the version, the confidential rule's inputs — where the ticket is gone when the act is written: a purge's; nil reads them at publication (`TicketFacts`) |
@@ -252,10 +257,15 @@ the one on the ticket the query reads.
 | `GetRepositoryBinding` | a binding's existence: a repository and sub-directory are unique in the tenant whether or not the caller sees the project that holds them; the handler names the project only when the caller sees it. The other queries of `project_repositories` join `projects` and call `app_project_visible` |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice ([domain.md](domain.md#rank)) |
 
+The search (`SearchTickets`, [search.md](search.md#the-query)) reads tickets in seven places — the
+ticket's text, a title by trigram, the key, a comment, a question, a file name, the page's hits — and
+calls the predicate in each; `ListTicketImages`, the raster attachments a rendered text may show
+([rendered-markdown.md](rendered-markdown.md)), joins its tickets with the predicate as well.
+
 The SQL functions `ticket_ancestor_or_self`, `blocks_path_exists`, `ticket_derived_progress`
 (the implementation stage, kept for the release before the stages), `ticket_derived_stage` and
 `person_sees_ticket` read the tenant's tickets past the predicate for the same reasons; row-level security still
-holds them to the tenant. Since migration 35, `ticket_derived_stage` leaves a deleted child out and
+holds them to the tenant. Since migration 32, `ticket_derived_stage` leaves a deleted child out and
 `person_sees_ticket` answers no for a deleted ticket; the two integrity walks still step over
 deleted tickets, so that a restoration can never close a cycle.
 
@@ -431,7 +441,7 @@ too — key `4`, `system:bootstrap` — run once at start, and retried until the
 ## Deletion and the purge
 
 A ticket is deleted into its tenant's bin and purged from it ([ADR 0024] D1–D3, D7;
-[migration 35](../../backend/internal/store/migrations/000035_ticket_deletion.up.sql),
+[migration 32](../../backend/internal/store/migrations/000032_ticket_deletion.up.sql),
 [`store/deletion.go`](../../backend/internal/store/deletion.go),
 [`queries/*/deletion.sql`](../../backend/internal/store/queries/write/deletion.sql)):
 
@@ -512,11 +522,11 @@ person's act `read`.
 
 `Writer.publish` ([`notify.go`](../../backend/internal/store/notify.go)) runs for every act
 written — by `Mutate`, by a job in a tenant and by the identity provider's transactions alike — that belongs to a tenant
-and either carries an `Event.Membership` or names a ticket, except the actions `downloaded` and
-`exported` and the entity `time_entry`. A ticket's act reads the ticket's project, version and
-confidential facts (`TicketFacts`, which reads a deleted ticket too), or takes them from
-`Event.Published` for a purged one — a question's act also whom the question is asked of
-(`QuestionAskedOf`); a membership act sends the keys of its `MembershipChange` and its audience. Either way it calls `pg_notify('cowork_events', <json>)` in the same transaction;
+and carries an `Event.Membership`, carries an `Event.NewProject` or names a ticket, except the
+actions `downloaded` and `exported` and the entity `time_entry`. A ticket's act reads the ticket's
+project, version and confidential facts (`TicketFacts`, which reads a deleted ticket too), or takes
+them from `Event.Published` for a purged one; a membership act sends the keys of its
+`MembershipChange` and its audience. Either way it calls `pg_notify('cowork_events', <json>)` in the same transaction;
 PostgreSQL delivers it at commit and never after a rollback ([ADR 0054] D4). `DB.Listen` holds
 one connection outside the pool on the channel. The rest is [events.md](events.md).
 

@@ -14,7 +14,7 @@ filter on every list and the tenant deletion are not built; no route deletes any
 deletion and the purge built 2026-10-05, below; the tenant deletion is not.)*
 
 **Built** (phase 3, 2026-10-05): D1–D3 and D7 for tickets.
-[Migration 35](../../backend/internal/store/migrations/000035_ticket_deletion.up.sql) adds
+[Migration 32](../../backend/internal/store/migrations/000032_ticket_deletion.up.sql) adds
 `deleted_at` and `deleted_by`; `DELETE …/projects/{project}/tickets/{number}` deletes,
 `GET …/deleted-tickets` is the bin, `PUT …/deleted-tickets/{key}/restore` restores and
 `DELETE …/deleted-tickets/{key}` purges — a tenant administrator's acts with `admin` scope, never an
@@ -30,9 +30,12 @@ policies, the audit rows' content is emptied by an owner's function
 ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D3 as amended
 2026-10-05), and the attachment objects go after the commit. Two consequences the record did not
 name were decided in building: a purged ticket's children become roots, and a block that waited on
-it waits on its key as an external reference, an act on that ticket. D1's "dashboard tile" and
-"search" are covered by the same filter where they exist (the `q` filter of the lists); the
-dashboard and the search of ADR 0025 are not built. D4's deletion of a project and D6 are not built.
+it waits on its key as an external reference, an act on that ticket. D1's "search" is covered by
+the same filter — the `q` filter of the lists and the search of
+[ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md) D5, every ticket
+it reads —, and the person-level stream carries the deletion and the restoration across the
+person's tenants, on which the person-level pages and the inbox's count read their lists again; the
+dashboard of D1's "dashboard tile" is not built. D4's deletion of a project and D6 are not built.
 
 **Partly built** (phase 3, 2026-10-03): D5 for local accounts — a tenant's administrator
 deactivates an account their tenant manages (`PUT …/accounts/{username}/deactivation`), and the

@@ -10,6 +10,11 @@ export interface Question {
    * Markdown
    */
   answer: (string | null);
+
+  /**
+   * The answer rendered and sanitised on the server (docs/adr/0011 D6); null without an answer
+   */
+  answer_html: (string | null);
   answered_at: (string | null);
 
   /**
@@ -50,6 +55,11 @@ export interface Question {
    * Markdown: the context and the options
    */
   options: string;
+
+  /**
+   * The options rendered and sanitised on the server (docs/adr/0011 D6); empty without options
+   */
+  options_html: string;
   question: string;
   recommendation: string;
 

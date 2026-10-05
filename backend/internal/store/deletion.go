@@ -19,7 +19,7 @@ const PurgeAfter = 30 * 24 * time.Hour
 
 // jobTicketPurge names the purge in app.job: the job's own transactions, and
 // an administrator's explicit purge for its part of the request's. The
-// restrictive policies of migration 35 admit a delete of a ticket, or of what
+// restrictive policies of migration 32 admit a delete of a ticket, or of what
 // belongs only to it, in no other.
 const jobTicketPurge = "ticket-purge"
 

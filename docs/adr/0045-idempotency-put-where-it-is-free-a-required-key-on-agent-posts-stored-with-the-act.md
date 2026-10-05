@@ -20,7 +20,10 @@ unsolicited key on a transition recorded on the act. D5 is built (2026-10-04) in
 carries a key of its own, and the integration tier holds that every ticket, comment and
 question the working day creates carries one on its act. D3 holds
 for a browser session since phase 3 (2026-10-03), and for the creation of a token, a tenant and
-a local account.
+a local account. Since 2026-10-04 every creating form of the browser holds one key per content — a
+ticket, a comment, a question, a project, a file, a booking of time, as the first tenant, a local
+account, a grant and a group mapping did — and sends it again when the same content is sent again
+([`features/`](../../frontend/src/app/features/), [frontend.md](../developer/frontend.md#where-state-lives)).
 
 ## Context
 

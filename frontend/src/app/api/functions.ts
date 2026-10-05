@@ -35,6 +35,10 @@ export type { BindRepository$Params as BindRepository$Params } from './fn/reposi
 export { bindRepository as bindRepository } from './fn/repositories/bind-repository';
 export type { UnbindRepository$Params as UnbindRepository$Params } from './fn/repositories/unbind-repository';
 export { unbindRepository as unbindRepository } from './fn/repositories/unbind-repository';
+export type { SearchMyTenants$Params as SearchMyTenants$Params } from './fn/search/search-my-tenants';
+export { searchMyTenants as searchMyTenants } from './fn/search/search-my-tenants';
+export type { SearchTenant$Params as SearchTenant$Params } from './fn/search/search-tenant';
+export { searchTenant as searchTenant } from './fn/search/search-tenant';
 export type { GetOpenApi$Params as GetOpenApi$Params } from './fn/meta/get-open-api';
 export { getOpenApi as getOpenApi } from './fn/meta/get-open-api';
 export type { GetCoworkYamlSchema$Params as GetCoworkYamlSchema$Params } from './fn/meta/get-cowork-yaml-schema';
@@ -103,6 +107,8 @@ export type { DeleteTicket$Params as DeleteTicket$Params } from './fn/tickets/de
 export { deleteTicket as deleteTicket } from './fn/tickets/delete-ticket';
 export type { UpdateTicket$Params as UpdateTicket$Params } from './fn/tickets/update-ticket';
 export { updateTicket as updateTicket } from './fn/tickets/update-ticket';
+export type { GetTicketBody$Params as GetTicketBody$Params } from './fn/tickets/get-ticket-body';
+export { getTicketBody as getTicketBody } from './fn/tickets/get-ticket-body';
 export type { ReplaceTicketBody$Params as ReplaceTicketBody$Params } from './fn/tickets/replace-ticket-body';
 export { replaceTicketBody as replaceTicketBody } from './fn/tickets/replace-ticket-body';
 export type { SetConfidential$Params as SetConfidential$Params } from './fn/tickets/set-confidential';

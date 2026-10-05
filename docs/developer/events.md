@@ -10,7 +10,7 @@ against the tree on 2026-10-05.
 Mutate ─► audit row ─► pg_notify('cowork_events') ─(at commit)─► DB.Listen (one per replica)
                                                                      │ hub.Publish
                                                                      ▼
-                         events.Hub: ring per tenant ─► Filter per stream ─► buffered channel
+                         events.Hub: ring per tenant ─► Filter per stream and tenant ─► buffered channel
                                                                      │
                                          serveEvents ◄───────────────┘ text/event-stream
 ```
@@ -27,11 +27,21 @@ tenant, the project, the entity, the action, the ticket key, the ticket's versio
 confidential rule's inputs — the flag, the assignee, the reporter.
 
 **A deletion, a restoration and a purge** are ticket acts like any other — `ticket.changed` with the
-kind `deleted`, `restored` or `purged` — and reach whoever could see the ticket by the facts it had:
-a client that refetches the ticket gets `404` after a deletion or a purge and drops it, and the bin
-of an administrator loads again. A purge's act carries the facts the ticket had (`Event.Published`),
-because the row is gone when the act is written ([ADR 0024] D1, D2). Saved filters are not
-published.
+kind `deleted`, `restored` or `purged` — and reach whoever could see the ticket by the facts it had,
+on the tenant's streams and on the person-level stream of every person who sees it, whichever of
+their tenants that stream was opened in: a client that refetches the ticket gets `404` after a
+deletion or a purge and drops it, the bin of an administrator loads again, and the person-level
+pages and the inbox's count, which no `inbox.changed` tells of a deleted ticket, read again on a
+deletion or a restoration (`changesExistence` in
+[`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts)). A purge's act
+carries the facts the ticket had (`Event.Published`), because the row is gone when the act is
+written ([ADR 0024] D1, D2). Saved filters are not published; their list, like the bin, answers
+`304` to the poll of the fallback when nothing changed.
+
+**A project's creation** is published as a notification of the entity `project`, with the
+tenant and the project and nothing else (`Event.NewProject`, set by `insertProject` in
+[`projects.go`](../../backend/internal/api/projects.go)): it changes what a stream may admit, and no
+client is told of it — `Filter.Admits` refuses it, so it is neither sent nor replayed.
 
 **A membership act** is published too — any act of a tenant whose `Event.Membership` is set, written
 by `Mutate` or by the identity provider's transactions ([data-access.md](data-access.md#the-identity-providers-transactions)):
@@ -48,10 +58,6 @@ it applies — and an `audience` (`MembershipChange`; [ADR 0054] D2):
 | an entry of a project's access list | the person and the project | `admins-and-person`: the tenant's administrators and the person it names |
 | a group mapping | the mapping | `admins`: the tenant's administrators |
 
-**A question's act** carries one key more, `asked_of`, the person the question is asked of as it
-stands after the act (`QuestionAskedOf`), which the hub reads to reach that person's person-level
-streams in their other tenants ([below](#the-person-level-stream)).
-
 **A change of a person's inbox** is published as well: for every person an act notified
 ([data-access.md](data-access.md#notifications)), and for the person whose notifications an act
 marked read (`Event.InboxOf`), `Writer.deliver` sends a notification with the entity `inbox`, the
@@ -59,49 +65,50 @@ tenant, the audit row's id and the person — nothing about what changed.
 
 ## The person-level stream
 
-`GET …/events?me=true` is the person-level stream ([ADR 0054] D1): the tenant's stream with
-`Filter.Me` set, which the browser always opens — on the tenant the pages show, or on the person's
-first tenant on the person-level pages. It carries, besides the tenant's events, the person's own:
+`GET …/events?me=true` is the person-level stream ([ADR 0054] D1 as amended on 2026-10-05): it
+carries every event of every tenant the person belongs to that the filter of that tenant admits,
+and the person's inbox. The browser always opens it — on the tenant the pages show, or on the
+person's first tenant on the person-level pages — so one connection follows all of the person's
+tenants, whatever their number.
 
+- **It spans the person's tenants.** `serveEvents` computes a filter for the tenant it is opened on
+  (`streamFilter`, through the boundary's role and a project-restricted token's project) and, for a
+  spanning stream, one for every other tenant of the person (`tenantFilter`, through their
+  membership's role there and `ListVisibleProjectIDs` in that tenant's transaction —
+  `streamFilters`), and subscribes the stream to all of them (`events.Subscription`). A token
+  restricted to a tenant does not span: its person-level stream follows its tenant alone
+  ([ADR 0035](../adr/0035-personal-access-tokens.md) D3, `streamReq.span`).
+- **Every event carries its id and its tenant.** A ticket's event names the tenant in its key, a
+  membership event in `data.tenant`, so a client can tell the tenant pages' own events from those of
+  the person's other tenants.
 - **`inbox.changed`**, `data: {"unread": n}`: the person's unread notifications in every tenant the
   request reaches (`personUnread`, one read per tenant, as `GET /api/v1/me/inbox` counts them). The
-  hub hands an `inbox` notification to every person-level stream of its person on any tenant
-  (`Hub.toPerson`) and keeps it in no ring. The stream writes the count when it opens and once a burst
-  is over — the first change starts a wait of `inboxDebounce`, 100 ms, and the count is read when it
-  ends — so an agent that comments in a loop costs one count, not one per comment.
-- **A question asked of the person in another of their tenants**: the hub hands a question's event
-  to the person-level streams of its `asked_of` on every other tenant, and the stream judges it
-  before it writes it (`writeStreamed`): a token restricted to another tenant hears nothing of it,
-  and otherwise `SeesPublishedTicket` asks, in the event's tenant as the caller, whether the person
-  still belongs to that tenant and sees the ticket by the facts the event carries — the project and
-  the confidential rule, a project-restricted token's restriction included. A question of the
-  stream's own tenant comes through the ordinary filter, once.
+  hub hands an `inbox` notification to every person-level stream of its person and keeps it in no
+  ring. The stream writes the count when it opens and once a burst is over — the first change starts
+  a wait of `inboxDebounce`, 100 ms, and the count is read when it ends — so an agent that comments in
+  a loop costs one count, not one per comment. The count carries no id: it is a state, and the count
+  the stream writes when it opens covers a reconnect.
+- **It follows the person's memberships.** An act that changes what the stream may admit of one
+  tenant makes it compute that tenant's filter again before the tenant's next event (*Filter*,
+  below); a membership act that names the person in a tenant the stream does not follow — a grant
+  into a tenant they had none in — makes the hub add that tenant to the stream, pending its filter;
+  and the heartbeat reads every membership again (*Heartbeat*, below). A tenant the person left is
+  followed no more: the act that took it away, which names them, still reaches them, nothing of the
+  tenant after it does.
 
-Neither carries an `id:` — the count is a state, not an act, and another tenant's event is no place
-in this tenant's ring — so a reconnect replays neither, and the `Last-Event-ID` the browser keeps
-stays the tenant's. The count the stream writes when it opens covers the gap; the browser reloads
-its person-level pages on it. A stream without `me` hears none of this.
-
-What the person-level stream does not carry: another tenant's events beyond the questions asked of
-the person — a ticket assigned to them there reaches it as `inbox.changed`, a change that tells them
-nothing does not reach it at all ([tenancy.md](../security/tenancy.md#the-person-level-stream)).
-
-## Listener
-
-`DB.Listen(ctx, hub.Publish, hub.SetUp)`, started by `cowork serve`, holds one connection outside
-the pool with `LISTEN cowork_events` and hands every notification to the hub. It tells the hub
-`SetUp(true)` once listening and `SetUp(false)` when the connection is lost, and reconnects after
-a pause that starts at one second and doubles up to thirty.
+A stream without `me` hears its tenant alone, and no inbox.
 
 ## Hub
 
 [`internal/events`](../../backend/internal/events/hub.go) is per replica and in memory:
 
 - **A ring per tenant** keeps the events of the last `COWORK_SSE_REPLAY_WINDOW`; `Publish`
-  appends and cuts what fell out of the window.
-- **Fan-out.** `Publish` hands an event to every stream of its tenant whose filter admits it,
-  through a channel of 256. A stream whose channel is full is ended with `resync`, never waited
-  for.
+  appends and cuts what fell out of the window, and numbers every event in the order it received
+  it, across its tenants (`Event.Seq`).
+- **Fan-out.** `Publish` hands an event to every stream that follows its tenant and whose filter of
+  that tenant admits it (`streams`, by tenant), through a channel of 256; an inbox change to the
+  person's person-level streams (`persons`, by person). A stream whose channel is full is ended with
+  `resync`, never waited for.
 - **Down.** While the listener is down, `Subscribe` refuses new streams. When it is back, every
   open stream is ended with `resync` and the rings start afresh: what was missed in between is
   unknown, so an id from before the loss is no replay point and a reconnect with it gets
@@ -110,6 +117,7 @@ a pause that starts at one second and doubles up to thirty.
 
 ## Filter
 
+A stream holds one `Filter` per tenant it follows; an event passes the filter of its own tenant.
 `Filter.Admits` (D3, [ADR 0065] D5): the event's project is one the person can see —
 `ListVisibleProjectIDs`, through `app_project_visible`, so a project-restricted token's stream
 holds its one project — and a confidential ticket's event goes only to a tenant administrator,
@@ -121,9 +129,37 @@ that names another project, or no project and another person — a mapping, anot
 so it hears its project's restriction and access entries and its own person's memberships only
 (`TestMembershipEventsOfAProjectRestrictedStream`, `TestARestrictedStreamHearsOnlyItsProject`;
 [tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)). The filter, the administrator flag included, is
-computed at connect and again at every heartbeat (`Hub.Refilter`): a project the person gains
-reaches the stream, and one they lose stops reaching it, within one heartbeat
-(`TestStreamFollowsAccess`).
+computed at connect, again on every act that changes what a stream may admit, and at every
+heartbeat:
+
+- **An admission change** (`Event.ChangesAdmission`) is a project's creation or any membership
+  act. `Hub.Publish` counts it per stream and tenant (`changes`, kept when the stream stops following
+  the tenant, so a later act counts on) and hands it to every stream that follows the tenant marked
+  `Refilter` — judged by the stream's filter as any event, `Withheld` when the filter refuses it, sent
+  on for the mark alone. Until the stream's filter of that tenant knows every change
+  (`refiltered < changes`), the hub hands it each later event of the tenant `Unjudged`. One that names
+  a person also reaches that person's spanning streams that do not follow its tenant yet, which then
+  follow it with an empty filter, its events unjudged until the stream has computed the real one.
+- **The stream refilters** the event's tenant when the event's `Refilter` is beyond what that
+  tenant's filter knows: it reads `Hub.Changes`, computes the filter (`refilter` in
+  [`events.go`](../../backend/internal/api/events.go)) — for the tenant it is opened on through the
+  boundary, a person it no longer admits ending the stream; for another tenant through the person's
+  membership there, a tenant they left followed no more — and hands it to `Hub.Refilter` with the
+  count it read, then judges the `Unjudged` events itself. A change that comes while it computes
+  keeps the hub's judgement off until the stream has refiltered for it as well, so no event is
+  judged by a filter that does not know a change committed before it. A burst of changes costs a
+  stream one or two recomputations, not one per act: the count read before the first covers the
+  ones already published.
+- **The heartbeat** recomputes every tenant's filter the same way, and for a spanning stream the
+  set of tenants from the person's memberships, which catches a change made in the database past the
+  API: a tenant left, a tenant joined.
+- The pump takes one event at a time (`handOn`): the refilter its mark asks for first, then the
+  inbox's wait, the drop of what the hub withheld, of what the filter refuses of an unjudged event and
+  of an event of a tenant the stream no longer follows — but the membership act that names the person,
+  the one that took the tenant away —, or the write.
+
+A project the person gains reaches the stream from the next event on, and one they lose stops
+reaching it as soon (`TestTheStreamAdmitsWhatAnActOpensAtOnce`, `TestStreamFollowsAccess`).
 
 ## The handler
 
@@ -133,11 +169,13 @@ tenant (a project-restricted token included) and validated the request, and appl
 request timeout nor a body limit ([api.md](api.md#the-pipeline)). Then:
 
 1. `read` authorization; no hub configured, or a writer that cannot flush: `503 not_ready`.
-2. `Subscribe` with the filter and the `Last-Event-ID` header. A hub that is down or closed:
+2. `Subscribe` with the filters and the `Last-Event-ID` header. A hub that is down or closed:
    `503 not_ready` — the client polls.
 3. `200` with `Content-Type: text/event-stream`, `Cache-Control: no-cache` and
-   `X-Accel-Buffering: no`; then, if the id is no longer in the ring, `event: resync`; then the
-   replayed events after the id that the filter admits; then the live ones.
+   `X-Accel-Buffering: no`; then, if the id is in the ring of no tenant the stream follows,
+   `event: resync`; then the replayed events after the id: those of every followed tenant, merged in
+   the order the hub received them (`Event.Seq`), each through its tenant's filter; then, on a
+   person-level stream, the unread count; then the live ones.
 
 An event is written as
 
@@ -150,16 +188,18 @@ data: {"key":"acme/VKO-12","version":4,"kind":"transitioned"}
 with the audit row's id as `id`, `kind` the act's action, and the name by entity:
 `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`,
 everything else `ticket.changed` — an upload included (`# example` values above). A membership
-event's `data` is the keys of what changed instead, each only where it applies, and no `kind`:
+event's `data` is its tenant's slug and the keys of what changed instead, each key only where it
+applies, and no `kind`:
 
 ```
 id: 0199a3c2-1d2e-7f00-8000-0000000000ab
 event: membership.changed
-data: {"person_id":"0199a3c2-1d2e-7f00-8000-000000000002","project_id":"0199a3c2-1d2e-7f00-8000-0000000000c1"}
+data: {"tenant":"acme","person_id":"0199a3c2-1d2e-7f00-8000-000000000002","project_id":"0199a3c2-1d2e-7f00-8000-0000000000c1"}
 ```
 
 (`# example`, an access entry). The client reloads what it shows of members, mappings and access
-lists, its projects when `project_id` is there, and `GET /api/v1/me`
+lists of the tenant it shows, its projects when `project_id` is there, and `GET /api/v1/me` for
+that tenant's acts and for any act that names the person
 ([frontend.md](frontend.md#how-a-change-reaches-the-screen)). A control message is
 `event: resync` or `event: unavailable` with `data: {}`. At connect, `resync` only says that the
 gap cannot be replayed, and the stream goes on; any later control message ends the stream.
@@ -173,8 +213,10 @@ person is not deactivated (`SessionStillUsable`); the identity provider still ad
 a provider session's groups refresh when it is due, without moving the idle clock, and a provider
 person's token meets the gate when its check is due (`streamStillAdmitted` in
 [`identity.go`](../../backend/internal/api/identity.go)); and the person still passes the tenant
-boundary. If all hold, it recomputes the filter from the tenant as the person holds it now and
-writes the comment `: heartbeat`; if not, it ends the stream without a message.
+boundary of the tenant the stream is opened on. If all hold, it recomputes the filter of every
+tenant the stream follows as the person holds it now — a spanning stream reads the person's
+memberships again, follows a tenant they joined and drops one they left — and writes the comment
+`: heartbeat`; if not, it ends the stream without a message.
 
 | The stream ends because | The client reads |
 |---|---|
@@ -183,7 +225,7 @@ writes the comment `: heartbeat`; if not, it ends the stream without a message.
 | the server shuts down | `event: unavailable` |
 | the token, the session or the membership is gone, or the identity provider no longer admits the person, at a heartbeat | the connection closes |
 | the client left | — |
-| a person-level stream could not read the unread count or judge another tenant's event — the log says `event stream ended` | the connection closes |
+| a stream could not compute a tenant's filter, or a person-level stream the unread count — the log says `event stream ended` | the connection closes |
 
 The limit counts a person's streams on one replica across tenants. Replay works from the ring of
 the replica the client reconnects to; a replica that did not hear the event answers `resync`.
@@ -209,22 +251,34 @@ the stand-in is how a change here is verified
 ## Tests
 
 [`hub_test.go`](../../backend/internal/events/hub_test.go) covers the filter, the audiences of a
-membership event, the replay and the window, the dropped slow stream, the limit, and down, up and
-close. [`api_events_test.go`](../../backend/test/integration/api_events_test.go) reads real streams
+membership event, the replay and the window, the dropped slow stream, the limit, down, up and
+close, and the admission changes that hold the hub's judgement until the stream has refiltered. [`api_events_test.go`](../../backend/test/integration/api_events_test.go) reads real streams
 through the whole handler: a committed act arrives with key and version, a rolled-back one never,
 nothing crosses a tenant, a restriction or the confidential rule; the replay and `resync`; the
-heartbeat, the limit, a revoked token's stream closing and the shutdown.
+heartbeat, the limit, a revoked token's stream closing and the shutdown; and, with an hour's
+heartbeat, that a ticket filed in a project created, opened or let into after the stream opened
+arrives within a second and that the stream of a person whose grant is removed ends;
+`TestAPersonLevelStreamRefiltersAndKeepsItsPersonsEvents` in `api_inbox_test.go` the same for a
+person-level stream, which goes on telling its count and the events of its person's other tenant.
 `TestMembershipEventsReachTheirAudience` in
 [`api_members_test.go`](../../backend/test/integration/api_members_test.go) opens an
 administrator's, a member's and a viewer's stream and checks who hears a grant, a mapping and an
-access entry, with keys only. `TestPersonLevelEvents` in `hub_test.go` routes an inbox change and a
-question's act to the person-level streams; `TestThePersonLevelStream` and
-`TestARestrictedTokensPersonLevelStreamStaysInItsTenant` in
-[`api_inbox_test.go`](../../backend/test/integration/api_inbox_test.go) read the count when the
-stream opens and as the inbox changes, a question asked of the person in their other tenant without
-an id, and assert what never arrives: another person's question, a question on a project restricted
-away from the person, one on a confidential ticket they cannot see, one of a tenant they left, and
-anything of another tenant on a token restricted to one.
+access entry, with keys only. `TestPersonLevelEvents` in `hub_test.go` routes an inbox change to the
+person-level streams; `TestAStreamAcrossTheTenantsOfItsPerson` there follows a spanning stream
+through its tenants' filters, into a tenant a grant names its person in, out of one they left, and
+through a replay merged across its tenants. In
+[`api_inbox_test.go`](../../backend/test/integration/api_inbox_test.go),
+`TestThePersonLevelStream` reads the count when the stream opens and as the inbox changes and the
+questions of the person's other tenant with their ids, and asserts what never arrives: a question on
+a project restricted away from the person, one on a confidential ticket they cannot see, and anything
+of a tenant after the act that took it from them; `TestThePersonLevelStreamSpansThePersonsTenants`,
+with an hour's heartbeat, that a ticket assigned to the person in their other tenant arrives within a
+second on the stream opened on the first, that nothing of a project there hidden from them or a
+confidential ticket there does, that a reconnect replays the other tenant, and that a grant into a
+third tenant is followed at once; `TestTheHeartbeatChecksEveryMembershipOfThePersonLevelStream` that
+the heartbeat drops a tenant left and follows a tenant joined in the database past the API; and
+`TestARestrictedTokensPersonLevelStreamStaysInItsTenant` that a token restricted to a tenant hears
+nothing of another.
 
 [ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md

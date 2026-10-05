@@ -12,6 +12,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../../api/api';
 import { listProjectAccess, removeProjectAccess, setProjectAccess } from '../../api/functions';
 import { ProjectAccessEntry, ProjectAccessRole } from '../../api/models';
+import { ConditionalPages } from '../../core/conditional';
 import { changesMemberships, EventStreamService } from '../../core/event-stream.service';
 import { keepShown, refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
@@ -54,19 +55,23 @@ export class AccessList {
     { equal: (a, b) => a?.tenant === b?.tenant && a?.project === b?.project },
   );
 
+  private readonly pages = new ConditionalPages(this.api);
+
   readonly entries: ResourceRef<ProjectAccessEntry[] | undefined> = resource({
     params: () => this.place(),
     loader: ({ params }) =>
-      keepShown(this.entries, async () => {
-        const entries: ProjectAccessEntry[] = [];
-        let cursor: string | undefined;
-        do {
-          const page = await this.api.invoke(listProjectAccess, { ...params, cursor, limit: 200 });
-          entries.push(...page.items);
-          cursor = page.next_cursor ?? undefined;
-        } while (cursor);
-        return entries;
-      }),
+      keepShown(this.entries, () =>
+        this.pages.load(async (page) => {
+          const entries: ProjectAccessEntry[] = [];
+          let cursor: string | undefined;
+          do {
+            const next = await page(listProjectAccess, { ...params, cursor, limit: 200 });
+            entries.push(...next.items);
+            cursor = next.next_cursor ?? undefined;
+          } while (cursor);
+          return entries;
+        }),
+      ),
   });
 
   readonly list = computed<ProjectAccessEntry[]>(() =>
@@ -77,7 +82,7 @@ export class AccessList {
     inject(EventStreamService)
       .events.pipe(takeUntilDestroyed(inject(DestroyRef)))
       .subscribe((event) => {
-        if (changesMemberships(event)) {
+        if (changesMemberships(event, this.session.tenant())) {
           refresh(this.entries, this.injector);
         }
       });

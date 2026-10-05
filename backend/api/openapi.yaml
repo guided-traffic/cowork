@@ -42,6 +42,7 @@ tags:
   - name: repositories
   - name: tickets
   - name: filters
+  - name: search
   - name: questions
   - name: comments
   - name: time
@@ -89,6 +90,8 @@ paths:
     $ref: './me.yaml#/assigned'
   /api/v1/me/decisions:
     $ref: './me.yaml#/decisions'
+  /api/v1/me/search:
+    $ref: './search.yaml#/me'
   /api/v1/tenants:
     $ref: './tenants.yaml#/tenants'
   /api/v1/tenants/{tenant}:
@@ -137,6 +140,8 @@ paths:
     $ref: './chat.yaml#/turns'
   /api/v1/tenants/{tenant}/tickets:
     $ref: './tenants.yaml#/tenantTickets'
+  /api/v1/tenants/{tenant}/search:
+    $ref: './search.yaml#/tenant'
   /api/v1/tenants/{tenant}/projects/{project}/tickets:
     $ref: './tenants.yaml#/projectTickets'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}:

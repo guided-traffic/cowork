@@ -100,6 +100,8 @@ change.
 | [events.md](events.md) | You touch the event stream, from `NOTIFY` to the Ingress |
 | [frontend.md](frontend.md) | You touch the UI: the folders, the theme and the logo, the services, how an event reaches the screen, the generated client, `make dev` |
 | [markdown-grammar.md](markdown-grammar.md) | You touch the Markdown export or the context document, or need their exact form |
+| [rendered-markdown.md](rendered-markdown.md) | You touch how a body, a comment, a question's options or its answer becomes HTML: the renderer, the sanitiser's allow-list, the fields and the route that answer it, the component that shows it |
+| [search.md](search.md) | You touch the search: the two routes, the query that ranks and cuts snippets, the union across tenants, the cursor, the search box and its results, and how the lists' `q` filter and the MCP tool `search` relate |
 | [mcp.md](mcp.md) | You touch `cowork-mcp`: the tool catalogue, the MCP layer, the hooks and subcommands, the Claude Code plugin; or you add a tool |
 | [chat.md](chat.md) | You touch the chat in the UI: the turn and its stop, the loop, the loopback, the person's capabilities, the providers and the gateway to the model, the stream and the panel, the shell's content-security policy; or you add a tool to the chat |
 | [build-test-lint.md](build-test-lint.md) | You want to build, generate, run or lint anything, locally or the images together |
@@ -119,6 +121,8 @@ change.
 | A login through the identity provider | The start seals the state, the nonce and the PKCE verifier into a cookie and redirects; the callback checks them, redeems the code, verifies the ID token, and one transaction under the person's advisory lock applies the gate, keeps the person, derives the memberships and makes the session | [architecture.md](architecture.md#the-two-logins), [identity provider](../security/identity-provider.md) |
 | A read | A read-only transaction bound to the tenant and the caller; the predicates in SQL decide what exists for the caller | [data-access.md](data-access.md#the-wrappers) |
 | A write | `Mutate` commits the change with one audit row per act, stores a keyed response, and publishes a ticket's acts and the membership acts with `NOTIFY` (not downloads, exports or time entries) — or commits nothing | [data-access.md](data-access.md#mutate-acts-idempotency-publication) |
+| A search | One statement per tenant, every text read through its ticket's predicate, one hit per ticket at its best match by `ts_rank`, the snippet cut of the page's rows only; across the person's tenants one read each, merged by rank | [search.md](search.md) |
+| Rendered text | Rendered on every read: goldmark, the tree rewritten — raw HTML as text, links held to their schemes, images only of the ticket's raster attachments —, then bluemonday's allow-list; shown through Angular's sanitiser | [rendered-markdown.md](rendered-markdown.md) |
 | An event | `NOTIFY` at commit, one listener per replica, a hub that filters per stream; a key and a version — for `membership.changed` the ids of what changed — never content | [events.md](events.md) |
 | A deletion | A tenant administrator's act, never an agent's: the ticket keeps everything and answers like a missing one everywhere but the tenant's bin — every query carries `deleted_at IS NULL` beside the visibility predicate, held to it by a lint —; the bin restores it, and the purge, an explicit act or a job thirty days later, removes it and what belongs only to it under restrictive policies, empties its audit rows through an owner function and removes its files after the commit | [data-access.md](data-access.md#deletion-and-the-purge), [domain.md](domain.md#deletion-the-bin-and-the-purge) |
 | A notification | Written by the act's own transaction for each person the act tells — an active member who sees the ticket, never the actor —, referencing the audit row it renders from; read per tenant, counted on the person-level stream as `inbox.changed` | [data-access.md](data-access.md#notifications), [events.md](events.md#the-person-level-stream) |
@@ -130,13 +134,15 @@ change.
 
 ## What has no page here
 
-The tenant board, the score beside the rank, "next for me", the deletion of a project, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the
+The score beside the rank, "next for me", the deletion of a project, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the
 deletion of a ticket has sections in [data-access.md](data-access.md#deletion-and-the-purge),
 [domain.md](domain.md#deletion-the-bin-and-the-purge) and [frontend.md](frontend.md#the-tenants-administration),
 the saved filters in [api.md](api.md#filters) and [frontend.md](frontend.md#the-backlog); the inbox
 and the person-level lists are sections of [data-access.md](data-access.md#notifications),
 [api.md](api.md#the-person-level-routes), [events.md](events.md#the-person-level-stream) and
-[frontend.md](frontend.md#the-person-level-pages); the rank itself is a section of
+[frontend.md](frontend.md#the-person-level-pages); the tenant board is a section of
+[frontend.md](frontend.md#the-tenant-board), over the project board's list and the event stream as
+they are; the rank itself is a section of
 [domain.md](domain.md#rank), the repository bindings one of [domain.md](domain.md#repositories),
 the identity provider's login a section of [architecture.md](architecture.md#the-two-logins) and
 its own security page, [identity-provider.md](../security/identity-provider.md), and the

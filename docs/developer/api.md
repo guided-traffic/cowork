@@ -20,8 +20,9 @@ into the file of its path family.
 | [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json`, `/schemas/cowork-yaml.json` — `security: []`, read before a client authenticates; the last answers [`cowork-yaml.schema.json`](../../backend/api/cowork-yaml.schema.json) |
 | [`auth.yaml`](../../backend/api/auth.yaml) | the browser's login flows, **outside `/api/v1`**: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` — see [the login flows](#the-login-flows) |
 | [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents —, `/me/chat`, and the person-level lists: `/me/inbox` with `/me/inbox/read` and `/me/inbox/{notification}/read`, `/me/assigned`, `/me/decisions` ([the person-level routes](#the-person-level-routes)) |
+| [`search.yaml`](../../backend/api/search.yaml) | `/tenants/{tenant}/search` and `/me/search` ([search.md](search.md)) |
 | [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
-| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its deletion, body, urgency override and confidential flag, and the bin of deleted tickets with its restoration and purge |
+| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the ticket lists, a ticket, its deletion, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, urgency override and confidential flag, and the bin of deleted tickets with its restoration and purge |
 | [`filters.yaml`](../../backend/api/filters.yaml) | the saved filters of a tenant: list, create, read, edit, delete ([filters](#filters)) |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
 | [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list |
@@ -229,7 +230,7 @@ itself is [`internal/oidc`](../../backend/internal/oidc/oidc.go), the decision
 ## The person-level routes
 
 The routes under `/api/v1/me/` that list what spans tenants — the inbox, the tickets assigned to the
-person, the open decisions ([ADR 0023] D2) — name no tenant in their path, so no boundary admits them
+person, the open decisions, the search ([ADR 0023] D2) — name no tenant in their path, so no boundary admits them
 to one. `personTenants` in [`inbox.go`](../../backend/internal/api/inbox.go) reads the person's
 memberships in an `Installation` transaction, keeps a token restricted to a tenant to that tenant
 (`restricted`), narrows to the `tenant` query parameter — a slug that names none of the person's is
@@ -237,7 +238,8 @@ the boundary's `404 not_found`, whether or not it exists — and sorts them by s
 read in a transaction of its own (`InTenant`, [ADR 0021] D5), under the visibility predicates as the
 tenant's own routes read it — a project-restricted token's `app.restricted_project_id` makes every
 project of another tenant invisible — and the parts are merged in Go
-([`inbox.go`](../../backend/internal/api/inbox.go), [`mylists.go`](../../backend/internal/api/mylists.go)).
+([`inbox.go`](../../backend/internal/api/inbox.go), [`mylists.go`](../../backend/internal/api/mylists.go),
+[`search.go`](../../backend/internal/api/search.go)).
 A global administrator without a role in a tenant holds no membership there, and these lists leave it
 out. Marking read needs `markRead` — any member, `write` scope, the agent baseline; the reads need no
 authorization beyond the person's membership, as `GET /api/v1/me` does. One notification is found by
@@ -254,7 +256,7 @@ exists ([ADR 0047] D5):
 - an unknown slug, or a person without a membership;
 - a token restricted to another tenant;
 - a token restricted to a project, on a path without `{project}` — except `listProjects`,
-  `listTenantTickets`, `resolveTicket` and `streamEvents` (`tenantWideForProjectTokens`), which
+  `listTenantTickets`, `searchTenant`, `resolveTicket` and `streamEvents` (`tenantWideForProjectTokens`), which
   the data layer narrows to the token's project through `app.restricted_project_id`.
 
 **A global administrator without a role** ([ADR 0034] D2) is the one exception to the first rule:
@@ -367,7 +369,8 @@ A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQue
   (`nullUnstored`), never as its zero value; an optional one stays out, as it was stored
   (`TestAReplayAnswersARequiredFieldTheStoredAnswerLacksAsNull`). The same key with another request is
   `422 idempotency_mismatch`. A key is scoped to its token and kept twenty-four hours. The keys
-  come from the client: `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
+  come from the client: the browser's creating forms hold one per content
+  ([frontend.md](frontend.md#where-state-lives)), `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
   from the conversation and the call, so the same call sent again replays ([chat.md](chat.md#the-loopback)).
 
 `PUT` and `DELETE` routes are idempotent by their address and take no key ([ADR 0045] D1). A
@@ -394,8 +397,16 @@ and an access entry are addressed by their person and written without it, like a
 ([ADR 0050] D4); a move in the rank (`moveTicketRank`) is written without it — it names where
 the ticket goes, so the last move wins — and raises the ticket's version.
 
-The two ticket lists answer a weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the
-page — and `304` for a matching `If-None-Match` (`weakETag`, `notModified` in `tickets.go`). An
+The two ticket lists, and every list the UI loads again on a poll — `listProjects`,
+`listMembers`, `listGroupMappings`, `listProjectAccess`, `listComments`, `listActivity`,
+`listQuestions`, `listTicketLinks`, `listInterest`, `listAttachments`, `listTicketTime`,
+`listPrerequisites`, `listMyInbox`, `listMyAssigned`, `listMyDecisions`, `listDeletedTickets`,
+`listSavedFilters` — answer a
+weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the page as the caller reads it — and
+`304` without a body for a matching `If-None-Match` (`weakETag`, `notModified` and `listTag` in
+`tickets.go`; the document's `ListETag` header and `NotModified` response; [ADR 0054] D7). The tag
+is the caller's: two callers who read the same list differently — an administrator the members'
+addresses, a member not — get two tags. An
 attachment's content answers its quoted hex SHA-256 and `304` likewise.
 
 ## Paging
@@ -417,10 +428,15 @@ list answers that `invalid_cursor`.
 
 - `limit` defaults to 50 and is clamped, not refused, at `COWORK_MAX_PAGE_SIZE`; the query
   fetches one row more than the page, which says whether `next_cursor` is set.
-- `listProjectTickets`, `listTenantTickets` and `listTenantTime` also take numbered pages:
-  `page` with `per_page` (25, 50 or 100; 50 when absent), answered with `total`. `page ×
-  per_page` above 10 000 is `400 page_too_deep`; a numbered page with `cursor` or `limit`, or
-  `per_page` without `page`, is `400 validation_failed` ([ADR 0048] D2).
+- The tables — `listProjectTickets`, `listTenantTickets`, `listTenantTime`, `listAudit`,
+  `listMembers`, `listMyTokens` and `listProjects` — also take numbered pages: `page` with
+  `per_page` (25, 50 or 100; 50 when absent, clamped like `limit`), answered with `total`, `page`
+  and `per_page` and a `null` `next_cursor`; the query takes `LIMIT`/`OFFSET` and a count query
+  beside it gives the total under the same filters and predicates. `page × per_page` above 10 000
+  is `400 page_too_deep`; a numbered page with `cursor` or `limit`, or `per_page` without `page`,
+  is `400 validation_failed` ([ADR 0048] D2). `tablePage` in [`cursor.go`](../../backend/internal/api/cursor.go)
+  reads both modes for every table but the two ticket lists, whose `paging` in
+  [`ticketlist.go`](../../backend/internal/api/ticketlist.go) also seals the rank's cursor.
 - The sort is fixed per list ([ADR 0048] D6): a project's tickets by rank, the unranked after
   them by number — the position is `<key>.<number>` (`TicketOrder.Position`), sealed, and
   `ticketListScope` adds `/rank` to the scope, so a cursor of the number order before the rank
@@ -433,7 +449,9 @@ list answers that `invalid_cursor`.
   person and the open decisions by the tenant's slug, the project's key and the project's rank — the
   decisions by the ticket's place, `done` and `dropped` after the ranked ones, then the question's
   number — until the score exists ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md)
-  D5); the other lists by id.
+  D5); a search's hits by their rank, then the ticket's id, both descending — a search's position is
+  `<rank>/<id>`, bound to a hash of its query as well ([search.md](search.md#the-cursor)); the other
+  lists by id.
 - A person-level list's cursor is bound to the person and the `tenant` it was narrowed to. Its position
   is the notification's id, or for the two ordered lists `<slug>/<PROJECT>/<sealed>[/<question>]`
   (`listPosition` in [`mylists.go`](../../backend/internal/api/mylists.go)): the rank's place
@@ -451,8 +469,10 @@ enums (`apigen.TicketState(v).Valid()` …); `assignee` and `reporter` take a pe
 `assignee` also `none`; `parent` takes a ticket key or `none`, resolved under the predicate —
 a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `blocked`,
 `has_open_questions` and `include_terminal` are booleans; `q` is capped at
-`COWORK_MAX_QUERY_LENGTH` characters. Every refused value is named in `errors[]`. The checks of the
-filters themselves are `parseFilters`, which the saved filters share.
+`COWORK_MAX_QUERY_LENGTH` characters. Every refused value is named in `errors[]`. `q` is a filter —
+the title and body hold every word, the list keeps its order —; the ranked search with snippets over
+comments, questions, file names and keys as well is the search routes' ([search.md](search.md#the-q-filter-and-the-mcp-tool)).
+The checks of the filters themselves are `parseFilters`, which the saved filters share.
 
 **Saved filters** ([`filters.go`](../../backend/internal/api/filters.go), [ADR 0018] D5, [ADR 0049]
 D6, D7) store a filter's parameters as the JSON object `SavedFilterParameters` — the query's names,
@@ -463,9 +483,10 @@ false`, D4). Written, the parameters go through `parseFilters` and every refused
 project or a parent ticket the reader cannot see — or that is gone — is one more for the owner;
 another reader gets the filter `redacted`, its parameters and warnings withheld, as the activity
 withholds an act that names a hidden ticket ([ADR 0065] D5). A filter is the owner's to change
-(`ownFilter`); the policies of migration 36 hold that in the data layer as well
+(`ownFilter`); the policies of migration 33 hold that in the data layer as well
 ([data-access.md](data-access.md#the-settings-the-policies-read)). Saved filters are not published
-on the event stream.
+on the event stream; their list answers a weak `ETag` and `304` like the other lists the UI loads
+again on a poll ([above](#versions-etag-if-match)).
 
 ## Media types beside JSON
 
@@ -512,4 +533,5 @@ on the event stream.
 [ADR 0048]: ../adr/0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md
 [ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
+[ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md

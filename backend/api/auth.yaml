@@ -17,7 +17,9 @@ options:
       `oidc_name`", when one is configured and its gate admits somebody —
       `COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group
       (docs/adr/0030 D1, D8). The minimum password length is the policy every
-      password form follows (docs/adr/0033 D3).
+      password form follows (docs/adr/0033 D3), and the longest lifetime of a
+      new token the bound of the token form (docs/adr/0035 D4) — the policies
+      of the installation, public like the rest of this answer.
     security: []
     responses:
       '200':
@@ -31,6 +33,7 @@ options:
               oidc: true
               oidc_name: Acme SSO
               password_min_length: 12
+              token_max_lifetime_days: 365
       default:
         $ref: './components/responses.yaml#/Problem'
 local:

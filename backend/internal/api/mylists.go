@@ -9,6 +9,7 @@ import (
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
+	"github.com/guided-traffic/cowork/backend/internal/richtext"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 )
@@ -128,17 +129,23 @@ func (s *Server) ListMyAssigned(ctx context.Context, req apigen.ListMyAssignedRe
 		return s.encodePosition(listPosition{slug: m.tenant.slug, project: m.row.ProjectKey,
 			rank: store.RankPosition(m.row.Rank, m.row.State, m.row.Number)}, false)
 	})
-	out := apigen.ListMyAssigned200JSONResponse{Items: make([]apigen.MyTicket, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.MyTicketList{Items: make([]apigen.MyTicket, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, m := range rows {
 		out.Items = append(out.Items, apigen.MyTicket{Tenant: m.tenant.ref(), Ticket: ticketView(m.tenant.scope(), m.row)})
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListMyAssigned304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListMyAssigned200JSONResponse{Body: out, Headers: apigen.ListMyAssigned200ResponseHeaders{ETag: &tag}}, nil
 }
 
-// decision is an open question of a person-level list with its tenant.
+// decision is an open question of a person-level list with its tenant and
+// the images its ticket's texts may show.
 type decision struct {
 	tenant personTenant
 	row    readq.ListOpenDecisionsRow
+	images richtext.Images
 }
 
 // ListMyDecisions answers the open decisions of the person across their
@@ -178,8 +185,16 @@ func (s *Server) ListMyDecisions(ctx context.Context, req apigen.ListMyDecisions
 		}
 		err := s.db.InTenant(ctx, t.id, func(r *store.Reader) error {
 			list, err := r.ListOpenDecisions(ctx, params)
+			if err != nil {
+				return err
+			}
+			tickets := map[uuid.UUID]ticketAt{}
 			for _, row := range list {
-				rows = append(rows, decision{tenant: t, row: row})
+				tickets[row.TicketID] = ticketAt{project: row.ProjectKey, number: row.TicketNumber}
+			}
+			images, err := imagesOf(ctx, r, t.scope(), tickets)
+			for _, row := range list {
+				rows = append(rows, decision{tenant: t, row: row, images: images[row.TicketID]})
 			}
 			return err
 		})
@@ -191,11 +206,15 @@ func (s *Server) ListMyDecisions(ctx context.Context, req apigen.ListMyDecisions
 		return s.encodePosition(listPosition{slug: d.tenant.slug, project: d.row.ProjectKey,
 			rank: store.RankPosition(d.row.TicketRank, d.row.TicketState, d.row.TicketNumber), question: d.row.Number}, true)
 	})
-	out := apigen.ListMyDecisions200JSONResponse{Items: make([]apigen.Decision, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.DecisionList{Items: make([]apigen.Decision, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, d := range rows {
 		out.Items = append(out.Items, decisionView(d))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListMyDecisions304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListMyDecisions200JSONResponse{Body: out, Headers: apigen.ListMyDecisions200ResponseHeaders{ETag: &tag}}, nil
 }
 
 func decisionView(d decision) apigen.Decision {
@@ -213,6 +232,6 @@ func decisionView(d decision) apigen.Decision {
 			AnsweredByName: q.AnsweredByName, AnsweredAt: q.AnsweredAt, RecordedByAgent: q.RecordedByAgent,
 			AnsweredByTokenID: q.AnsweredByTokenID, AnsweredByTokenName: q.AnsweredByTokenName,
 			WithdrawnAt: q.WithdrawnAt, Version: q.Version, CreatedAt: q.CreatedAt, UpdatedAt: q.UpdatedAt,
-		}),
+		}, d.images),
 	}
 }

@@ -7,6 +7,12 @@
           "type": "string"
         }
       },
+      "ListETag": {
+        "description": "A weak validator of this page for this caller, `W/\"…\"`, for `If-None-Match` (docs/adr/0054 D7)\n",
+        "schema": {
+          "type": "string"
+        }
+      },
       "Location": {
         "description": "The new entity's URL",
         "schema": {
@@ -441,7 +447,7 @@
         }
       },
       "Query": {
-        "description": "Full text over title and body (docs/adr/0025); its length is capped by the server",
+        "description": "A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold\nevery word, in the list's own order, without a rank or a snippet — the ranked search over\ncomments, questions, file names and keys as well is `GET …/search`. Its length is capped by\nthe server\n",
         "in": "query",
         "name": "q",
         "schema": {
@@ -478,6 +484,17 @@
         "required": true,
         "schema": {
           "format": "uuid",
+          "type": "string"
+        }
+      },
+      "SearchQuery": {
+        "description": "The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length\nis capped by the server, and a query of white space alone is `validation_failed`\n",
+        "in": "query",
+        "name": "q",
+        "required": true,
+        "schema": {
+          "maxLength": 4096,
+          "minLength": 1,
           "type": "string"
         }
       },
@@ -586,6 +603,14 @@
       }
     },
     "responses": {
+      "NotModified": {
+        "description": "The page is unchanged since the weak `ETag` in `If-None-Match`; the client keeps what it holds\n(docs/adr/0054 D7)\n",
+        "headers": {
+          "ETag": {
+            "$ref": "#/components/headers/ListETag"
+          }
+        }
+      },
       "Problem": {
         "content": {
           "application/problem+json": {
@@ -1163,10 +1188,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -1196,13 +1232,19 @@
             "description": "The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it",
             "minimum": 1,
             "type": "integer"
+          },
+          "token_max_lifetime_days": {
+            "description": "The longest lifetime a new token gets, `COWORK_TOKEN_MAX_LIFETIME`, in whole days, rounded\ndown (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the\nmaximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A\nform that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes\n",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
           "local",
           "oidc",
           "oidc_name",
-          "password_min_length"
+          "password_min_length",
+          "token_max_lifetime_days"
         ],
         "type": "object"
       },
@@ -1644,6 +1686,13 @@
               "null"
             ]
           },
+          "body_html": {
+            "description": "The body rendered and sanitised on the server, as the ticket's body is (docs/adr/0011 D6), beside\nthe Markdown; null once withdrawn\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "created_at": {
             "format": "date-time",
             "type": "string"
@@ -1698,6 +1747,7 @@
           "agent",
           "token",
           "body",
+          "body_html",
           "withdrawn",
           "withdrawn_at",
           "edited",
@@ -1832,17 +1882,9 @@
             "properties": {
               "request": {
                 "$ref": "#/components/schemas/RequestMark"
-              },
-              "restricted_project": {
-                "description": "The key of the project the token is restricted to",
-                "type": [
-                  "string",
-                  "null"
-                ]
               }
             },
             "required": [
-              "restricted_project",
               "request"
             ],
             "type": "object"
@@ -2573,10 +2615,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -3076,10 +3129,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -3164,6 +3228,13 @@
               "null"
             ]
           },
+          "answer_html": {
+            "description": "The answer rendered and sanitised on the server (docs/adr/0011 D6); null without an answer",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "answered_at": {
             "format": "date-time",
             "type": [
@@ -3241,6 +3312,10 @@
             "description": "Markdown: the context and the options",
             "type": "string"
           },
+          "options_html": {
+            "description": "The options rendered and sanitised on the server (docs/adr/0011 D6); empty without options",
+            "type": "string"
+          },
           "question": {
             "type": "string"
           },
@@ -3274,8 +3349,10 @@
           "number",
           "question",
           "options",
+          "options_html",
           "recommendation",
           "answer",
+          "answer_html",
           "status",
           "asked_by",
           "asked_by_agent",
@@ -3903,6 +3980,95 @@
         ],
         "type": "string"
       },
+      "SearchFoundIn": {
+        "description": "Where a search hit matched (docs/adr/0025 D5): the ticket's key; its own text, the title and\nthe body; one of its comments; one of its questions; an attachment's file name\n",
+        "enum": [
+          "key",
+          "ticket",
+          "comment",
+          "question",
+          "attachment"
+        ],
+        "type": "string"
+      },
+      "SearchHit": {
+        "properties": {
+          "comment": {
+            "description": "The comment the hit is in",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "found_in": {
+            "$ref": "#/components/schemas/SearchFoundIn"
+          },
+          "key": {
+            "description": "The canonical key, \u003ctenant\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e (docs/adr/0007 D2)",
+            "type": "string"
+          },
+          "question": {
+            "description": "The number of the question the hit is in",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "snippet": {
+            "description": "The text the hit is in around the words found, in pieces (`ts_headline`, docs/adr/0025 D4):\nthe body for a hit in the ticket's own text or its key, the comment, the question with its\noptions, recommendation and answer, the file name. Text, never HTML; empty where that text is\n",
+            "items": {
+              "$ref": "#/components/schemas/SnippetPart"
+            },
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TicketState"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/TenantRef"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/TicketType"
+          }
+        },
+        "required": [
+          "tenant",
+          "key",
+          "title",
+          "type",
+          "state",
+          "found_in",
+          "comment",
+          "question",
+          "snippet"
+        ],
+        "type": "object"
+      },
+      "SearchHitList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SearchHit"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
       "SecurityClass": {
         "enum": [
           "live",
@@ -3921,6 +4087,23 @@
           "cosmetic"
         ],
         "type": "string"
+      },
+      "SnippetPart": {
+        "properties": {
+          "match": {
+            "description": "The piece is a word the query found",
+            "type": "boolean"
+          },
+          "text": {
+            "description": "A piece of the matched text, as text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "match"
+        ],
+        "type": "object"
       },
       "Tenant": {
         "properties": {
@@ -4303,6 +4486,28 @@
           "version",
           "created_at",
           "updated_at"
+        ],
+        "type": "object"
+      },
+      "TicketBody": {
+        "properties": {
+          "body": {
+            "description": "Markdown, as written (docs/adr/0011 D1)",
+            "type": "string"
+          },
+          "body_html": {
+            "description": "The body rendered and sanitised on the server (docs/adr/0011 D6); empty for an empty body\n",
+            "type": "string"
+          },
+          "version": {
+            "description": "The ticket's version the body belongs to",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "body",
+          "body_html",
+          "version"
         ],
         "type": "object"
       },
@@ -4873,8 +5078,16 @@
           "name": {
             "type": "string"
           },
+          "restricted_project": {
+            "description": "The key of the project the token is restricted to (docs/adr/0035 D3); null for a token\nwithout a project restriction, and for one whose project the person no longer sees or\nwhose tenant they no longer belong to — such a token reaches nothing\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "restricted_project_id": {
-            "description": "The id of the project the token is restricted to",
+            "deprecated": true,
+            "description": "The id of the project the token is restricted to. Replaced by `restricted_project`, which\nnames the project by its key, as a person knows it; kept in `/api/v1` for the clients that\nread it, since taking a field away is a breaking change (docs/adr/0046 D7)\n",
             "format": "uuid",
             "type": [
               "string",
@@ -4908,6 +5121,7 @@
           "scope",
           "agent",
           "capabilities",
+          "restricted_project",
           "created_at",
           "expires_at",
           "state"
@@ -4988,10 +5202,21 @@
             "type": "array"
           },
           "next_cursor": {
+            "description": "The cursor of the next page; null at the end, and on a numbered page",
             "type": [
               "string",
               "null"
             ]
+          },
+          "page": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "total": {
+            "description": "With page and per_page only",
+            "type": "integer"
           }
         },
         "required": [
@@ -5261,6 +5486,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -5272,7 +5500,15 @@
                 }
               }
             },
-            "description": "A page of the person's tickets"
+            "description": "A page of the person's tickets",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -5376,6 +5612,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -5387,7 +5626,15 @@
                 }
               }
             },
-            "description": "A page of the open decisions"
+            "description": "A page of the open decisions",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -5412,6 +5659,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -5423,7 +5673,15 @@
                 }
               }
             },
-            "description": "A page of the inbox and the unread count"
+            "description": "A page of the inbox and the unread count",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -5624,6 +5882,45 @@
         ]
       }
     },
+    "/api/v1/me/search": {
+      "get": {
+        "description": "The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —\none read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit\nnames its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that\ntenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator\nwithout a role in a tenant searches nothing of it (docs/adr/0034 D2).\n",
+        "operationId": "searchMyTenants",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          },
+          {
+            "$ref": "#/components/parameters/MeTenant"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchHitList"
+                }
+              }
+            },
+            "description": "A page of hits, the best first"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Search the tickets of every tenant of the person",
+        "tags": [
+          "search"
+        ]
+      }
+    },
     "/api/v1/me/token": {
       "get": {
         "description": "The token's metadata as the list shows it, the key of the project it is\nrestricted to, and the request's mark: whether it is an agent's — by the\ntoken's flag or by an `X-Cowork-Agent` header (docs/adr/0036 D2, D3) — the\nagent recorded on its acts, and the capabilities it holds\n(docs/adr/0043 D4). The MCP server reads it at start to tell the model what\nit may do (D6), and `cowork-mcp token check` to tell a person\n(docs/adr/0070 D2). A browser session presents no token: `404 not_found`.\n",
@@ -5651,7 +5948,7 @@
     },
     "/api/v1/me/tokens": {
       "get": {
-        "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6).\n",
+        "description": "Metadata only; a token's plaintext is shown once, at creation\n(docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with\na total (docs/adr/0048 D2).\n",
         "operationId": "listMyTokens",
         "parameters": [
           {
@@ -5659,6 +5956,12 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
           }
         ],
         "responses": {
@@ -6198,7 +6501,7 @@
     },
     "/api/v1/tenants/{tenant}/audit": {
       "get": {
-        "description": "For the tenant's administrators. Filters combine with AND; a repeated\n`action` with OR. `Accept: text/csv` returns the same rows as CSV, every\ncell that could start a formula prefixed with an apostrophe.\n",
+        "description": "For the tenant's administrators. Filters combine with AND; a repeated\n`action` with OR. Newest first, paged by cursor, or by number with a total\n(docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every\ncell that could start a formula prefixed with an apostrophe. A CSV answer\ncarries no cursor: a client that reads more than one page as CSV asks for\nnumbered pages, with `to` held at the moment it began, so that a newer\nrow does not move the rows between two pages.\n",
         "operationId": "listAudit",
         "parameters": [
           {
@@ -6263,6 +6566,12 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
           }
         ],
         "responses": {
@@ -6434,6 +6743,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6445,7 +6757,15 @@
                 }
               }
             },
-            "description": "A page of the bin"
+            "description": "A page of the bin",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6528,7 +6848,7 @@
     },
     "/api/v1/tenants/{tenant}/events": {
       "get": {
-        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries keys only, each where it applies: `person_id`, the person whose membership\nor project access changed; `project_id`, the project whose restriction or access list\nchanged; `mapping_id`, the group mapping made, changed or removed. The client reloads what\nit shows of members, mappings and access lists, its project list when `project_id` is\nthere, and the person's own `GET /api/v1/me`. An event about an access entry reaches the\ntenant's administrators and the person it names, one about a mapping the administrators,\nevery other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream also carries\nthe person's own events across every tenant they belong to (docs/adr/0054 D1):\n`inbox.changed` with `data: {\"unread\": n}`, the person's unread notifications in every tenant\nthe request reaches (`GET /api/v1/me/inbox` counts the same), sent when the stream opens and\nwhenever the inbox changes — a notification for them, or theirs marked read —; and\n`question.changed` of a question asked of them in another tenant, which arrives only while\nthey are a member of that tenant and see its ticket, as the tenant's own stream would judge\nit. Neither carries an `id:` or is replayed: the count says how things stand, and the client\nreloads its person-level lists when the stream opens. A token restricted to a tenant hears\nnothing of another (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmembership again; the stream ends when either fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
+        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries the tenant's slug, `tenant`, and keys only, each where it applies:\n`person_id`, the person whose membership or project access changed; `project_id`, the\nproject whose restriction or access list changed; `mapping_id`, the group mapping made,\nchanged or removed. The client reloads what it shows of that tenant's members, mappings and\naccess lists, its project list when `project_id` is there, and the person's own\n`GET /api/v1/me`. An event about an access entry reaches the tenant's administrators and the\nperson it names, one about a mapping the administrators, every other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream carries\nevery event of every tenant the person belongs to that the tenant's own stream would carry\nto them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with\n`data: {\"unread\": n}`, the person's unread notifications in every tenant the request reaches\n(`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox\nchanges — a notification for them, or theirs marked read. The count carries no `id:` and is\nnot replayed: it says how things stand. A tenant the person is granted a role in is followed\nat once, one they leave no more after the act that took it away. A token restricted to a\ntenant hears its tenant alone (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level\nstream the gap of every tenant it follows, in the order the server received the events;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmemberships again; the stream ends when the token or the membership of the tenant in the\npath fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
         "operationId": "streamEvents",
         "parameters": [
           {
@@ -6541,7 +6861,7 @@
             }
           },
           {
-            "description": "Adds the person's own events across their tenants (docs/adr/0054 D1)",
+            "description": "Carries the events of every tenant of the person and their unread count (docs/adr/0054 D1)",
             "in": "query",
             "name": "me",
             "schema": {
@@ -6586,6 +6906,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6597,7 +6920,15 @@
                 }
               }
             },
-            "description": "A page of saved filters"
+            "description": "A page of saved filters",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6767,6 +7098,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6778,7 +7112,15 @@
                 }
               }
             },
-            "description": "A page of mappings"
+            "description": "A page of mappings",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -6929,7 +7271,7 @@
     },
     "/api/v1/tenants/{tenant}/members": {
       "get": {
-        "description": "Each member with the effective role — the higher of the mapped and the\ngranted one (docs/adr/0030 D4) — and `origins`, every source with its\nown role; `local` marks a person with a local account rather than an\nidentity of the identity provider (docs/adr/0033). `email` is the\naddress that tells two persons of one name apart, for the tenant's\nadministrators; everyone else reads null — a global administrator who\nholds no role in the tenant and reads the list as part of its\nadministration too (docs/adr/0034 D2).\n",
+        "description": "Each member with the effective role — the higher of the mapped and the\ngranted one (docs/adr/0030 D4) — and `origins`, every source with its\nown role; `local` marks a person with a local account rather than an\nidentity of the identity provider (docs/adr/0033). `email` is the\naddress that tells two persons of one name apart, for the tenant's\nadministrators; everyone else reads null — a global administrator who\nholds no role in the tenant and reads the list as part of its\nadministration too (docs/adr/0034 D2). Paged by cursor, or by number\nwith a total (docs/adr/0048 D2).\n",
         "operationId": "listMembers",
         "parameters": [
           {
@@ -6937,6 +7279,15 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -6948,7 +7299,15 @@
                 }
               }
             },
-            "description": "A page of members, by person id"
+            "description": "A page of members, by person id",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7097,6 +7456,7 @@
     },
     "/api/v1/tenants/{tenant}/projects": {
       "get": {
+        "description": "By key, paged by cursor, or by number with a total (docs/adr/0048 D2).\n",
         "operationId": "listProjects",
         "parameters": [
           {
@@ -7112,6 +7472,15 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Page"
+          },
+          {
+            "$ref": "#/components/parameters/PerPage"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7123,7 +7492,15 @@
                 }
               }
             },
-            "description": "A page of projects, by key"
+            "description": "A page of projects, by key",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7302,6 +7679,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7313,7 +7693,15 @@
                 }
               }
             },
-            "description": "A page of entries, by person id"
+            "description": "A page of entries, by person id",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7924,6 +8312,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7935,7 +8326,15 @@
                 }
               }
             },
-            "description": "A page of acts"
+            "description": "A page of acts",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -7967,6 +8366,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -7978,7 +8380,15 @@
                 }
               }
             },
-            "description": "A page of attachments"
+            "description": "A page of attachments",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8175,6 +8585,39 @@
       ]
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body": {
+      "get": {
+        "description": "The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its\nown: the ticket lists carry the Markdown of every row, and rendering every body of a page\nis work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown\nas text; a link keeps only an `http`, `https` or `mailto` address or one relative to the\ninstallation, opens in a new tab and carries `rel=\"noopener noreferrer nofollow\"`; an\nimage shows only when it names a raster attachment of this ticket, from that attachment's\nown path (docs/adr/0016 D7), and any other image is a link to its address. Shown through\nAngular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a\nreplacement of the body names in `If-Match`; the HTML changes with the ticket's\nattachments as well, which raise no version.\n",
+        "operationId": "getTicketBody",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "body": "## Current state\n\nThe gate fails on `readyReplicas` — see [the run](https://ci.example/run/7).",
+                  "body_html": "\u003ch2\u003eCurrent state\u003c/h2\u003e\n\u003cp\u003eThe gate fails on \u003ccode\u003ereadyReplicas\u003c/code\u003e — see \u003ca href=\"https://ci.example/run/7\" rel=\"noopener noreferrer nofollow\" target=\"_blank\"\u003ethe run\u003c/a\u003e.\u003c/p\u003e",
+                  "version": 4
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/TicketBody"
+                }
+              }
+            },
+            "description": "The body",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's body, as Markdown and rendered",
+        "tags": [
+          "tickets"
+        ]
+      },
       "parameters": [
         {
           "$ref": "#/components/parameters/TenantSlug"
@@ -8242,6 +8685,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -8253,7 +8699,15 @@
                 }
               }
             },
-            "description": "A page of comments; a withdrawn one without its text"
+            "description": "A page of comments; a withdrawn one without its text",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8639,6 +9093,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -8650,7 +9107,15 @@
                 }
               }
             },
-            "description": "A page of stakes"
+            "description": "A page of stakes",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8726,6 +9191,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -8737,7 +9205,15 @@
                 }
               }
             },
-            "description": "A page of links"
+            "description": "A page of links",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8892,6 +9368,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -8927,7 +9406,15 @@
                 }
               }
             },
-            "description": "A page of the tree, depth first"
+            "description": "A page of the tree, depth first",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -8959,6 +9446,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -8970,7 +9460,15 @@
                 }
               }
             },
-            "description": "A page of questions"
+            "description": "A page of questions",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -9291,6 +9789,9 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
           }
         ],
         "responses": {
@@ -9302,7 +9803,15 @@
                 }
               }
             },
-            "description": "A page of entries with the ticket's visible total"
+            "description": "A page of entries with the ticket's visible total",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -9696,6 +10205,79 @@
           "tickets"
         ]
       }
+    },
+    "/api/v1/tenants/{tenant}/search": {
+      "get": {
+        "description": "Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —\nover a ticket's title and body, its comments but a withdrawn one, its questions (the question,\nthe options, the recommendation and the answer) and its attachments' file names; a text\nmatches when it holds every word of `q`. A ticket's key matches by its beginning as well —\n`COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram\nsimilarity, so a word half typed or misspelt still finds it (D3).\n\nOne hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the\ntitle above the body above comments, questions and file names, a title found by trigram\nbelow them (D4). A hit names the ticket — its key, title, type and state —, where it matched\n(`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an\nattachment's name) and a snippet of that text with the matched words marked (`ts_headline`,\nD5). The snippet is text in parts, never HTML: a client shows every part as text.\n\nOnly what the caller can see is searched, snippets included: a restricted project they are\nnot on, a confidential ticket of which they are neither a tenant administrator, the assignee\nnor the reporter, and a project-restricted token's other projects find nothing\n(docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a\ncursor belongs to its query.\n\nThe `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose\ntitle and body hold every word, in the list's own order, with no rank and no snippet.\n",
+        "operationId": "searchTenant",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SearchQuery"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "items": [
+                    {
+                      "comment": "0199a3c2-1d2e-7f00-8000-0000000000c1",
+                      "found_in": "comment",
+                      "key": "acme/COW-12",
+                      "question": null,
+                      "snippet": [
+                        {
+                          "match": false,
+                          "text": "the "
+                        },
+                        {
+                          "match": true,
+                          "text": "readyReplicas"
+                        },
+                        {
+                          "match": false,
+                          "text": " count is 0 after the rollout"
+                        }
+                      ],
+                      "state": "in-progress",
+                      "tenant": {
+                        "name": "Acme",
+                        "slug": "acme"
+                      },
+                      "title": "The gate fails on a fresh cluster",
+                      "type": "bug"
+                    }
+                  ],
+                  "next_cursor": null
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/SearchHitList"
+                }
+              }
+            },
+            "description": "A page of hits, the best first"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Search the tenant's tickets",
+        "tags": [
+          "search"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
     },
     "/api/v1/tenants/{tenant}/tickets": {
       "get": {
@@ -10230,7 +10812,7 @@
     },
     "/auth/options": {
       "get": {
-        "description": "The local form is offered when at least one active local account exists\n(docs/adr/0033 D8); the identity provider's button, \"Sign in with\n`oidc_name`\", when one is configured and its gate admits somebody —\n`COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group\n(docs/adr/0030 D1, D8). The minimum password length is the policy every\npassword form follows (docs/adr/0033 D3).\n",
+        "description": "The local form is offered when at least one active local account exists\n(docs/adr/0033 D8); the identity provider's button, \"Sign in with\n`oidc_name`\", when one is configured and its gate admits somebody —\n`COWORK_OIDC_ALLOWED_GROUPS` or `COWORK_ADMIN_GROUP` names a group\n(docs/adr/0030 D1, D8). The minimum password length is the policy every\npassword form follows (docs/adr/0033 D3), and the longest lifetime of a\nnew token the bound of the token form (docs/adr/0035 D4) — the policies\nof the installation, public like the rest of this answer.\n",
         "operationId": "getAuthOptions",
         "responses": {
           "200": {
@@ -10240,7 +10822,8 @@
                   "local": true,
                   "oidc": true,
                   "oidc_name": "Acme SSO",
-                  "password_min_length": 12
+                  "password_min_length": 12,
+                  "token_max_lifetime_days": 365
                 },
                 "schema": {
                   "$ref": "#/components/schemas/AuthOptions"
@@ -10301,6 +10884,9 @@
     },
     {
       "name": "filters"
+    },
+    {
+      "name": "search"
     },
     {
       "name": "questions"

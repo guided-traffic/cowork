@@ -65,7 +65,10 @@ What every change in this repository follows.
   one by one and never a deprecated one (`[pButton]`, not `<p-button>`); colours only as the
   preset's tokens; `class` on a PrimeNG host where older code wrote `styleClass`; a resource read
   through `hasValue()` and reloaded through `refresh()`; vocabulary values shown as the API spells
-  them, with their meaning in a tooltip ([frontend.md](frontend.md)).
+  them, with their meaning in a tooltip ([frontend.md](frontend.md)). Text is shown by
+  interpolation; the one markup the page shows is the server's rendered Markdown, through
+  `RenderedText` and Angular's sanitiser, and nothing calls `bypassSecurityTrust…`
+  ([rendered-markdown.md](rendered-markdown.md)).
 - **Documentation:** every claim verified against the tree; "not verified" is a complete
   sentence; file and line references as relative links; `# default` / `# example` on shown
   values; nothing outside `docs/tickets/` cites a ticket.

@@ -1,5 +1,5 @@
 -- Saved filters (docs/adr/0018 D5): written by their owner only, which the
--- policies of migration 36 hold as well.
+-- policies of migration 33 hold as well.
 
 -- name: InsertSavedFilter :one
 INSERT INTO saved_filters (tenant_id, owner_id, name, parameters, shared)

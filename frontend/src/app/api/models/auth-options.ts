@@ -24,4 +24,12 @@ export interface AuthOptions {
    * The shortest password a local account may have, `COWORK_PASSWORD_MIN_LENGTH` (docs/adr/0033 D3); a form that sets or generates a password follows it
    */
   password_min_length: number;
+
+  /**
+   * The longest lifetime a new token gets, `COWORK_TOKEN_MAX_LIFETIME`, in whole days, rounded
+   * down (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the
+   * maximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A
+   * form that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes
+   */
+  token_max_lifetime_days: number;
 }

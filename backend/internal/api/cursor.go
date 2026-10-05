@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/guided-traffic/cowork/backend/internal/problem"
@@ -164,4 +165,66 @@ func page[T any](h *handler, rows []T, size int, op, scope string, key func(T) s
 	rows = rows[:size]
 	next := h.server.cursors.encode(op, scope, key(rows[len(rows)-1]))
 	return rows, &next
+}
+
+// listPage is how a request pages a list that people read as a table
+// (docs/adr/0048 D2): a cursor page of size rows, or a numbered one, perPage
+// rows of page, answered with a total.
+type listPage struct {
+	numbered      bool
+	page, perPage int
+	size          int
+}
+
+// tablePage reads the paging of a table-like list: page with per_page — 50
+// when absent, clamped like limit — or a cursor page of limit. The two do not
+// mix, per_page goes with page, and a numbered page ends at row maxPageDepth
+// (docs/adr/0048 D2).
+func (h *handler) tablePage(cursor *string, limit, page, perPage *int) (listPage, *problem.Error) {
+	switch {
+	case page != nil && (cursor != nil || limit != nil):
+		return listPage{}, problem.Field("query:page", "a numbered page takes per_page, neither cursor nor limit")
+	case page == nil && perPage != nil:
+		return listPage{}, problem.Field("query:per_page", "per_page goes with page")
+	case page == nil:
+		return listPage{size: h.pageSize(limit)}, nil
+	}
+	n := defaultPageSize
+	if perPage != nil {
+		n = *perPage
+	}
+	n = h.pageSize(&n)
+	if *page > maxPageDepth/n {
+		return listPage{}, &problem.Error{Code: problem.PageTooDeep,
+			Detail: "pages end at row " + strconv.Itoa(maxPageDepth) + "; narrow the list with a filter or follow the cursor",
+			Errors: []problem.FieldError{{Pointer: "query:page", Message: "too deep"}}}
+	}
+	return listPage{numbered: true, page: *page, perPage: n, size: n}, nil
+}
+
+// limit is the LIMIT of the page's query: per_page rows, or one row more than
+// a cursor page.
+func (l listPage) limit() int32 {
+	if l.numbered {
+		return clamp32(l.perPage)
+	}
+	return limitArg(l.size)
+}
+
+// offset is the OFFSET of the page's query; a cursor page has none.
+func (l listPage) offset() int32 {
+	if l.numbered {
+		return clamp32((l.page - 1) * l.perPage)
+	}
+	return 0
+}
+
+// numbers are the total, page and per_page of a numbered page's answer, all
+// nil on a cursor page.
+func (l listPage) numbers(total int64) (n, page, perPage *int) {
+	if !l.numbered {
+		return nil, nil, nil
+	}
+	count := int(total)
+	return &count, &l.page, &l.perPage
 }

@@ -13,12 +13,14 @@ import { Skeleton } from 'primeng/skeleton';
 import { Api } from '../../api/api';
 import { listMyDecisions } from '../../api/functions';
 import { Decision } from '../../api/models';
+import { ConditionalPages } from '../../core/conditional';
 import { followPages, personPageSize, PersonPages } from '../../core/inbox.service';
 import { ProblemService } from '../../core/problem.service';
 import { keepShown } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
 import { StateBadge } from '../../shared/badges';
 import { ago, Clock, count } from '../../shared/time';
+import { changesExistence } from '../../core/event-stream.service';
 import { reloadOn, shortKey, ticketRoute } from './person-list';
 
 /** Whom a decision waits for: the person, or anybody of the tenant (docs/adr/0011 D2). */
@@ -32,9 +34,8 @@ export function askedOf(decision: Decision, person: string | undefined): string 
  * "Open decisions" (docs/adr/0018 D3): the open questions asked of the person and those open in
  * their tenants, across every tenant they belong to, each beside its tenant and its ticket, in the
  * order of the tenant, the project and the ticket's place in its rank until the score exists
- * (docs/adr/0014 D5). It loads again when a question asked of the person changes in any of their
- * tenants or their inbox does, when a question of the stream's tenant changes, and on `resync` and
- * `poll` (docs/adr/0054 D1).
+ * (docs/adr/0014 D5). It loads again when a question of any of the person's tenants changes, and
+ * on what {@link reloadOn} follows for every person-level page (docs/adr/0054 D1).
  */
 @Component({
   selector: 'app-decisions',
@@ -108,6 +109,9 @@ export class Decisions {
   protected readonly askedOf = askedOf;
   protected readonly person = computed(() => this.session.person()?.id);
 
+  /** The weak `ETag`s of the pages the list holds, for a poll that finds them unchanged. */
+  private readonly conditional = new ConditionalPages(this.api);
+
   protected readonly list: ResourceRef<PersonPages<Decision> | undefined> = resource({
     params: () => {
       const person = this.person();
@@ -115,8 +119,10 @@ export class Decisions {
     },
     loader: ({ params }) =>
       keepShown(this.list, () =>
-        followPages(params.pages, (cursor) =>
-          this.api.invoke(listMyDecisions, { cursor, limit: personPageSize }),
+        this.conditional.load((page) =>
+          followPages(params.pages, (cursor) =>
+            page(listMyDecisions, { cursor, limit: personPageSize }),
+          ),
         ),
       ),
   });
@@ -137,10 +143,7 @@ export class Decisions {
   });
 
   constructor() {
-    reloadOn(
-      this.list,
-      (event) => event.name === 'question.changed' || event.name === 'inbox.changed',
-    );
+    reloadOn(this.list, (event) => event.name === 'question.changed' || changesExistence(event));
   }
 
   protected ago(iso: string): string {

@@ -33,10 +33,13 @@ tokens:
     summary: The person's tokens, revoked and expired ones included
     description: |
       Metadata only; a token's plaintext is shown once, at creation
-      (docs/adr/0035 D1, D6).
+      (docs/adr/0035 D1, D6). Newest first, paged by cursor, or by number with
+      a total (docs/adr/0048 D2).
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
     responses:
       '200':
         description: A page of tokens
@@ -245,13 +248,19 @@ inbox:
       - $ref: './components/parameters.yaml#/MeTenant'
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of the inbox and the unread count
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/InboxList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
 inboxRead:
@@ -322,13 +331,19 @@ assigned:
       - $ref: './components/parameters.yaml#/MeTenant'
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of the person's tickets
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/MyTicketList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
 decisions:
@@ -348,12 +363,18 @@ decisions:
       - $ref: './components/parameters.yaml#/MeTenant'
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
       '200':
         description: A page of the open decisions
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
         content:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/DecisionList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'

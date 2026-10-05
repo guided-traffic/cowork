@@ -26,11 +26,12 @@ import {
   PrerequisiteTree,
   QuestionList,
   Ticket,
+  TicketBody as RenderedBody,
   TimeEntryList,
 } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { EntityCache } from '../../core/entity-cache';
-import { EventStreamService } from '../../core/event-stream.service';
+import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
 import { MembersService } from '../../core/members.service';
 import { SessionService } from '../../core/session.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
@@ -105,9 +106,11 @@ function question(overrides: Partial<Question> = {}): Question {
     number: 1,
     question: 'Which flicker is it?',
     options: '',
+    options_html: '',
     recommendation: '',
     status: 'open',
     answer: null,
+    answer_html: null,
     answered_at: null,
     answered_by: null,
     asked_by: ada,
@@ -131,6 +134,7 @@ function comment(overrides: Partial<Comment> = {}): Comment {
     agent: null,
     token: null,
     body: 'Reproduced on the second board.',
+    body_html: null,
     edited: false,
     explains: [],
     withdrawn: false,
@@ -255,6 +259,7 @@ describe('TicketDetail', () => {
     attachments: `${base}/attachments?limit=200`,
     time: `${base}/time-entries?limit=200`,
     tree: `${base}/prerequisites?direction=down&limit=200`,
+    body: `${base}/body`,
   };
 
   /** What the API answers for the parts around a ticket; a part left out stays unanswered. */
@@ -267,6 +272,7 @@ describe('TicketDetail', () => {
     interest?: InterestList;
     attachments?: AttachmentList;
     time?: TimeEntryList;
+    body?: RenderedBody;
   }
 
   let tenant: WritableSignal<string | null>;
@@ -566,6 +572,44 @@ describe('TicketDetail', () => {
       expect(page.querySelector('[data-testid="body"]')).toBeNull();
       expect(page.textContent).toContain('No description.');
     });
+
+    it('shows the body as the server rendered it, once it has the rendering', async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        body: {
+          body: 'It flickers on every event.',
+          body_html: '<p>It <em>flickers</em> on every event.</p>',
+          version: 3,
+        },
+      });
+
+      expect(page.querySelector('[data-testid="body"] .rendered em')?.textContent).toBe('flickers');
+    });
+
+    it('loads the rendering again for a newer version, and for an upload, which moves none', async () => {
+      show();
+      const { fixture } = await render('COW-12', {
+        body: { body: 'It flickers on every event.', body_html: '<p>It flickers.</p>', version: 3 },
+      });
+
+      show({ version: 4, body: 'It flickers less.' });
+      fixture.detectChanges();
+      await answer(fixture, {
+        body: { body: 'It flickers less.', body_html: '<p>It flickers less.</p>', version: 4 },
+      });
+      expect(text(fixture.nativeElement, '[data-testid="body"]')).toBe('It flickers less.');
+
+      (TestBed.inject(EventStreamService).events as Subject<StreamEvent>).next({
+        name: 'ticket.changed',
+        id: 'act-1',
+        key: 'acme/COW-12',
+        version: 4,
+        kind: 'uploaded',
+      });
+      await answer(fixture, {});
+      expect(http.match(urls.body)).toHaveLength(1);
+    });
   });
 
   describe('the questions', () => {
@@ -578,6 +622,7 @@ describe('TicketDetail', () => {
             number: 2,
             question: 'Which flicker is it?',
             options: 'Repaint or reflow',
+            options_html: '<p>Repaint or reflow</p>',
             recommendation: 'Repaint',
             asked_by_agent: 'claude',
             asked_of: sam,
@@ -587,10 +632,9 @@ describe('TicketDetail', () => {
 
       const open = page.querySelector('[data-testid="question-2"]');
       expect(open?.querySelector('.ask')?.textContent).toBe('Which flicker is it?');
+      expect(text(page, '[data-testid="question-2"] .options strong')).toBe('Options:');
+      expect(text(page, '[data-testid="question-2"] .options .rendered')).toBe('Repaint or reflow');
       expect(text(page, '[data-testid="question-2"] p:nth-of-type(2)')).toBe(
-        'Options: Repaint or reflow',
-      );
-      expect(text(page, '[data-testid="question-2"] p:nth-of-type(3)')).toBe(
         'Recommended: Repaint',
       );
       expect(text(page, '[data-testid="question-2"] .meta')).toBe(
@@ -609,6 +653,35 @@ describe('TicketDetail', () => {
       expect(text(page, '[data-testid="question-1"] .meta')).toBe(
         'asked by Ada Lovelace · 1 hour ago',
       );
+    });
+
+    it("shows the options and the answer as the server rendered them, through Angular's sanitiser", async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        questions: list(
+          question({
+            number: 1,
+            options: '- *repaint*',
+            options_html: '<ul><li><em>repaint</em></li></ul><img src="x" onerror="alert(1)">',
+          }),
+          question({
+            id: 'q-2',
+            number: 2,
+            status: 'answered',
+            answer: 'see [the run](https://ci.example/7)',
+            answer_html:
+              '<p>see <a href="https://ci.example/7" rel="noopener noreferrer nofollow" target="_blank">the run</a></p>',
+          }),
+        ),
+      });
+
+      const options = page.querySelector('[data-testid="question-1"] .options .rendered');
+      expect(options?.querySelector('em')?.textContent).toBe('repaint');
+      expect(options?.querySelector('img')?.getAttribute('onerror')).toBeNull();
+      const link = page.querySelector('[data-testid="question-answer"] a');
+      expect(link?.getAttribute('href')).toBe('https://ci.example/7');
+      expect(link?.getAttribute('rel')).toBe('noopener noreferrer nofollow');
     });
 
     it('says so when no question is open', async () => {
@@ -631,6 +704,7 @@ describe('TicketDetail', () => {
             question: 'Repaint or reflow?',
             status: 'answered',
             answer: 'Reflow.',
+            answer_html: '<p>Reflow.</p>',
           }),
           question({ id: 'q-2', number: 2, question: 'Which browser?', status: 'withdrawn' }),
           question({ id: 'q-3', number: 3, question: 'Still open?' }),
@@ -642,7 +716,8 @@ describe('TicketDetail', () => {
         ...page.querySelectorAll('.question.settled'),
       ] as HTMLElement[];
       expect(text(answered, '.ask')).toBe('Repaint or reflow?');
-      expect(text(answered, 'p.small')).toBe('Answer: Reflow.');
+      expect(text(answered, '.answer strong')).toBe('Answer:');
+      expect(text(answered, '.answer .rendered')).toBe('Reflow.');
       expect(text(withdrawn, '.ask')).toBe('Which browser?');
       expect(text(withdrawn, 'p.small')).toBe('withdrawn');
       expect(text(page, 'h2 .count')).toBe('1 open');
@@ -801,6 +876,21 @@ describe('TicketDetail', () => {
 
       expect(page.querySelector('[data-testid="comment-c-7"] .text')).toBeNull();
       expect(text(page, '[data-testid="comment-c-7"] p.muted:not(.meta)')).toBe('withdrawn');
+    });
+
+    it('shows a comment as the server rendered it', async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        comments: list(
+          comment({ id: 'c-7', body: '**done**', body_html: '<p><strong>done</strong></p>' }),
+        ),
+      });
+
+      expect(page.querySelector('[data-testid="comment-c-7"] .rendered strong')?.textContent).toBe(
+        'done',
+      );
+      expect(page.querySelector('[data-testid="comment-c-7"]')?.id).toBe('comment-c-7');
     });
 
     it('says so when there are no comments', async () => {

@@ -1,3 +1,4 @@
+import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Component, signal, Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
@@ -11,6 +12,20 @@ import { SessionService } from '../../core/session.service';
 import { Assigned } from './assigned';
 import { askedOf, Decisions } from './decisions';
 import { shortKey, ticketRoute } from './person-list';
+
+/**
+ * The Api of the page's specs: `invoke` answers the body, and `invoke$Response`, which the
+ * conditional loads use (docs/adr/0054 D7), the same body with no headers.
+ */
+function apiOf(invoke: ReturnType<typeof vi.fn>) {
+  return {
+    invoke,
+    invoke$Response: async (fn: unknown, params: unknown) => ({
+      body: await (invoke as (fn: unknown, params: unknown) => Promise<unknown>)(fn, params),
+      headers: new HttpHeaders(),
+    }),
+  };
+}
 
 @Component({ template: '' })
 class Page {}
@@ -78,8 +93,10 @@ function decision(id: string, key: string, askedOfPerson: typeof ada | null): De
       number: 1,
       question: 'Which way?',
       options: '',
+      options_html: '',
       recommendation: '',
       answer: null,
+      answer_html: null,
       status: 'open',
       asked_by: sam,
       asked_by_agent: null,
@@ -121,7 +138,7 @@ describe('the person-level lists', () => {
       providers: [
         provideRouter([{ path: '**', component: Page }]),
         MessageService,
-        { provide: Api, useValue: { invoke } },
+        { provide: Api, useValue: apiOf(invoke) },
         { provide: SessionService, useValue: { person: signal(me) } },
         { provide: EventStreamService, useValue: { events: stream.asObservable() } },
       ],
@@ -163,28 +180,117 @@ describe('the person-level lists', () => {
       expect(invoke).toHaveBeenCalledWith(listMyAssigned, { cursor: undefined, limit: 50 });
     });
 
-    it('loads again on an inbox change and a ticket change, not on a comment', async () => {
+    it("sends the list's weak ETag on a poll and keeps the tickets on a 304 (docs/adr/0054 D7)", async () => {
+      configure(() => first);
+      const asked: unknown[] = [];
+      TestBed.overrideProvider(Api, {
+        useValue: {
+          invoke,
+          invoke$Response: async (_fn: unknown, params: Record<string, unknown>) => {
+            asked.push(params);
+            if (params['If-None-Match'] === 'W/"one"') {
+              throw new HttpErrorResponse({ status: 304, statusText: 'Not Modified' });
+            }
+            return { body: first, headers: new HttpHeaders({ ETag: 'W/"one"' }) };
+          },
+        },
+      });
+      const { fixture, page } = await render(Assigned);
+
+      stream.next({ name: 'poll' });
+      await fixture.whenStable();
+
+      expect(asked).toEqual([
+        { cursor: undefined, limit: 50 },
+        { cursor: undefined, limit: 50, 'If-None-Match': 'W/"one"' },
+      ]);
+      expect(page.querySelectorAll('.row')).toHaveLength(2);
+      expect(byTestId(page, 'assigned-count')?.textContent?.trim()).toBe('2 open tickets');
+    });
+
+    it("loads again on a ticket change of any of the person's tenants, not on a comment or the count (docs/adr/0054 D1)", async () => {
       configure(() => first);
       const { fixture } = await render(Assigned);
       invoke.mockClear();
 
-      stream.next({ name: 'inbox.changed', unread: 1 });
-      await fixture.whenStable();
       stream.next({
         name: 'ticket.changed',
-        id: 'e',
+        id: 'e1',
         key: 'acme/COW-2',
         version: 2,
         kind: 'assigned',
       });
       await fixture.whenStable();
       stream.next({
+        name: 'ticket.changed',
+        id: 'e2',
+        key: 'globex/OPS-1',
+        version: 3,
+        kind: 'unassigned',
+      });
+      await fixture.whenStable();
+      stream.next({
         name: 'comment.changed',
-        id: 'e',
+        id: 'e3',
         key: 'acme/COW-2',
         version: 2,
         kind: 'commented',
       });
+      await fixture.whenStable();
+      stream.next({ name: 'inbox.changed', unread: 1 });
+      await fixture.whenStable();
+
+      expect(invoke).toHaveBeenCalledTimes(2);
+    });
+
+    it.each<[string, StreamEvent, number]>([
+      [
+        'an act that names the person in any of their tenants, a tenant left among them',
+        { name: 'membership.changed', id: 'e1', tenant: 'globex', personId: 'p1' },
+        1,
+      ],
+      [
+        'a project restricted or opened in any of their tenants',
+        { name: 'membership.changed', id: 'e1', tenant: 'globex', projectId: 'j1' },
+        1,
+      ],
+      [
+        "somebody else's membership",
+        { name: 'membership.changed', id: 'e1', tenant: 'globex', personId: 'p2' },
+        0,
+      ],
+      [
+        'a group mapping',
+        { name: 'membership.changed', id: 'e1', tenant: 'globex', mappingId: 'm1' },
+        0,
+      ],
+      ['a resync', { name: 'resync' }, 1],
+      ["the fallback's poll", { name: 'poll' }, 1],
+    ])('follows what every person-level page follows: %s', async (_what, event, loads) => {
+      configure(() => first);
+      const { fixture } = await render(Assigned);
+      invoke.mockClear();
+
+      stream.next(event);
+      await fixture.whenStable();
+
+      expect(invoke).toHaveBeenCalledTimes(loads);
+    });
+
+    it('loads once more after a burst of events of several tenants, not once for each', async () => {
+      let release: () => void = () => undefined;
+      configure(() => first);
+      const { fixture } = await render(Assigned);
+      invoke.mockClear();
+      invoke.mockImplementationOnce(
+        () => new Promise((resolve) => (release = () => resolve(first))),
+      );
+
+      for (const key of ['acme/COW-2', 'globex/OPS-1', 'initech/HR-4', 'acme/COW-3']) {
+        stream.next({ name: 'ticket.changed', id: key, key, version: 2, kind: 'edited' });
+      }
+      await vi.waitFor(() => expect(invoke).toHaveBeenCalledOnce());
+      release();
       await fixture.whenStable();
 
       expect(invoke).toHaveBeenCalledTimes(2);

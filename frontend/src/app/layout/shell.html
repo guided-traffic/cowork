@@ -22,6 +22,23 @@
       <span class="tenant-name" data-testid="tenant-name">{{ shown.name }}</span>
     }
 
+    <!-- The search (docs/adr/0018 D7): inside a tenant that tenant's, anywhere else every tenant's. -->
+    <form class="search" role="search" ngNoForm (submit)="$event.preventDefault(); search()">
+      <i class="pi pi-search" aria-hidden="true"></i>
+      <input
+        pInputText
+        type="search"
+        name="q"
+        pSize="small"
+        maxlength="256"
+        placeholder="Search"
+        [attr.aria-label]="searchLabel()"
+        [ngModel]="query()"
+        (ngModelChange)="query.set($event)"
+        data-testid="search-input"
+      />
+    </form>
+
     <span class="spacer"></span>
 
     <app-live-indicator [status]="stream.status()" />
@@ -128,6 +145,15 @@
           data-testid="nav-overview"
           ><i class="pi pi-home"></i>Overview</a
         >
+        @if (!session.oversight()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'board']"
+            routerLinkActive="active"
+            data-testid="nav-board"
+            ><i class="pi pi-objects-column"></i>Board</a
+          >
+        }
         <a
           class="item"
           [routerLink]="['/t', tenant, 'members']"
@@ -152,6 +178,15 @@
             routerLinkActive="active"
             data-testid="nav-group-mappings"
             ><i class="pi pi-sitemap"></i>Group mappings</a
+          >
+        }
+        @if (tenantInfo.isAdmin()) {
+          <a
+            class="item"
+            [routerLink]="['/t', tenant, 'audit']"
+            routerLinkActive="active"
+            data-testid="nav-audit"
+            ><i class="pi pi-history"></i>Audit record</a
           >
         }
         @if (!session.oversight()) {

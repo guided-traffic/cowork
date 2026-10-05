@@ -1,0 +1,85 @@
+# Search (docs/adr/0025, docs/adr/0018 D7): ranked hits with snippets, within
+# a tenant and as a union over the person's tenants (docs/adr/0023 D2).
+tenant:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: searchTenant
+    tags: [search]
+    summary: Search the tenant's tickets
+    description: |
+      Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
+      over a ticket's title and body, its comments but a withdrawn one, its questions (the question,
+      the options, the recommendation and the answer) and its attachments' file names; a text
+      matches when it holds every word of `q`. A ticket's key matches by its beginning as well —
+      `COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram
+      similarity, so a word half typed or misspelt still finds it (D3).
+
+      One hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the
+      title above the body above comments, questions and file names, a title found by trigram
+      below them (D4). A hit names the ticket — its key, title, type and state —, where it matched
+      (`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an
+      attachment's name) and a snippet of that text with the matched words marked (`ts_headline`,
+      D5). The snippet is text in parts, never HTML: a client shows every part as text.
+
+      Only what the caller can see is searched, snippets included: a restricted project they are
+      not on, a confidential ticket of which they are neither a tenant administrator, the assignee
+      nor the reporter, and a project-restricted token's other projects find nothing
+      (docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a
+      cursor belongs to its query.
+
+      The `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose
+      title and body hold every word, in the list's own order, with no rank and no snippet.
+    parameters:
+      - $ref: './components/parameters.yaml#/SearchQuery'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of hits, the best first
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/SearchHitList'
+            example:
+              items:
+                - tenant: {slug: acme, name: Acme}
+                  key: acme/COW-12
+                  title: The gate fails on a fresh cluster
+                  type: bug
+                  state: in-progress
+                  found_in: comment
+                  comment: 0199a3c2-1d2e-7f00-8000-0000000000c1
+                  question: null
+                  snippet:
+                    - {text: 'the ', match: false}
+                    - {text: readyReplicas, match: true}
+                    - {text: ' count is 0 after the rollout', match: false}
+              next_cursor: null
+      default:
+        $ref: './components/responses.yaml#/Problem'
+me:
+  get:
+    operationId: searchMyTenants
+    tags: [search]
+    summary: Search the tickets of every tenant of the person
+    description: |
+      The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —
+      one read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit
+      names its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that
+      tenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator
+      without a role in a tenant searches nothing of it (docs/adr/0034 D2).
+    parameters:
+      - $ref: './components/parameters.yaml#/SearchQuery'
+      - $ref: './components/parameters.yaml#/MeTenant'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of hits, the best first
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/SearchHitList'
+      default:
+        $ref: './components/responses.yaml#/Problem'

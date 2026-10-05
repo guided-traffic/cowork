@@ -1098,6 +1098,13 @@ func weakETag(v any) string {
 	return `W/"` + hex.EncodeToString(sum[:12]) + `"`
 }
 
+// listTag is a list page's weak ETag, and whether the client holds the page
+// already: its If-None-Match names the tag (docs/adr/0054 D7).
+func listTag(ifNoneMatch *string, page any) (string, bool) {
+	tag := weakETag(page)
+	return tag, notModified(ifNoneMatch, tag)
+}
+
 // notModified compares an If-None-Match header with a weak ETag.
 func notModified(ifNoneMatch *string, etag string) bool {
 	if ifNoneMatch == nil {

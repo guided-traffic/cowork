@@ -1,0 +1,77 @@
+<section class="page">
+  <header class="head">
+    <div>
+      <h1>Board</h1>
+      <p class="muted">The current work of every project, a swimlane each</p>
+    </div>
+    <span class="spacer"></span>
+    @if (!session.oversight()) {
+      <span id="tenant-board-filter" class="sr-only">Projects</span>
+      <p-select
+        class="filter"
+        [options]="options()"
+        optionLabel="label"
+        optionValue="key"
+        [multiple]="true"
+        [ngModel]="chosen()"
+        (ngModelChange)="choose($event)"
+        placeholder="Every project"
+        [filter]="true"
+        [showClear]="true"
+        size="small"
+        ariaLabelledBy="tenant-board-filter"
+        data-testid="project-filter"
+      />
+    }
+  </header>
+
+  @if (session.tenant(); as tenant) {
+    @if (!session.oversight()) {
+      <div class="lanes" data-testid="lanes">
+        @for (project of lanes(); track project.id) {
+          <app-board-lane
+            [project]="project"
+            [tenant]="tenant"
+            [dragFrom]="dragFrom()"
+            [refusing]="refusing() === project.key"
+            (dragStart)="dragStarted(project.key, $event)"
+            (dragMove)="dragMoved(project.key, $event)"
+            (dragEnd)="dragEnded(project.key, $event)"
+          />
+        } @empty {
+          @if (projects.projects.isLoading()) {
+            @for (i of [1, 2]; track i) {
+              <p-skeleton height="16rem" borderRadius="12px" />
+            }
+          } @else if (chosen().length > 0) {
+            <p class="muted empty" data-testid="no-match">
+              None of the projects the filter names is here.
+              <button
+                pButton
+                type="button"
+                [text]="true"
+                size="small"
+                (click)="choose([])"
+                data-testid="show-every-project"
+              >
+                Show every project
+              </button>
+            </p>
+          } @else {
+            <p class="muted empty" data-testid="no-projects">This tenant has no projects yet.</p>
+          }
+        }
+      </div>
+    }
+  }
+
+  @if (moves.pendingTicket(); as ticket) {
+    <app-move-dialog
+      [ticket]="ticket"
+      [request]="moves.pending()?.request ?? null"
+      (closed)="moves.closed($event)"
+    />
+  }
+
+  <p class="sr-only" role="status" aria-live="polite" data-testid="status">{{ moves.status() }}</p>
+</section>

@@ -3,7 +3,7 @@
 How one tenant's data stays out of another tenant's reach, who belongs to a tenant and in which
 role — group mappings, grants, the last administrator — and who inside a tenant sees which project,
 ticket, act, event, notification and time entry, and what the person-level lists and stream gather
-across a person's tenants, as built on 2026-10-04. What a token or an agent may do with
+across a person's tenants, as built on 2026-10-04 — and what a search finds, as built on 2026-10-05. What a token or an agent may do with
 what it can see is [tokens.md](tokens.md); how a request reaches the backend at all, and where the
 database credentials live, is [trust-boundaries.md](trust-boundaries.md); where a person's groups
 come from, and when a mapped membership follows them, is
@@ -368,18 +368,21 @@ reasons in the query files: the bin and the purge, which read deleted tickets on
 reread; the publication of an act; a ticket read through the filter in the same transaction; and the
 rank keys, because a deleted ticket keeps its key. The integrity walks still step over deleted
 tickets, so that a restoration cannot close a cycle. A deleted ticket therefore answers exactly as a
-ticket that does not exist: `404` on its routes and on the key resolver, absent from every list,
-the full text, the trees, the person-level lists and the inbox, a link to it absent, an act that
-names it redacted, a block on it naming no ticket, a parent shown as hidden; `person_sees_ticket`
-answers no, so nobody is told of it. Its deletion reaches, as `ticket.changed` with the kind
-`deleted`, the streams that could see it, with its key and version, which they knew already. The
-integration tier walks all of it for an administrator, a member and a viewer
-(`TestADeletedTicketAnswersLikeAMissingOne`), and the bins of two tenants apart.
+ticket that does not exist: `404` on its routes — its rendered body included — and on the key
+resolver, absent from every list, the full text and the search, the trees, the person-level lists
+and the inbox and its count, a link to it absent, an act that names it redacted, a block on it
+naming no ticket, a parent shown as hidden; `person_sees_ticket` answers no, so nobody is told of
+it. Its deletion reaches, as `ticket.changed` with the kind `deleted`, the streams that could see
+it — a person-level stream opened in another of the person's tenants included —, with its key and
+version, which they knew already. The integration tier walks all of it for an administrator, a
+member and a viewer (`TestADeletedTicketAnswersLikeAMissingOne`), the search and the person-level
+lists across two tenants (`TestADeletedTicketLeavesSearchAndThePersonLevelLists`), and the bins of
+two tenants apart.
 
 **The purge is the one path that deletes a ticket.** The runtime role may delete a ticket and what
 belongs only to it — its comments and their revisions, questions, attachments, time entries and
 their revisions — only through restrictive policies that name the job `ticket-purge` in `app.job`
-and a deleted ticket ([migration 35](../../backend/internal/store/migrations/000035_ticket_deletion.up.sql)):
+and a deleted ticket ([migration 32](../../backend/internal/store/migrations/000032_ticket_deletion.up.sql)):
 a delete outside the purge, a forgotten `WHERE` included, removes nothing, and the purge removes
 nothing of a live ticket (`TestThePurgePoliciesHoldEveryDeleteToTheBin`). The notifications'
 restrictive policies admit the purge for a deleted ticket's notifications only. The audit rows of a
@@ -397,7 +400,7 @@ so it never reads past it.
 
 A saved filter carries its tenant and the canonical policy, and restrictive policies hold reading to
 its owner or a shared filter and every write to its owner
-([migration 36](../../backend/internal/store/migrations/000036_saved_filters.up.sql);
+([migration 33](../../backend/internal/store/migrations/000033_saved_filters.up.sql);
 `TestTheSavedFilterPoliciesHoldAPersonToTheirOwn`). Its parameters name projects, tickets and
 persons as the lists take them. A member's shared filter that names a project or a ticket another
 reader cannot see — or one that is gone — is answered to that reader `redacted`, its parameters and
@@ -589,7 +592,8 @@ channel `cowork_events` inside the act's transaction, so it is delivered at comm
 on a rollback ([`store/notify.go`](../../backend/internal/store/notify.go)). The notification
 carries the audit row's id, the tenant, the project, the entity, the action, the ticket's key
 and version, and the inputs of the confidential rule: the flag, the assignee and the reporter.
-One connection per replica listens and hands each notification to the streams of its tenant.
+One connection per replica listens and hands each notification to the streams that follow its
+tenant, each judging it by its filter of that tenant.
 
 A stream (`GET …/events`) passes authentication and the boundary like any route and computes
 its filter when it connects ([`api/events.go`](../../backend/internal/api/events.go)
@@ -618,11 +622,22 @@ restricted to a project hears, of these, only the events that name its project, 
 person and no project: the token knows nothing of the tenant beyond its project
 (`TestMembershipEventsOfAProjectRestrictedStream`, `TestARestrictedStreamHearsOnlyItsProject`).
 
-The filter follows the person: every twenty seconds the heartbeat checks the token and the
-membership again ([tokens.md](tokens.md) H-7) and recomputes the visible projects with the
-person's current role (`Hub.Refilter`). A project restricted away from the person, a lowered
-role or a project created after the stream opened counts within one heartbeat — a change made
-in the database as well as one through the API (`TestStreamFollowsAccess`).
+The filter follows the person. An act that can change what a stream admits — a project
+created, a grant, a derived membership, a mapping, a project's restriction, an entry of an access
+list — makes every stream that follows the tenant compute its filter of the tenant again, with the
+person's role as the boundary reads it then and the projects they see, before it lets the tenant's
+next event through: until it has, the hub hands the stream every event of the tenant unjudged and
+the stream judges them itself, so neither a project the person gains nor one they lose waits for a
+heartbeat (`Hub.Changes`, `Hub.Refilter`, `refilter` in
+[`api/events.go`](../../backend/internal/api/events.go);
+`TestAnAdmissionChangeHoldsTheFilterUntilTheStreamRefilters`,
+`TestTheStreamAdmitsWhatAnActOpensAtOnce`). A project's creation is published for that and sent to
+no client. A person the boundary no longer admits at that moment loses the stream opened on that
+tenant; a person-level stream stops following another tenant they left
+([below](#the-person-level-stream)). Every twenty
+seconds the heartbeat checks the token and the membership again ([tokens.md](tokens.md) H-7) and
+recomputes the filter too, which catches a change made in the database past the API within one
+heartbeat (`TestStreamFollowsAccess`).
 
 ## The person-level lists are unions, one tenant at a time
 
@@ -660,24 +675,82 @@ reading and marking to `user_id = app_user_id()`, and deleting to the retention 
 tenant, so its administrators read in the audit view when a person marked their notifications read —
 the cost of ADR 0026 D1's rule that every write is an act.
 
+## Search finds only what its reader sees
+
+The search — `GET …/search` in a tenant, `GET /api/v1/me/search` across the person's tenants
+([ADR 0025](../adr/0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)) —
+runs in PostgreSQL in the reader's transaction, bound to one tenant, like every other read: no
+external index holds any tenant's text, and isolation is the engine's
+([`queries/read/search.sql`](../../backend/internal/store/queries/read/search.sql) `SearchTickets`).
+Every text it reads — the ticket's title and body, its comments, its questions, its attachments'
+file names, the key built of the project's key and the number, the title by trigram — is read with
+`app_ticket_visible` on the ticket it belongs to, and the hit and its snippet are read through it
+once more, so a restricted project the reader is not on, a confidential ticket of which they are
+neither a tenant administrator, the assignee nor the reporter, and a project-restricted token's other
+projects find nothing, by any word of any of their texts; the lint of the query files holds the
+query to a predicate per read of `tickets`, and to `deleted_at IS NULL` beside each, so a deleted
+ticket finds nothing either ([above](#a-deleted-ticket-answers-like-a-missing-one)). A withdrawn comment is not searched, as its text is
+hidden from every route. The snippet is the matched text of the hit itself — the body, the comment,
+the question, the file name — never another ticket's, and it is answered as text in parts, never as
+markup. The person-level search is a union like the lists above: the person's memberships, a
+restricted token's own tenant, each tenant read in a transaction of its own, the parts merged by rank
+in the application, a narrowing `tenant` that names none of theirs answered like an unknown one; a
+global administrator without a role in a tenant searches nothing of it. A cursor is bound to its
+reader, its narrowing and a hash of its query; it carries the rank of the last hit, which the reader's
+own visible text gave it. `TestSearchNeverShowsWhatTheCallerCannotSee` holds hits and snippets to the
+tenant, the restriction, the confidential rule — in the title, the body, a comment, a question, the
+options, a file name, the key and by trigram — and the restricted tokens to their tenant and project;
+`TestSearchFindsAndRanksWithSnippets` holds a withdrawn comment out. What the query words leave in
+a log is [trust-boundaries.md](trust-boundaries.md#h-14) H-14; what its timing may say is H-53 below.
+
 ## The person-level stream
 
-`GET …/events?me=true` is a tenant's stream that also carries the person's own events across their
-tenants ([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
-D1, [events.md](../developer/events.md#the-person-level-stream)): `inbox.changed` with the unread
-count — counted per tenant, as the inbox counts, so a notification the person no longer sees does not
-count — and the `question.changed` of a question asked of the person in another of their tenants. The
-hub hands an inbox change only to its person's person-level streams, and a question's act only to
-those of the person it is asked of; the stream then judges another tenant's event before it writes it:
-a token restricted to another tenant never hears it, and otherwise the person must still belong to the
-event's tenant and see its ticket by the facts the event carries — the project, a project-restricted
-token's restriction, and the confidential rule — read in that tenant's transaction as the caller
-([`api/events.go`](../../backend/internal/api/events.go) `writeStreamed`). It carries no other event
-of another tenant. `TestThePersonLevelStream` asserts what never arrives: another person's question,
-the questions on a project restricted away from the person and on a confidential ticket they are
-neither assignee nor reporter of, a question of a tenant they left; and
-`TestARestrictedTokensPersonLevelStreamStaysInItsTenant` that a tenant-restricted token hears nothing
-of another tenant and counts its own tenant's notifications only.
+`GET …/events?me=true` is the one stream that spans tenants: besides the person's unread count, it
+carries every event of every tenant the person belongs to that the filter of that tenant admits
+([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D1, D3 as amended on 2026-10-05, [events.md](../developer/events.md#the-person-level-stream)). It is
+built the way the person-level lists are: the person's memberships are read first (`personTenants`),
+and the filter of each tenant is computed in a transaction of that tenant's own, bound to it and the
+caller — the person's role there, the projects they see there (`ListVisibleProjectIDs`), a
+project-restricted token's project — so an event of a tenant passes on the person-level stream exactly
+what it would pass on that tenant's own stream: its project among those the person sees there, the
+confidential rule with the person's role there, the audience of a membership event
+([`api/events.go`](../../backend/internal/api/events.go) `streamFilters`, `tenantFilter`). The hub
+judges an event by the filter of the event's tenant and no other ([`events/hub.go`](../../backend/internal/events/hub.go)
+`deliver`); the stream still sends keys and versions, never content.
+
+- **A token restricted to a tenant does not span.** Its person-level stream follows its tenant alone —
+  a token restricted to a project included, which is restricted to its project's tenant
+  ([ADR 0035](../adr/0035-personal-access-tokens.md) D3, `streamReq.span`).
+- **A role, not the global administrator's flag.** A tenant the person holds no role in is not
+  followed: a global administrator without a role there hears nothing of it, as the person-level
+  lists read nothing of it.
+- **Leaving.** An act that takes a tenant from the person — a grant removed, a membership derived
+  away — makes the stream compute that tenant's filter before the tenant's next event, find no
+  membership, and stop following it. The act itself names the person and reaches them
+  (`{"tenant": "<slug>", "person_id": …}`); nothing of the tenant after it does, a later act that
+  names them there — the removal of an access entry they left behind — included.
+- **Joining.** A membership act that names the person in a tenant the stream does not follow makes
+  the hub follow that tenant with an empty filter: every event of the tenant reaches the stream
+  unjudged until it has read the person's membership there and computed the real filter, and is
+  judged by that filter then, so nothing passes on the empty filter.
+- **The heartbeat** reads every membership again, which catches a membership removed or added in the
+  database past the API within one heartbeat ([tokens.md](tokens.md#h-7) H-7).
+- **The replay** after a reconnect covers the tenants the stream follows at the reconnect, each
+  through its filter as computed then: a tenant left is not replayed, and one joined meanwhile is
+  replayed from the reconnect's id on, under the person's sight there now.
+- **The count** is counted per tenant, as the inbox counts, so a notification the person no longer
+  sees does not count.
+
+`TestThePersonLevelStream` asserts what never arrives: a question on a project restricted away from the
+person, one on a confidential ticket they are neither assignee nor reporter of, and anything of a tenant
+after the act that took it from them; `TestThePersonLevelStreamSpansThePersonsTenants` that nothing of a
+project of another tenant hidden from them or of a confidential ticket there arrives, while a ticket
+assigned to them there does within a second; `TestTheHeartbeatChecksEveryMembershipOfThePersonLevelStream`
+the heartbeat's check; and `TestARestrictedTokensPersonLevelStreamStaysInItsTenant` that a
+tenant-restricted token hears nothing of another tenant and counts its own tenant's notifications only.
+What a person-level stream costs grows with the person's tenants — one transaction per tenant when it
+opens, at every heartbeat and on every act that changes what it admits of one.
 
 ## Time follows its own rule
 
@@ -805,8 +878,20 @@ gap's: only a global administrator who administers the tenant makes one or chang
 ([above](#members-grants-and-group-mappings)). Mitigation: tenants whose administrators must not
 learn about each other's people belong in installations of their own.
 
-<a id="h-51"></a>
-### H-51 — An administrator's `admin` token purges for good
+<a id="h-53"></a>
+### H-53 — A search's duration depends on matches the reader cannot see
+
+Dormant as far as measured — it was not measured. The search's indexes find every ticket, comment,
+question and file name of the tenant that holds the words, hidden ones included, and the visibility
+predicate drops the hidden ones afterwards, in the same query; the work, and with it the time to the
+answer, grows with the hidden matches as well. A member who times many searches for a word could in
+principle tell whether hidden texts of the tenant hold it — never which ticket, nor anything of its
+text, and only inside a tenant they belong to. The answer itself is the same with and without the
+hidden matches. Mitigation: none in cowork; a tenant whose members must not learn even that much
+keeps such work in an installation of its own.
+
+<a id="h-54"></a>
+### H-54 — An administrator's `admin` token purges for good
 
 Live today. Deleting and purging take `admin` scope and no browser session, by the rule of
 [tokens.md](tokens.md#what-only-a-session-does) — an act that gives access, or leaves something
@@ -818,18 +903,18 @@ through which token. The browser asks twice before a purge; the API does not. Mi
 scripts no `admin` token; a backup is the only way back
 ([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)).
 
-<a id="h-52"></a>
-### H-52 — A release before the deletion shows deleted tickets again in a rollback
+<a id="h-55"></a>
+### H-55 — A release before the deletion shows deleted tickets again in a rollback
 
-Dormant until an image is rolled back over migration 35
+Dormant until an image is rolled back over migration 32
 ([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D4). The
 release before it knows no `deleted_at`: run over this schema, its queries list, show and export a
 deleted ticket to whoever its visibility predicate admits, until the newer release runs again. A
 purge it does not do; the purge job of the newer release takes the ticket in its time. Mitigation:
 roll back across the deletion only with an empty bin, or purge first.
 
-<a id="h-53"></a>
-### H-53 — Deleted is not gone until the purge, and the purge leaves traces outside the tables
+<a id="h-56"></a>
+### H-56 — Deleted is not gone until the purge, and the purge leaves traces outside the tables
 
 Live for every deleted ticket. Until the purge — thirty days, or an administrator's act — the
 deleted ticket, everything that hangs off it and its files stay in the database, the bucket and the

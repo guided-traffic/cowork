@@ -20,6 +20,11 @@ import { FilePreview } from './file-preview';
 import { AttachmentsCard, fileIcon, TimeCard } from './records-cards';
 import { TicketRelations } from './ticket-relations';
 
+/** Any Idempotency-Key a form makes: a UUID (docs/adr/0045 D3). */
+const formKey = expect.stringMatching(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+);
+
 const now = Date.parse('2026-10-03T12:00:00Z');
 
 /** An instant by the clock on the wall of whoever runs the test: the page counts days that way. */
@@ -352,8 +357,39 @@ describe('record cards', () => {
         const cleared = pick(fixture, [chosen]);
         await settle(fixture);
 
-        expect(records.attach).toHaveBeenCalledExactlyOnceWith(key, chosen);
+        expect(records.attach).toHaveBeenCalledExactlyOnceWith(key, chosen, formKey);
         expect(cleared).toHaveBeenCalledWith('');
+      });
+
+      it('sends the same file again with the same Idempotency-Key after a lost answer, and another file or the next upload with a new one (docs/adr/0045 D3)', async () => {
+        records.attach.mockRejectedValueOnce(
+          new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+        );
+        records.attach.mockRejectedValueOnce(
+          new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+        );
+        const fixture = await render(AttachmentsCard);
+        const keys = () => records.attach.mock.calls.map((call) => call[2]);
+
+        pick(fixture, [chosen]);
+        await settle(fixture);
+        pick(fixture, [
+          new File(['hello'], 'notes.txt', {
+            type: 'text/plain',
+            lastModified: chosen.lastModified,
+          }),
+        ]);
+        await settle(fixture);
+        expect(keys()[1]).toBe(keys()[0]);
+
+        pick(fixture, [new File(['other'], 'other.txt', { type: 'text/plain' })]);
+        await settle(fixture);
+        expect(keys()[2]).not.toBe(keys()[0]);
+
+        // Uploaded: the same file again is another upload.
+        pick(fixture, [new File(['other'], 'other.txt', { type: 'text/plain' })]);
+        await settle(fixture);
+        expect(keys()[3]).not.toBe(keys()[2]);
       });
 
       it('does nothing when the dialog is dismissed without a file', async () => {
@@ -558,7 +594,13 @@ describe('record cards', () => {
         submit(fixture);
         await settle(fixture);
 
-        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-03', minutes, '');
+        expect(records.book).toHaveBeenCalledExactlyOnceWith(
+          key,
+          '2026-10-03',
+          minutes,
+          '',
+          formKey,
+        );
       });
 
       it.each(['', '   ', 'abc', '0', '0:00', '1:75', '-5', '1h 30'])(
@@ -575,6 +617,35 @@ describe('record cards', () => {
         },
       );
 
+      it('books again with the same Idempotency-Key after a lost answer, and with a new one for another content or the next booking (docs/adr/0045 D3)', async () => {
+        records.book.mockRejectedValueOnce(
+          new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+        );
+        records.book.mockRejectedValueOnce(
+          new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+        );
+        const fixture = await render(TimeCard);
+        const keys = () => records.book.mock.calls.map((call) => call[4]);
+        typeInto(fixture, 'time-duration', '1h');
+        submit(fixture);
+        await settle(fixture);
+        submit(fixture);
+        await settle(fixture);
+        expect(keys()[1]).toBe(keys()[0]);
+
+        typeInto(fixture, 'time-note', 'Reproducing it');
+        submit(fixture);
+        await settle(fixture);
+        expect(keys()[2]).not.toBe(keys()[0]);
+
+        // Booked: the same time again is another booking.
+        typeInto(fixture, 'time-duration', '1h');
+        typeInto(fixture, 'time-note', 'Reproducing it');
+        submit(fixture);
+        await settle(fixture);
+        expect(keys()[3]).not.toBe(keys()[2]);
+      });
+
       it('books on the day that was chosen, with the note', async () => {
         const fixture = await render(TimeCard);
         typeInto(fixture, 'time-day', '2026-10-01');
@@ -589,6 +660,7 @@ describe('record cards', () => {
           '2026-10-01',
           120,
           'Reproducing it',
+          formKey,
         );
       });
 
@@ -767,7 +839,7 @@ describe('record cards', () => {
         submit(fixture);
         await settle(fixture);
 
-        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-01', 120, '');
+        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-01', 120, '', formKey);
       });
 
       it('books on the new date after midnight, however the page was left open', async () => {
@@ -778,7 +850,7 @@ describe('record cards', () => {
         submit(fixture);
         await settle(fixture);
 
-        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-04', 120, '');
+        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-04', 120, '', formKey);
       });
 
       it('keeps the duration and the note that were typed when the day moves on', async () => {
@@ -809,7 +881,7 @@ describe('record cards', () => {
         finish(entry());
         await settle(fixture);
 
-        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-03', 120, '');
+        expect(records.book).toHaveBeenCalledExactlyOnceWith(key, '2026-10-03', 120, '', formKey);
         expect(dayShown(fixture)).toBe('2026-10-04');
       });
     });

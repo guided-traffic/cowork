@@ -10,6 +10,11 @@ import { ProjectsService } from '../../core/projects.service';
 import { SessionService } from '../../core/session.service';
 import { NewProjectDialog, projectKey } from './new-project-dialog';
 
+/** Any Idempotency-Key a form makes: a UUID (docs/adr/0045 D3). */
+const formKey = expect.stringMatching(
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+);
+
 const created = { key: 'COW', name: 'cowork' } as Project;
 
 function refusal(status: number, errors: { pointer: string; message: string }[] = []) {
@@ -204,7 +209,7 @@ describe('NewProjectDialog', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(create).toHaveBeenCalledExactlyOnceWith({ key: 'COW', name: 'cowork' });
+      expect(create).toHaveBeenCalledExactlyOnceWith({ key: 'COW', name: 'cowork' }, formKey);
       expect(create.mock.calls[0][0]).toStrictEqual({ key: 'COW', name: 'cowork' });
     });
 
@@ -216,11 +221,14 @@ describe('NewProjectDialog', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(create).toHaveBeenCalledExactlyOnceWith({
-        key: 'COW',
-        name: 'cowork',
-        description: 'The tool itself',
-      });
+      expect(create).toHaveBeenCalledExactlyOnceWith(
+        {
+          key: 'COW',
+          name: 'cowork',
+          description: 'The tool itself',
+        },
+        formKey,
+      );
     });
 
     it('leaves out a description of spaces only', async () => {
@@ -330,6 +338,27 @@ describe('NewProjectDialog', () => {
         expect.objectContaining({ severity: 'error', summary: 'The backend cannot be reached' }),
       );
       expect((fixture.nativeElement as HTMLElement).querySelector('small.error')).toBeNull();
+    });
+
+    it('creates again with the same Idempotency-Key after a lost answer, and with a new one for another content (docs/adr/0045 D3)', async () => {
+      create.mockRejectedValueOnce(
+        new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+      );
+      create.mockRejectedValueOnce(
+        new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+      );
+      const fixture = await render();
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+      submit(fixture);
+      await settle(fixture);
+      expect(create.mock.calls[1][1]).toBe(create.mock.calls[0][1]);
+
+      typeInto(fixture, 'project-description', 'The tool itself');
+      submit(fixture);
+      await settle(fixture);
+      expect(create.mock.calls[2][1]).not.toBe(create.mock.calls[0][1]);
     });
 
     it('shows no old problem when the next attempt is made, and creates the project when it works', async () => {

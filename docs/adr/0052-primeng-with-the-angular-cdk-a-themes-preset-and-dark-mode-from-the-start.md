@@ -29,12 +29,15 @@ and D9 (the key's paths; the key itself is the owner's to register) — [`fronte
 Amended 2026-10-04 with the chat in the UI
 ([ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)
 D6): D4, the shell's content-security policy exists, and the production build inlines no critical
-CSS for it; D6, the budget as measured against it. **The bundle budget's warning is open:**
+CSS for it; D6, the budget as measured against it. ~~**The bundle budget's warning is open:**
 `make frontend-build` on 2026-10-04 measured the initial bundle at 1,016.52 kB raw (223.53 kB
 estimated transfer) and warns `bundle initial exceeded maximum budget` — `angular.json`'s
 `"maximumWarning": "1mb"` warns at 1,000,000 bytes, as the warning's own numbers show, while D6
 names 1 MiB (1,048,576 bytes), under which the bundle stays. Neither was changed; which number
-holds is open.
+holds is open.~~ *(Settled 2026-10-05, built on the recommendation, the owner reviewing the
+result:)* `angular.json` follows D6 in bytes — `"maximumWarning": "1048576b"`, `"maximumError":
+"1572864b"` —, since `"1mb"` meaning 1,000,000 bytes was the builder's unit and not a decision; the
+build warns again once the initial bundle passes 1 MiB.
 
 ## Context
 
@@ -96,6 +99,7 @@ error for the initial bundle once the library is in, and measured against the pr
 build in CI. *(Amended 2026-10-04: `angular.json` writes `"1mb"` and `"1.5mb"`, which the
 builder reads in thousands, not as MiB — the warning fires at 1,000,000 bytes, as its own numbers
 show; the initial bundle measured 1,016.52 kB on 2026-10-04 and the warning stands — Status.)*
+*(Amended 2026-10-05: `angular.json` writes the two limits in bytes, 1,048,576 and 1,572,864.)*
 
 **D7 — Renovate moves PrimeNG, `@primeuix/themes` and PrimeIcons in the "Angular" group**
 ([`renovate.json`](../../renovate.json)), so the library's major rises with Angular's in one

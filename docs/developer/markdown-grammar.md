@@ -5,7 +5,8 @@ ticket and nothing else ([ADR 0044] D1), in the shape of the ticket files cowork
 ([ADR 0011] D4). This page is grammar v1 exactly as
 [`markdown.Render`](../../backend/internal/markdown/markdown.go) writes it; the golden files in
 [`internal/markdown/testdata/`](../../backend/internal/markdown/testdata/) are its examples.
-Read against the tree on 2026-10-04.
+Read against the tree on 2026-10-04. Turning the Markdown people write into the HTML a browser shows
+is another package and another page, [rendered-markdown.md](rendered-markdown.md).
 
 ## The route
 

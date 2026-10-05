@@ -3,13 +3,11 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
 import { listDeletedTickets, purgeTicket, restoreTicket } from '../api/functions';
 import { DeletedTicket, Ticket } from '../api/models';
-import { EventStreamService, StreamEvent } from './event-stream.service';
+import { ConditionalPages } from './conditional';
+import { changesExistence, EventStreamService, StreamEvent } from './event-stream.service';
 import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
 import { TicketsService } from './tickets.service';
-
-/** The acts that put a ticket into the bin, take it out again, or remove it for good. */
-const binKinds = new Set(['deleted', 'restored', 'purged']);
 
 /**
  * The tenant's bin of deleted tickets (docs/adr/0024 D1, D2), every page of it, and its
@@ -30,19 +28,24 @@ export class DeletedTicketsService {
     return tenant !== null && this.session.membership()?.role === 'admin' ? tenant : undefined;
   });
 
+  /** The weak `ETag`s of the bin's pages: a poll that finds nothing new moves nothing (docs/adr/0054 D7). */
+  private readonly pages = new ConditionalPages(this.api);
+
   readonly bin: ResourceRef<DeletedTicket[] | undefined> = resource({
     params: () => this.administered(),
     loader: ({ params: tenant }) =>
-      keepShown(this.bin, async () => {
-        const items: DeletedTicket[] = [];
-        let cursor: string | undefined;
-        do {
-          const page = await this.api.invoke(listDeletedTickets, { tenant, cursor, limit: 200 });
-          items.push(...page.items);
-          cursor = page.next_cursor ?? undefined;
-        } while (cursor);
-        return items;
-      }),
+      keepShown(this.bin, () =>
+        this.pages.load(async (page) => {
+          const items: DeletedTicket[] = [];
+          let cursor: string | undefined;
+          do {
+            const next = await page(listDeletedTickets, { tenant, cursor, limit: 200 });
+            items.push(...next.items);
+            cursor = next.next_cursor ?? undefined;
+          } while (cursor);
+          return items;
+        }),
+      ),
   });
 
   readonly list = computed<DeletedTicket[]>(() => (this.bin.hasValue() ? this.bin.value() : []));
@@ -75,8 +78,8 @@ export class DeletedTicketsService {
 
   private react(event: StreamEvent): void {
     const binEvent =
+      changesExistence(event) &&
       event.name === 'ticket.changed' &&
-      binKinds.has(event.kind) &&
       event.key.startsWith(`${this.session.tenant()}/`);
     if (binEvent || event.name === 'resync' || event.name === 'poll') {
       refresh(this.bin, this.injector);

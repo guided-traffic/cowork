@@ -58,7 +58,10 @@ export interface ListProjectTickets$Params {
   done_after?: string;
 
 /**
- * Full text over title and body (docs/adr/0025); its length is capped by the server
+ * A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold
+ * every word, in the list's own order, without a rank or a snippet — the ranked search over
+ * comments, questions, file names and keys as well is `GET …/search`. Its length is capped by
+ * the server
  */
   q?: string;
 

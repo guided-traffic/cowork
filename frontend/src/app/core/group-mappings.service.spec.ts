@@ -259,6 +259,7 @@ describe('GroupMappingsService', () => {
     it.each<StreamEvent>([
       { name: 'membership.changed', id: 'e1', mappingId: 'm1' },
       { name: 'membership.changed', id: 'e1', personId: 'p2' },
+      { name: 'membership.changed', id: 'e1', tenant: 'acme', mappingId: 'm1' },
       { name: 'resync' },
       { name: 'poll' },
     ])('loads the mappings again on %j', async (event) => {
@@ -269,6 +270,33 @@ describe('GroupMappingsService', () => {
       http.expectOne('/api/v1/me').flush(person());
       await settle();
 
+      expect(groups()).toEqual(['a', 'b']);
+    });
+
+    it("leaves the mappings alone on an act of another of the person's tenants, which the person-level stream carries (docs/adr/0054 D1)", async () => {
+      stream.next({ name: 'membership.changed', id: 'e1', tenant: 'beta', mappingId: 'm1' });
+      await settle();
+
+      http.expectNone((request) => request.url === '/api/v1/tenants/acme/group-mappings');
+      http.expectNone('/api/v1/me');
+    });
+
+    it("sends the list's weak ETag on a poll and keeps the mappings on a 304 (docs/adr/0054 D7)", async () => {
+      stream.next({ name: 'resync' });
+      await settle();
+      page('acme').flush(pageOf(['a', 'b'], null), { headers: { ETag: 'W/"one"' } });
+      http.expectOne('/api/v1/me').flush(person());
+      await settle();
+
+      stream.next({ name: 'poll' });
+      await settle();
+      const again = page('acme');
+      expect(again.request.headers.get('If-None-Match')).toBe('W/"one"');
+      again.flush(null, { status: 304, statusText: 'Not Modified' });
+      http.expectOne('/api/v1/me').flush(person());
+      await settle();
+
+      expect(service.mappings.status()).toBe('resolved');
       expect(groups()).toEqual(['a', 'b']);
     });
 

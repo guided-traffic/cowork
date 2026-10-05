@@ -112,11 +112,15 @@ func (s *Server) ListTicketTime(ctx context.Context, req apigen.ListTicketTimeRe
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(e readq.ListTicketTimeRow) string { return e.ID.String() })
 	total := int(sum)
-	out := apigen.ListTicketTime200JSONResponse{Items: make([]apigen.TimeEntry, 0, len(rows)), NextCursor: nullableString(next), TotalMinutes: &total}
+	out := apigen.TimeEntryList{Items: make([]apigen.TimeEntry, 0, len(rows)), NextCursor: nullableString(next), TotalMinutes: &total}
 	for _, e := range rows {
 		out.Items = append(out.Items, timeView(key, timeEntry(e)))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListTicketTime304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListTicketTime200JSONResponse{Body: out, Headers: apigen.ListTicketTime200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // GetTimeEntry answers one entry.
@@ -463,27 +467,12 @@ func (s *Server) ListTenantTime(ctx context.Context, req apigen.ListTenantTimeRe
 
 // timePaging sets the page of the tenant's time list.
 func (s *Server) timePaging(q apigen.ListTenantTimeParams, params *readq.ListTenantTimeParams) (numbered bool, perPage, size int, perr *problem.Error) {
-	switch {
-	case q.Page != nil && (q.Cursor != nil || q.Limit != nil):
-		return false, 0, 0, problem.Field("query:page", "a numbered page takes per_page, neither cursor nor limit")
-	case q.Page == nil && q.PerPage != nil:
-		return false, 0, 0, problem.Field("query:per_page", "per_page goes with page")
-	case q.Page != nil:
-		perPage = defaultPageSize
-		if q.PerPage != nil {
-			perPage = int(*q.PerPage)
-		}
-		perPage = s.h.pageSize(&perPage)
-		if *q.Page > maxPageDepth/perPage {
-			return false, 0, 0, &problem.Error{Code: problem.PageTooDeep, Detail: "pages end at row " + strconv.Itoa(maxPageDepth) + "; narrow the period",
-				Errors: []problem.FieldError{{Pointer: "query:page", Message: "too deep"}}}
-		}
-		params.PageSize, params.PageOffset = clamp32(perPage), clamp32((*q.Page-1)*perPage)
-		return true, perPage, perPage, nil
+	l, perr := s.h.tablePage(q.Cursor, q.Limit, q.Page, (*int)(q.PerPage))
+	if perr != nil {
+		return false, 0, 0, perr
 	}
-	size = s.h.pageSize(q.Limit)
-	params.PageSize = limitArg(size)
-	return false, 0, size, nil
+	params.PageSize, params.PageOffset = l.limit(), l.offset()
+	return l.numbered, l.perPage, l.size, nil
 }
 
 // clamp32 converts a count the document or the depth cap bounds; a value

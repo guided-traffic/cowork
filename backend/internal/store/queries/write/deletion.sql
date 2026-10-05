@@ -1,7 +1,7 @@
 -- Deleting, restoring and purging a ticket (docs/adr/0024 D1–D3, D7). The
 -- deletion and the restoration move the marker and the version; the purge
 -- removes the ticket and what belongs only to it, inside a transaction that
--- names the purge in app.job, which the restrictive policies of migration 35
+-- names the purge in app.job, which the restrictive policies of migration 32
 -- demand of every such delete.
 
 -- name: MarkTicketDeleted :one
@@ -22,7 +22,7 @@ RETURNING version;
 
 -- name: ListPurgeDue :many
 -- The deleted tickets of every tenant whose time in the bin has passed, read by
--- the purge job with no tenant set (migration 35, tickets_purge_due).
+-- the purge job with no tenant set (migration 32, tickets_purge_due).
 -- visibility: exempt (the purge job reads the deleted tickets of every tenant)
 -- deletion: exempt (the purge reads deleted tickets only)
 SELECT tenant_id, id FROM tickets
@@ -47,7 +47,7 @@ FOR UPDATE OF t;
 -- name: PurgeTicketAudit :one
 -- The audit rows of the ticket keep its key, the actor and the act, their
 -- content emptied (docs/adr/0024 D2), through the owner's function of
--- migration 35.
+-- migration 32.
 SELECT purge_ticket_audit(sqlc.arg(id))::bigint AS emptied;
 
 -- name: DeleteTicketNotifications :execrows

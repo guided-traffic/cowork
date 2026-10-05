@@ -111,9 +111,9 @@ describe('SavedFiltersService', () => {
     list().flush(pageOf([], null));
     await settle();
 
-    const saved = service.create('Bugs', { type: ['bug'] }, true);
+    const saved = service.create('Bugs', { type: ['bug'] }, true, 'key-of-the-form');
     const post = http.expectOne({ method: 'POST', url: '/api/v1/tenants/acme/filters' });
-    expect(post.request.headers.get('Idempotency-Key')).toMatch(/^[0-9a-f-]{36}$/);
+    expect(post.request.headers.get('Idempotency-Key')).toBe('key-of-the-form');
     expect(post.request.body).toEqual({
       name: 'Bugs',
       parameters: { type: ['bug'] },

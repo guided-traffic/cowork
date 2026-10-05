@@ -23,6 +23,16 @@ LEFT JOIN users u ON u.id = a.uploaded_by
 WHERE a.tenant_id = sqlc.arg(tenant_id) AND a.ticket_id = sqlc.arg(ticket_id) AND a.id = sqlc.arg(id)
   AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id);
 
+-- name: ListTicketImages :many
+-- The attachments of the tickets a rendered text may show as images, with
+-- their type; the caller keeps the raster ones (docs/adr/0016 D7).
+SELECT a.ticket_id, a.id, a.content_type
+FROM attachments a
+JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
+WHERE a.tenant_id = sqlc.arg(tenant_id) AND a.ticket_id = ANY(sqlc.arg(ticket_ids)::uuid[])
+  AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+ORDER BY a.ticket_id, a.id;
+
 -- name: CountAttachments :one
 -- The ticket's attachments, against the per-ticket count (docs/adr/0016 D6).
 SELECT count(*)::bigint AS attachments

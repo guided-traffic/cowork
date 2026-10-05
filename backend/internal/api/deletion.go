@@ -61,7 +61,8 @@ func (s *Server) DeleteTicket(ctx context.Context, req apigen.DeleteTicketReques
 }
 
 // ListDeletedTickets answers a page of the tenant's bin, the last deleted
-// first (docs/adr/0024 D1): the one list in which a deleted ticket exists.
+// first (docs/adr/0024 D1): the one list in which a deleted ticket exists. A
+// poll that finds it unchanged is a 304 (docs/adr/0054 D7).
 func (s *Server) ListDeletedTickets(ctx context.Context, req apigen.ListDeletedTicketsRequestObject) (apigen.ListDeletedTicketsResponseObject, error) {
 	t := tenantFrom(ctx)
 	if perr := auth.Authorize(principal(ctx), t.Role, adminRead); perr != nil {
@@ -89,7 +90,7 @@ func (s *Server) ListDeletedTickets(ctx context.Context, req apigen.ListDeletedT
 	rows, next := page(s.h, rows, size, op, scope, func(r readq.ListDeletedTicketsRow) string {
 		return deletedAt(r).Format(time.RFC3339Nano) + "/" + r.ID.String()
 	})
-	out := apigen.ListDeletedTickets200JSONResponse{Items: make([]apigen.DeletedTicket, 0, len(rows)), NextCursor: nullableString(next)}
+	out := apigen.DeletedTicketList{Items: make([]apigen.DeletedTicket, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, r := range rows {
 		by := apigen.Person{Id: uuid.Nil, Username: nullableOf[string](nil)}
 		if r.DeletedBy != nil {
@@ -101,7 +102,11 @@ func (s *Server) ListDeletedTickets(ctx context.Context, req apigen.ListDeletedT
 			DeletedAt: deletedAt(r), DeletedBy: by, PurgeAt: deletedAt(r).Add(store.PurgeAfter),
 		})
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListDeletedTickets304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListDeletedTickets200JSONResponse{Body: out, Headers: apigen.ListDeletedTickets200ResponseHeaders{ETag: &tag}}, nil
 }
 
 func deletedAt(r readq.ListDeletedTicketsRow) time.Time {

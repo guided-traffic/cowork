@@ -37,16 +37,17 @@ type Notification struct {
 	Person   *uuid.UUID `json:"person,omitempty"`
 	Mapping  *uuid.UUID `json:"mapping,omitempty"`
 	Audience string     `json:"audience,omitempty"`
-	// AskedOf is the person a question's act is addressed to: its event
-	// reaches their person-level streams across their tenants
-	// (docs/adr/0054 D1); nil for every other act.
-	AskedOf *uuid.UUID `json:"asked_of,omitempty"`
 }
 
 // EntityMembership is the entity of every notification of a membership act:
 // a grant, a derived membership, a group mapping, a project's restriction or
 // access list (docs/adr/0054 D2).
 const EntityMembership = "membership"
+
+// EntityProject is the entity of the notification of a project's creation,
+// which changes what the tenant's streams may admit and is sent to no client
+// (docs/adr/0054 D3).
+const EntityProject = "project"
 
 // The audiences of a membership act. Every member of the tenant hears of a
 // membership or a project's restriction — the member list is theirs to read
@@ -73,12 +74,15 @@ type MembershipChange struct {
 // (docs/adr/0026 D5, docs/adr/0034 D5).
 var silent = map[string]bool{"downloaded": true, "exported": true, "time_entry": true}
 
-// publish notifies the listeners of a ticket's act or of a membership act of
-// a tenant. NOTIFY inside the transaction is delivered when it commits and
+// publish notifies the listeners of a ticket's act, a membership act or a
+// project's creation in a tenant. NOTIFY inside the transaction is delivered when it commits and
 // never when it rolls back (docs/adr/0054 D4).
 func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) error {
 	if tenantID != uuid.Nil && e.Membership != nil {
 		return w.notify(ctx, membershipNotification(tenantID, id, e))
+	}
+	if tenantID != uuid.Nil && e.NewProject != uuid.Nil {
+		return w.notify(ctx, Notification{ID: id, Tenant: tenantID, Project: e.NewProject, Entity: EntityProject, Action: e.Action})
 	}
 	if tenantID == uuid.Nil || e.TicketID == uuid.Nil || silent[e.Action] || silent[e.EntityType] {
 		return nil
@@ -95,18 +99,8 @@ func (w *Writer) publish(ctx context.Context, tenantID, id uuid.UUID, e Event) e
 	n := Notification{ID: id, Tenant: tenantID, Project: facts.Project, Entity: e.EntityType,
 		Action: e.Action, Key: e.TicketKey, Version: facts.Version, Confidential: facts.Confidential,
 		Assignee: facts.Assignee, Reporter: facts.Reporter}
-	if e.EntityType == entityQuestion && e.EntityID != uuid.Nil {
-		var err error
-		if n.AskedOf, err = w.QuestionAskedOf(ctx, writeq.QuestionAskedOfParams{TenantID: tenantID, ID: e.EntityID}); err != nil {
-			return fmt.Errorf("read whom the published question is asked of: %w", err)
-		}
-	}
 	return w.notify(ctx, n)
 }
-
-// entityQuestion is the entity of a question's acts, whose events reach the
-// person asked across their tenants.
-const entityQuestion = "question"
 
 func membershipNotification(tenantID, id uuid.UUID, e Event) Notification {
 	m := e.Membership

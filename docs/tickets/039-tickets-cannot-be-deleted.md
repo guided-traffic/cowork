@@ -17,7 +17,7 @@ done:
 ## Current state
 
 Built: [ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
-D1–D3 and D7 for tickets, as its Status records — migration 35 with the marker, the restrictive
+D1–D3 and D7 for tickets, as its Status records — migration 32 with the marker, the restrictive
 policies of the purge and the owner's function that empties a purged ticket's audit rows; the
 deletion filter beside the visibility predicate in every query, held by
 `TestEveryReadOfTicketsCarriesTheDeletionFilter`; `DELETE …/{number}`, the bin
@@ -48,7 +48,7 @@ Outstanding:
    administrator restores it from the deleted tickets, deletes it again and purges it with the two
    questions; `make docker-build e2e`.
 2. The owner's word on the three decisions; an objection amends ADR 0026 or ADR 0024 in place and
-   changes `store/deletion.go` and migration 35's function in a new migration.
+   changes `store/deletion.go` and migration 32's function in a new migration.
 3. Q1's answer, as an amendment of ADR 0035 D5 and of [tokens.md](../security/tokens.md#what-only-a-session-does)
    when the purge becomes session-only.
 
@@ -60,12 +60,12 @@ A purge is the one irreversible act on a ticket. Today `DELETE …/deleted-ticke
 administrator's token with `admin` scope like the deletion, by the rule that only an act that gives
 access or outlives a token's revocation takes a session; the browser asks twice, the API not at all.
 A leaked `admin` token can delete and purge every ticket it sees, two requests each
-([tenancy.md](../security/tenancy.md#h-51) H-51).
+([tenancy.md](../security/tenancy.md#h-54) H-54).
 
 - **(a) Session only for the purge**: `purgeTicket` joins the session-only operations; scripts
   delete and restore with a token and leave the purge to the browser or the job. The session rule
   gains a second reason — irreversibility — beside access, which ADR 0035 D5 has to say.
-- **(b) Leave it as built**: the rule stays one rule; H-51 stays a documented gap, mitigated by not
+- **(b) Leave it as built**: the rule stays one rule; H-54 stays a documented gap, mitigated by not
   handing scripts `admin` tokens.
 - **(c) Session only for the deletion and the purge**: a leaked token cannot even hide a ticket;
   every deletion is a browser act, which is how D7's confirmation is meant anyway.

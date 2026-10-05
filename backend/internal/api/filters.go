@@ -35,7 +35,8 @@ func filterURL(t tenantScope, id uuid.UUID) string {
 }
 
 // ListSavedFilters answers the caller's filters and the tenant's shared ones,
-// oldest first, each checked as it is read (docs/adr/0049 D7).
+// oldest first, each checked as it is read (docs/adr/0049 D7); a poll that
+// finds the page unchanged is a 304 (docs/adr/0054 D7).
 func (s *Server) ListSavedFilters(ctx context.Context, req apigen.ListSavedFiltersRequestObject) (apigen.ListSavedFiltersResponseObject, error) {
 	t := tenantFrom(ctx)
 	p := principal(ctx)
@@ -45,7 +46,7 @@ func (s *Server) ListSavedFilters(ctx context.Context, req apigen.ListSavedFilte
 	const op = "listSavedFilters"
 	scope := t.ID.String() + "/" + p.PersonID.String()
 	size := s.h.pageSize(req.Params.Limit)
-	out := apigen.ListSavedFilters200JSONResponse{Items: []apigen.SavedFilter{}}
+	out := apigen.SavedFilterList{Items: []apigen.SavedFilter{}}
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		after, err := s.uuidAfter(op, scope, req.Params.Cursor)
 		if err != nil {
@@ -70,7 +71,11 @@ func (s *Server) ListSavedFilters(ctx context.Context, req apigen.ListSavedFilte
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListSavedFilters304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListSavedFilters200JSONResponse{Body: out, Headers: apigen.ListSavedFilters200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // GetSavedFilter answers one of the caller's filters or a shared one.

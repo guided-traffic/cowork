@@ -221,7 +221,7 @@ func (s *Server) parseFilters(me uuid.UUID, q ticketQuery, l *ticketListing) []p
 	f.Blocked, f.HasOpenQuestions = q.blocked, q.hasOpenQuestions
 	if q.q != nil {
 		if s.h.opts.MaxQueryLength > 0 && utf8.RuneCountInString(*q.q) > s.h.opts.MaxQueryLength {
-			errs = append(errs, problem.FieldError{Pointer: "query:q",
+			errs = append(errs, problem.FieldError{Pointer: fieldQuery,
 				Message: "longer than " + strconv.Itoa(s.h.opts.MaxQueryLength) + " characters"})
 		}
 		f.Query = *q.q

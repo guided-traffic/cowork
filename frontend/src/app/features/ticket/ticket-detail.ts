@@ -1,13 +1,17 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   effect,
+  ElementRef,
   inject,
+  Injector,
   input,
   untracked,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ConfirmationService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
 import { Skeleton } from 'primeng/skeleton';
@@ -20,6 +24,7 @@ import { TicketsService } from '../../core/tickets.service';
 import { AgentMark } from '../../shared/agent-mark';
 import { SecurityBadge, SeverityBadge, StateBadge, TypeIcon } from '../../shared/badges';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { RenderedText } from '../../shared/rendered-text';
 import { ago, Clock, dateTime } from '../../shared/time';
 import { CommentItem } from './comment-item';
 import {
@@ -44,6 +49,12 @@ export function describe(activity: Activity): string {
   const who = activity.actor?.display_name ?? activity.actor_system ?? 'cowork';
   return `${who} ${activity.action.replace(/_/g, ' ')}`;
 }
+
+/**
+ * The parts of the page a link may point at — a comment by its id, a question by its number — as a
+ * search hit links them (docs/adr/0025 D5).
+ */
+const linkedPart = /^(comment-[0-9a-f-]{36}|question-[1-9][0-9]*)$/;
 
 /** A key that names no ticket the way the server would answer it: not found (docs/adr/0023 D5). */
 const notFound: ProblemView = {
@@ -78,6 +89,7 @@ const notFound: ProblemView = {
     InterestControl,
     LinkAdder,
     PrerequisiteTree,
+    RenderedText,
     RouterLink,
     SecurityBadge,
     SeverityBadge,
@@ -107,6 +119,12 @@ export class TicketDetail {
   private readonly conversation = inject(Conversation);
   private readonly confirm = inject(ConfirmationService);
   private readonly clock = inject(Clock);
+  private readonly host: HTMLElement = inject(ElementRef).nativeElement;
+  private readonly injector = inject(Injector);
+  /** The part of the page the address names, `#comment-<id>` or `#question-<n>`. */
+  private readonly fragment = toSignal(inject(ActivatedRoute).fragment, { initialValue: null });
+  /** The part the page has scrolled to, once; a reload of the parts does not scroll again. */
+  private scrolledTo: string | null = null;
 
   protected readonly at = computed(() => address(this.session.tenant(), this.key()));
   protected readonly fullKey = computed(() => {
@@ -165,6 +183,26 @@ export class TicketDetail {
 
   constructor() {
     effect(() => this.relations.at.set(this.at()));
+    // The rendered body follows the version of the ticket shown (TicketRelations.body).
+    effect(() => this.relations.version.set(this.ticket()?.version));
+    // A link to a comment or a question scrolls to it once the part has loaded.
+    effect(() => {
+      const target = this.fragment();
+      const loaded = this.relations.comments.hasValue() && this.relations.questions.hasValue();
+      if (!target || !loaded || target === this.scrolledTo || !linkedPart.test(target)) {
+        return;
+      }
+      afterNextRender(
+        () => {
+          const part = this.host.querySelector<HTMLElement>(`[id="${target}"]`);
+          if (part) {
+            this.scrolledTo = target;
+            part.scrollIntoView?.({ block: 'center' });
+          }
+        },
+        { injector: this.injector },
+      );
+    });
     // A question of the page — whether to write over a newer version — belongs to the ticket it
     // was asked about. The page is reused when the path names another ticket or another tenant:
     // answered then, it would write the change onto the ticket shown now, where its fields stay,

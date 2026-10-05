@@ -147,11 +147,15 @@ func (s *Server) ListMyInbox(ctx context.Context, req apigen.ListMyInboxRequestO
 	}
 	slices.SortFunc(rows, func(a, b inboxRow) int { return bytes.Compare(b.row.ID[:], a.row.ID[:]) })
 	rows, next := page(s.h, rows, size, op, scope, func(r inboxRow) string { return r.row.ID.String() })
-	out := apigen.ListMyInbox200JSONResponse{Items: make([]apigen.InboxEntry, 0, len(rows)), NextCursor: nullableString(next), Unread: unread}
+	out := apigen.InboxList{Items: make([]apigen.InboxEntry, 0, len(rows)), NextCursor: nullableString(next), Unread: unread}
 	for _, r := range rows {
 		out.Items = append(out.Items, inboxEntryView(r, visible))
 	}
-	return out, nil
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListMyInbox304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListMyInbox200JSONResponse{Body: out, Headers: apigen.ListMyInbox200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // inboxEntryView renders a notification from its act (docs/adr/0020 D3): the

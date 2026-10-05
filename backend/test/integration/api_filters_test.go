@@ -234,7 +234,7 @@ func TestSavingAFilterIsIdempotent(t *testing.T) {
 }
 
 // docs/adr/0021 D6: inside the tenant's own transaction the policies of
-// migration 36 hold a person to their own filters and the shared ones — a
+// migration 33 hold a person to their own filters and the shared ones — a
 // query that forgot its owner reads, changes and deletes nobody else's.
 func TestTheSavedFilterPoliciesHoldAPersonToTheirOwn(t *testing.T) {
 	e := newTicketEnv(t)

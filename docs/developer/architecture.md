@@ -309,11 +309,11 @@ of one's own sessions; a global administrator's reading of the installation-leve
 the deletion of a tenant ([ADR 0034] D2); the
 revocation of a refresh token at the issuer when a session ends; "next for me" — the person-level
 lists "assigned to me" and "open decisions" and the inbox exist ([api.md](api.md#the-person-level-routes),
-[frontend.md](frontend.md#the-person-level-pages)), and the person-level stream carries the person's
-own events across their tenants but not the rest of their tenants' changes —; a mention in a
-comment; search, the saved filters of the tenant-wide list and the tenant board, the tenant board
-itself and the dashboard; the score beside the rank and the rebalancing of the rank's keys; the
-deletion of a project; import; metrics. The order in which they come is
+[frontend.md](frontend.md#the-person-level-pages)), and the person-level stream carries every
+tenant of the person ([events.md](events.md#the-person-level-stream)) —; a mention in a
+comment; the saved filters of the tenant-wide list and the tenant board, and the dashboard; the
+score beside the rank and the rebalancing of the rank's keys; the deletion of a project; import;
+metrics. The order in which they come is
 [docs/planning/project-plan.md](../planning/project-plan.md); each gets its section here, or a
 page of its own, when it exists.
 
