@@ -33,8 +33,8 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   score with the rank's rebalancing, deletion with the bin, saved filters, the tenant board, the
   dashboard as the tenant's front page, the tenant's ticket list, the tenant's tokens, the
   attachment quota, mentions, numbered administration pages with the audit page, and the
-  end-to-end tier. What is left is listed per child below: end-to-end paths, one feature (saved
-  filters on the tenant board), and the owner's reviews of what was built on the recommendation.
+  end-to-end tier. What is left is listed per child below: end-to-end paths and the owner's
+  reviews of what was built on the recommendation.
 - `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
   as the local administrator or through Dex; the dev server's proxy holds no credential
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
@@ -84,7 +84,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    - T35 — the end-to-end path through the start page
    - T36 — the owner's review of the mention
    - T37 — the end-to-end path of the search
-   - T38 — saved filters on the tenant board, and the end-to-end path of a shared filter
+   - T38 — the end-to-end path of a shared filter
    - T39 — the end-to-end path of deletion, restore and the bin, and the owner's word on its three
      decisions
    - T40 — the owner's review of the tenant's tokens page
