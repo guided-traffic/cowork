@@ -16,9 +16,12 @@ semantic-release runs as is on the bypass list of `main` as well — the owner's
 the first release showed that semantic-release pushes its release commit to `main`; and
 documentation-only changes are pushed directly by an administrator.
 
-**Not built** (2026-10-04): the end-to-end job of D1 exists — `End-to-End Tests`, the job `e2e`
+~~**Not built** (2026-10-04): the end-to-end job of D1 exists — `End-to-End Tests`, the job `e2e`
 ([ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)) —
-and is not yet a required check of `main`; adding it is the owner's change to the ruleset (D6).
+and is not yet a required check of `main`; adding it is the owner's change to the ruleset (D6).~~
+**Built** 2026-10-06, at the owner's word: `End-to-End Tests` is the fourteenth required check of
+`main`, added through the GitHub API, bound to the GitHub Actions app like the others, and read
+back with the bypass list and the other rules unchanged.
 
 ## Context
 

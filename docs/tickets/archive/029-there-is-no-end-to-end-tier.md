@@ -1,7 +1,7 @@
 ---
 id: T29
 title: the ruleset of main does not require the end-to-end tier
-state: in-progress
+state: done
 severity: medium
 security: none
 threat:
@@ -11,7 +11,7 @@ blocked-by:
 filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-03
-done:
+done: 2026-10-06
 ---
 
 ## Current state
@@ -72,9 +72,8 @@ is settled on the recommendation (ADR 0056 D1), the owner reviewing the result.
 
 ## Required changes
 
-1. The `main` ruleset requires `End-to-End Tests` — the owner's change
-   ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)
-   D6); then ADR 0073's Status and its index row say so.
+None left. `End-to-End Tests` is a required check of `main` since 2026-10-06 (ADR 0073's Status
+and its index row say so); the ticket closes by extraction — done — and moves to the archive.
 
 ## Related
 

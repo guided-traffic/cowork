@@ -34,8 +34,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   dashboard as the tenant's front page, the tenant's ticket list, the tenant's tokens, the
   attachment quota, mentions, numbered administration pages with the audit page, and the
   end-to-end tier. What is left is listed per child below: end-to-end paths, one feature (saved
-  filters on the tenant board), the owner's reviews of what was built on the recommendation, and
-  the owner's change outside the code.
+  filters on the tenant board), and the owner's reviews of what was built on the recommendation.
 - `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
   as the local administrator or through Dex; the dev server's proxy holds no credential
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
@@ -76,7 +75,6 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    built, and the Status of every ADR it builds:
    - T52 — the contract of the deprecated `urgency` names and of the capability's old name, in a
      release after the one that ships them
-   - T29 — the `main` ruleset requires `End-to-End Tests` (the owner)
    - T30 — the end-to-end path of the ticket page's editing
    - T31 — the end-to-end path of the conversation's writes and the prerequisite tree seen by a
      second browser
