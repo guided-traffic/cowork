@@ -36,7 +36,8 @@ const usageText = `Usage: cowork <command>
 
 Commands:
   serve     Apply pending migrations (unless COWORK_MIGRATE_ON_START=false), then serve the API.
-  migrate   Apply pending migrations under the owner role and exit.
+  migrate   Apply pending migrations under the owner role and exit; with
+            COWORK_MIGRATE_BOOTSTRAP=true, run the bootstrap afterwards.
   version   Print the build version and exit.
 
 Configuration is read from COWORK_* environment variables; the reference is README.md.
@@ -70,10 +71,17 @@ func run(ctx context.Context, args []string, lookup func(string) (string, bool),
 	}
 }
 
+// runMigrate applies the pending migrations as the owner role and, with
+// COWORK_MIGRATE_BOOTSTRAP=true, runs the bootstrap after the schema step, as
+// the runtime role and under the bootstrap's own advisory lock — the one
+// `cowork serve` takes at its start — with the same configuration
+// (docs/adr/0057 D4). Without it the run never touches the bootstrap: the
+// chart's init container, which is given no administrator, must not deactivate
+// the one the serving container keeps.
 func runMigrate(ctx context.Context, lookup func(string) (string, bool), stderr io.Writer) int {
 	cfg, err := config.Load(lookup)
 	if err == nil && cfg.DatabaseOwnerURL == "" {
-		err = fmt.Errorf("%s is required by cowork migrate", config.EnvDatabaseOwnerURL)
+		err = fmt.Errorf("%s is required by cowork migrate", config.OwnerConnection())
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "cowork: %v\n", err)
@@ -84,7 +92,44 @@ func runMigrate(ctx context.Context, lookup func(string) (string, bool), stderr 
 		logger.Error("migration failed", "error", err)
 		return 1
 	}
+	if !cfg.MigrateBootstrap {
+		return 0
+	}
+	if err := bootstrapAfterMigration(ctx, cfg, logger); err != nil {
+		logger.Error("bootstrap failed", "error", err)
+		return 1
+	}
 	return 0
+}
+
+// bootstrapAfterMigration runs the bootstrap of `cowork serve` in the
+// migration run: on a pool of the runtime role of its own, closed when it is
+// done.
+func bootstrapAfterMigration(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	db, err := store.Open(ctx, cfg.DatabaseURL, store.Options{Logger: logger})
+	if err != nil {
+		return fmt.Errorf("connect as the runtime role: %w", err)
+	}
+	defer db.Close()
+	if err := bootstrap.Sync(ctx, db, bootstrapParams(cfg), logger); err != nil {
+		return err
+	}
+	logger.Info("the bootstrap ran after the migration", "variable", config.EnvMigrateBootstrap)
+	return nil
+}
+
+// bootstrapParams is what the configuration says the installation starts with
+// (docs/adr/0032): the local administrator, the bootstrap tenant and the
+// identity provider's administrator group.
+func bootstrapParams(cfg config.Config) bootstrap.Params {
+	params := bootstrap.Params{
+		Username: cfg.LocalAdminUsername, Password: cfg.LocalAdminPassword,
+		TenantSlug: cfg.BootstrapTenantSlug, TenantName: cfg.BootstrapTenantName,
+	}
+	if cfg.OIDC != nil {
+		params.AdminGroup = cfg.OIDC.AdminGroup
+	}
+	return params
 }
 
 func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io.Writer) int {
@@ -132,15 +177,11 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 	}
 
 	// The configured administrator and bootstrap tenant, after the migrations and
-	// before the first request (docs/adr/0032 D2, D8).
-	params := bootstrap.Params{
-		Username: cfg.LocalAdminUsername, Password: cfg.LocalAdminPassword,
-		TenantSlug: cfg.BootstrapTenantSlug, TenantName: cfg.BootstrapTenantName,
-	}
-	if cfg.OIDC != nil {
-		params.AdminGroup = cfg.OIDC.AdminGroup
-	}
-	if err := bootstrap.Sync(ctx, db, params, logger); err != nil {
+	// before the first request (docs/adr/0032 D2, D8). The migration Job of the
+	// chart has run it already when it migrated; a start that finds everything
+	// in step changes nothing, and a Secret rotated since reaches the account
+	// here, at the restart (docs/adr/0057 D4).
+	if err := bootstrap.Sync(ctx, db, bootstrapParams(cfg), logger); err != nil {
 		logger.Error("bootstrap failed", "error", err)
 		return 1
 	}
@@ -270,16 +311,21 @@ func discoverIssuer(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		DisplayName: o.DisplayName}, nil
 }
 
-// requireForServe checks what only `cowork serve` needs: the server key, and
-// the owner role's URL while it migrates on start.
+// requireForServe checks what only `cowork serve` needs: the server key, the
+// owner role's connection while it migrates on start, and the client of a
+// configured identity provider, which the start's discovery and every login
+// use.
 func requireForServe(cfg config.Config) error {
 	var errs []error
 	if cfg.SessionKey == nil {
 		errs = append(errs, fmt.Errorf("%s is required by cowork serve", config.EnvSessionKey))
 	}
 	if cfg.MigrateOnStart && cfg.DatabaseOwnerURL == "" {
-		errs = append(errs, fmt.Errorf("%s is required while %s is true; the chart migrates in an init container and sets it to false",
-			config.EnvDatabaseOwnerURL, config.EnvMigrateOnStart))
+		errs = append(errs, fmt.Errorf("%s is required while %s is true; the chart migrates in an init container or a Job and sets it to false",
+			config.OwnerConnection(), config.EnvMigrateOnStart))
+	}
+	if err := cfg.OIDC.RequireClient(); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }

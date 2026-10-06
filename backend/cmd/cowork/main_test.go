@@ -63,7 +63,7 @@ func TestMigrateWithoutDatabaseURLFails(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{"migrate"}, envOf(nil), &stdout, &stderr)
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr.String(), config.EnvDatabaseURL+" is required")
+	assert.Contains(t, stderr.String(), config.EnvDatabaseURL+", or its components "+config.EnvDatabaseHost)
 }
 
 func TestMigrateWithoutOwnerURLFails(t *testing.T) {
@@ -71,14 +71,15 @@ func TestMigrateWithoutOwnerURLFails(t *testing.T) {
 	env := envOf(map[string]string{config.EnvDatabaseURL: "postgres://cowork_app@db/cowork"})
 	code := run(context.Background(), []string{"migrate"}, env, &stdout, &stderr)
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr.String(), config.EnvDatabaseOwnerURL+" is required by cowork migrate")
+	assert.Contains(t, stderr.String(), config.OwnerConnection()+" is required by cowork migrate")
+	assert.Contains(t, stderr.String(), config.EnvDatabaseOwnerHost, "the components are named as the other way")
 }
 
 func TestServeWithoutDatabaseURLFails(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{"serve"}, envOf(nil), &stdout, &stderr)
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr.String(), config.EnvDatabaseURL+" is required")
+	assert.Contains(t, stderr.String(), config.EnvDatabaseURL+", or its components "+config.EnvDatabaseHost)
 }
 
 // serve migrates on start by default, which needs the owner role's URL; the
@@ -88,7 +89,50 @@ func TestServeMigratingOnStartWithoutOwnerURLFails(t *testing.T) {
 	env := envOf(map[string]string{config.EnvDatabaseURL: "postgres://cowork_app@db/cowork"})
 	code := run(context.Background(), []string{"serve"}, env, &stdout, &stderr)
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr.String(), config.EnvDatabaseOwnerURL+" is required while "+config.EnvMigrateOnStart+" is true")
+	assert.Contains(t, stderr.String(), config.OwnerConnection()+" is required while "+config.EnvMigrateOnStart+" is true")
+}
+
+// docs/adr/0057 D4: serve needs the identity provider's client; the
+// migration run reads the administrator group without it and gets past the
+// configuration — it fails here only on the runtime URL nobody can parse,
+// before it reaches any network.
+func TestTheIdentityProvidersClientIsServesRequirementAlone(t *testing.T) {
+	provider := map[string]string{
+		config.EnvDatabaseURL: "://not-a-url", config.EnvDatabaseOwnerURL: "postgres://cowork_owner@db/cowork",
+		config.EnvSessionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", config.EnvBaseURL: "https://cowork.example.com",
+		config.EnvMigrateOnStart: "false", config.EnvMigrateBootstrap: "true", config.EnvLogFormat: "text",
+		config.EnvOIDCIssuer: "https://login.example.com/realms/acme", config.EnvAdminGroup: "cowork-admins",
+		config.EnvBootstrapTenantSlug: "acme", config.EnvBootstrapTenantName: "Acme",
+	}
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"serve"}, envOf(provider), &stdout, &stderr)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr.String(), config.EnvOIDCClientID+" is required while "+config.EnvOIDCIssuer+" is set")
+	assert.Contains(t, stderr.String(), config.EnvOIDCClientSecret+" is required while "+config.EnvOIDCIssuer+" is set")
+
+	stdout.Reset()
+	stderr.Reset()
+	code = run(context.Background(), []string{"migrate"}, envOf(provider), &stdout, &stderr)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr.String(), "migration failed", "the configuration passed")
+	assert.NotContains(t, stderr.String(), config.EnvOIDCClientSecret)
+}
+
+// docs/adr/0058 D4: migrate takes the owner role's connection as components
+// as well; it gets past its requirements and fails only on the runtime URL
+// nobody can parse, before it reaches any network.
+func TestMigrateTakesTheOwnerAsComponents(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	env := envOf(map[string]string{
+		config.EnvDatabaseURL: "://not-a-url", config.EnvLogFormat: "text",
+		config.EnvDatabaseOwnerHost: "db", config.EnvDatabaseOwnerName: "cowork",
+		config.EnvDatabaseOwnerUser: "cowork_owner", config.EnvDatabaseOwnerPassword: "p@ss:w/rd%",
+	})
+	code := run(context.Background(), []string{"migrate"}, env, &stdout, &stderr)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr.String(), "migration failed")
+	assert.NotContains(t, stderr.String(), "is required by cowork migrate")
+	assert.NotContains(t, stderr.String(), "p@ss:w/rd%", "the password is never echoed")
 }
 
 // docs/adr/0032 D2, D3: one of the two local administrator variables alone, or a

@@ -27,6 +27,7 @@ const (
 	EnvDatabaseURL      = "COWORK_DATABASE_URL"
 	EnvDatabaseOwnerURL = "COWORK_DATABASE_OWNER_URL"
 	EnvMigrateOnStart   = "COWORK_MIGRATE_ON_START"
+	EnvMigrateBootstrap = "COWORK_MIGRATE_BOOTSTRAP"
 	EnvLogLevel         = "COWORK_LOG_LEVEL"
 	EnvLogFormat        = "COWORK_LOG_FORMAT"
 	EnvShutdownTimeout  = "COWORK_SHUTDOWN_TIMEOUT"
@@ -133,14 +134,19 @@ type Config struct {
 	// ListenAddr is the address the HTTP server binds, host:port.
 	ListenAddr string
 	// DatabaseURL is the PostgreSQL connection URL (postgres://...) of the
-	// runtime role, which owns nothing (docs/adr/0021 D2). Required.
+	// runtime role, which owns nothing (docs/adr/0021 D2): COWORK_DATABASE_URL,
+	// or the URL composed of its components (docs/adr/0058 D4). Required.
 	DatabaseURL string
 	// DatabaseOwnerURL is the connection URL of the owner role the
-	// migrations run under. Required where migrations run: `cowork migrate`,
-	// and `cowork serve` while MigrateOnStart is true.
+	// migrations run under, given the same two ways. Required where migrations
+	// run: `cowork migrate`, and `cowork serve` while MigrateOnStart is true.
 	DatabaseOwnerURL string
 	// MigrateOnStart makes `cowork serve` apply pending migrations before it listens.
 	MigrateOnStart bool
+	// MigrateBootstrap makes `cowork migrate` run the bootstrap after the
+	// schema step, as `cowork serve` runs it at its start (docs/adr/0057 D4):
+	// the chart's migration Job sets it.
+	MigrateBootstrap bool
 	// LogLevel is the minimum level written to the log.
 	LogLevel slog.Level
 	// LogFormat is LogFormatJSON or LogFormatText.
@@ -370,21 +376,25 @@ func (l *loader) server(cfg *Config) {
 	}
 }
 
+// database reads the two roles' connections — each a URL or its components
+// (docs/adr/0058 D4) — and the two switches of the migration run.
 func (l *loader) database(cfg *Config) {
-	if v, ok := l.get(EnvDatabaseURL); ok {
-		cfg.DatabaseURL = v
-	} else {
-		l.fail("%s is required", EnvDatabaseURL)
+	var set bool
+	if cfg.DatabaseURL, set = l.databaseURL(runtimeDatabase); !set {
+		l.fail("%s is required", runtimeDatabase.connection())
 	}
-	if v, ok := l.get(EnvDatabaseOwnerURL); ok {
-		cfg.DatabaseOwnerURL = v
-	}
-	if v, ok := l.get(EnvMigrateOnStart); ok {
-		b, err := strconv.ParseBool(v)
-		if err != nil {
-			l.fail("%s: %q is not a boolean", EnvMigrateOnStart, v)
-		} else {
-			cfg.MigrateOnStart = b
+	cfg.DatabaseOwnerURL, _ = l.databaseURL(ownerDatabase)
+	for _, b := range []struct {
+		env string
+		dst *bool
+	}{{EnvMigrateOnStart, &cfg.MigrateOnStart}, {EnvMigrateBootstrap, &cfg.MigrateBootstrap}} {
+		if v, ok := l.get(b.env); ok {
+			parsed, err := strconv.ParseBool(v)
+			if err != nil {
+				l.fail("%s: %q is not a boolean", b.env, v)
+			} else {
+				*b.dst = parsed
+			}
 		}
 	}
 }

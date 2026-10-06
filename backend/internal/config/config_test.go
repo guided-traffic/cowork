@@ -61,10 +61,15 @@ func TestLoadRequiresDatabaseURL(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, err := Load(envOf(env))
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), EnvDatabaseURL+" is required")
+			assert.Contains(t, err.Error(), missingRuntimeConnection)
 		})
 	}
 }
+
+// missingRuntimeConnection is the error of a runtime role without a URL and
+// without components (docs/adr/0058 D4).
+const missingRuntimeConnection = EnvDatabaseURL + ", or its components " + EnvDatabaseHost + ", " + EnvDatabaseName + ", " +
+	EnvDatabaseUser + " and " + EnvDatabasePassword + ", is required"
 
 func TestLoadEmptyValueKeepsDefault(t *testing.T) {
 	cfg, err := Load(envOf(map[string]string{
@@ -88,7 +93,7 @@ func TestLoadReportsEveryInvalidValue(t *testing.T) {
 	}))
 	require.Error(t, err)
 	msg := err.Error()
-	assert.Contains(t, msg, EnvDatabaseURL+" is required")
+	assert.Contains(t, msg, missingRuntimeConnection)
 	assert.Contains(t, msg, EnvMigrateOnStart+`: "maybe" is not a boolean`)
 	assert.Contains(t, msg, EnvLogLevel+`: "loud" is not one of`)
 	assert.Contains(t, msg, EnvLogFormat+`: "xml" is not one of`)
