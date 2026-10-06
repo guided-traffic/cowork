@@ -436,6 +436,28 @@ func TestTheBinaryRunsItsSubcommands(t *testing.T) {
 		return err
 	}))
 	assert.Len(t, memory, 1, "the session start is remembered in one file under the cache directory")
+
+	code, stdout, stderr = run(configured, `{"session_id":"b2","hook_event_name":"PostModelSwitch","from_model":"claude-opus-5",`+
+		`"to_model":"claude-sonnet-5","source":"command"}`, "model-switch")
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stdout+stderr, "the switch hook prints nothing, which Claude Code would add to the model's context")
+	var recorded struct {
+		ProjectDir string `json:"project_dir"`
+		Model      string `json:"model"`
+	}
+	require.NoError(t, filepath.WalkDir(home, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasPrefix(d.Name(), "model-") {
+			return err
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(raw, &recorded)
+	}))
+	assert.Equal(t, e.repo, recorded.ProjectDir)
+	assert.Equal(t, "claude-sonnet-5", recorded.Model, "the switch is in the file the server of the project directory reads")
+
 	code, stdout, _ = run(configured, `{"session_id":"b2"}`, "session-end")
 	assert.Equal(t, 0, code)
 	assert.Empty(t, stdout, "nothing in progress: no reminder")

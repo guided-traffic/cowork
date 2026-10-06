@@ -22,7 +22,8 @@ Read against the tree on 2026-10-05.
 cmd/cowork-mcp ──► internal/mcpcli ──┬──► internal/mcpserver ──► MCP Go SDK (stdio)
   main, linker     Run: serve,       │      one mcp.Server, a handler per tool
   variables        session-context,  │
-                   session-end,      └──► internal/tools ──► internal/api/apigen (the generated client)
+                   session-end,      │
+                   model-switch,     └──► internal/tools ──► internal/api/apigen (the generated client)
                    token check,             the catalogue,        ──► HttpRequestDoer: the network,
                    lookup, version          Session, Start,           or a handler in the same process
                                             Resolve, Remind
@@ -45,7 +46,7 @@ database driver, the object storage client or the API's handlers.
 | [`tools/start.go`](../../backend/internal/tools/start.go) | `Start`, the procedure of `session_start` and the SessionStart hook: the unbound block with the proposal, or the bound block — the active ticket's context or the candidates, what happened since, each act's line naming its person `via <agent>` or `through the token <name>` (`actLine`) — within `MaxBlock` |
 | [`tools/remind.go`](../../backend/internal/tools/remind.go) | `Remind`, the Stop hook's check |
 | [`tools/compat.go`](../../backend/internal/tools/compat.go) | `CheckVersion`, `CheckCompatibility` (the major version and the operations the served document has), `IncompatibleError` |
-| [`tools/memory.go`](../../backend/internal/tools/memory.go) | `Memory`, `InMemory`, `FileMemory` under the user's cache directory: one file per installation and binding for the time of the last start, one per project directory for the model the SessionStart hook read (`SetModel`, `Model`) |
+| [`tools/memory.go`](../../backend/internal/tools/memory.go) | `Memory`, `InMemory`, `FileMemory` under the user's cache directory: one file per installation and binding for the time of the last start, one per project directory for the model the SessionStart hook read or the PostModelSwitch hook named (`SetModel`, `Model`) |
 | [`tools/workspace.go`](../../backend/internal/tools/workspace.go) | `Workspace`, `GitWorkspace` (git remote, rev-parse, log, status), `BindingFile` and its reading and checking |
 | [`tools/keys.go`](../../backend/internal/tools/keys.go), [`query.go`](../../backend/internal/tools/query.go), [`limits.go`](../../backend/internal/tools/limits.go) | Keys resolved against the binding, the commit strings of ADR 0068; the list and read helpers; the capability line of a description |
 | `tools/tool_*.go` | The tools: `tool_tickets.go` (get_ticket, search — over the ticket lists' `q` filter, not the ranked search routes ([search.md](search.md#the-q-filter-and-the-mcp-tool)) —, file_ticket, record_state, comment, link, watch, place_ticket), `tool_flow.go` (transition, set_progress, finish_work), `tool_questions.go` (open_question, record_answer, and `person`, which resolves a person named as `me`, a username, a display name or an id through the tenant's member list — `open_question`'s `asked_of` and `comment`'s `mentions`), `tool_project.go` (session_start, create_project), `tool_api.go` (api) |
@@ -154,6 +155,7 @@ transport in place of the real ones.
 | `serve` | Exits 1 at once on a configuration error, naming the variable; otherwise runs the server until the host closes standard input. A start-up check — the compatibility, then the token — that fails for good refuses every tool call with the reason; a failure to reach the installation is tried again at the next call (`readiness`) |
 | `session-context` | Reads the hook's JSON on standard input (`session_id`, `cwd`, `source`, `model`), records the `model` for the server of the project directory ([below](#the-agent-mark)), prints the block on standard output, which Claude Code adds to the context; an unconfigured client or an unbound directory prints nothing; a failure prints one line naming the cause and the token page. Always exits 0, within a budget of 4.5 s |
 | `session-end` | Prints `{"systemMessage": "cowork: …"}` when `Remind` has a line — a message to the person, which neither blocks nor continues the turn — and nothing otherwise, also on every error. Always exits 0 |
+| `model-switch` | Reads the hook's JSON on standard input (`to_model`, `agent_id`) and records `to_model` for the server of the project directory ([below](#the-agent-mark)), as `session-context` records the `model`; an input with an `agent_id` — a subagent's switch — or without `to_model` records nothing, nor does an unconfigured client or one without `CLAUDE_PROJECT_DIR`. Talks to no installation. Prints nothing on standard output, which Claude Code adds to the model's context after a switch; a malformed variable or a failed write is one line on standard error, which Claude Code keeps in its debug log. Always exits 0 |
 | `token check`, `lookup` | Results on standard output, `--json` for the structured form, exit 1 on an error |
 
 ### The agent mark
@@ -168,25 +170,45 @@ tell a server its model, so the SessionStart hook hands it over
 D5): `session-context` writes the input's `model` with `Memory.SetModel` under `CLAUDE_PROJECT_DIR`
 — the one value Claude Code gives both the hook and the server, which gets no session id — and
 `client.header` reads it with `Memory.Model` at each request of `serve`, so a session started after
-the server, or started again, is named. An input without a model leaves the recorded one after
+the server, or started again, is named. A switch — `/model`, an automatic fallback, `opusplan`
+entering or leaving plan mode, the model Claude Code restores on a resume — fires
+`PostModelSwitch`, and `model-switch` writes the input's `to_model` the same way, so the server's
+next act names the new model; the event needs Claude Code 2.1.251 or later. A switch whose input
+names an `agent_id` happened inside a subagent and is not recorded: the record is the main
+session's, and a subagent's acts through the cowork tools carry it, whichever model the subagent
+runs on. A session started with
+`--agent` names an `agent_type` but no `agent_id`, and its switches are recorded. An input
+without a model leaves the recorded one after
 `/clear` or a compaction (`source` `clear`, `compact`), where the running Claude Code goes on with
 its model, and records none after any other start — a session restored through conversation
-recovery is not marked with an older session's model; a server without `CLAUDE_PROJECT_DIR` or a
-recorded model sends `unknown`. The last session started
-in a directory names the model of every server there, and a switch with `/model` inside a session
-is not seen. `TestTheSessionStartHookNamesTheModelOfTheServer` runs the hook on the input Claude
-Code's [hook reference](https://code.claude.com/docs/en/hooks) shows, on starts without a model,
-and the server around it.
+recovery is not marked with an older session's model, and is named again once a switch names
+one; a server without `CLAUDE_PROJECT_DIR` or a recorded model sends `unknown`. The last session
+started or switched in a directory names the model of every server there.
+`TestTheSessionStartHookNamesTheModelOfTheServer` runs the hook on the input Claude Code's
+[hook reference](https://code.claude.com/docs/en/hooks) shows, on starts without a model, and the
+server around it; `TestThePostModelSwitchHookNamesTheModelOfTheServer` runs the switch on the
+input the reference describes, a subagent's switch, one without `to_model` and one in another
+directory, each silent on standard output, and `TestTheHooks` its standard output empty when the
+configuration is missing or malformed or the record cannot be written.
 
 ## The plugin
 
 [`claude/cowork/`](../../claude/cowork/) is the plugin, [`.claude-plugin/marketplace.json`](../../.claude-plugin/marketplace.json)
 at the root the marketplace that lists it: `.claude-plugin/plugin.json` (the two options, the
-token one sensitive), `.mcp.json` (the server), `hooks/hooks.json` (the two hooks, five seconds
-each, the options copied into `COWORK_URL` and `COWORK_TOKEN`), `skills/{next,ticket,question,done}/SKILL.md`.
+token one sensitive, and `hooks` naming the switch hook's file), `.mcp.json` (the server),
+`hooks/hooks.json` (the `SessionStart` and `Stop` hooks, five seconds each, the options copied
+into `COWORK_URL` and `COWORK_TOKEN`), `hooks/model-switch.json` (the `PostModelSwitch` hook, the
+same way), `skills/{next,ticket,question,done}/SKILL.md`.
 The formats are Claude Code's ([code.claude.com/docs/en/plugins-reference](https://code.claude.com/docs/en/plugins-reference),
 [hooks](https://code.claude.com/docs/en/hooks)); `claude plugin validate ./claude/cowork` and
-`claude plugin validate .` check them. The plugin carries no version on purpose: users follow
+`claude plugin validate .` check them — `hooks/model-switch.json` only with a Claude Code that
+opens the file `plugin.json` names: 2.1.288 does, 2.1.218 does not. The switch hook has a file of
+its own because a Claude Code that does not know an event can refuse the whole hooks file that
+names it, and `PostModelSwitch` came with 2.1.251: 2.1.218 loads none of the plugin's hooks from
+a `hooks/hooks.json` with a `PostModelSwitch` entry, and with the separate file it runs the other
+two and lists the file as failed to load (`claude plugin details`, `claude plugin list --json`).
+A hook on an event that older Claude Code releases do not know belongs in a file of its own, not
+in `hooks/hooks.json`. The plugin carries no version on purpose: users follow
 `main`. A skill names tools by their short names, which every host shows, and grants no tool
 permission of its own.
 

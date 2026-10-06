@@ -22,7 +22,8 @@ session: [chat.md](chat.md).
 │ Claude Code                                  │             │ cowork       │
 │  ├─ SessionStart hook → cowork-mcp session-context ──┐     │  frontend    │
 │  ├─ MCP server        → cowork-mcp serve (stdio) ────┼────►│  /api/v1/…   │
-│  └─ Stop hook         → cowork-mcp session-end ──────┘     │  backend     │
+│  ├─ Stop hook         → cowork-mcp session-end ──────┘     │  backend     │
+│  └─ PostModelSwitch   → cowork-mcp model-switch            │              │
 │ the repository: git remotes, maybe .cowork.yaml    HTTPS + │              │
 │ the token: the system's credential store         token     └──────────────┘
 └──────────────────────────────────────────────┘
@@ -90,7 +91,10 @@ plain text.
 ## 3. The plugin
 
 The repository is a Claude Code plugin marketplace with one plugin, `cowork`
-([`claude/cowork/`](../../claude/cowork/)): the MCP server, the two hooks and the four skills.
+([`claude/cowork/`](../../claude/cowork/)): the MCP server, the three hooks and the four skills.
+The `PostModelSwitch` hook needs Claude Code 2.1.251 or later (`claude --version`). An older
+release does not run it; 2.1.218, for one, runs everything else of the plugin and names the
+switch hook's file in `claude plugin list` as failed to load.
 
 ```bash
 claude plugin marketplace add guided-traffic/cowork
@@ -105,7 +109,7 @@ Code afterwards.
 | Part | File | Does |
 |---|---|---|
 | MCP server `cowork` | [`.mcp.json`](../../claude/cowork/.mcp.json) | Starts `cowork-mcp serve` with `COWORK_URL` and `COWORK_TOKEN` from the two options. In `/mcp` it shows as `plugin:cowork:cowork`, its tools as `mcp__plugin_cowork_cowork__<tool>` — the names permission rules use |
-| Hooks | [`hooks/hooks.json`](../../claude/cowork/hooks/hooks.json) | `SessionStart` runs `cowork-mcp session-context`, `Stop` runs `cowork-mcp session-end`, each with a five-second timeout ([ADR 0067](../adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)). They take the options, or `COWORK_URL` and `COWORK_TOKEN` from the environment when the options are empty |
+| Hooks | [`hooks/hooks.json`](../../claude/cowork/hooks/hooks.json), [`hooks/model-switch.json`](../../claude/cowork/hooks/model-switch.json) | `SessionStart` runs `cowork-mcp session-context`, `Stop` runs `cowork-mcp session-end`, `PostModelSwitch` runs `cowork-mcp model-switch`, each with a five-second timeout ([ADR 0067](../adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)). They take the options, or `COWORK_URL` and `COWORK_TOKEN` from the environment when the options are empty. The switch hook is a file of its own, which `plugin.json` names, so that a Claude Code that does not know the event loses that hook alone: 2.1.218 refuses every hook of a file that names it |
 | Skills | [`skills/`](../../claude/cowork/skills/) | `/cowork:next` (the next ticket), `/cowork:ticket <key>` (load a ticket), `/cowork:question` (one decision for the person), `/cowork:done` (finish with a verification note); each also answers to its bare name while no other command has it |
 
 The plugin carries no version, so `claude plugin update cowork@cowork` follows the repository's
@@ -133,10 +137,17 @@ claude mcp add --scope user cowork --env 'COWORK_URL=${COWORK_URL}' --env 'COWOR
     ],
     "Stop": [
       { "hooks": [ { "type": "command", "command": "cowork-mcp session-end", "timeout": 5 } ] }
+    ],
+    "PostModelSwitch": [
+      { "hooks": [ { "type": "command", "command": "cowork-mcp model-switch", "timeout": 5 } ] }
     ]
   }
 }
 ```
+
+`PostModelSwitch` needs Claude Code 2.1.251 or later. An older release does not know the event:
+2.1.218 ignores that entry, which `claude doctor` lists under its invalid settings, and keeps the
+other two hooks.
 
 A token exported in the shell profile is in the environment of every process the shell starts;
 one written into `~/.claude.json` is a plain-text file. The plugin's credential store is the
@@ -151,23 +162,28 @@ Residual risks). Use the plugin or this block, not both: the hooks would run twi
 |---|---|
 | The session starts | `session-context` reads the git remotes of the working directory and a `.cowork.yaml`, asks the installation which project binds the repository, and prints the block Claude reads before the first prompt: the binding, the active ticket — assigned to you and `in-progress` — with its context, or the top of "next for me" in the bound project — your open tickets and the unassigned ones, by score, without those in progress, blocked or waiting on a prerequisite —, and what happened since the last session. In a directory without a remote and without a binding file it prints nothing. A failure is one line naming the cause and the token page; the session is never blocked |
 | An unbound repository | The block carries a proposal — tenant, key, name — and Claude asks you; on your yes it calls `create_project`, which creates the project and binds the repository in one act |
-| During the work | The 16 tools of [README.md, the tools](../../README.md#cli-cowork-mcp); `session_start` refreshes the block. Each act carries the agent mark `claude-code/<model>/<id>` — the model the session started with, which the `SessionStart` hook hands the MCP server, `unknown` while none is recorded — shown in the UI with the agent icon, the whole mark in its tooltip |
+| During the work | The 16 tools of [README.md, the tools](../../README.md#cli-cowork-mcp); `session_start` refreshes the block. Each act carries the agent mark `claude-code/<model>/<id>` — the session's model, which the `SessionStart` hook hands the MCP server, `unknown` while none is recorded — shown in the UI with the agent icon, the whole mark in its tooltip |
+| The model changes | `/model`, an automatic fallback, `opusplan` entering or leaving plan mode, or the model Claude Code restores on a resume: `model-switch` records the new model, and the MCP server names it in the mark of its next act. It prints nothing, so a switch adds nothing to Claude's context. A switch inside a subagent is not recorded |
 | Claude stops | `session-end` reminds you — a message in the transcript, never a block — when a ticket of yours is in progress, the repository shows work since the session started (a commit, or a file changed after it), and nothing was recorded on the ticket since |
 
 The time of the last session is kept per installation and binding in one small file under the
 user's cache directory (`~/Library/Caches/cowork-mcp/` on macOS, `~/.cache/cowork-mcp/` on
 Linux); it holds timestamps only, and deleting it only makes the next block show no "since".
-Beside it, the `SessionStart` hook keeps the model Claude Code names, in one file per project
-directory, which the MCP server of that directory reads for the mark of its acts; deleting it makes
-the mark say `unknown` until the next session starts there. The last session started in a directory
-names the model: two sessions in one directory with different models both mark their acts with the
-later one's, and a model switched with `/model` inside a session is not seen. Claude Code may leave
+Beside it, the `SessionStart` and `PostModelSwitch` hooks keep the model Claude Code names, in one
+file per project directory, which the MCP server of that directory reads for the mark of its acts;
+deleting it makes the mark say `unknown` until the next session starts or switches there. The last
+session started or switched in a directory names the model: two sessions in one directory with
+different models both mark their acts with the model of the later start or switch. The record is
+the main session's: a switch inside a subagent is not recorded, and what a subagent does through
+the cowork tools carries the session's model, whichever model the subagent runs on. Claude Code
+may leave
 the model out of a start: after `/clear` or a compaction the model recorded before stands, which a
 session started in the directory since may have written; any other start without one — a session
-restored through conversation recovery — makes the mark say `unknown`, never an older session's
-model
+restored through conversation recovery — makes the mark say `unknown` until a switch names a model,
+never an older session's model
 ([ADR 0067](../adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
-D5).
+D5). With a Claude Code before 2.1.251 a switch is not seen, and the mark keeps the model the
+session started with.
 
 ## Each repository
 
@@ -214,6 +230,7 @@ every remote, `origin` first, and binds by the first one with a binding.
 | `cowork: the token in COWORK_TOKEN does not work …` | `cowork-mcp token check`; make a new token on the token page |
 | `… runs cowork X, another major version …` | Install the `cowork-mcp` of the installation's release |
 | The MCP server is `failed` in `/mcp` | The two variables reach it: `COWORK_URL` set, the token of the form `cwk_…`; its message is in Claude Code's MCP log |
+| The mark keeps the old model after `/model` | `claude --version` is 2.1.251 or later, and `claude plugin list` names no hook file that failed to load; `claude --debug` shows the `PostModelSwitch` hook's run and the one line it writes to standard error when the switch is not recorded |
 | A tool answers `403 agent_forbidden` | The token lacks the capability, or the act is a person's; the answer names which. It is the API's no, not a failure |
 | Several projects bind the repository | A data error the lookup reports: unbind all but one (`DELETE …/projects/{project}/repositories/{repository}`) |
 

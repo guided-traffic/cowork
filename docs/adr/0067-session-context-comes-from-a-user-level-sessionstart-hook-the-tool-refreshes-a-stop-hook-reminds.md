@@ -29,6 +29,22 @@ compaction), and built the same day — `sessionContext` and `client.header` in
 `TestTheSessionStartHookNamesTheModelOfTheServer` runs the hook on the input Claude Code's hook
 reference shows and the server after it.
 
+Amended again 2026-10-06 by the implementer on the recommendation of an open question, whose
+answer is the owner's and decides whether the amendment stays (D5: a `PostModelSwitch` hook runs
+`cowork-mcp model-switch`, which records the model the session switched to in the same file,
+unless the switch is a subagent's; D6: the block carries the three hooks), and built the same day
+— `modelSwitch` in [`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go), the plugin's
+[`hooks/model-switch.json`](../../claude/cowork/hooks/model-switch.json), which its
+[`plugin.json`](../../claude/cowork/.claude-plugin/plugin.json) names, and the `settings.json`
+block of [docs/operations/claude-code.md](../operations/claude-code.md);
+`TestThePostModelSwitchHookNamesTheModelOfTheServer` runs the hook on the input Claude Code's hook
+reference describes and the server after it. The event needs Claude Code 2.1.251 or later, and
+the plugin keeps its hook in a file of its own because a Claude Code that does not know an event
+can refuse the whole hooks file that names it: 2.1.218 loads none of the plugin's hooks from a
+`hooks/hooks.json` with a `PostModelSwitch` entry, and with the separate file it runs the
+`SessionStart` and `Stop` hooks and lists the switch hook's file as failed to load (`claude plugin
+details` and `claude plugin list --json` on 2026-10-06; 2.1.288 loads all three either way).
+
 ## Context
 
 `session_start` is an MCP tool ([ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md),
@@ -80,19 +96,30 @@ of Claude Code's hook input to a file of its own in the same directory, one per 
 part of its agent mark,
 [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
 D3. MCP does not tell a server its model, and Claude Code hands the server no session id a hook
-could name — the project directory is the one value both receive — so the last session started in
+could name — the project directory is the one value both receive — so the last session ~~started~~
+*(amended again 2026-10-06: started or switched)* in
 a directory names the model of every server there. Claude Code may leave the model out of the
 input: after `/clear` or a compaction (`source: clear`, `compact`), where the running Claude Code
 goes on with its model, the one recorded before stands; any other start without one — a session
 restored through conversation recovery — records none, and the mark says `unknown` rather than the
-model of an older session)*. An error — the installation unreachable, the token expired, the API incompatible
+model of an older session)* *(amended again 2026-10-06, on the recommendation of an open
+question: a `PostModelSwitch` hook runs `cowork-mcp model-switch`, which writes the `to_model` of
+its input to the same file — the model the session switched to by `/model`, an automatic
+fallback, `opusplan` entering or leaving plan mode, or the model Claude Code restores on a resume
+—, so the server's next act names it. An input with an `agent_id` is a switch inside a subagent
+and changes nothing, because the record is the main session's; a session started with `--agent`
+names an `agent_type` and no `agent_id`, and its switch is recorded. An input without `to_model`
+changes nothing. The hook prints nothing on standard output, which Claude Code adds to the model's
+context after a switch; a configuration it cannot use or a record it cannot write is one line on
+standard error, which Claude Code keeps in its debug log; it exits 0)*. An error — the installation unreachable, the token expired, the API incompatible
 ([ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)
 D5) — prints one line naming the cause and the installation's token page, and exits 0; it is
 never a hook failure. *(Amended 2026-10-04: the `SessionStart` hook prints the line; the `Stop`
 hook stays silent on an error, because it runs after every answer and the start has said what
 is wrong.)*
 
-**D6 — The operations page ships the ready `settings.json` block:** both hooks, the timeout,
+**D6 — The operations page ships the ready `settings.json` block:** ~~both hooks~~ *(amended
+2026-10-06: the three hooks, `PostModelSwitch` beside `SessionStart` and `Stop`)*, the timeout,
 the environment passthrough, beside the MCP server entry of [ADR 0041](0041-the-mcp-server-speaks-stdio-and-ships-as-a-release-binary-per-platform.md)
 D3.
 
@@ -106,7 +133,8 @@ five candidates, twenty inbox lines, one proposal; a session that wants more cal
   unbound one it begins with the proposal to create a project, and the owner says yes or no.
 - The end of a session reminds of the one expensive mistake — a ticket left standing without
   its verification note — without forcing anything.
-- The MCP binary gains two subcommands that share the tool's code; the tests of
+- The MCP binary gains two subcommands that share the tool's code *(amended 2026-10-06: and
+  `model-switch`, which shares only the memory)*; the tests of
   [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) D6 cover the one-shot mode
   by running it against the fixture environment and asserting the block.
 - Per-repository configuration disappears from the workflow plan: one user-level block, one
@@ -126,13 +154,24 @@ five candidates, twenty inbox lines, one proposal; a session that wants more cal
 - D4's heuristic ("no act since the session started") is approximate; a session that only
   read is rightly not reminded, a session that worked in the UI instead is wrongly reminded —
   a hint, not a veto, by design.
-- *(Added 2026-10-06 with D5's amendment.)* The model in the server's mark is the model of the
+- *(Added 2026-10-06 with D5's amendment.)* ~~The model in the server's mark is the model of the
   last session started in its project directory: two sessions in one directory with different
   models are both recorded under the later one's, and a model switched with `/model` inside a
-  session, which fires no `SessionStart`, is recorded under the model the session started with.
+  session, which fires no `SessionStart`, is recorded under the model the session started with.~~
+  *(Amended again 2026-10-06 with the `PostModelSwitch` hook: the model in the server's mark is
+  the model of the last session started or switched in its project directory. Two sessions in one
+  directory with different models are both recorded under the model of the later start or
+  switch. A switch inside a subagent is not recorded: the record is the main session's, and an act
+  a subagent makes through the cowork tools carries the main session's model, whichever model the
+  subagent runs on. A Claude Code before 2.1.251 has no
+  `PostModelSwitch`, and there a switch is still recorded under the model the session started
+  with.)*
   A `/clear` or a compaction whose input names no model keeps the one recorded before, which
   another session started in the directory since may have written; a start of any other kind
-  without one makes it `unknown`.
+  without one makes it `unknown` *(amended again 2026-10-06: until a switch names one. Claude Code
+  runs `PostModelSwitch` for the model it restores on a resume; its hook reference does not say
+  whether before or after the `SessionStart` hook, so after a resume whose input names no model the
+  mark is the restored model or `unknown` — not verified which)*.
   The mark is attribution, the client's word (ADR 0036 D3); no rule reads its model part, which
   the UI shows in the mark's tooltip.
 
