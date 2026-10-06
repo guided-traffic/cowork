@@ -17,6 +17,9 @@ import (
 // absent keys.
 type Ticket struct {
 	Key, Title, Type, State, Severity, Security, Threat, Horizon, Effort string
+	// Confidential is the ticket's flag (docs/adr/0065 D1), written only when
+	// set, so that an import of the document sets it again (docs/adr/0065 D7).
+	Confidential bool
 	// The three progress stages (docs/adr/0017 D2): Progress is the
 	// implementation stage and keeps its key.
 	ProgressRefinement, Progress, ProgressReview int
@@ -74,6 +77,9 @@ func Render(t Ticket) []byte {
 	}
 	if t.Security != "none" {
 		field("threat", t.Threat)
+	}
+	if t.Confidential {
+		raw("confidential", "true")
 	}
 	field("horizon", t.Horizon)
 	field("effort", t.Effort)
