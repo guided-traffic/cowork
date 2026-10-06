@@ -73,8 +73,8 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
 
 1. **What is left of the children.** Each lands with its tests, the pages that describe what it
    built, and the Status of every ADR it builds:
-   - T52 — the contract of the deprecated `urgency` names and of the capability's old name, in a
-     release after the one that ships them
+   - T52 — the narrowing of the two capability checks, in a release after the one that ships
+     migration 38 (the API's old names are removed)
    - T30 — the end-to-end path of the ticket page's editing
    - T31 — the end-to-end path of the conversation's writes and the prerequisite tree seen by a
      second browser
