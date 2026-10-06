@@ -79,7 +79,6 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    - T32 — the owner's review of the attachment quota
    - T34 — the owner's look at the score's marker and the sort by score
    - T36 — the owner's review of the mention
-   - T38 — the owner's answer on a shared filter whose owner left the tenant
    - T39 — the owner's word on its three decisions
    - T40 — the owner's review of the tenant's tokens page
    - T42 — the owner's look at the tenant board and its saved-filter bar

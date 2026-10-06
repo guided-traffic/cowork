@@ -12,7 +12,7 @@ filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-05
 done: 2026-10-06
-shipped: saved filters on the backlog, the tenant's ticket list and the tenant board, and a tenant administrator's unshare and deletion of another person's shared filter (migration 39, the filter bar's Stop sharing and Delete)
+shipped: saved filters on the backlog, the tenant's ticket list and the tenant board, and a tenant administrator's unshare and deletion of another person's shared filter (migration 39 with its trigger, the filter bar's Stop sharing and Delete, a withheld filter included)
 ---
 
 ## Current state
@@ -46,20 +46,23 @@ administrator's name; a filter that is not shared stays out of reach (`404`). Mi
 the restrictive policies of `saved_filters` for exactly these two acts, and the read policy for the
 one filter an unshare names in `app.saved_filter_id`, which the statement needs to read back the
 row it leaves unshared ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
-D3 as amended 2026-10-06; [`store/filters.go`](../../backend/internal/store/filters.go)). The
-filter bar offers an administrator *Stop sharing* and *Delete* on another person's filter it
-applies, at once as the owner's own acts are, and clears the filter from the list afterwards.
-
-**Left out on purpose:** a shared filter the server answers `redacted` to the administrator — one
-that names a deleted ticket, or a key that names nothing — cannot be applied in the bar and so
-offers no *Stop sharing* or *Delete*; the API reaches it.
+D3 as amended 2026-10-06; [`store/filters.go`](../../backend/internal/store/filters.go)); its
+trigger `saved_filters_moderation_guard` refuses any other change of another person's filter — its
+name, its parameters —, which a policy cannot see. The filter bar offers an administrator *Stop
+sharing* and *Delete* on another person's filter it applies, and on a shared filter the server
+answers `redacted` — one that names a deleted ticket, or a key that names nothing —, which an
+administrator may choose to withdraw: the bar holds it and the list applies none. Both act at once
+as the owner's own acts do, and clear the filter from the list if it applied it. An owner who left
+the tenant is named "a former member", since the API names such a person by the id alone.
 
 Verified on 2026-10-06: `make test-unit` (`TestWhoChangesASavedFilter`), `make test-integration`
 (`TestAnAdministratorUnsharesOrDeletesAnotherPersonsSharedFilter`,
-`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`,
+`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter` — the trigger's refusal of a rename
+or a change of the conditions beside an unshare included —,
 `TestTheModerationMigrationWidensTheFilterPoliciesAndChangesNoRow`, from version 38),
-`make frontend-test` (the bar's administrator cases in `saved-filters.spec.ts`), `make lint cyclo
-gosec`, `make frontend-lint`, `npx ng build` within its budgets.
+`make frontend-test` (the bar's administrator cases in `saved-filters.spec.ts`, a filter the server
+withholds and an owner who left among them), `make lint cyclo gosec`, `make frontend-lint`,
+`npx ng build` within its budgets.
 
 In the browser, [`filters.spec.ts`](../../frontend/e2e/filters.spec.ts) walks the backlog's bar
 with two identities: a member saves the backlog's filter shared, and the administrator applies it
@@ -87,4 +90,6 @@ person's filter that is not shared. Recorded in ADR 0018 D5.
 ## Not verified
 
 The end-to-end assertions of the administrator's controls in `filters.spec.ts` have not run; the
-next run of the end-to-end tier settles them.
+next run of the end-to-end tier settles them. The administrator's hold of a filter the server
+withholds and the name "a former member" are covered by unit tests only; no end-to-end path and no
+look in a browser reaches them.
