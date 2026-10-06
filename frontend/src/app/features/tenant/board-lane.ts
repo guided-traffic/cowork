@@ -21,6 +21,7 @@ import { BoardColumns, Point } from '../project/board-columns';
 import { boardList } from '../project/board-list';
 import { arrange, placeOf } from '../project/board-model';
 import { BoardMoves } from '../project/board-moves';
+import { BoardExtra } from '../project/saved-filter-model';
 
 /**
  * How near the window a swimlane has to come to load: a screen's height above or below the area the
@@ -31,11 +32,12 @@ export const nearMargin = '100% 0px';
 /**
  * A swimlane of the tenant's board (docs/adr/0018 D4): a project's name, linked to its board, and
  * the project board's columns over the same tickets ({@link BoardColumns}, {@link boardList}),
- * counted against the project's WIP limits. It loads lazily: its list is asked for only while the
- * swimlane is in view or near it, and follows the event stream only then; out of view it keeps
- * what it showed, and asks again — with the page's `ETag`, so an unchanged list costs a `304` —
- * when it comes back. While a card is dragged anywhere on the page it holds still, and while a card
- * of another swimlane is over it, it says no.
+ * counted against the project's WIP limits, and narrowed by the conditions of the saved filter the
+ * page applies (`filter`). It loads lazily: its list is asked for only while the swimlane is in
+ * view or near it, and follows the event stream only then; out of view it keeps what it showed,
+ * and asks again — with the page's `ETag`, so an unchanged list costs a `304` — when it comes back.
+ * While a card is dragged anywhere on the page it holds still, and while a card of another
+ * swimlane is over it, it says no.
  */
 @Component({
   selector: 'app-board-lane',
@@ -55,6 +57,8 @@ export const nearMargin = '100% 0px';
 export class BoardLane {
   readonly project = input.required<Project>();
   readonly tenant = input.required<string>();
+  /** The conditions of the saved filter the page applies beyond the projects; none, every card. */
+  readonly filter = input<BoardExtra>({});
   /** The key of the swimlane a card is dragged from, while one is. */
   readonly dragFrom = input<string | null>(null);
   /** A card of another swimlane is over this one, which refuses it. */
@@ -76,6 +80,7 @@ export class BoardLane {
     this.tickets,
     () => this.project().key,
     () => (this.near() ? this.tenant() : null),
+    this.filter,
   );
   protected readonly loaded = computed(() => this.cards.keys() !== undefined);
   protected readonly view = computed(() =>

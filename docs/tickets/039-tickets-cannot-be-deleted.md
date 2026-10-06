@@ -5,7 +5,7 @@ state: in-progress
 severity: medium
 security: hardening
 threat: a leaked administrator token with admin scope can still delete every ticket it sees; each stays restorable in the bin for thirty days, and the purge takes a browser session
-urgency: later        # rule 4: decided fix; what is left is an end-to-end path and the owner's word
+urgency: later        # rule 4: decided fix; what is left is the owner's word
 effort: M
 blocked-by:
 filed-from: T26
@@ -33,11 +33,14 @@ the person's tenants (`changesExistence`); integration tests in
 `TestPurgingTakesABrowserSession` and `TestADeletedTicketLeavesSearchAndThePersonLevelLists` — and
 `TestTheToolsNeverDeleteAndMissADeletedTicket`.
 
+In the browser, [`deletion.spec.ts`](../../frontend/e2e/deletion.spec.ts) walks the deletion from
+the ticket's page after the question, a member's *No such ticket* and backlog without it, the
+restoration from the deleted tickets, a second deletion and the purge with its two questions — in
+Chromium and WebKit, each in both schemes, in three local runs of the whole tier with two workers on
+2026-10-06.
+
 Outstanding:
 
-- **No end-to-end path** walks the deletion, the bin, the restoration and the purge: the images
-  could not be built where the feature was made, so a spec in `frontend/e2e/` would have run
-  nowhere.
 - **Three decisions of the implementer** wait for the owner's objection or acceptance: ADR 0026
   D3 as amended 2026-10-05 (the purge's function runs inside the transaction that records the act
   instead of writing the act itself), and two consequences ADR 0024's Status names — a purged
@@ -46,11 +49,7 @@ Outstanding:
 
 ## Required changes
 
-1. An end-to-end spec in `frontend/e2e/`: an administrator deletes a ticket from its page after the
-   question, a member gets *No such ticket* at its address and does not find it in the backlog, the
-   administrator restores it from the deleted tickets, deletes it again and purges it with the two
-   questions; `make docker-build e2e`.
-2. The owner's word on the three decisions; an objection amends ADR 0026 or ADR 0024 in place and
+1. The owner's word on the three decisions; an objection amends ADR 0026 or ADR 0024 in place and
    changes `store/deletion.go` and migration 32's function in a new migration.
 
 ## Open questions

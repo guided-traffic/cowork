@@ -36,18 +36,17 @@ integration tier:
   [`rank.go`](../../backend/internal/api/rank.go)); 800 moves into one gap succeed
   (`TestEightHundredMovesIntoOneGap`).
 
-What is missing is what the browser shows: the end-to-end tier of T29 walks the backlog's drag but
-neither the marker nor the sort, and the owner has not looked at either in `make dev` — the marker's
-form (*score* with an arrow, dashed, the figure in its tooltip) and the toolbar button are this
-change's proposal.
+In the browser, [`backlog.spec.ts`](../../frontend/e2e/backlog.spec.ts) walks the marker and the
+sort: a ticket of a higher score that the rank puts last carries the only marker, *Sort by score*
+asks, and after the confirmation the rows read by score and the marker is gone — in Chromium and
+WebKit, each in both schemes, in three local runs of the whole tier with two workers on 2026-10-06.
+
+What is missing is the owner's look at both in `make dev`: the marker's form (*score* with an arrow,
+dashed, the figure in its tooltip) and the toolbar button are this change's proposal.
 
 ## Required changes
 
-1. A path in [`backlog.spec.ts`](../../frontend/e2e/backlog.spec.ts): a project whose rank goes
-   against the score shows the marker on the ticket out of place, *Sort by score* asks, and after
-   the confirmation the rows read by score and the marker is gone — in Chromium and WebKit and both
-   colour schemes.
-2. The owner's look at the marker and the sort in `make dev`, and what follows from it for their
+1. The owner's look at the marker and the sort in `make dev`, and what follows from it for their
    form.
 
 ## Related

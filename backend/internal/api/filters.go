@@ -305,22 +305,9 @@ func (s *Server) checkFilter(me uuid.UUID, name string, params apigen.SavedFilte
 func filterQuery(p apigen.SavedFilterParameters) ticketQuery {
 	return ticketQuery{project: p.Project, state: p.State, typ: p.Type, severity: p.Severity, security: p.Security,
 		horizon: p.Horizon, effort: p.Effort, assignee: p.Assignee, reporter: p.Reporter, parent: p.Parent,
-		urgency:  p.Urgency, //nolint:staticcheck // SA1019: deprecated in the document, taken as horizon until a later release removes it
 		interest: p.Interest, progressMin: p.ProgressMin, progressMax: p.ProgressMax, openedAfter: p.OpenedAfter,
 		openedBefore: p.OpenedBefore, updatedAfter: p.UpdatedAfter, updatedBefore: p.UpdatedBefore, doneAfter: p.DoneAfter,
 		q: p.Q, includeTerminal: p.IncludeTerminal, blocked: p.Blocked, hasOpenQuestions: p.HasOpenQuestions}
-}
-
-// horizonNamed answers a filter stored with urgency, the name horizon had
-// before (docs/adr/0010 D1), under horizon: the stored row keeps it, and
-// every reader meets the filter by this release's name. A filter that names
-// both is refused when it is saved, so none is stored.
-//
-//nolint:staticcheck // SA1019: urgency is deprecated in the document, read here to answer it as horizon
-func horizonNamed(p *apigen.SavedFilterParameters) {
-	if p.Urgency != nil && p.Horizon == nil {
-		p.Horizon, p.Urgency = p.Urgency, nil
-	}
 }
 
 // filterChange is a patch applied to a filter: the values it ends with, the
@@ -395,7 +382,6 @@ func (s *Server) filterView(ctx context.Context, r *store.Reader, t tenantScope,
 	if err := json.Unmarshal(row.Parameters, &v.Parameters); err != nil {
 		return v, fmt.Errorf("read the saved parameters: %w", err)
 	}
-	horizonNamed(&v.Parameters)
 	var l ticketListing
 	for _, e := range s.parseFilters(me, filterQuery(v.Parameters), &l) {
 		v.Warnings = append(v.Warnings, apigen.SavedFilterWarning{Parameter: strings.TrimPrefix(e.Pointer, "query:"), Message: e.Message})

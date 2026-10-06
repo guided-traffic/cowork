@@ -15,6 +15,5 @@ export const CAPABILITY: Capability[] = [
   'interest',
   'upload',
   'create-project',
-  'record-answer',
-  'override-urgency'
+  'record-answer'
 ];

@@ -12,7 +12,9 @@ negates) and 2026-10-03 (D1: `done_after`, for the board's count of the tickets 
 last fourteen days, [ADR 0018](0018-the-views-of-the-first-release.md) D1 as amended that
 day) and 2026-10-05 (D1: `horizon` in place of `urgency`, which stays, deprecated, until a later
 release, [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1 as amended
-that day; built the same day, a saved filter stored with `urgency` read back as `horizon`). `blocked=true` as "the state is blocked" would repeat `state=blocked`; the reading
+that day; built the same day, a saved filter stored with `urgency` read back as `horizon`) and
+2026-10-06 (D1: `urgency` removed, the contract ADR 0010 D1 records that day; built the same day,
+migration 38 rewriting a saved filter's `urgency` to `horizon`). `blocked=true` as "the state is blocked" would repeat `state=blocked`; the reading
 that adds something is the prerequisite one of [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md)
 D1.
 
@@ -26,8 +28,12 @@ value that no longer holds a warning beside it ([`api/filters.go`](../../backend
 The backlog applies them, and *(2026-10-05)* so does the tenant-wide list in the browser,
 `/t/{slug}/tickets`, whose address carries every parameter of D1 — D6's one set, `project`
 included —, so that a saved filter applied there is a link
-([`features/tenant/tenant-tickets.ts`](../../frontend/src/app/features/tenant/tenant-tickets.ts));
-the board does not yet. *(Built 2026-10-05:)* D6 on the dashboard of [ADR 0018](0018-the-views-of-the-first-release.md)
+([`features/tenant/tenant-tickets.ts`](../../frontend/src/app/features/tenant/tenant-tickets.ts)).
+*(2026-10-06:)* The tenant board applies them as D6's pre-filter: a filter's `project` picks the
+swimlanes, a `!` value leaving one out, and every other parameter narrows each swimlane's list, the
+filter's `horizon` within the board's three horizons, `include_terminal` left out because the board
+shows no closed ticket ([`features/tenant/tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts)).
+*(Built 2026-10-05:)* D6 on the dashboard of [ADR 0018](0018-the-views-of-the-first-release.md)
 D6 — `project` as the ticket lists take it, and as its period parameters the time lists' `from` and
 `to`, days ([`dashboard.go`](../../backend/internal/api/dashboard.go) `parseDashboardQuery`).
 
@@ -52,7 +58,7 @@ OR-ed, parameters are AND-ed.** The parameters on ticket lists:
 |---|---|
 | `state` | the states of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) |
 | `type` | the types of [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) |
-| `severity`, `security`, ~~`urgency`~~ `horizon` *(amended 2026-10-05: the word ADR 0010 D1 gives the API; `urgency`, its name before, is taken as `horizon` until a later release removes it, and a request or a saved filter that names both is refused at `query:urgency`, `/parameters/urgency` — one field under two names, which an AND would only narrow to what nobody meant)*, `effort` | the vocabularies of [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) |
+| `severity`, `security`, ~~`urgency`~~ `horizon` *(amended 2026-10-05: the word ADR 0010 D1 gives the API; ~~`urgency`, its name before, is taken as `horizon` until a later release removes it, and a request or a saved filter that names both is refused at `query:urgency`, `/parameters/urgency` — one field under two names, which an AND would only narrow to what nobody meant~~; amended 2026-10-06: `urgency` is no parameter of the lists or the saved filters any more, refused as unknown — `query:urgency`, `/parameters`)*, `effort` | the vocabularies of [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) |
 | `assignee`, `reporter` | a person id, or `me`; `none` for unassigned |
 | `interest` | `me` (the caller has any interest), `any` (anyone has) |
 | `blocked` | `true`, `false` — *(made concrete 2026-10-02)* whether an open ticket the caller can see is a direct `blocks` source of the ticket |

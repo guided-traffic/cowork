@@ -196,10 +196,6 @@ func (s *Session) ReadToken(ctx context.Context) (Token, error) {
 	for _, c := range ct.Request.Capabilities {
 		tok.Capabilities = append(tok.Capabilities, string(c))
 	}
-	// The API answers override-urgency beside set-horizon for the clients of
-	// the release before; this one reads the set under its own names
-	// (docs/adr/0043 D4 as amended 2026-10-05).
-	tok.Capabilities = auth.Canonical(tok.Capabilities)
 	s.mu.Lock()
 	s.token = &tok
 	s.mu.Unlock()

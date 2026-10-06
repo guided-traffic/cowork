@@ -172,8 +172,6 @@ paths:
     $ref: './tenants.yaml#/ticketBody'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/horizon:
     $ref: './tenants.yaml#/ticketHorizon'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override:
-    $ref: './tenants.yaml#/ticketUrgencyOverride'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential:
     $ref: './tenants.yaml#/ticketConfidential'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown:

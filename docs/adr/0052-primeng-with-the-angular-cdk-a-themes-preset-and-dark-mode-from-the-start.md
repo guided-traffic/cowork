@@ -37,7 +37,10 @@ names 1 MiB (1,048,576 bytes), under which the bundle stays. Neither was changed
 holds is open.~~ *(Settled 2026-10-05, built on the recommendation, the owner reviewing the
 result:)* `angular.json` follows D6 in bytes — `"maximumWarning": "1048576b"`, `"maximumError":
 "1572864b"` —, since `"1mb"` meaning 1,000,000 bytes was the builder's unit and not a decision; the
-build warns again once the initial bundle passes 1 MiB.
+build warns again once the initial bundle passes 1 MiB. D9 is verified against a released image
+(2026-10-06): `guidedtraffic/cowork-frontend:0.5.1`, loaded headless in Chromium and WebKit, shows no
+license notice and logs no `[PrimeUI]` warning, while the same bundle with its key replaced shows the
+notice.
 
 ## Context
 

@@ -59,6 +59,11 @@ parameter set T38's filter bar applies to it.
 1. The owner looks at the board in both schemes under `make dev`. The end-to-end tier ran
    `tenant-board.spec.ts` in Chromium and WebKit and both schemes on a runner on 2026-10-05 (run
    37269590545) and passed.
+   The look takes in the board's saved-filter bar, built on the recommendation, and its choices:
+   only the projects go into the address (a reload keeps them, drops the rest); a column's WIP
+   count under a filter counts the cards shown, so its over-limit mark can go; a closed state or
+   `done_after` in a filter loads tickets no column shows; the line "Also filtered by …" is the
+   board's alone; "Show every project" clears excluded projects too.
 
 ## Open questions
 

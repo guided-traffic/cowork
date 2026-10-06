@@ -116,7 +116,14 @@ numbered pages ([ADR 0048](0048-cursor-pagination-on-every-list-numbered-pages-o
 whose address carries every filter of ADR 0049 D1, the backlog's filters and the project as the
 selects of its bar, and to which saved filters apply as to the backlog, `project` included, through
 the same filter bar ([`features/tenant/tenant-tickets.ts`](../../frontend/src/app/features/tenant/tenant-tickets.ts)).
-Not built: D5 on the tenant board.
+*(2026-10-06:)* D5 on the tenant board, built on the recommendation, the owner reviewing the result:
+the same filter bar beside the project filter; a saved filter's projects go into the address — one
+it excludes, `!OPS`, leaves its swimlane out —, every other condition to each swimlane's list as a
+pre-filter ([ADR 0049](0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md)
+D6), its `horizon` narrowing the board's `now`, `release` and `next` and never widening them, and
+`include_terminal`, which would only add the closed tickets a board never shows, left out and named
+under the bar ([`features/tenant/tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts)).
+A swimlane under a filter counts the cards the filter lets through, against the WIP limits too.
 
 **Built** (phase 3, 2026-10-05): D6 as made concrete the same day — `GET
 /api/v1/tenants/{tenant}/dashboard` ([`dashboard.go`](../../backend/internal/api/dashboard.go),
@@ -129,8 +136,15 @@ front page `/t/{slug}` is the dashboard ([`features/tenant/dashboard.ts`](../../
 live through the event stream at most once a second on its own tenant's events, its filters in the
 page's address, its
 charts bars in CSS over the preset's tokens. Looked at as the production build against a mocked
-API in Chromium, in both schemes; not verified: WebKit, real data, the owner's review, and how long
-the queries take over a large tenant; no end-to-end test walks the page yet.
+API in Chromium, in both schemes; ~~not verified: WebKit, real data, the owner's review, and how long
+the queries take over a large tenant; no end-to-end test walks the page yet.~~ *(Amended
+2026-10-06: an end-to-end path walks it with two identities over the built images, in Chromium and
+WebKit and both schemes — the member's tiles leaving out a confidential ticket and a project
+restricted away from the member, a filter chosen in the page kept in the address across a reload, a
+ticket one identity moves moving the other's tile within five seconds, a deleted ticket leaving both
+— and a picture per browser and scheme compares it
+([ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md) D3).
+Not verified: the owner's review, and how long the queries take over a large tenant.)*
 
 ## Context
 

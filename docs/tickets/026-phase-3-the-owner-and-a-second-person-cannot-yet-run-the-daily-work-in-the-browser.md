@@ -27,15 +27,15 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   identity provider) and 5 (`cowork-mcp` and the chat) were built ahead of this phase and released
   in 0.3.0; phase 3 is the open phase before phase 6
   ([project-plan.md](../planning/project-plan.md)).
-- **Merged on `main` (`9c6948b`, 2026-10-05), not yet released:** everything the children below
+- **Released in 0.5.0** (`9c6948b`, 2026-10-05): everything the children below
   built — the horizon, the person-level pages with the inbox and "next for me" across every tenant,
   the ticket page's editors, the prerequisite tree, rendered and sanitised Markdown, search, the
   score with the rank's rebalancing, deletion with the bin, saved filters, the tenant board, the
   dashboard as the tenant's front page, the tenant's ticket list, the tenant's tokens, the
   attachment quota, mentions, numbered administration pages with the audit page, and the
-  end-to-end tier. What is left is listed per child below: end-to-end paths, one feature (saved
-  filters on the tenant board), the owner's reviews of what was built on the recommendation, and
-  the owner's two changes outside the code.
+  end-to-end tier. What is left is listed per child below: the owner's reviews of what was
+  built on the recommendation, one open question, and the second half of the horizon's contract.
+  Every end-to-end path of the children is built and passes (2026-10-06).
 - `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
   as the local administrator or through Dex; the dev server's proxy holds no credential
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
@@ -74,25 +74,16 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
 
 1. **What is left of the children.** Each lands with its tests, the pages that describe what it
    built, and the Status of every ADR it builds:
-   - T52 — the contract of the deprecated `urgency` names and of the capability's old name, in a
-     release after the one that ships them
-   - T28 — by hand, against a released image: the UI shows no PrimeUI license notice (the owner)
-   - T29 — the `main` ruleset requires `End-to-End Tests` (the owner)
-   - T30 — the end-to-end path of the ticket page's editing
-   - T31 — the end-to-end path of the conversation's writes and the prerequisite tree seen by a
-     second browser
+   - T52 — the narrowing of the two capability checks, in a release after the one that ships
+     migration 38 (the API's old names are removed)
    - T32 — the owner's review of the attachment quota
-   - T33 — the end-to-end check of the rendered Markdown under the shell's content-security policy
-   - T34 — the end-to-end path of the score's marker and the sort by score, and the owner's look
-   - T35 — the end-to-end path through the start page
+   - T34 — the owner's look at the score's marker and the sort by score
    - T36 — the owner's review of the mention
-   - T37 — the end-to-end path of the search
-   - T38 — saved filters on the tenant board, and the end-to-end path of a shared filter
-   - T39 — the end-to-end path of deletion, restore and the bin, and the owner's word on its three
-     decisions
+   - T38 — the owner's answer on a shared filter whose owner left the tenant
+   - T39 — the owner's word on its three decisions
    - T40 — the owner's review of the tenant's tokens page
-   - T42 — the owner's look at the tenant board
-   - T43 — the end-to-end path of the dashboard with two identities, and the owner's review
+   - T42 — the owner's look at the tenant board and its saved-filter bar
+   - T43 — the owner's review of the dashboard
    - T53 — the owner's look at the tenant's ticket list
 2. **The phase verification.** The Playwright path of T29,
    [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts), passes with both identities in both
@@ -106,6 +97,3 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    variable, value, route and problem code the phase added; the Status of every ADR the phase
    built says what is built; the phase-3 section is gone from
    [project-plan.md](../planning/project-plan.md).
-4. **A stale statement found while the phase was built:** ADR 0058 D2 runs the services locally
-   from a development `compose.yaml`, which does not exist — the development stack is the
-   Makefile's containers and `make dev`; the record is corrected in place.

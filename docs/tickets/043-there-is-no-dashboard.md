@@ -36,27 +36,22 @@ in the navigation, before *Board*:
   on the events of its own tenant only, the person-level stream carrying every tenant of the
   person; its unit tests per tile beside it. *Overview* stays marked while the address carries the
   filters.
+- In the browser, [`dashboard.spec.ts`](../../frontend/e2e/dashboard.spec.ts) walks the page with
+  two identities in a tenant of the test's own: the member's tiles leave out a confidential ticket
+  and a project restricted away from the member, the administrator's count them; a filter chosen in
+  the page lands in the address and survives a reload; a ticket the member moves moves the
+  administrator's tile within five seconds; a ticket the administrator deletes leaves both.
+  [`visual.spec.ts`](../../frontend/e2e/visual.spec.ts) compares the page of the visual fixture
+  tenant in both schemes beside the board's dark picture. Both in Chromium and WebKit, each in both
+  schemes, in three local runs of the whole tier with two workers on 2026-10-06.
 
-What is not done:
-
-- **No end-to-end path walks the page.** ADR 0018's consequences ask that every view be a path a
-  Playwright test walks with two identities, and ADR 0052's that the smoke paths run in both
-  schemes; [`frontend/e2e/`](../../frontend/e2e/) has none for the dashboard. It was not written
-  because the suite runs against the built images, which could not be built for this change.
-- **The owner has not reviewed the page.** It was looked at only as the production build against
-  a mocked API in Chromium, both schemes at 1440 px and the dark one at 1000 px; not in WebKit,
-  not with real data, not on a phone's width.
+What is not done: **the owner has not reviewed the page.** Besides the pictures above, it was looked
+at only as the production build against a mocked API in Chromium, both schemes at 1440 px and the
+dark one at 1000 px; not on a phone's width.
 
 ## Required changes
 
-1. A Playwright path in [`frontend/e2e/`](../../frontend/e2e/), with two identities: the
-   administrator files a confidential ticket and one in a project restricted away from the member;
-   both open `/t/{slug}`; the member's tiles do not count them, the administrator's do; a filter
-   chosen in the page lands in the address and survives a reload; a ticket moved by one identity
-   moves the other's tile within a few seconds; a ticket deleted by the administrator leaves both
-   dashboards. A screenshot in both schemes beside the board's in
-   [`visual.spec.ts`](../../frontend/e2e/visual.spec.ts).
-2. The owner reviews the page under `make dev` in both schemes; what the review changes goes into
+1. The owner reviews the page under `make dev` in both schemes; what the review changes goes into
    the page and its unit tests.
 
 ## Open questions

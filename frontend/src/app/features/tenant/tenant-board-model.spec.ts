@@ -1,5 +1,5 @@
 import { Project } from '../../api/models';
-import { chosenKeys, laneOf, lanesOf, refusingLane } from './tenant-board-model';
+import { chosenKeys, excludes, laneOf, lanesOf, refusingLane } from './tenant-board-model';
 
 function project(key: string, fields: Partial<Project> = {}): Project {
   return {
@@ -47,6 +47,20 @@ describe('the tenant board model (docs/adr/0018 D4)', () => {
 
     it('has none for a project the filter names that the person does not see, or that is archived', () => {
       expect(lanesOf([cow, ops, old], ['GONE', 'OLD'])).toEqual([]);
+    });
+
+    it('has none for a project the filter excludes (docs/adr/0049 D2)', () => {
+      const doc = project('DOC');
+      expect(lanesOf([cow, doc, ops], ['!OPS']).map((each) => each.key)).toEqual(['COW', 'DOC']);
+      expect(lanesOf([cow, doc, ops], ['COW', 'OPS', '!OPS']).map((each) => each.key)).toEqual([
+        'COW',
+      ]);
+      expect(lanesOf([cow, ops], ['!COW', '!OPS'])).toEqual([]);
+    });
+
+    it('tells a project the filter excludes from one it names', () => {
+      expect(excludes('!OPS')).toBe(true);
+      expect(excludes('OPS')).toBe(false);
     });
   });
 

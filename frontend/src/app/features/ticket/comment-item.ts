@@ -1,5 +1,13 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ConfirmationService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
@@ -296,8 +304,15 @@ export class CommentItem {
   protected readonly conflict = signal(false);
   protected readonly draft = signal('');
   protected readonly busy = signal(false);
-  /** The earlier texts while they are shown; null while they are not. */
-  protected readonly revisions = signal<CommentRevision[] | null>(null);
+  /**
+   * The earlier texts while they are shown; null while they are not. They are the history of the
+   * version they were read for: a newer one — an edit, a withdrawal, which hides the history as it
+   * hides the text (docs/adr/0015 D3) — closes them.
+   */
+  protected readonly revisions = linkedSignal<number, CommentRevision[] | null>({
+    source: () => this.comment().version,
+    computation: () => null,
+  });
   /** The persons the edit picked to mention, beside those the comment mentions already. */
   protected readonly picked = signal<Mentionable[]>([]);
   protected readonly candidates = computed(() =>
@@ -398,7 +413,10 @@ export class CommentItem {
     }
     const comment = this.comment();
     try {
-      this.revisions.set(await this.conversation.commentRevisions(this.ticketKey(), comment));
+      const revisions = await this.conversation.commentRevisions(this.ticketKey(), comment);
+      if (this.comment().version === comment.version) {
+        this.revisions.set(revisions);
+      }
     } catch (error) {
       this.problems.report(error);
     }

@@ -259,7 +259,7 @@ func (s *Server) CreateMyToken(ctx context.Context, req apigen.CreateMyTokenRequ
 		row, err := w.InsertToken(ctx, writeq.InsertTokenParams{
 			UserID: p.PersonID, Name: spec.name, TokenHash: hash[:], Scope: spec.scope,
 			RestrictedTenantID: spec.tenantID, RestrictedProjectID: spec.projectID,
-			Agent: spec.agent, Capabilities: auth.Stored(spec.capabilities), ExpiresAt: spec.expiresAt,
+			Agent: spec.agent, Capabilities: spec.capabilities, ExpiresAt: spec.expiresAt,
 		})
 		if err != nil {
 			return err
@@ -331,8 +331,6 @@ func (s *Server) tokenSpec(ctx context.Context, p auth.Principal, body apigen.Cr
 		for _, c := range *body.Capabilities {
 			named = append(named, string(c))
 		}
-		// A set is stored under this release's names, override-urgency as
-		// set-horizon (docs/adr/0043 D4 as amended 2026-10-05).
 		named = auth.Canonical(named)
 	}
 	switch {

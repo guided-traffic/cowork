@@ -15,12 +15,9 @@ conventional commits with a GitHub App token and commits the badge.
 
 **`main` is protected** by the ruleset `main`
 ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)):
-a change arrives by pull request; the thirteen jobs it names are required checks, bound to the GitHub
-Actions app; the branch must be up to date with `main`; history stays linear; force pushes and
-deletion are refused. **The ruleset must gain the fourteenth, `End-to-End Tests`** (the job `e2e`):
-a required check is the ruleset's, which only the owner changes (ADR 0073 D6); until it is added
-the job runs on every pull request and `semantic-release` needs it, but a pull request it fails can
-still be merged. A pull request is squashed, and the squash commit's subject is the pull
+a change arrives by pull request; the fourteen jobs it names, `End-to-End Tests` (the job `e2e`)
+among them, are required checks, bound to the GitHub Actions app; the branch must be up to date
+with `main`; history stays linear; force pushes and deletion are refused. A pull request is squashed, and the squash commit's subject is the pull
 request's title — so the title is the conventional commit semantic-release reads, and a
 `fix:` or `feat:` title cuts a release. Auto-merge is on, and the head branch is deleted on
 merge. The organisation's administrators and the release App bypass the ruleset; the App

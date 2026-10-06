@@ -362,10 +362,7 @@ the columns released before keep their places. The mark tells, it does not bind:
   [ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
   D6). It shows a token nothing but itself, never another of its person's, and a browser session
   has no token to show (`404`). The MCP client reads it to tell the model the limits it will run
-  into ([agent-client.md](agent-client.md)). Where the request holds `set-horizon`, its set names
-  `override-urgency` after it — the capability's name before 2026-10-05, which the `cowork-mcp` of
-  the release before looks for —: a second name of the same capability, granting nothing more
-  (`requestCapabilities` in [`api/token.go`](../../backend/internal/api/token.go)).
+  into ([agent-client.md](agent-client.md)).
 
 ## Capabilities, the baseline and the hard-off list
 
@@ -374,7 +371,7 @@ the columns released before keep their places. The mark tells, it does not bind:
 | `decide` | `analysed → decided` |
 | `close` | the done act, both ways to `done` ([ADR 0009](../adr/0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5): done by hand, and the `PATCH` that brings the last of a ticket's three progress stages to 100 — only from `in-progress` or `review`, otherwise `agent_forbidden` (`mayClose` in [`api/transitions.go`](../../backend/internal/api/transitions.go)); the verification note stays required, and the open prerequisites the agent can see still refuse. Without it that `PATCH` is refused whole, and the stage keeps its value |
 | `drop` | a move to `dropped` from any state but `done` and `dropped` |
-| `set-horizon` | setting a ticket's horizon, `later` included, and naming one other than `later` at a filing. Named `override-urgency` until 2026-10-05 ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D4 as amended): a set sent with the old name is stored with the new one, a set stored before keeps the old name — which the checks of migration 37 still take — and `auth.Canonical` reads it as `set-horizon` wherever a set comes in, so both names guard the same acts and no other |
+| `set-horizon` | setting a ticket's horizon, `later` included, and naming one other than `later` at a filing. Named `override-urgency` until 2026-10-05 ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D4 as amended that day and 2026-10-06): a set sent with the old name is `400`, and migration 38 rewrote every stored set to the new one. The checks still take the old name, which release 0.5 writes beside `set-horizon` after an image rollback, and `auth.Canonical` drops it wherever a set is read, so it never stands in a request's set and grants nothing of its own |
 | `interest` | a `need` or `urgent` stake |
 | `upload` | uploading an attachment |
 | `create-project` | creating a project |
@@ -516,7 +513,7 @@ cannot name; a comment, a file, a question, a time entry, a filing or a stake of
 no mark, and a plain token's act there reads as its person's — the activity still marks the act,
 except a booking, which the activity leaves out, and the tenant's audit view filters the record by
 token. Nothing is backfilled. **Two fields of the API**: a link's `created_by` and a set
-horizon's `by` (`horizon_set.by`, and `urgency_override.by` under its deprecated name) name the
+horizon's `by` (`horizon_set.by`) name the
 person whether the person, an agent or a plain token made it; no view of the UI shows either, and
 the act behind each — `linked`, `overridden` — is marked in the activity.
 An image rolled back to the release before migration 27 writes no mark on any of these rows.

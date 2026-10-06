@@ -8,6 +8,7 @@ import {
   columnSpecs,
   dropMove,
   dropTargets,
+  horizonsOf,
   menuMoves,
   placeOf,
   specOf,
@@ -66,6 +67,29 @@ describe('the columns (docs/adr/0018 D1, docs/adr/0019 D3)', () => {
 
   it('show the horizons now, release and next', () => {
     expect(boardHorizons).toEqual(['now', 'release', 'next']);
+  });
+});
+
+describe('horizonsOf (docs/adr/0049 D2, D6)', () => {
+  it('are the board’s horizons where the filter names none', () => {
+    expect(horizonsOf()).toEqual(['now', 'release', 'next']);
+    expect(horizonsOf([])).toEqual(['now', 'release', 'next']);
+  });
+
+  it('narrow the board’s horizons to the plain ones the filter names', () => {
+    expect(horizonsOf(['now'])).toEqual(['now']);
+    expect(horizonsOf(['later', 'next', 'now'])).toEqual(['now', 'next']);
+  });
+
+  it('leave out the horizons the filter excludes', () => {
+    expect(horizonsOf(['!next'])).toEqual(['now', 'release']);
+    expect(horizonsOf(['now', 'release', '!release', '!icebox'])).toEqual(['now']);
+  });
+
+  it('ask for no ticket where the filter leaves none of the board’s, never for every horizon', () => {
+    const none = ['now', 'release', 'next', '!now', '!release', '!next'];
+    expect(horizonsOf(['later', 'icebox'])).toEqual(none);
+    expect(horizonsOf(['!now', '!release', '!next'])).toEqual(none);
   });
 });
 

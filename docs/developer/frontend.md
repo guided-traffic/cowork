@@ -6,7 +6,8 @@ search, the backlog, the two boards and the tenant's ticket list, the assistant,
 client, and the development loop.
 Read against the tree on 2026-10-04, the search, the rendered texts, the deleted tickets, the
 saved filters, the tenant's ticket list, the score and "next for me", the numbered pages of the members and the
-tokens, the tenant's tokens, the attachments' usage and the mentions on 2026-10-05. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
+tokens, the tenant's tokens, the attachments' usage and the mentions on 2026-10-05, the saved filters on the tenant board on
+2026-10-06. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
 the logo, the license, the content-security policy's build), [ADR 0053] (signals and services),
 [ADR 0054] (the event stream), [ADR 0055] (English, the browser's locale) and [ADR 0076] (the chat).
 
@@ -440,11 +441,8 @@ dash for `decided`, which waits, and for a closed ticket), the last update and t
 
 **Horizon.** The five values are the ticket's horizon ([ADR 0010] D3): a person or an agent sets
 it, and nothing derives it. The page reads `horizon` and `horizon_set` and writes through `PUT
-…/horizon`; the API's deprecated `urgency` fields and routes and the capability name
-`override-urgency` ([ADR 0010] D1 as amended 2026-10-05) are read nowhere — but for an address of
-[the tenant's ticket list](#the-tenants-ticket-list) that still names `urgency`, which it passes on
-as it is — and nothing reads `urgency_derived`: a group is the horizon, `later` the one a ticket
-nobody placed stands in. The
+…/horizon`; the API has no other name for them ([ADR 0010] D1 as amended 2026-10-06): a group is
+the horizon, `later` the one a ticket nobody placed stands in. The
 test ids keep their values (`group-now`); the group's attribute is `data-horizon`. What the page
 says to the person is *horizon*, never urgency, a derived value, a rule or an override. The detail page's field
 *Horizon* ([`ticket-fields.html`](../../frontend/src/app/features/ticket/ticket-fields.html)) is a
@@ -520,7 +518,8 @@ how many tickets moved, or that the backlog follows the score already.
 **Saved filters** ([ADR 0018] D5). The filter bar holds
 [`SavedFilters`](../../frontend/src/app/features/project/saved-filters.ts),
 `<app-saved-filters [current] [applied] [leftOut] (chosen)>`, the part [the tenant's ticket
-list](#the-tenants-ticket-list) holds as well: a select of the person's filters by name and the
+list](#the-tenants-ticket-list) and [the tenant board](#the-tenant-board) hold as well: a select of
+the person's filters by name and the
 shared ones with their owner — another member's that the server answers `redacted` is listed and
 disabled, *names something you cannot see* —; for the filter applied, the owner's share toggle and
 deletion, or its owner's name; *Save filter*, a dialog for a name and *Share with the tenant* over
@@ -565,7 +564,7 @@ in the same column and moves the same way on both:
 
 | Part | What it is |
 |---|---|
-| [`board-list.ts`](../../frontend/src/app/features/project/board-list.ts) `boardList` | The list: `projectTicketPages` with the horizons `now`, `release` and `next` and no page limit while a tenant is named, and the keys it answered last for the project, kept while it loads again or while it is not asked for |
+| [`board-list.ts`](../../frontend/src/app/features/project/board-list.ts) `boardList` | The list: `projectTicketPages` with the horizons `now`, `release` and `next` and no page limit while a tenant is named, and the keys it answered last for the project, kept while it loads again or while it is not asked for; a swimlane of the tenant board narrows it by the conditions of the saved filter the page applies, whose `horizon` narrows the board's three and never widens them (`horizonsOf` in `board-model.ts`: a filter that leaves none of them asks for them and for none of them, because a list asked for no horizon is every horizon) |
 | [`board-columns.ts`](../../frontend/src/app/features/project/board-columns.ts) `BoardColumns` | The grid: *Next* and the five state columns with their counts, the cards, the drag with its marks and its hold, and the card's menu; `idPrefix` keeps the ids of its headings unique where a page shows several, `headingLevel` puts its headings one level below a swimlane's (`aria-level`), `hold` holds it while a card is dragged elsewhere on the page |
 | [`board-moves.ts`](../../frontend/src/app/features/project/board-moves.ts) `BoardMoves` | The moves, provided by the page: what a move on its way shows, the transition at once or after the dialog, *Now*, the live region's sentence and where the keyboard goes after a move; the page shows the dialog and the live region |
 
@@ -635,7 +634,7 @@ functions in [`tenant-board-model.ts`](../../frontend/src/app/features/tenant/te
 | Function | Decides |
 |---|---|
 | `chosenKeys` | The filter of the address: `?project=`, repeated, each key once; none, every project |
-| `lanesOf` | The swimlanes: every project that is not archived, or those of them the filter names, in the order of the list |
+| `lanesOf`, `excludes` | The swimlanes: every project that is not archived, or those of them the filter names, in the order of the list, without a project the filter excludes, `!OPS` ([ADR 0049] D2) |
 | `laneOf` | The swimlane an element is in, by the `data-lane` of the swimlane's element |
 | `refusingLane` | The swimlane that says no to a dragged card: any but the card's own |
 
@@ -652,7 +651,26 @@ Without an `IntersectionObserver` every swimlane loads.
 **The filter** is a select of every project with a search, *Every project* when nothing is
 chosen. The choice is the address's `project`, repeated as the API's filters are ([ADR 0049] D1),
 written with `replaceUrl` and read back as the page's input, so a board can be linked and comes
-back as it was; a filter that names no project here says so and offers every project.
+back as it was; a filter that names no project here says so and offers every project. The select
+shows the projects the address names; one it excludes, `!OPS`, stays in the address when the
+select changes.
+
+**Saved filters** ([ADR 0018] D5) apply as on the backlog, through the same `SavedFilters` beside
+the select, with what the board applies — the address's projects and the applied filter's other
+conditions, `fromBoard` — as `current` and `boardLeftOut` as `leftOut`. What a board makes of a
+filter is `toBoard` in
+[`saved-filter-model.ts`](../../frontend/src/app/features/project/saved-filter-model.ts): its
+`project` goes into the address, which the swimlanes follow, and every other condition into the
+page's `extra`, which each swimlane hands its list as a pre-filter ([ADR 0049] D6) — its `horizon`
+narrowed to the board's three (`boardList`). What a condition selects beyond the board, a closed
+state or `done_after`, is loaded and placed nowhere, as a closed ticket always is.
+`include_terminal` would only add closed tickets, which no column holds: it stays out, and the bar
+says so, *a board shows no closed ticket*. Under the bar, *Also filtered by …* names what the board
+applies beyond its select (`describe`). Choosing none clears the projects and the rest. Only the
+projects are in the address: a reload keeps them and drops the other conditions with the applied
+filter, as the backlog drops its search and states. A swimlane counts what it shows, so under a
+filter its counts, and the WIP limits' marks, are those of the cards the filter lets through. The
+applied filter belongs to its tenant: another tenant's page starts without one.
 
 **Drags.** Each swimlane is a `cdkDropListGroup` of its own: a card goes among the columns of its
 swimlane with the project board's rules, menu and dialogs (one `BoardMoves`, one dialog and one
@@ -780,7 +798,7 @@ a search hit's — scrolls the page to that part once it has loaded.
 | [`TicketBody`](../../frontend/src/app/features/ticket/ticket-body.ts) | The body edited as Markdown and replaced as a whole ([ADR 0011] D1), `PUT …/body` over the version the editing began with | Written over at once while the body is still the one it began with; otherwise the editor keeps the text and shows [`ConflictNote`](../../frontend/src/app/shared/conflict-note.ts): *Write mine over it*, or *Take the new version* into the editor |
 | [`TicketFields`](../../frontend/src/app/features/ticket/ticket-fields.ts) | The fields; the horizon as a select — `PUT …/horizon` with the choice, `later` clearing the horizon set — and after a horizon other than `later` a field for the reason a person may add (Enter sends the horizon again with it, Escape, an empty Enter or leaving the field drops it, as in the backlog); the parent from [`ParentPicker`](../../frontend/src/app/features/ticket/parent-picker.ts); for a tenant administrator (the session's role `admin`) the confidential flag in [`ConfidentialDialog`](../../frontend/src/app/features/ticket/confidential-dialog.ts), which sets it with an optional reason and lifts it only with one ([ADR 0065] D3, D6) | The page's dialog for a field and for the horizon; the confidential dialog says so in its form |
 | [`PrerequisiteTree`](../../frontend/src/app/features/ticket/prerequisite-tree.ts) | Nothing: `GET …/prerequisites`, 200 nodes, *Prerequisites* or *Dependents* (`direction=up`) | — |
-| [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a tenant administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts. An edit sends the comment's mentions: those it holds, but one whose `@<name>` the text held and the edit took out, and the persons picked in the edit | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
+| [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a tenant administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts, until a newer version of the comment — an edit, a withdrawal, which hides them as it hides the text — closes them. An edit sends the comment's mentions: those it holds, but one whose `@<name>` the text held and the edit took out, and the persons picked in the edit | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
 | [`EditQuestion`](../../frontend/src/app/features/ticket/conversation-forms.ts) | The asker changes an open question's text, options and recommendation over its version | As a comment |
 | [`TimeCard`](../../frontend/src/app/features/ticket/records-cards.ts) | The author corrects an entry in its row over its version, or voids it; *corrected* shows its earlier values | Time entries are not published: the card loads them again and shows the conflict note |
 | [`TicketDelete`](../../frontend/src/app/features/ticket/ticket-delete.ts), beside the moves for a tenant administrator | The deletion ([ADR 0024] D1, D7): the open tickets that wait on it read first (`TicketActions.dependents`), then the page's dialog names them — a deletion does not refuse over them — and says that the ticket can be restored from the deleted tickets for thirty days; confirmed, `DELETE …/{number}`, a toast, and the project's backlog | — |
@@ -824,6 +842,16 @@ request carries the session cookie like any other. Every load of a preview is a 
 records as `downloaded` — the API answers `Cache-Control: no-store`, so a page opened again loads it
 again. The card lists every file of the ticket, those of its comments marked *on a comment*; a
 comment lists its own.
+
+**Not verified:** how the page's editors and cards look on a real screen, in either scheme — the
+title and body editors with their conflict note, the horizon select and its reason field, the parent
+picker, the confidential dialog, a comment's editor, its earlier texts and its withdrawal, the
+question's editor and the tree card. The end-to-end tier drives the title and body editors, the
+comment's, the question's and the tree in Chromium and WebKit in both schemes and asserts what they
+hold ([testing.md](testing.md#end-to-end-tests)); it compares no picture of them, and nobody has
+looked at them. Nor how a tree of hundreds of nodes reads: the card draws at most 200, and the route
+answers a graph of forty tickets and a hundred and eighty links in milliseconds in the integration
+tier.
 
 ### An editor belongs to its ticket
 
@@ -992,7 +1020,7 @@ The chat in the UI ([ADR 0076]; the backend's half is [chat.md](chat.md)) is thr
 
 | Piece | What it does |
 |---|---|
-| [`ChatPanel`](../../frontend/src/app/layout/chat-panel.ts) | The conversation as text — every message by interpolation, line breaks kept, never `innerHTML` and no Markdown, because a model's output can be steered by ticket text —; a call as a card with its tool's name, its arguments as folded JSON text, the start of its answer and its state (`running`, `ok`, `failed`, `no result`) — every call runs at once, nothing waits for the person; the input (Enter sends, Shift+Enter is a new line, the Enter that ends a composition is neither); Stop while a turn runs; in the header the provider's choice where more than one is configured, and the toggle of *What the assistant may do*: the nine capabilities as switches with their meaning (`selectableCapabilities` and `capabilityMeanings` of `shared/capabilities.ts`, the token page's too: the API's `Capability` without `override-urgency`, the name `set-horizon` had before, which is never a switch) and the *Full* and *Assisted* shortcuts; an empty state that names the picked provider and model and says the tenant's text goes to it. The log takes the focus (`tabindex="0"`, a ring of `--p-primary-color` inside it), so that a conversation of text alone scrolls from the keyboard, and follows the newest entry — what came while the panel was closed too — until the person scrolls up; a notice that offers a new conversation has *New conversation* under it, which gives the keyboard to the input |
+| [`ChatPanel`](../../frontend/src/app/layout/chat-panel.ts) | The conversation as text — every message by interpolation, line breaks kept, never `innerHTML` and no Markdown, because a model's output can be steered by ticket text —; a call as a card with its tool's name, its arguments as folded JSON text, the start of its answer and its state (`running`, `ok`, `failed`, `no result`) — every call runs at once, nothing waits for the person; the input (Enter sends, Shift+Enter is a new line, the Enter that ends a composition is neither); Stop while a turn runs; in the header the provider's choice where more than one is configured, and the toggle of *What the assistant may do*: the nine capabilities as switches with their meaning (`selectableCapabilities` and `capabilityMeanings` of `shared/capabilities.ts`, the token page's too: every value of the API's `Capability`, in its order) and the *Full* and *Assisted* shortcuts; an empty state that names the picked provider and model and says the tenant's text goes to it. The log takes the focus (`tabindex="0"`, a ring of `--p-primary-color` inside it), so that a conversation of text alone scrolls from the keyboard, and follows the newest entry — what came while the panel was closed too — until the person scrolls up; a notice that offers a new conversation has *New conversation* under it, which gives the keyboard to the input |
 | [`ChatService`](../../frontend/src/app/core/chat.service.ts) | The turn: `fetch` `POST …/chat` — the `HttpClient` waits for a whole body, and `EventSource` cannot `POST` — with the conversation so far, the page (`pageContext`), the conversation's id and the picked provider's id, `X-Requested-With: cowork` from [`http.ts`](../../frontend/src/app/core/http.ts) and the session's cookie; one turn at a time and never sent again by itself, because a repeated turn repeats its acts; `done`'s messages appended as they are; for a turn cut without `done`, `TurnRecord` writes down what its events reported, so the model hears next time what happened — held to what the next turn may carry: a step of blank text and no answered call left out, a step's text cut to the 100,000 characters of a message —; a `ui` event opened only when `navigable` accepts it — a ticket, a backlog or a board of the turn's tenant —, else the call's card says not opened; a `401` sends the browser to the login, a `chat_unavailable` loads the availability again and says why in a toast; a conversation too long for a turn (`payload_too_large` or any `413`, a `validation_failed` that points under `/messages`) is a notice that offers a new conversation — never trimmed by itself —, `chat_busy` a notice whose *Stop them* calls `DELETE …/chat/turns`, and an answer of white space only, whose `done` adds nothing, a notice that there was no answer; Stop aborts the `fetch` and calls `DELETE …/chat/turns` for the turn's tenant, so a proxy that keeps the backend's request open keeps no turn alive, and a `done` with the reason `stopped` — stopped from elsewhere — shows as stopped; a running turn stops once the chat is no longer available, because the panel and its Stop go with it |
 | [`chat-stream.ts`](../../frontend/src/app/core/chat-stream.ts) | `EventStreamParser` cuts the response's text into events by the HTML standard's event-stream format — CRLF, LF or CR, a CR at a piece's end waiting for the next, comments read past, `data` lines joined —; `chatEvents` decodes the bytes, a character split between two pieces waiting for its rest, and cancels the body when the reader stops; `chatEvent` holds each event's data to the shape the API document gives it and reads past one it does not know |
 
@@ -1097,8 +1125,9 @@ against the generated client with `HttpTestingController`, components against mo
 (ADR 0053 D7). The generated client, `main.ts` and the production route stub are excluded from
 coverage (`coverageExclude` in [`angular.json`](../../frontend/angular.json)). The production
 bundle in its image is walked by the end-to-end suite in [`frontend/e2e/`](../../frontend/e2e/), in
-Chromium and WebKit and both schemes ([testing.md](testing.md#end-to-end-tests)): the `data-testid`
-attributes it finds things by are part of a page's contract, and `ng lint` covers the suite too.
+Chromium and WebKit and both schemes ([testing.md](testing.md#end-to-end-tests)): the roles,
+accessible names and labels it finds things by, and the `data-testid` attributes where nothing
+accessible names an element, are part of a page's contract, and `ng lint` covers the suite too.
 
 [ADR 0009]: ../adr/0009-ticket-states-are-the-frontmatter-states-plus-blocked.md
 [ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md
