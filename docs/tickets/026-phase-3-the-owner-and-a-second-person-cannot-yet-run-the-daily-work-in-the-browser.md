@@ -77,7 +77,6 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
 
 1. **What is left of the children.** Each lands with its tests, the pages that describe what it
    built, and the Status of every ADR it builds:
-   - T52 — the narrowing of the two capability checks, due now that 0.6.0 shipped migration 38
    - T32 — the owner's review of the attachment quota
    - T34 — the owner's look at the score's marker and the sort by score
    - T36 — the owner's review of the mention
