@@ -171,6 +171,39 @@ func TestFileMemory(t *testing.T) {
 	assert.False(t, ok, "one file per binding")
 }
 
+// docs/adr/0067 D5: the model the SessionStart hook read, one file per
+// project directory, for the server of that directory.
+func TestFileMemoryKeepsTheModelPerProjectDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "cowork-mcp")
+	m := FileMemory{Dir: dir}
+	model, err := m.Model("/Users/ada/src/app")
+	require.NoError(t, err)
+	assert.Empty(t, model, "a missing file names no model")
+
+	require.NoError(t, m.SetModel("/Users/ada/src/app", "claude-opus-5"))
+	require.NoError(t, m.SetModel("/Users/ada/src/app", "claude-haiku-4-5"))
+	model, err = m.Model("/Users/ada/src/app")
+	require.NoError(t, err)
+	assert.Equal(t, "claude-haiku-4-5", model, "the last start names the model")
+	model, err = m.Model("/Users/ada/src/app_2")
+	require.NoError(t, err)
+	assert.Empty(t, model, "one file per project directory")
+
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "one file, no leftovers")
+	assert.Regexp(t, `^model-[0-9a-f]{16}\.json$`, entries[0].Name())
+	path := filepath.Join(dir, entries[0].Name())
+	info, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
+
+	require.NoError(t, os.WriteFile(path, []byte(`{"project_dir":"/elsewhere","model":"x"}`), 0o600))
+	model, err = m.Model("/Users/ada/src/app")
+	require.NoError(t, err)
+	assert.Empty(t, model, "another directory's file is not read as this one's")
+}
+
 func TestParseRemotes(t *testing.T) {
 	out := "upstream\thttps://github.com/acme/cowork.git (fetch)\nupstream\thttps://github.com/acme/cowork.git (push)\n" +
 		"origin\thttps://me:ghp_secret@github.com/me/cowork.git (fetch)\norigin\tgit@github.com:me/cowork.git (push)\n" +

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	apispec "github.com/guided-traffic/cowork/backend/api"
 	"github.com/guided-traffic/cowork/backend/internal/tools"
 )
 
@@ -159,6 +161,100 @@ func TestTheHooks(t *testing.T) {
 	code, stdout, _ = run(t, Env{Lookup: configured, Stdin: strings.NewReader(`{"stop_hook_active": true}`)}, "session-end")
 	assert.Equal(t, 0, code)
 	assert.Empty(t, stdout)
+}
+
+// sessionStartInput is the input Claude Code hands a SessionStart hook, as
+// its hook reference shows it (code.claude.com/docs/en/hooks, "SessionStart
+// input"): the model is a string, which Claude Code may leave out.
+const sessionStartInput = `{
+  "session_id": "abc123",
+  "transcript_path": "/Users/.../.claude/projects/.../00893aaf-19fa-41d2-8238-13269b9b3ca0.jsonl",
+  "cwd": "/Users/...",
+  "hook_event_name": "SessionStart",
+  "source": "resume",
+  "model": "claude-opus-5",
+  "seconds_since_last_response": 5400,
+  "context_tokens": 182340,
+  "prompt_cache_likely_expired": true,
+  "estimated_cache_write_usd": 1.1396
+}`
+
+// docs/adr/0067 D5, docs/adr/0036 D3: the model Claude Code names to the
+// SessionStart hook is the model of the agent mark of the server in the same
+// project directory — when the hook runs after the server started, too — and
+// not of another directory's server.
+func TestTheSessionStartHookNamesTheModelOfTheServer(t *testing.T) {
+	mux := fakeAPI(t, map[string]any{
+		"GET /api/v1/version": map[string]any{"version": "0.9.1", "commit": "c", "build_time": "0"},
+		"GET /api/v1/me/token": map[string]any{"id": "0199a3c2-1d2e-7f00-8000-000000000001", "name": "laptop", "scope": "write",
+			"agent": true, "capabilities": []string{}, "created_at": "2026-10-01T00:00:00Z",
+			"expires_at": time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339), "state": "active",
+			"request": map[string]any{"agent": true, "agent_mark": "claude-code/unknown/x", "capabilities": []string{}}},
+		"PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest": map[string]any{},
+	})
+	mux.HandleFunc("GET /api/v1/openapi.json", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(apispec.Document)
+	})
+	var mu sync.Mutex
+	var marks []string
+	api := tools.HandlerDoer{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/interest") {
+			mu.Lock()
+			marks = append(marks, r.Header.Get("X-Cowork-Agent"))
+			mu.Unlock()
+		}
+		mux.ServeHTTP(w, r)
+	})}
+	in := func(projectDir string) func(string) (string, bool) {
+		return envOf(map[string]string{EnvURL: "https://cowork.example.com", EnvToken: testToken, EnvProjectDir: projectDir})
+	}
+	memory := &tools.InMemory{}
+
+	serverSide, clientSide := mcp.NewInMemoryTransports()
+	done := make(chan int, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		var out, errs bytes.Buffer
+		done <- Run(ctx, Env{Args: []string{"serve"}, Lookup: in("/Users/ada/src/app"), Doer: api, Workspace: noRepo{},
+			Memory: memory, Transport: serverSide, Stdout: &out, Stderr: &errs, Build: Build{Version: "0.9.0"}})
+	}()
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "claude-code", Version: "test"}, nil).Connect(ctx, clientSide, nil)
+	require.NoError(t, err)
+	watch := func() string {
+		t.Helper()
+		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "watch", Arguments: map[string]any{"key": "acme/COW-1"}})
+		require.NoError(t, err)
+		require.False(t, res.IsError, res.Content[0].(*mcp.TextContent).Text)
+		mu.Lock()
+		defer mu.Unlock()
+		return marks[len(marks)-1]
+	}
+	hook := func(projectDir, input string) {
+		t.Helper()
+		code, stdout, _ := run(t, Env{Lookup: in(projectDir), Doer: api, Workspace: noRepo{}, Memory: memory,
+			Stdin: strings.NewReader(input)}, "session-context")
+		assert.Equal(t, 0, code)
+		assert.Empty(t, stdout, "no remote and no binding file: silence")
+	}
+
+	assert.Regexp(t, `^claude-code/unknown/[0-9a-f]{8}$`, watch(), "no session start has named a model yet")
+	hook("/Users/ada/src/app", sessionStartInput)
+	mark := watch()
+	assert.Regexp(t, `^claude-code/claude-opus-5/[0-9a-f]{8}$`, mark, "the hook's model, the server's own session id")
+	hook("/Users/ada/src/other", strings.Replace(sessionStartInput, "claude-opus-5", "claude-haiku-4-5", 1))
+	assert.Equal(t, mark, watch(), "a session in another project directory names its own server's model")
+	hook("/Users/ada/src/app", `{"session_id": "abc123", "hook_event_name": "SessionStart", "source": "clear"}`)
+	assert.Equal(t, mark, watch(), "a start without a model leaves the model recorded before")
+
+	require.NoError(t, cs.Close())
+	select {
+	case code := <-done:
+		assert.Equal(t, 0, code)
+	case <-time.After(5 * time.Second):
+		t.Fatal("serve did not end with its session")
+	}
 }
 
 // docs/adr/0070 D2: token check says whose the token is and what it may do.

@@ -20,6 +20,14 @@ D1)*; the block is held to about
 9 000 bytes. A compaction (`source: compact`) shows the block again without moving the
 session's start. D4 and D5 as amended.
 
+Amended 2026-10-06 by the implementer, open to the owner's objection (D5: the `SessionStart` hook
+records the model Claude Code names in its input, per project directory, for the agent mark of the
+MCP server in that directory), and built the same day — `sessionContext` and `client.header` in
+[`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go), `Memory.SetModel` and `Memory.Model` in
+[`tools/memory.go`](../../backend/internal/tools/memory.go);
+`TestTheSessionStartHookNamesTheModelOfTheServer` runs the hook on the input Claude Code's hook
+reference shows and the server after it.
+
 ## Context
 
 `session_start` is an MCP tool ([ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md),
@@ -65,7 +73,15 @@ person, which continues nothing.)*
 
 **D5 — The hook commands read only the environment and the working directory,** and write
 nothing but the session-time cache of [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md)
-D5. An error — the installation unreachable, the token expired, the API incompatible
+D5 *(amended 2026-10-06: and the model of the session — the `SessionStart` hook writes the `model`
+of Claude Code's hook input, when the input carries one, to a file of its own in the same
+directory, one per project directory (`CLAUDE_PROJECT_DIR`), and the MCP server of that directory
+reads it at each request for the model part of its agent mark,
+[ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D3. MCP does not tell a server its model, and Claude Code hands the server no session id a hook
+could name — the project directory is the one value both receive — so the last session started in
+a directory names the model of every server there; an input without a model leaves the one
+recorded before)*. An error — the installation unreachable, the token expired, the API incompatible
 ([ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)
 D5) — prints one line naming the cause and the installation's token page, and exits 0; it is
 never a hook failure. *(Amended 2026-10-04: the `SessionStart` hook prints the line; the `Stop`
@@ -106,6 +122,12 @@ five candidates, twenty inbox lines, one proposal; a session that wants more cal
 - D4's heuristic ("no act since the session started") is approximate; a session that only
   read is rightly not reminded, a session that worked in the UI instead is wrongly reminded —
   a hint, not a veto, by design.
+- *(Added 2026-10-06 with D5's amendment.)* The model in the server's mark is the model of the
+  last session started in its project directory: two sessions in one directory with different
+  models are both recorded under the later one's, and a model switched with `/model` inside a
+  session, which fires no `SessionStart`, is recorded under the model the session started with.
+  The mark is attribution, the client's word (ADR 0036 D3); no rule reads its model part, which
+  the UI shows in the mark's tooltip.
 
 ## References
 

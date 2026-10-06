@@ -22,6 +22,10 @@ const (
 
 type config struct {
 	url, token, dir string
+	// project is CLAUDE_PROJECT_DIR as the host set it, which a hook's cwd
+	// does not replace: the key under which the SessionStart hook leaves the
+	// server the model (docs/adr/0067 D5).
+	project string
 }
 
 // errUnconfigured is a configuration that names no installation or no token:
@@ -35,6 +39,7 @@ func loadConfig(lookup func(string) (string, bool)) (config, error) {
 	raw, _ := lookup(EnvURL)
 	c.token, _ = lookup(EnvToken)
 	c.dir, _ = lookup(EnvProjectDir)
+	c.project = c.dir
 	raw, c.token = strings.TrimSpace(raw), strings.TrimSpace(c.token)
 	switch {
 	case raw == "":

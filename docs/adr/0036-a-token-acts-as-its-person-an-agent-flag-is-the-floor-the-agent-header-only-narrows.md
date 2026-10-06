@@ -47,6 +47,11 @@ document of [ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-conte
 and the session start's summary of the MCP server name a person's act through a token, and the
 tenant's audit view names the token beside its id.
 
+Made concrete 2026-10-06 (Consequences: the model of the MCP server's mark is the one Claude Code
+names to the `SessionStart` hook,
+[ADR 0067](0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
+D5 as amended), and built the same day.
+
 ## Context
 
 [ADR 0004](0004-cowork-is-a-team-product.md) D1 made the agent act through a token bound to
@@ -156,7 +161,11 @@ unflagged token in someone's name.
 - A token's name is no longer its person's alone: whoever reads an act made through it reads the
   name (D6). A token is named for what it does, not with what must not be read.
 - The MCP server (its own record) sends the header on every request as a matter of course,
-  with the model and a session id it generates.
+  with the model and a session id it generates. *(Made concrete 2026-10-06: the model is the one
+  Claude Code names to the `SessionStart` hook in the server's project directory
+  ([ADR 0067](0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
+  D5 as amended) — MCP does not tell a server its model —, and `unknown` until a hook has named
+  one; the session id is the server's own.)*
 
 ## Alternatives Considered
 

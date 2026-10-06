@@ -117,12 +117,14 @@ The MCP layers without a server ([mcp.md](mcp.md)): every tool against the fake 
 `Idempotency-Key` on every `POST`, `If-Match` where it overwrites, the agent header) and the
 Markdown it answers, refusals included —, the session-start block bound, unbound, with a
 `.cowork.yaml` and within its size, the reminder, the escape hatch's paths, the retries, the
-memory file, the parsing of `git` output and of `.cowork.yaml`, the compatibility check;
+memory files — the start's time and the model per project directory —, the parsing of `git` output and of `.cowork.yaml`, the compatibility check;
 [`mcpserver/server_test.go`](../../backend/internal/mcpserver/server_test.go) the catalogue as an
 MCP client lists and calls it, and a server whose start was refused answering every tool with the
 reason; [`mcpcli/cli_test.go`](../../backend/internal/mcpcli/cli_test.go) the configuration
 (`https` except on loopback, the token's shape, no value echoed), the subcommands, the hooks
-silent outside a repository, `token check`, and `serve` refusing an API it does not know.
+silent outside a repository, `token check`, `serve` refusing an API it does not know, and the
+model of the `SessionStart` hook's input — the one Claude Code's hook reference shows — in the
+mark of the server of the same project directory.
 [`domain/repository_test.go`](../../backend/internal/domain/repository_test.go) is the table of
 remote identities, sub-directories and proposed keys.
 

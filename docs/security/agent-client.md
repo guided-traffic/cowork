@@ -27,8 +27,12 @@ machine.
 **Every request is marked as an agent's.** The client sends `X-Cowork-Agent:
 <client>/<model>/<session>` on every request
 ([`tools.Editor`](../../backend/internal/tools/session.go)): the name is the MCP client's own
-(`claude-code`), the model `unknown` in the server — the MCP protocol does not tell it — and the
-one Claude Code names in a hook, the session a short random id or the hook's session id. The
+(`claude-code`), the model the one Claude Code names to the `SessionStart` hook — in the server
+too, which the MCP protocol does not tell it, through the file the hook writes for the project
+directory ([ADR 0067](../adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
+D5), and `unknown` until a hook has named one —, the session a short random id or the hook's
+session id. Like every part of the mark, the model is the client's word: it is attribution and no
+rule reads it. The
 header only narrows ([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
 D3): with a plain token the requests become an agent's, bound by the agent rules and holding
 every capability; with an agent token they hold the token's set. The client never sends a
@@ -48,7 +52,7 @@ status, is never retried; a refusal reaches the model as the API's code and mess
 | The plugin's option `cowork_token` | Marked sensitive: Claude Code keeps it in the system's credential store, not in a settings file, and hands it to the MCP server in `COWORK_TOKEN` and to the hooks in `CLAUDE_PLUGIN_OPTION_COWORK_TOKEN`, which the hook command copies into `COWORK_TOKEN` ([`claude/cowork/`](../../claude/cowork/)) |
 | Configured by hand | In the environment Claude Code starts with, or written into `~/.claude.json`, or a repository's `.mcp.json` — the last two are files ([docs/operations/claude-code.md](../operations/claude-code.md)) |
 | The process | `COWORK_TOKEN` is read once, held in memory, and set as `Authorization: Bearer` on each request. No log line, error or tool answer carries it: a configuration error names the variable and the token page ([`mcpcli/config.go`](../../backend/internal/mcpcli/config.go), `TestConfiguration`) |
-| On disk | Nothing of the token. The one file the client writes is the time of the last session per installation and binding, under the user's cache directory, `0600` in a `0700` directory, timestamps only ([`tools.FileMemory`](../../backend/internal/tools/memory.go)) |
+| On disk | Nothing of the token. The client writes two kinds of file under the user's cache directory, `0600` in a `0700` directory ([`tools.FileMemory`](../../backend/internal/tools/memory.go)): the time of the last session per installation and binding, timestamps only, and, from the `SessionStart` hook, the model of the last session started per project directory, with that directory's path |
 
 **The token goes to `COWORK_URL` and nowhere else.** Every tool calls the generated client,
 which addresses the installation's `/api/v1/` routes; the `api` escape hatch takes a path, not a
@@ -159,5 +163,6 @@ holding repository names, as they hold search terms already.
 ### What the person's machine does
 
 The client trusts its machine: whoever runs code as the person can read the token while a
-session runs, write the binding file or the memory file, or replace the binary on the `PATH`.
+session runs, write the binding file or the memory files — the model file sets the model part of
+the mark —, or replace the binary on the `PATH`.
 cowork cannot defend the token against the person's own account.

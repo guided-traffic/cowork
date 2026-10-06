@@ -151,12 +151,19 @@ Residual risks). Use the plugin or this block, not both: the hooks would run twi
 |---|---|
 | The session starts | `session-context` reads the git remotes of the working directory and a `.cowork.yaml`, asks the installation which project binds the repository, and prints the block Claude reads before the first prompt: the binding, the active ticket — assigned to you and `in-progress` — with its context, or the top of "next for me" in the bound project — your open tickets and the unassigned ones, by score, without those in progress, blocked or waiting on a prerequisite —, and what happened since the last session. In a directory without a remote and without a binding file it prints nothing. A failure is one line naming the cause and the token page; the session is never blocked |
 | An unbound repository | The block carries a proposal — tenant, key, name — and Claude asks you; on your yes it calls `create_project`, which creates the project and binds the repository in one act |
-| During the work | The 16 tools of [README.md, the tools](../../README.md#cli-cowork-mcp); `session_start` refreshes the block |
+| During the work | The 16 tools of [README.md, the tools](../../README.md#cli-cowork-mcp); `session_start` refreshes the block. Each act carries the agent mark `claude-code/<model>/<id>` — the model the session started with, which the `SessionStart` hook hands the MCP server, `unknown` until a hook has named one — shown in the UI with the agent icon, the whole mark in its tooltip |
 | Claude stops | `session-end` reminds you — a message in the transcript, never a block — when a ticket of yours is in progress, the repository shows work since the session started (a commit, or a file changed after it), and nothing was recorded on the ticket since |
 
 The time of the last session is kept per installation and binding in one small file under the
 user's cache directory (`~/Library/Caches/cowork-mcp/` on macOS, `~/.cache/cowork-mcp/` on
 Linux); it holds timestamps only, and deleting it only makes the next block show no "since".
+Beside it, the `SessionStart` hook keeps the model Claude Code names, in one file per project
+directory, which the MCP server of that directory reads for the mark of its acts; deleting it makes
+the mark say `unknown` until the next session starts there. The last session started in a directory
+names the model: two sessions in one directory with different models both mark their acts with the
+later one's, and a model switched with `/model` inside a session is not seen
+([ADR 0067](../adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
+D5).
 
 ## Each repository
 
