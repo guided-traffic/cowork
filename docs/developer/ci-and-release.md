@@ -69,7 +69,14 @@ build-mcp` with `GOOS=` and `GOARCH=` reproduces it locally.
 
 **Renovate** ([`renovate.yml`](../../.github/workflows/renovate.yml), [`renovate.json`](../../renovate.json))
 runs daily on a self-hosted runner: minor and patch updates automerge after CI, majors wait
-for a review (except GitHub Actions).
+for a review (except GitHub Actions). The workflows name their actions by tag, except
+`aquasecurity/trivy-action`: the two Trivy steps of `container-malware-scan` run after the job's
+login to Docker Hub, so they name the commit SHA of a release with its tag in a trailing comment
+(`@<sha> # v<release>`). Renovate's github-actions manager reads SHA and tag from that line and
+writes them back together; a `pinDigests` rule for the action turns a tag written there back
+into a SHA. The pin also holds the Trivy the scan runs: no step sets the action's `version`
+input, so it is the release's default and moves only with the next release of the action. A
+local Renovate extract read the pinned line; no Renovate run has looked an update up yet.
 
 Every job says `runs-on: self-hosted`. Which of the runners, the secrets (`DOCKERHUB_PAT`,
 `APP_CLIENT_ID`, `APP_PRIVATE_KEY`) and the `gh-pages` branch were verified for this
