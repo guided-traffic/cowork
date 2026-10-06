@@ -2,9 +2,11 @@
 
 ## Status
 
-Accepted, amended 2026-10-01 (D4: the inbox is pushed over the event stream of
-[ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md),
-polled as the fallback). Date: 2026-09-30. Decided by the owner as the answer to the catalog
+Accepted, amended 2026-10-01 (D4: the inbox is pushed over the event stream, polled as the
+fallback — the owner's answer to the catalog question "live updates?", Server-Sent Events over
+adaptive polling, whose stream
+[ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+records). Date: 2026-09-30. Decided by the owner as the answer to the catalog
 question "notifications — which channel first?": in-app only, over in-app plus signed webhooks (the
 recommendation), over e-mail, and over both. The event list of D2 was proposed with the
 question and not objected to.

@@ -3,8 +3,10 @@
 ## Status
 
 Accepted, amended 2026-10-01 (D3: the repository's identity is its normalised remote and the
-server's binding is primary, the file the optional override —
-[ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)).
+server's binding is primary, the file the optional override — the owner's answer to the catalog
+question "repository binding?", whose lookup, proposal and file
+[ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
+records).
 Date: 2026-09-29. Decided by the owner as the answer to the catalog question "what is a
 project?": a project is a piece of work with its own backlog inside a tenant, not a git
 repository, and it owns zero or more repositories.

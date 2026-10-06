@@ -2,9 +2,11 @@
 
 ## Status
 
-Accepted, amended 2026-10-01 (D4: an agent token with the `interest` capability of
+Accepted, amended 2026-10-01 (D4: an agent token with the `interest` capability may register
+`need` and `urgent` — the owner's answer to the catalog question "what may an agent do without a
+human?", capabilities the person chooses per token, whose list
 [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
-may register `need` and `urgent`) and 2026-10-04 (D1: a stake records the mark of the write that
+D4 holds) and 2026-10-04 (D1: a stake records the mark of the write that
 set it, by the owner's rule that an act an agent or a token makes is always marked,
 [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6; built the same day, [migration 28](../../backend/internal/store/migrations/000028_filing_and_stake_marks.up.sql)). Date: 2026-09-29. Decided by the owner as the answer to the
 catalog question on "users link tickets to take part in prioritisation": a person-to-ticket interest relation

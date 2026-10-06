@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog question
+Accepted, amended 2026-10-04 (D2: the Claude Code plugin of this repository configures the hooks
+as well; D4: the reminder only while the repository shows work since the session started; D5: the
+`Stop` hook silent on an error). Date: 2026-10-01. Decided by the owner as the answer to the catalog question
 "session start?": a `SessionStart` hook plus the tool for refresh plus a `Stop` hook, over a
 CLAUDE.md instruction, over the hook alone, and over hook and tool without the end-of-session
 reminder. The additional rules of D5–D7 were put to the owner with the question and

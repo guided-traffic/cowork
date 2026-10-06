@@ -9,11 +9,18 @@ git remote, whatever mix of SSH and HTTPS URLs is in use, and when none exists t
 proposes a project and a tenant and creates them once the owner says so. The owner also
 granted the `create-project` capability this needs and, in the same breath, decided that
 answers to open questions given in chat may be recorded and updated by the agent; both
-amend earlier records (D7, D8). Amended 2026-10-02 (D5: the person must be allowed to create
-projects by the tenant setting of
+change rules of earlier records, which state them in place (D7, D8). Amended 2026-10-02 (D5: the
+person must be allowed to create projects by the tenant setting of
 [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D9, not necessarily be its administrator), the owner's answer to the question whether an
-agent's `write` token may create a project.
+agent's `write` token may create a project. Amended 2026-10-06 (D7, D8: the rules they stated as
+amendments of other records stand in those records —
+[ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D3 and D4, [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D2,
+[ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) D2 — and D7 and D8 point there;
+the Consequences' line on ADR 0006 D3 and the References say what those records hold; by the
+owner's rule of 2026-10-02 that every amendment is made in place in the record it changes
+([docs/adr/README.md](README.md#keeping-them-current)); no rule changes).
 
 **Built** (phase 5, 2026-10-04; D7 and D8 since phase 2): D1 —
 [`domain.NormaliseRemote`](../../backend/internal/domain/repository.go) with its table test,
@@ -104,20 +111,31 @@ archives, restricts or deletes.
 bindings is reported as a data error with the projects named; the person resolves it in the
 UI.
 
-**D7 — Amendment to ADR 0043: `create-project` is a selectable capability, on by default in
-the "full" profile and off in "assisted".** It covers creating a project and binding a
+**D7 — `create-project` is a selectable capability; [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+states the rule.** ~~Amendment to ADR 0043: `create-project` is a selectable capability, on by
+default in the "full" profile and off in "assisted". It covers creating a project and binding a
 repository; archiving, restricting and deleting projects, and everything about tenants, stay
-on the hard-off list.
+on the hard-off list.~~ *(Moved 2026-10-06 into the record it changes, where it stands in place
+since 2026-10-01: ADR 0043 D4 grants the capability — creating a project and binding a repository
+— and names it among the switches "assisted" turns off; ADR 0043 D3 takes those two acts off the
+hard-off list and keeps archiving, restricting and deleting projects and everything about tenants
+on it.)*
 
-**D8 — Amendment to ADR 0011 D2 and ADR 0043 D3: an agent may record and update an
-answer that a person gave.** The owner answers questions in chat and the agent writes the
+**D8 — An agent may record and update an answer that a person gave; [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md),
+ADR 0043 and ADR 0042 state the rule.**
+~~Amendment to ADR 0011 D2 and ADR 0043 D3: an agent may record and update an
+answer that a person gave. The owner answers questions in chat and the agent writes the
 answer into the question entity. The answer's actor is the person; the record carries the
 agent mark and `recorded_by_agent: true` ([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)),
 and the activity list reads "answered by Hans, recorded via Claude Code". An answer recorded
 by an agent may be updated by an agent of the same person; a person may always edit their
 own answer. The capability is `record-answer`, on by default in "full", off in "assisted".
 The MCP server gains `record_answer(question, answer)` ([ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md)
-D2 is amended: the tool exists, the decision stays the person's).
+D2 is amended: the tool exists, the decision stays the person's).~~ *(Moved 2026-10-06 into the
+records it changes, which state it in place since 2026-10-01: ADR 0011 D2 holds who may record
+and change an answer and what the record and the ticket show, the last of it moved there
+2026-10-06; ADR 0043 D4 the capability `record-answer` and its profiles, and D3 that recording a
+person's answer left the hard-off list; ADR 0042 D2 the tool `record_answer`.)*
 
 ## Consequences
 
@@ -127,8 +145,8 @@ D2 is amended: the tool exists, the decision stays the person's).
   a remote it cannot normalise is reported as the original string.
 - D7 and D8 widen what a "full" agent token may do; both acts are attributable to the person
   and visible as the agent's in the record; "assisted" tokens keep the earlier limits.
-- ADR 0006 D3's "two sides" become: the server's binding is the primary side, the file the
-  optional override; the drift report stays.
+- ADR 0006 D3's "two sides" are, in place since 2026-10-01: the server's binding the primary
+  side, the file the optional override; the drift report stays.
 
 ## Alternatives Considered
 
@@ -152,5 +170,5 @@ D2 is amended: the tool exists, the decision stays the person's).
 
 - [ADR 0006](0006-a-project-is-the-backlog-unit-of-a-tenant-and-owns-its-repositories.md) D3 — the binding model this record implements
 - [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md), [ADR 0041](0041-the-mcp-server-speaks-stdio-and-ships-as-a-release-binary-per-platform.md) D4 — `session_start` and the working directory
-- [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md), [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D2 — amended by D7 and D8
+- [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D3, D4, [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D2, [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) D2 — where the rules of D7 and D8 stand
 - [ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D1, [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D1 — the key grammar and who may create projects

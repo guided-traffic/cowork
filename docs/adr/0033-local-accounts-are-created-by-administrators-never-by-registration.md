@@ -7,8 +7,11 @@ D5 and D6 again by the owner's answers of the same day, below; D6 once more the 
 IPv6 client counts by its /64), amended 2026-10-04 (D6: behind the Ingress the TCP peer is a
 controller pod, since the Ingress routes `/api/` and `/auth/` to the backend,
 [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
-D3). Date: 2026-10-01. Decided by the owner as the answer to the catalog question "local
-accounts beyond the one administrator?": administrator-managed local accounts, over none,
+D3), amended 2026-10-06 (D3 and the References: they say that
+[ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
+D3 names this minimum in place instead of claiming to amend it, by the owner's rule that every
+amendment is made in place in the record it changes; no rule changes). Date: 2026-10-01. Decided
+by the owner as the answer to the catalog question "local accounts beyond the one administrator?": administrator-managed local accounts, over none,
 over self-registration with e-mail reset, and over global-administrator-only creation. The
 owner set two conditions: the minimum password length is configurable in the chart, and
 there is no special-character requirement. The remaining rules of D3–D7 were put to the
@@ -74,7 +77,7 @@ persons; no linking in the first release. The member list shows the origin ("loc
 `COWORK_PASSWORD_MIN_LENGTH` (chart `auth.local.passwordMinLength`), default 12, hard floor
 8: a configured value below 8 refuses the start. No required character classes, no required
 rotation, no reuse history. The policy applies to every local account, the administrator of
-ADR 0032 included; ADR 0032 D3 is amended accordingly.
+ADR 0032 included, whose D3 names this minimum in place.
 
 **D4 — Storage and change.** Argon2id with parameters recorded in the security page and
 raised by amendment as hardware moves. A password set by an administrator is temporary: the
@@ -197,7 +200,7 @@ The login page itself belongs to the frontend.)*
 
 ## References
 
-- [ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md) — the first local account, amended here
+- [ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md) — the first local account, whose password takes this record's minimum (D3 there)
 - [ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md) D3 — the marked grant a local account enters a tenant with
 - [ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D4 — sessions ended on a password change
 - [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) — why there is no e-mail reset

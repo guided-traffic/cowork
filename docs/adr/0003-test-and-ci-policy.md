@@ -3,7 +3,8 @@
 ## Status
 
 Accepted, amended 2026-10-01 (D2: the end-to-end row now points at
-[ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)).
+[ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md), which
+records the owner's answer to the catalog question "end-to-end tests?").
 Date: 2026-09-29. The owner asked for tests for the backend and the frontend and for a CI
 pipeline built closely after the sibling project's; this record fixes what those tests have
 to be and what the pipeline gates.

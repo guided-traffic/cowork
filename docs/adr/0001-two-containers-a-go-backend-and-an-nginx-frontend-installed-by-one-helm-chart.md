@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted, amended 2026-10-01 (D5: no down files, see
-[ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)),
+Accepted, amended 2026-10-01 (D5: no down files — the owner's answer to the catalog question
+"down migrations?", whose operating rule
+[ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) records),
 amended 2026-10-02 (D5, D7, D8: migrations run under a separate owner role, see
 [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D2; D3: four
 substituted nginx variables, see [ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)

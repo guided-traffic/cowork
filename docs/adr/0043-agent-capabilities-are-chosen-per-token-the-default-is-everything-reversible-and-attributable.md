@@ -2,9 +2,11 @@
 
 ## Status
 
-Accepted, amended 2026-10-01 by [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
-D7 and D8 (`create-project` and `record-answer` become selectable capabilities; creating a
-project and recording a person's answer leave the hard-off list), amended 2026-10-02 (D4:
+Accepted, amended 2026-10-01 (D3, D4: `create-project` and `record-answer` become selectable
+capabilities; creating a project and recording a person's answer leave the hard-off list — the
+owner's grant in the answer to the catalog question "repository binding?", whose context
+[ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
+records), amended 2026-10-02 (D4:
 `create-project` follows the tenant setting of
 [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D9 instead of the `admin` role), amended 2026-10-04 (D4: `rank` and `override-urgency` cover a filing's place and
@@ -14,6 +16,11 @@ until a later release rewrites the stored sets), amended 2026-10-06 (D4: that re
 stored sets rewritten to `set-horizon`, the old name refused on input and dropped on read, as ADR 0010 D1
 records it; the checks of the stored sets keep the old name until a release after it, so that an image
 rollback to the release before stays safe, [ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3),
+amended 2026-10-06 once more (D4's `interest` row, the Consequences and the References: they say
+what [ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4 holds instead
+of amending it, and that [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) had no
+agent rule for this record to amend, by the owner's rule that every amendment is made in place in the record it changes;
+no rule changes),
 amended 2026-10-03 (D4: `close` covers both ways to `done`
 of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
 that fills the last progress stage and done by hand — an agent's only from `in-progress` or
@@ -131,7 +138,7 @@ these is an amendment of the record that closed it, not of this one.
 | `drop` | the transition `→ dropped` with a reason |
 | `rank` | moving the rank and adopting the score ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)); *(amended 2026-10-04)* naming a filing's place in its horizon (ADR 0014 D2) |
 | ~~`override-urgency`~~ `set-horizon` *(renamed 2026-10-05, [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1: ~~the API takes the old name as the new until a later release drops it; a set stored with it keeps it, which the release before reads, until that release rewrites it — [ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3~~; amended 2026-10-06: the old name is refused on input and dropped on read; the checks take it until a later release, for an image rollback to the release before)* | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3); *(amended 2026-10-04)* the ticket's horizon, which the override now is — set on a ticket with a reason, or named at its filing when it is not `later` |
-| `interest` | `need` and `urgent` interest, not only `watch` ([ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4 amended by this) |
+| `interest` | `need` and `urgent` interest, not only `watch` ([ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4, which names this capability) |
 | `upload` | uploading attachments ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)) |
 | `create-project` *(added 2026-10-01, ADR 0066 D7)* | creating a project and binding a repository, where the person ~~is tenant `admin`~~ *(amended 2026-10-02)* may create projects (ADR 0034 D9), with `write` scope |
 | `record-answer` *(added 2026-10-01, ADR 0066 D8)* | recording and updating an answer the person gave, marked as recorded by the agent |
@@ -187,8 +194,10 @@ scope alone.
   marks each act as the agent's; a person who wants a human gate before `decided` or `done`
   unticks two switches.
 - The earlier records' agent lines become capability names: ADR 0013 D4's "an agent may only
-  `watch`" is now "unless the token has `interest`"; ADR 0014's rank rule likewise through
-  `rank`. Those records are amended in place by reference to this one.
+  `watch`" reads, in place since 2026-10-01, "`need` and `urgent` as well when its token carries
+  the `interest` capability". ADR 0014 had no agent rule to change: the acts on the rank are an
+  agent's with `rank` because D4 grants them, and ADR 0014 names the capability where it speaks
+  of an agent — a filing's place (D2) and the sort by the score (D3).
 - Two persons, two trust levels, same product: a client tenant can hand its agent an
   "assisted" token while the owner runs "full".
 - D3 keeps five acts human for every installation; a request to open one is a conversation
@@ -230,5 +239,5 @@ scope alone.
 - [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) — the flag this generalises
 - [ADR 0035](0035-personal-access-tokens.md) D3 — scope never exceeds the person
 - [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D2, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D7, [ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md) D6, [ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7 — the hard-off list's sources
-- [ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4, [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) — amended by D4
+- [ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4, [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D2, D3 — the stakes and the rank, whose agent acts D4's `interest` and `rank` grant
 - [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) — the tools that read the capabilities
