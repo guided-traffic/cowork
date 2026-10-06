@@ -36,8 +36,9 @@ over the recommendation inside the options text and over a key of cowork's own f
 verification note. The owner left the identity string to the implementer, to be chosen from what
 the code holds and justified in D1; that choice, and the rest of D1's paragraph on persons — the
 name without `<` and `>`, a person without an identity written by name alone, how the importer
-resolves an identity —, are the implementer's, made concrete the same day and open to the owner's
-objection.
+resolves an identity —, are the implementer's, made concrete the same day and ~~open to the owner's
+objection~~ *(the identity string accepted by the owner the same day; the rest open to the owner's
+objection)*.
 
 **Partly built** (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03; a person as `Name <identity>` since 2026-10-06): D1, D5 and D6 for `/markdown`
 ([`internal/markdown`](../../backend/internal/markdown/), golden files in its `testdata/`); every
@@ -95,7 +96,7 @@ one, and `**Answer:**` with the answer, `_open_` or `_withdrawn_`. The response 
 *(Amended 2026-10-06 by the owner: a person is written the way git writes an author.)* The name
 is the display name, for a reader; the identity is the one the person already has, for the
 importer. *(The identity string chosen 2026-10-06 by the implementer, as the owner asked, from
-what the code holds, and open to the owner's objection:)* A local account is `local:<username>`,
+what the code holds, ~~and open to the owner's objection~~ and accepted by the owner the same day:)* A local account is `local:<username>`,
 its identity
 ([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D2: the
 username is unique in the installation). A person of the identity provider is
