@@ -228,16 +228,21 @@ A project's restriction is held the same way, by a trigger, because a policy see
 the column and a member may rename a project: `projects_restriction_guard`, `BEFORE UPDATE OF
 restricted`, refuses a change of `restricted` unless the caller is an administrator of the tenant
 (SQLSTATE `42501`) — a superuser, whom row-level security does not bind either, excepted
-(`TestPoliciesOfThePersonsAndTheirAccounts`).
+(`TestPoliciesOfThePersonsAndTheirAccounts`). An administrator's unshare of another person's saved
+filter is held by a trigger for the same reason ([below](#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw)).
 
 At the start of every transaction the store sets `app.tenant_id`, `app.user_id`,
 `app.restricted_project_id`, `app.job` and `app.session_hash` — the hash of the session cookie
 a request presented, which is how a request finds its own session row — with
 `set_config(…, true)`, which dies with the
-transaction ([`store/tx.go`](../../backend/internal/store/tx.go) `setContext`). One transaction
-sets one more: the lookup of a person a tenant's administrator grants a role to names the address
-or username in `app.person_lookup`, read through `app_person_lookup()`
-([`store/members.go`](../../backend/internal/store/members.go) `FindPerson`). The person
+transaction ([`store/tx.go`](../../backend/internal/store/tx.go) `setContext`). Two transactions
+set one more each: the lookup of a person a tenant's administrator grants a role to names the
+address or username in `app.person_lookup`, read through `app_person_lookup()`
+([`store/members.go`](../../backend/internal/store/members.go) `FindPerson`), and a tenant
+administrator's unshare of another person's saved filter names that filter in
+`app.saved_filter_id`, read through `app_saved_filter_id()`, for its single statement
+([`store/filters.go`](../../backend/internal/store/filters.go) `Writer.UnshareAnothersFilter`,
+[below](#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw)). The person
 is the authenticated caller, carried in the context and never a call site's argument
 ([`store/caller.go`](../../backend/internal/store/caller.go)); the tenant is the one the
 boundary admitted, which every handler passes on. The policies read the settings through
@@ -423,10 +428,13 @@ PostgreSQL holds an update's new row to the read policy, so the read policy admi
 to the one filter the transaction names in `app.saved_filter_id`, which `Writer.UnshareAnothersFilter`
 sets for its single statement and clears after it
 (`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`). The policies see the row, not
-the columns a statement sets: that an administrator's unshare changes nothing but `shared` — not
-the name, not the conditions — is held by the handler (`mayChangeFilter`) and by the query
-(`UnshareSavedFilter`, which sets nothing else), not by the data layer, which admits any change of
-another person's shared filter that leaves it unshared. The route takes the administrator's `admin`
+the columns a statement sets, so that an administrator's unshare changes nothing but `shared` — not
+the name, not the conditions — is held three times: by the handler (`mayChangeFilter`), by the query
+(`UnshareSavedFilter`, which sets nothing else), and in the data layer by a trigger, as a project's
+restriction is: `saved_filters_moderation_guard`, `BEFORE UPDATE`, refuses with SQLSTATE `42501`
+any change of a filter that is not the caller's own to its name or its parameters, and any that
+leaves it shared — a transaction with no person set, which the policies admit to no row, excepted
+(the same test). The route takes the administrator's `admin`
 scope and refuses every agent; each act is recorded under the administrator's name
 (`TestAnAdministratorUnsharesOrDeletesAnotherPersonsSharedFilter`). Its parameters name projects,
 tickets and persons as the lists take them. A member's shared filter that names a project or a ticket another

@@ -78,8 +78,10 @@ Migration 33 (2026-10-05) adds `saved_filters` with the canonical policy and res
 hold a person to their own filters and the shared ones. Migration 39 (2026-10-06) widens them for
 ADR 0018 D5 as amended that day: an administrator of the current tenant changes another person's
 shared filter only into one that is not shared, deletes it, and reads it back unshared only while
-the transaction names it in D3's `app.saved_filter_id`
-(`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`).
+the transaction names it in D3's `app.saved_filter_id`; a trigger, `saved_filters_moderation_guard`,
+refuses any other change of a filter that is not the caller's own — its name, its parameters —, as
+`projects_restriction_guard` holds a project's restriction, because a policy sees the row and not
+the columns (`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`).
 
 ## Context
 

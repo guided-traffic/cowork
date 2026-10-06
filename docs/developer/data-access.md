@@ -186,7 +186,9 @@ deleting to its owner (`owner_id = app_user_id()`,
 [migration 39](../../backend/internal/store/migrations/000039_saved_filters_moderated_by_administrators.up.sql)
 to an administrator of the current tenant (`app_is_tenant_admin()`) changing another person's
 shared filter into one that is not shared, deleting it, and reading it back unshared while
-`app.saved_filter_id` names it; the queries `UnshareSavedFilter` and `DeleteSharedSavedFilter`
+`app.saved_filter_id` names it — and the trigger `saved_filters_moderation_guard` refuses
+(SQLSTATE `42501`) any other change of a filter that is not the caller's own, its name or its
+parameters, which a policy cannot see; the queries `UnshareSavedFilter` and `DeleteSharedSavedFilter`
 name `shared` as the policies do, and the unshare runs only through `Writer.UnshareAnothersFilter`
 ([`store/filters.go`](../../backend/internal/store/filters.go)), which names the filter
 (`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`).

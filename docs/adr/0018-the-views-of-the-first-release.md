@@ -142,9 +142,14 @@ nothing else, and `DELETE …/filters/{filter}`, take another person's shared fi
 administrator with `admin` scope, never from an agent (`mayChangeFilter` in
 [`api/filters.go`](../../backend/internal/api/filters.go)), each recorded as the owner's acts are;
 [migration 39](../../backend/internal/store/migrations/000039_saved_filters_moderated_by_administrators.up.sql)
-widens the restrictive policies of `saved_filters` for exactly that; the filter bar offers an
-administrator *Stop sharing* and *Delete* on another person's filter it applies, at once as the
-owner's own acts are ([`features/project/saved-filters.ts`](../../frontend/src/app/features/project/saved-filters.ts)).
+widens the restrictive policies of `saved_filters` for exactly that, and its trigger
+`saved_filters_moderation_guard` refuses whatever else a change of another person's filter would
+change — its name, its parameters, a filter left shared —, since a policy sees the row and not the
+columns a statement sets; the filter bar offers an administrator *Stop sharing* and *Delete* on
+another person's filter it applies, and on one the server withholds (`redacted`), which an
+administrator may choose to withdraw without the list applying it, at once as the owner's own acts
+are, an owner who left the tenant named "a former member"
+([`features/project/saved-filters.ts`](../../frontend/src/app/features/project/saved-filters.ts)).
 
 **Built** (phase 3, 2026-10-05): D6 as made concrete the same day — `GET
 /api/v1/tenants/{tenant}/dashboard` ([`dashboard.go`](../../backend/internal/api/dashboard.go),

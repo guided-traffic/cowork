@@ -391,6 +391,8 @@ func TestAnAdministratorUnsharesOrDeletesAnotherPersonsSharedFilter(t *testing.T
 	require.NoError(t, f.Exec(e.ctx, `DELETE FROM memberships WHERE tenant_id = $1 AND user_id = $2`, e.A, e.Both))
 	seen := e.savedFilters(t, caller{Token: e.tk.ViewerA}, e.SlugA)
 	assert.Equal(t, e.Both, seen["left behind"].Owner.Id, "a filter stays shared after its owner left")
+	assert.Empty(t, seen["left behind"].Owner.DisplayName, "the person who left is no longer one the tenant reads: the id alone")
+	assert.True(t, seen["left behind"].Owner.Username.IsNull())
 	e.send(t, admin, http.StatusOK, http.MethodPatch, filtersPath(e.SlugA, toUnshare.Id), unshare, "If-Match", etag(toUnshare))
 	e.send(t, admin, http.StatusNoContent, http.MethodDelete, filtersPath(e.SlugA, toDelete.Id), nil)
 	assert.Empty(t, e.savedFilters(t, caller{Token: e.tk.ViewerA}, e.SlugA))
@@ -428,12 +430,18 @@ func TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter(t *testing.T)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, n, "the shared one, not the private one")
 	_, err = asAdmin(uuid.Nil, `UPDATE saved_filters SET name = 'taken over'`)
-	assert.ErrorContains(t, err, "row-level security", "a shared filter of another person changes only into one that is not shared")
+	assert.ErrorContains(t, err, "SQLSTATE 42501", "a shared filter of another person changes only into one that is not shared")
 	_, err = asAdmin(uuid.Nil, `UPDATE saved_filters SET shared = false`+where(shared))
 	assert.ErrorContains(t, err, "row-level security", "the unshared row is read back only for the filter the transaction names")
 	n, err = asAdmin(shared.Id, `UPDATE saved_filters SET shared = false, version = version + 1`+where(shared)+` AND shared`)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, n, "the unshare, with the filter named")
+	// A policy sees the row and not the columns: the trigger of migration 39
+	// refuses whatever else an unshare would change of another person's filter.
+	for _, set := range []string{`name = 'taken over'`, `parameters = '{"q": "taken over"}'`} {
+		_, err = asAdmin(shared.Id, `UPDATE saved_filters SET `+set+`, shared = false, version = version + 1`+where(shared)+` AND shared`)
+		assert.ErrorContains(t, err, "changes nothing else of it", "an unshare that sets %s as well", set)
+	}
 	n, err = asAdmin(uuid.Nil, `UPDATE saved_filters SET shared = true`+where(private))
 	require.NoError(t, err)
 	assert.Zero(t, n, "a filter that is not shared is out of reach")

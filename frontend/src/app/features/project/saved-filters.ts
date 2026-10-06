@@ -37,9 +37,12 @@ interface Choice {
  * a tenant administrator, to unshare and delete (D5 as amended 2026-10-06), both at once as the
  * owner's own acts are —, and saving the conditions the list applies now under a name, shared or
  * not. Another member's filter that names something the person cannot see is listed and cannot be
- * applied: the server withholds its conditions (docs/adr/0065 D5). The list's own controls stay
- * the list's: applying a filter hands its conditions to the list, which may change them further; a
- * condition the list does not apply is named under the bar with why (`leftOut`).
+ * applied: the server withholds its conditions (docs/adr/0065 D5). A tenant administrator may
+ * still choose it, to unshare or delete it: the bar holds it (`withheld`) and the list applies
+ * none. An owner who left the tenant is one the tenant no longer reads, named "a former member".
+ * The list's own controls stay the list's: applying a filter hands its conditions to the list,
+ * which may change them further; a condition the list does not apply is named under the bar with
+ * why (`leftOut`).
  */
 @Component({
   selector: 'app-saved-filters',
@@ -52,7 +55,7 @@ interface Choice {
         optionLabel="label"
         optionValue="id"
         optionDisabled="disabled"
-        [ngModel]="applied()?.id ?? null"
+        [ngModel]="shown()?.id ?? null"
         (ngModelChange)="choose($event)"
         (onShow)="filters.reload()"
         placeholder="Saved filters"
@@ -60,7 +63,7 @@ interface Choice {
         ariaLabel="Saved filters"
         data-testid="saved-filters"
       />
-      @if (applied(); as f) {
+      @if (shown(); as f) {
         @if (own(f)) {
           <button
             pButton
@@ -100,7 +103,7 @@ interface Choice {
             <i class="pi pi-trash"></i>
           </button>
         } @else {
-          <span class="muted small" data-testid="filter-owner">by {{ f.owner.display_name }}</span>
+          <span class="muted small" data-testid="filter-owner">by {{ ownerName(f) }}</span>
           @if (administers()) {
             <button
               pButton
@@ -110,11 +113,9 @@ interface Choice {
               severity="secondary"
               [iconOnly]="true"
               [disabled]="busy()"
-              [pTooltip]="
-                'Stop sharing it with the tenant — it stays ' + f.owner.display_name + '’s'
-              "
+              [pTooltip]="'Stop sharing it with the tenant — it stays ' + ownerName(f) + '’s'"
               [showDelay]="400"
-              [attr.aria-label]="'Stop sharing ' + f.name + ' of ' + f.owner.display_name"
+              [attr.aria-label]="'Stop sharing ' + f.name + ' of ' + ownerName(f)"
               data-testid="unshare-filter"
               (click)="unshare(f)"
             >
@@ -128,9 +129,9 @@ interface Choice {
               severity="secondary"
               [iconOnly]="true"
               [disabled]="busy()"
-              [pTooltip]="'Delete this saved filter of ' + f.owner.display_name"
+              [pTooltip]="'Delete this saved filter of ' + ownerName(f)"
               [showDelay]="400"
-              [attr.aria-label]="'Delete ' + f.name + ' of ' + f.owner.display_name"
+              [attr.aria-label]="'Delete ' + f.name + ' of ' + ownerName(f)"
               data-testid="delete-filter"
               (click)="removeAnothers(f)"
             >
@@ -291,24 +292,49 @@ export class SavedFilters {
     return crypto.randomUUID();
   });
 
-  protected readonly choices = computed<Choice[]>(() =>
-    this.filters.list().map((f) => ({
-      id: f.id,
-      disabled: f.redacted,
-      label: this.own(f)
-        ? `${f.name}${f.shared ? ' · shared' : ''}`
-        : `${f.name} · ${f.owner.display_name}${f.redacted ? ' (names something you cannot see)' : ''}`,
-    })),
-  );
-  protected readonly conditions = computed(() => describe(this.current()));
   /**
    * The person administers the tenant: they unshare and delete another person's shared filter —
    * one whose owner left the tenant among them — and change nothing else of it.
    */
   protected readonly administers = computed(() => this.session.membership()?.role === 'admin');
+  protected readonly choices = computed<Choice[]>(() =>
+    this.filters.list().map((f) => ({
+      id: f.id,
+      disabled: f.redacted && !this.administers(),
+      label: this.own(f)
+        ? `${f.name}${f.shared ? ' · shared' : ''}`
+        : `${f.name} · ${this.ownerName(f)}${f.redacted ? ' (names something you cannot see)' : ''}`,
+    })),
+  );
+  protected readonly conditions = computed(() => describe(this.current()));
+  /**
+   * The id of a filter the server withholds that an administrator chose, to unshare or delete it:
+   * the list applies none meanwhile, and a filter the list applies afterwards replaces it.
+   */
+  private readonly withheld = linkedSignal<SavedFilter | null, string | null>({
+    source: this.applied,
+    computation: (applied, previous) => (applied ? null : (previous?.value ?? null)),
+  });
+  /**
+   * The filter the bar shows: the one the list applies, or the withheld one held. The hold is read
+   * first, so that it sees every filter the list applies and lets go of it.
+   */
+  protected readonly shown = computed(() => {
+    const id = this.withheld();
+    const applied = this.applied();
+    if (applied) {
+      return applied;
+    }
+    return this.filters.list().find((f) => f.id === id && f.redacted) ?? null;
+  });
   protected readonly notes = computed(() => {
-    const f = this.applied();
-    return f ? notesOf(f, this.leftOut()) : [];
+    const f = this.shown();
+    if (!f) {
+      return [];
+    }
+    return f.redacted
+      ? ['not applied: it names something you cannot see']
+      : notesOf(f, this.leftOut());
   });
 
   constructor() {
@@ -320,8 +346,19 @@ export class SavedFilters {
     return filter.owner.id === this.session.person()?.id;
   }
 
+  /**
+   * The owner's name; none is a person the tenant no longer reads — one who left it, whose shared
+   * filter an administrator withdraws.
+   */
+  protected ownerName(filter: SavedFilter): string {
+    return filter.owner.display_name || 'a former member';
+  }
+
+  /** A filter the server withholds is held for an administrator, never applied: the list applies none. */
   protected choose(id: string | null): void {
-    this.chosen.emit(this.filters.list().find((f) => f.id === id && !f.redacted) ?? null);
+    const f = this.filters.list().find((filter) => filter.id === id) ?? null;
+    this.withheld.set(f?.redacted && this.administers() ? f.id : null);
+    this.chosen.emit(f && !f.redacted ? f : null);
   }
 
   protected async save(): Promise<void> {
@@ -365,11 +402,11 @@ export class SavedFilters {
   protected async unshare(filter: SavedFilter): Promise<void> {
     await this.act(async () => {
       await this.filters.update(filter, { shared: false });
-      this.chosen.emit(null);
+      this.release(filter);
       this.messages.add({
         severity: 'success',
         summary: 'Filter no longer shared',
-        detail: `${filter.name} stays ${filter.owner.display_name}’s.`,
+        detail: `${filter.name} stays ${this.ownerName(filter)}’s.`,
         life: 3000,
       });
     });
@@ -379,14 +416,22 @@ export class SavedFilters {
   protected async removeAnothers(filter: SavedFilter): Promise<void> {
     await this.act(async () => {
       await this.filters.remove(filter);
-      this.chosen.emit(null);
+      this.release(filter);
       this.messages.add({
         severity: 'success',
         summary: 'Filter deleted',
-        detail: `${filter.name} of ${filter.owner.display_name}`,
+        detail: `${filter.name} of ${this.ownerName(filter)}`,
         life: 3000,
       });
     });
+  }
+
+  /** Another person's filter an administrator withdrew leaves the bar, and the list if it applied it. */
+  private release(filter: SavedFilter): void {
+    this.withheld.set(null);
+    if (this.applied()?.id === filter.id) {
+      this.chosen.emit(null);
+    }
   }
 
   private async act(run: () => Promise<void>): Promise<void> {

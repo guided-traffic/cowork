@@ -8,10 +8,17 @@
 -- owner. They admit, beside the owner, an administrator of the current tenant
 -- (app_is_tenant_admin(), migration 7):
 --
--- - to change a shared filter only into one that is not shared. A policy sees
---   the row, not the columns a statement sets: the API's query sets nothing
---   but shared, its version and its time;
+-- - to change a shared filter only into one that is not shared;
 -- - to delete a shared filter.
+--
+-- A policy sees the row, not the columns a statement sets, so the update
+-- policy alone would let an unshare rename the filter or change its
+-- conditions as well. A trigger holds it to the unshare, as
+-- projects_restriction_guard (migration 22) holds a project's restriction:
+-- whoever changes a filter that is not their own changes nothing but shared
+-- into false, its version and its time (SQLSTATE 42501). A transaction with
+-- no person set — a migration's, a superuser's — is nobody's and passes; the
+-- policies admit such a transaction no row anyway.
 --
 -- An update whose WHERE reads the row must leave a row its writer may read:
 -- PostgreSQL holds the new row to the read policy and refuses the statement
@@ -36,3 +43,20 @@ ALTER POLICY saved_filters_update ON saved_filters
     WITH CHECK (owner_id = app_user_id() OR (NOT shared AND app_is_tenant_admin()));
 ALTER POLICY saved_filters_delete ON saved_filters
     USING (owner_id = app_user_id() OR (shared AND app_is_tenant_admin()));
+
+CREATE FUNCTION saved_filters_moderation_guard() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF OLD.owner_id <> app_user_id()
+       AND (NEW.shared
+            OR NEW.name IS DISTINCT FROM OLD.name
+            OR NEW.parameters IS DISTINCT FROM OLD.parameters) THEN
+        RAISE EXCEPTION 'an administrator unshares another person''s saved filter and changes nothing else of it'
+            USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END
+$$;
+CREATE TRIGGER saved_filters_moderation_guard BEFORE UPDATE ON saved_filters
+    FOR EACH ROW EXECUTE FUNCTION saved_filters_moderation_guard();
