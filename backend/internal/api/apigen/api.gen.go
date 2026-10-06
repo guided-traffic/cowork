@@ -75,6 +75,7 @@ const (
 	AuditActionEdited             AuditAction = "edited"
 	AuditActionExpired            AuditAction = "expired"
 	AuditActionExported           AuditAction = "exported"
+	AuditActionImported           AuditAction = "imported"
 	AuditActionInterest           AuditAction = "interest"
 	AuditActionLinked             AuditAction = "linked"
 	AuditActionLocked             AuditAction = "locked"
@@ -138,6 +139,8 @@ func (e AuditAction) Valid() bool {
 	case AuditActionExpired:
 		return true
 	case AuditActionExported:
+		return true
+	case AuditActionImported:
 		return true
 	case AuditActionInterest:
 		return true
@@ -380,6 +383,21 @@ func (e Effort) Valid() bool {
 	}
 }
 
+// Defines values for ExportManifestFormat.
+const (
+	ExportManifestFormatCoworkExportV1 ExportManifestFormat = "cowork export v1"
+)
+
+// Valid indicates whether the value is a known member of the ExportManifestFormat enum.
+func (e ExportManifestFormat) Valid() bool {
+	switch e {
+	case ExportManifestFormatCoworkExportV1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for Horizon.
 const (
 	HorizonIcebox  Horizon = "icebox"
@@ -401,6 +419,114 @@ func (e Horizon) Valid() bool {
 	case HorizonNow:
 		return true
 	case HorizonRelease:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImportFormat.
+const (
+	ImportFormatExport     ImportFormat = "export"
+	ImportFormatPlain      ImportFormat = "plain"
+	ImportFormatRepository ImportFormat = "repository"
+)
+
+// Valid indicates whether the value is a known member of the ImportFormat enum.
+func (e ImportFormat) Valid() bool {
+	switch e {
+	case ImportFormatExport:
+		return true
+	case ImportFormatPlain:
+		return true
+	case ImportFormatRepository:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImportLinkDirection.
+const (
+	ImportLinkDirectionIncoming ImportLinkDirection = "incoming"
+	ImportLinkDirectionOutgoing ImportLinkDirection = "outgoing"
+)
+
+// Valid indicates whether the value is a known member of the ImportLinkDirection enum.
+func (e ImportLinkDirection) Valid() bool {
+	switch e {
+	case ImportLinkDirectionIncoming:
+		return true
+	case ImportLinkDirectionOutgoing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImportLinkSource.
+const (
+	ImportLinkSourceBlockedBy ImportLinkSource = "blocked-by"
+	ImportLinkSourceFiledFrom ImportLinkSource = "filed-from"
+	ImportLinkSourceLinksJson ImportLinkSource = "links.json"
+)
+
+// Valid indicates whether the value is a known member of the ImportLinkSource enum.
+func (e ImportLinkSource) Valid() bool {
+	switch e {
+	case ImportLinkSourceBlockedBy:
+		return true
+	case ImportLinkSourceFiledFrom:
+		return true
+	case ImportLinkSourceLinksJson:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImportOutcome.
+const (
+	ImportOutcomeConflict ImportOutcome = "conflict"
+	ImportOutcomeCreate   ImportOutcome = "create"
+	ImportOutcomeCreated  ImportOutcome = "created"
+	ImportOutcomeError    ImportOutcome = "error"
+	ImportOutcomeExclude  ImportOutcome = "exclude"
+	ImportOutcomeSkip     ImportOutcome = "skip"
+)
+
+// Valid indicates whether the value is a known member of the ImportOutcome enum.
+func (e ImportOutcome) Valid() bool {
+	switch e {
+	case ImportOutcomeConflict:
+		return true
+	case ImportOutcomeCreate:
+		return true
+	case ImportOutcomeCreated:
+		return true
+	case ImportOutcomeError:
+		return true
+	case ImportOutcomeExclude:
+		return true
+	case ImportOutcomeSkip:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ImportStatus.
+const (
+	ImportStatusDryRun   ImportStatus = "dry_run"
+	ImportStatusExecuted ImportStatus = "executed"
+)
+
+// Valid indicates whether the value is a known member of the ImportStatus enum.
+func (e ImportStatus) Valid() bool {
+	switch e {
+	case ImportStatusDryRun:
+		return true
+	case ImportStatusExecuted:
 		return true
 	default:
 		return false
@@ -541,6 +667,8 @@ const (
 	ProblemCodeGrantExists            ProblemCode = "grant_exists"
 	ProblemCodeIdempotencyKeyRequired ProblemCode = "idempotency_key_required"
 	ProblemCodeIdempotencyMismatch    ProblemCode = "idempotency_mismatch"
+	ProblemCodeImportConflict         ProblemCode = "import_conflict"
+	ProblemCodeImportExecuted         ProblemCode = "import_executed"
 	ProblemCodeInsufficientScope      ProblemCode = "insufficient_scope"
 	ProblemCodeInternal               ProblemCode = "internal"
 	ProblemCodeInvalidCredentials     ProblemCode = "invalid_credentials"
@@ -607,6 +735,10 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodeIdempotencyKeyRequired:
 		return true
 	case ProblemCodeIdempotencyMismatch:
+		return true
+	case ProblemCodeImportConflict:
+		return true
+	case ProblemCodeImportExecuted:
 		return true
 	case ProblemCodeInsufficientScope:
 		return true
@@ -2235,13 +2367,78 @@ type DeletedTicketList struct {
 // Effort defines model for Effort.
 type Effort string
 
+// ExportAttachment One attachment of `attachments.json` — its metadata and URL, never its bytes (docs/adr/0016 D5)
+type ExportAttachment struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+
+	// Ticket The ticket's key
+	Ticket string `json:"ticket"`
+
+	// Type The stored content type
+	Type string `json:"type"`
+
+	// Url The path of its bytes, `…/attachments/{attachment}/content`
+	Url string `json:"url"`
+}
+
+// ExportLink One link of `links.json`, once (docs/adr/0051 D4, docs/adr/0012 D1)
+type ExportLink struct {
+	// Source The source's key, <tenant>/<PROJECT>-<n>
+	Source string `json:"source"`
+
+	// Target The target's key; relates-to is stored and written once
+	Target string `json:"target"`
+
+	// Type docs/adr/0012 D1
+	Type LinkType `json:"type"`
+}
+
+// ExportManifest `manifest.json` of an export archive (docs/adr/0051 D4)
+type ExportManifest struct {
+	// ConfidentialNotIncluded The confidential tickets of these projects the exporter cannot see, which the archive leaves out
+	// — "n confidential tickets not included" (docs/adr/0065 D5)
+	ConfidentialNotIncluded int       `json:"confidential_not_included"`
+	ExportedAt              time.Time `json:"exported_at"`
+
+	// ExportedBy The exporter as grammar v1 writes a person, `Name <identity>` (docs/adr/0044 D1)
+	ExportedBy string               `json:"exported_by"`
+	Format     ExportManifestFormat `json:"format"`
+
+	// Projects The project of a project export; every project the caller sees, by key, of a tenant export
+	Projects []ExportManifestProject `json:"projects"`
+
+	// Tenant The tenant's slug
+	Tenant string `json:"tenant"`
+
+	// Tickets The documents the archive holds
+	Tickets int `json:"tickets"`
+}
+
+// ExportManifestFormat defines model for ExportManifest.Format.
+type ExportManifestFormat string
+
+// ExportManifestProject defines model for ExportManifestProject.
+type ExportManifestProject struct {
+	Archived                bool `json:"archived"`
+	ConfidentialNotIncluded int  `json:"confidential_not_included"`
+
+	// Key The project's key
+	Key  string `json:"key"`
+	Name string `json:"name"`
+
+	// Tickets The documents of this project the archive holds
+	Tickets int `json:"tickets"`
+}
+
 // FieldError defines model for FieldError.
 type FieldError struct {
 	// Current The server's current value of the field, on a 412; null when the field is empty
 	Current nullable.Nullable[interface{}] `json:"current,omitempty"`
 	Message string                         `json:"message"`
 
-	// Pointer A JSON pointer into the body, or query:<name> / header:<name>
+	// Pointer A JSON pointer into the body, or query:<name> / header:<name>; the refused execution of an
+	// import names a file of its upload as file:<path>
 	Pointer string `json:"pointer"`
 }
 
@@ -2350,6 +2547,284 @@ type HorizonUpdate struct {
 	// next release; next, taken up when now is empty; later, maybe some day; icebox, frozen until what
 	// it waits for changes
 	Value Horizon `json:"value"`
+}
+
+// ImportAssignee defines model for ImportAssignee.
+type ImportAssignee struct {
+	// Person The member it is: the identity resolved — `local:<username>`, or `oidc:<issuer>#<subject>` of the
+	// configured issuer — to a member who can see the project. Null when it resolves to nobody, never
+	// guessed by the name: the ticket is then imported without an assignee, unless a correction names
+	// one (docs/adr/0044 D1)
+	Person nullable.Nullable[Person] `json:"person"`
+
+	// Source The assignee as the file writes it, `Name <identity>` (docs/adr/0044 D1)
+	Source string `json:"source"`
+}
+
+// ImportBlock The block of a ticket the import creates as blocked (docs/adr/0009 D2)
+type ImportBlock struct {
+	// From docs/adr/0009 D1
+	From TicketState `json:"from"`
+
+	// Kind What a blocked ticket waits on (docs/adr/0009 D2)
+	Kind   BlockKind `json:"kind"`
+	Reason string    `json:"reason"`
+
+	// Ticket The key of the ticket a block of kind `ticket` waits on
+	Ticket nullable.Nullable[string] `json:"ticket"`
+}
+
+// ImportBlockCorrection The block a correction to the state `blocked` gives the ticket (docs/adr/0009 D2)
+type ImportBlockCorrection struct {
+	// From docs/adr/0009 D1
+	From *TicketState `json:"from,omitempty"`
+
+	// Kind What a blocked ticket waits on (docs/adr/0009 D2)
+	Kind   BlockKind `json:"kind"`
+	Reason string    `json:"reason"`
+}
+
+// ImportColumns The ticket's columns as the import reads them (docs/adr/0010 D5); a value outside its vocabulary
+// is an error of the file and null here, never a guess
+type ImportColumns struct {
+	Decided nullable.Nullable[openapi_types.Date] `json:"decided"`
+
+	// Done The `done` date of a ticket imported as done
+	Done   nullable.Nullable[openapi_types.Date] `json:"done"`
+	Effort nullable.Nullable[Effort]             `json:"effort"`
+
+	// Horizon The horizon, read from `horizon` or `urgency`; `later` where the source names none (docs/adr/0010 D3)
+	Horizon nullable.Nullable[Horizon] `json:"horizon"`
+
+	// Opened The `opened` date; null where the source names none, and the ticket is then opened at the execution
+	Opened nullable.Nullable[openapi_types.Date] `json:"opened"`
+
+	// Progress The implementation stage; 0 where the source names none
+	Progress int `json:"progress"`
+
+	// ProgressRefinement The refinement stage; 0 where the source names none
+	ProgressRefinement int `json:"progress_refinement"`
+
+	// ProgressReview The review stage; 0 where the source names none
+	ProgressReview int                              `json:"progress_review"`
+	Security       nullable.Nullable[SecurityClass] `json:"security"`
+	Severity       nullable.Nullable[Severity]      `json:"severity"`
+	Threat         nullable.Nullable[string]        `json:"threat"`
+}
+
+// ImportCorrection A person's correction of one file before the execution (docs/adr/0051 D2, docs/adr/0063 D1,
+// docs/adr/0008 D5): leave it out, or change its type, its state or its assignee. A file that
+// names `exclude: true` takes no other correction; a skipped file takes none at all. The state
+// `blocked` takes `block`, whose kind is not `ticket` — a block on a ticket is a `blocks` link, made
+// after the import — and whose `from` is the file's own state unless that is `blocked`, `done` or
+// `dropped`, when it is required; `block` with another state is refused. A correction to `done`
+// takes the file's `shipped` line, or the import note `imported from archive; the source carried no
+// verification note` (docs/adr/0063 D2); one to `dropped` the file's `dropped-reason`, or `imported
+// from archive; the source carried no reason`. `assignee` is a person id — a member who can see the
+// project — or null for nobody
+type ImportCorrection struct {
+	Assignee nullable.Nullable[openapi_types.UUID] `json:"assignee,omitempty"`
+
+	// Block The block a correction to the state `blocked` gives the ticket (docs/adr/0009 D2)
+	Block   *ImportBlockCorrection `json:"block,omitempty"`
+	Exclude *bool                  `json:"exclude,omitempty"`
+
+	// Path The file's path as the report names it
+	Path string `json:"path"`
+
+	// State docs/adr/0009 D1
+	State *TicketState `json:"state,omitempty"`
+
+	// Type docs/adr/0008 D1
+	Type *TicketType `json:"type,omitempty"`
+}
+
+// ImportExecution defines model for ImportExecution.
+type ImportExecution struct {
+	Corrections *[]ImportCorrection `json:"corrections,omitempty"`
+}
+
+// ImportFile One file of the upload as the import reads it (docs/adr/0051 D2, docs/adr/0063). The fields after
+// `reason` are null, or empty, for a skipped file and for one whose frontmatter cannot be read at all
+type ImportFile struct {
+	Assignee nullable.Nullable[ImportAssignee] `json:"assignee"`
+
+	// Attachments The file names the source lists; an export carries no bytes, and the import brings no file (docs/adr/0051 D4)
+	Attachments []string                       `json:"attachments"`
+	Block       nullable.Nullable[ImportBlock] `json:"block"`
+
+	// BlockCandidate The kind a repository's `blocked-by` names beside a state that is not `blocked`: the import never
+	// infers `blocked` (docs/adr/0009); a correction to `blocked` with this kind confirms it
+	BlockCandidate nullable.Nullable[BlockKind]     `json:"block_candidate"`
+	Columns        nullable.Nullable[ImportColumns] `json:"columns"`
+
+	// Confidential The ticket is created confidential (docs/adr/0065 D7)
+	Confidential bool `json:"confidential"`
+
+	// ConfidentialReason Why it is confidential — or why it is not where the source might suggest it: a
+	// `publication-accepted` date, a `shipped` line that names the fix
+	ConfidentialReason nullable.Nullable[string] `json:"confidential_reason"`
+
+	// Conflict The key of the project's ticket that holds the number — a deleted one included — or held it until it was purged
+	Conflict nullable.Nullable[string] `json:"conflict"`
+
+	// Correction The correction the execution applied to the file; null in a dry run and where none was sent
+	Correction nullable.Nullable[ImportCorrection] `json:"correction"`
+
+	// Errors Why the file cannot be imported as it stands
+	Errors []ImportMessage                 `json:"errors"`
+	Format nullable.Nullable[ImportFormat] `json:"format"`
+
+	// Key The key the ticket gets — or got — in the project, `<tenant>/<PROJECT>-<n>`
+	Key   nullable.Nullable[string] `json:"key"`
+	Links []ImportLink              `json:"links"`
+
+	// Note The verification note of a ticket imported as done, or the reason of one imported as dropped,
+	// which the import records on the state's act (docs/adr/0009 D5, docs/adr/0063 D2)
+	Note nullable.Nullable[string] `json:"note"`
+
+	// Number The ticket's number, kept from the source (docs/adr/0007 D6): `id: T<n>` or the `NNN` of the
+	// file name, or the number of an export's key
+	Number nullable.Nullable[int] `json:"number"`
+
+	// Outcome What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its
+	// number is a ticket of the project already, deleted ones in the bin included, or was one that was
+	// purged — a repeated import is a duplicate, not an update, and a number is never handed out twice
+	// (docs/adr/0064 D3, docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors` says
+	// why (docs/adr/0051 D2). `skip`: it is no ticket file, or it is a manifest of an export the import
+	// reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it out
+	// (docs/adr/0063 D1). `created`: the execution created its ticket. A dry run is not executed while
+	// a file it would import is `conflict` or `error`: exclude the file, or correct the source and make
+	// a new dry run
+	Outcome ImportOutcome `json:"outcome"`
+
+	// Parent The key of the parent in the project
+	Parent nullable.Nullable[string] `json:"parent"`
+
+	// Path The file's path in the upload, `/`-separated
+	Path      string           `json:"path"`
+	Questions []ImportQuestion `json:"questions"`
+
+	// Reason Why the file is skipped or excluded
+	Reason nullable.Nullable[string]      `json:"reason"`
+	State  nullable.Nullable[TicketState] `json:"state"`
+	Title  nullable.Nullable[string]      `json:"title"`
+	Type   nullable.Nullable[TicketType]  `json:"type"`
+
+	// TypeReason Why the import chose the type — named by the file, or detected by its content and open to correction (docs/adr/0008 D5)
+	TypeReason nullable.Nullable[string] `json:"type_reason"`
+
+	// Warnings What the import reads in a way the person should know, or leaves out — nothing is dropped silently
+	Warnings []ImportMessage `json:"warnings"`
+}
+
+// ImportFormat The grammar a file was read in. `repository`: a ticket file of a repository's docs/tickets/ —
+// `id: T<n>`, `urgency`, `blocked-by`, `filed-from`, the `local_` prefix (docs/adr/0063 D3).
+// `export`: cowork's own grammar v1, `key: <tenant>/<PROJECT>-<n>` (docs/adr/0044 D1). `plain`: a
+// file without frontmatter, an archived record that becomes one done task (docs/adr/0063 D4)
+type ImportFormat string
+
+// ImportJob An import job on a project (docs/adr/0051 D1): a dry run's report until it is executed or
+// twenty-four hours pass, then the report of the execution
+type ImportJob struct {
+	CreatedAt  time.Time                    `json:"created_at"`
+	CreatedBy  Person                       `json:"created_by"`
+	ExecutedAt nullable.Nullable[time.Time] `json:"executed_at"`
+	ExecutedBy nullable.Nullable[Person]    `json:"executed_by"`
+
+	// ExpiresAt When the dry run is gone; null once it is executed
+	ExpiresAt nullable.Nullable[time.Time] `json:"expires_at"`
+
+	// Files Every file of the upload, in the order the upload carried them
+	Files []ImportFile       `json:"files"`
+	Id    openapi_types.UUID `json:"id"`
+
+	// Project The project's key
+	Project string `json:"project"`
+
+	// Status `dry_run`: the report of what the execution would do, kept for twenty-four hours and executed at
+	// most once (docs/adr/0051 D2, D3, D7); `executed`: the import committed, and the report says what
+	// it created
+	Status  ImportStatus  `json:"status"`
+	Summary ImportSummary `json:"summary"`
+}
+
+// ImportLink A link the import creates, read from this file's end (docs/adr/0012)
+type ImportLink struct {
+	// Direction Outgoing when this file's ticket is the link's source
+	Direction ImportLinkDirection `json:"direction"`
+
+	// Key The other end's key in the project
+	Key string `json:"key"`
+
+	// Source Where the import read the link
+	Source ImportLinkSource `json:"source"`
+
+	// Type docs/adr/0012 D1
+	Type LinkType `json:"type"`
+}
+
+// ImportLinkDirection Outgoing when this file's ticket is the link's source
+type ImportLinkDirection string
+
+// ImportLinkSource Where the import read the link
+type ImportLinkSource string
+
+// ImportMessage defines model for ImportMessage.
+type ImportMessage struct {
+	// Field The frontmatter key, or the part of the file — `file`, `body`, `Q<n>`, `links.json` — the
+	// message is about
+	Field nullable.Nullable[string] `json:"field"`
+
+	// Line The line of the file, from 1, where one applies
+	Line    nullable.Nullable[int] `json:"line"`
+	Message string                 `json:"message"`
+}
+
+// ImportOutcome What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its
+// number is a ticket of the project already, deleted ones in the bin included, or was one that was
+// purged — a repeated import is a duplicate, not an update, and a number is never handed out twice
+// (docs/adr/0064 D3, docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors` says
+// why (docs/adr/0051 D2). `skip`: it is no ticket file, or it is a manifest of an export the import
+// reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it out
+// (docs/adr/0063 D1). `created`: the execution created its ticket. A dry run is not executed while
+// a file it would import is `conflict` or `error`: exclude the file, or correct the source and make
+// a new dry run
+type ImportOutcome string
+
+// ImportQuestion An open question the import creates as an entity of the ticket (docs/adr/0011 D2, D4)
+type ImportQuestion struct {
+	Number   int    `json:"number"`
+	Question string `json:"question"`
+
+	// Status docs/adr/0011 D2
+	Status QuestionStatus `json:"status"`
+}
+
+// ImportStatus `dry_run`: the report of what the execution would do, kept for twenty-four hours and executed at
+// most once (docs/adr/0051 D2, D3, D7); `executed`: the import committed, and the report says what
+// it created
+type ImportStatus string
+
+// ImportSummary defines model for ImportSummary.
+type ImportSummary struct {
+	// Confidential The tickets to create, or created, confidential
+	Confidential int `json:"confidential"`
+	Conflict     int `json:"conflict"`
+	Create       int `json:"create"`
+	Created      int `json:"created"`
+	Error        int `json:"error"`
+	Exclude      int `json:"exclude"`
+
+	// Files Every file of the upload
+	Files int `json:"files"`
+
+	// HighestNumber The highest number to create, or created; the project's sequence advances past it (docs/adr/0007 D6)
+	HighestNumber nullable.Nullable[int] `json:"highest_number"`
+
+	// Open The tickets to create, or created, in a state that is not `done` or `dropped`
+	Open int `json:"open"`
+	Skip int `json:"skip"`
 }
 
 // InboxEntry defines model for InboxEntry.
@@ -3846,6 +4321,9 @@ type IfMatch = string
 // IfNoneMatch defines model for IfNoneMatch.
 type IfNoneMatch = string
 
+// ImportID defines model for ImportID.
+type ImportID = openapi_types.UUID
+
 // IncludeTerminal defines model for IncludeTerminal.
 type IncludeTerminal = bool
 
@@ -4301,6 +4779,11 @@ type ListProjectAccessParams struct {
 
 	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
 	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
+}
+
+// CreateImportMultipartBody defines parameters for CreateImport.
+type CreateImportMultipartBody struct {
+	File []openapi_types.File `json:"file"`
 }
 
 // ListRepositoriesParams defines parameters for ListRepositories.
@@ -4883,6 +5366,12 @@ type UpdateProjectJSONRequestBody = ProjectPatch
 
 // SetProjectAccessJSONRequestBody defines body for SetProjectAccess for application/json ContentType.
 type SetProjectAccessJSONRequestBody = ProjectAccessSet
+
+// CreateImportMultipartRequestBody defines body for CreateImport for multipart/form-data ContentType.
+type CreateImportMultipartRequestBody CreateImportMultipartBody
+
+// ExecuteImportJSONRequestBody defines body for ExecuteImport for application/json ContentType.
+type ExecuteImportJSONRequestBody = ImportExecution
 
 // SortProjectRankJSONRequestBody defines body for SortProjectRank for application/json ContentType.
 type SortProjectRankJSONRequestBody = ProjectRankSort
@@ -5700,6 +6189,19 @@ type ClientInterface interface {
 	// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
 	RestoreTicket(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ExportTenant The tenant's tickets as an archive, the union over its projects
+	//
+	// The export of every project of the tenant the caller can see, archived ones included, in one
+	// `tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all
+	// of them under `<tenant>/`, and one `manifest.json`, `links.json` and `attachments.json` over
+	// all of them, each link once. A restricted project the caller cannot see is absent, without a
+	// count; the confidential tickets left out are counted per project and in total. Any member, an
+	// agent too; a token restricted to a project is refused, as on every route of the tenant outside
+	// a project. One act `exported` on the tenant, never published.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/export (the `ExportTenant` operationId).
+	ExportTenant(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListSavedFilters The caller's saved filters and those shared with the tenant
 	//
 	// The caller's own filters and every filter a member shared with the tenant, oldest first, each
@@ -6141,6 +6643,129 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 	ArchiveProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExportProject The project's tickets as an archive
+	//
+	// A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done
+	// and dropped ones included, deleted ones not —, its `…/markdown` document named by its key,
+	// `<tenant>/<PROJECT>-<n>.md`; and three manifests at the root:
+	//
+	// - `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of
+	//   tickets, the time, the exporter, and the confidential tickets the caller cannot see and the
+	//   archive therefore leaves out, as a count (docs/adr/0065 D5);
+	// - `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends
+	//   the caller can see, once, by its source key, its type and its target key;
+	// - `attachments.json`, an array of `ExportAttachment`: every attachment of those tickets by its
+	//   ticket, name, type, size and URL — never its bytes (docs/adr/0016 D5).
+	//
+	// The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
+	// an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
+	// is `404`. Every export is recorded, one act `exported` on the project — data left the system
+	// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/export (the `ExportProject` operationId).
+	ExportProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateImportWithBody Read an upload of ticket files into a dry run's report
+	//
+	// The first phase of an import (docs/adr/0051 D1, D2): every file of the upload is read, and the
+	// answer is the new job, a dry run whose report says per file what the execution would do.
+	// Nothing is imported yet. The upload is `multipart/form-data` with one or more parts named
+	// `file`: one archive — a `tar.gz` or a `zip`, known by its bytes, not its name — or Markdown
+	// files, one per part, named by the part's file name.
+	//
+	// A file is read as a ticket file of a repository (`NNN-<slug>.md`, `local_NNN-<slug>.md`,
+	// docs/adr/0063 D3), as cowork's own export (`<PROJECT>-<n>.md`, grammar v1), or, without
+	// frontmatter, as an archived record that becomes one done task (D4); everything else is listed
+	// as skipped (D5), the manifests of an export — `manifest.json`, `links.json`,
+	// `attachments.json` — as read beside the tickets. A `/context` document is an error
+	// (docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of
+	// the project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is
+	// detected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred
+	// (docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);
+	// the confidential flag follows the rule of the source (docs/adr/0065 D7).
+	//
+	// An administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never
+	// an agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`
+	// (docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of
+	// multipart overhead is `413 payload_too_large`, and so are files that hold more than
+	// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived
+	// project is `409 project_archived`. Recorded as the act `created` on the `import_job`; the
+	// dry run is kept for twenty-four hours, after which its read and its execution answer `404`.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports (the `CreateImport` operationId).
+	CreateImportWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetImport An import job with its report
+	//
+	// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
+	// the tenant's administrators, a token's `read` scope; a job of another project, and a dry run
+	// older than twenty-four hours, is `404`.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/imports/{import} (the `GetImport` operationId).
+	GetImport(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExecuteImportWithBody Execute a dry run, with corrections per file
+	//
+	// The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the
+	// corrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008
+	// D5) — against the project as it stands now, and every ticket, question and link is created in
+	// one transaction, the project's sequence advanced past the highest number, or nothing is. The
+	// tickets keep their numbers and take their places at the bottom of the project's rank in number
+	// order; the importer is their reporter; the dates, the stages, the horizon and the block are the
+	// source's, and a ticket imported as done or dropped carries its note or reason on its act
+	// (docs/adr/0063 D2). Every ticket records the file it came from and the job.
+	//
+	// Each created row is an act of the importer naming the job: `created` on each ticket, with
+	// `confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`
+	// on each question, `linked` on both ends of each link; and `imported` on the job. The event
+	// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
+	// nobody's inbox is told.
+	//
+	// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
+	// execution would import that has an error, or whose number is a ticket of the project by now,
+	// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
+	// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
+	// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
+	// its pointer. The same administrators, never an agent; an archived project is `409
+	// project_archived`; a dry run older than twenty-four hours is `404`.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution (the `ExecuteImport` operationId).
+	ExecuteImportWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExecuteImport Execute a dry run, with corrections per file
+	//
+	// The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the
+	// corrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008
+	// D5) — against the project as it stands now, and every ticket, question and link is created in
+	// one transaction, the project's sequence advanced past the highest number, or nothing is. The
+	// tickets keep their numbers and take their places at the bottom of the project's rank in number
+	// order; the importer is their reporter; the dates, the stages, the horizon and the block are the
+	// source's, and a ticket imported as done or dropped carries its note or reason on its act
+	// (docs/adr/0063 D2). Every ticket records the file it came from and the job.
+	//
+	// Each created row is an act of the importer naming the job: `created` on each ticket, with
+	// `confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`
+	// on each question, `linked` on both ends of each link; and `imported` on the job. The event
+	// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
+	// nobody's inbox is told.
+	//
+	// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
+	// execution would import that has an error, or whose number is a ticket of the project by now,
+	// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
+	// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
+	// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
+	// its pointer. The same administrators, never an agent; an archived project is `409
+	// project_archived`; a dry run older than twenty-four hours is `404`.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution (the `ExecuteImport` operationId).
+	ExecuteImport(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, body ExecuteImportJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SortProjectRankWithBody Reorder the project's open tickets by their score
 	//
@@ -8388,6 +9013,29 @@ func (c *Client) RestoreTicket(ctx context.Context, tenant TenantSlug, key Ticke
 	return c.Client.Do(req)
 }
 
+// ExportTenant The tenant's tickets as an archive, the union over its projects
+//
+// The export of every project of the tenant the caller can see, archived ones included, in one
+// `tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all
+// of them under `<tenant>/`, and one `manifest.json`, `links.json` and `attachments.json` over
+// all of them, each link once. A restricted project the caller cannot see is absent, without a
+// count; the confidential tickets left out are counted per project and in total. Any member, an
+// agent too; a token restricted to a project is refused, as on every route of the tenant outside
+// a project. One act `exported` on the tenant, never published.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/export (the `ExportTenant` operationId).
+func (c *Client) ExportTenant(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportTenantRequest(c.Server, tenant)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListSavedFilters The caller's saved filters and those shared with the tenant
 //
 // The caller's own filters and every filter a member shared with the tenant, oldest first, each
@@ -9150,6 +9798,179 @@ func (c *Client) SetProjectAccess(ctx context.Context, tenant TenantSlug, projec
 // Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 func (c *Client) ArchiveProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewArchiveProjectRequest(c.Server, tenant, project)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExportProject The project's tickets as an archive
+//
+// A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done
+// and dropped ones included, deleted ones not —, its `…/markdown` document named by its key,
+// `<tenant>/<PROJECT>-<n>.md`; and three manifests at the root:
+//
+//   - `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of
+//     tickets, the time, the exporter, and the confidential tickets the caller cannot see and the
+//     archive therefore leaves out, as a count (docs/adr/0065 D5);
+//   - `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends
+//     the caller can see, once, by its source key, its type and its target key;
+//   - `attachments.json`, an array of `ExportAttachment`: every attachment of those tickets by its
+//     ticket, name, type, size and URL — never its bytes (docs/adr/0016 D5).
+//
+// The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
+// an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
+// is `404`. Every export is recorded, one act `exported` on the project — data left the system
+// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/export (the `ExportProject` operationId).
+func (c *Client) ExportProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportProjectRequest(c.Server, tenant, project)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateImportWithBody Read an upload of ticket files into a dry run's report
+//
+// The first phase of an import (docs/adr/0051 D1, D2): every file of the upload is read, and the
+// answer is the new job, a dry run whose report says per file what the execution would do.
+// Nothing is imported yet. The upload is `multipart/form-data` with one or more parts named
+// `file`: one archive — a `tar.gz` or a `zip`, known by its bytes, not its name — or Markdown
+// files, one per part, named by the part's file name.
+//
+// A file is read as a ticket file of a repository (`NNN-<slug>.md`, `local_NNN-<slug>.md`,
+// docs/adr/0063 D3), as cowork's own export (`<PROJECT>-<n>.md`, grammar v1), or, without
+// frontmatter, as an archived record that becomes one done task (D4); everything else is listed
+// as skipped (D5), the manifests of an export — `manifest.json`, `links.json`,
+// `attachments.json` — as read beside the tickets. A `/context` document is an error
+// (docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of
+// the project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is
+// detected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred
+// (docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);
+// the confidential flag follows the rule of the source (docs/adr/0065 D7).
+//
+// An administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never
+// an agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`
+// (docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of
+// multipart overhead is `413 payload_too_large`, and so are files that hold more than
+// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived
+// project is `409 project_archived`. Recorded as the act `created` on the `import_job`; the
+// dry run is kept for twenty-four hours, after which its read and its execution answer `404`.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports (the `CreateImport` operationId).
+func (c *Client) CreateImportWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateImportRequestWithBody(c.Server, tenant, project, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetImport An import job with its report
+//
+// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
+// the tenant's administrators, a token's `read` scope; a job of another project, and a dry run
+// older than twenty-four hours, is `404`.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/imports/{import} (the `GetImport` operationId).
+func (c *Client) GetImport(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetImportRequest(c.Server, tenant, project, pImport)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExecuteImportWithBody Execute a dry run, with corrections per file
+//
+// The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the
+// corrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008
+// D5) — against the project as it stands now, and every ticket, question and link is created in
+// one transaction, the project's sequence advanced past the highest number, or nothing is. The
+// tickets keep their numbers and take their places at the bottom of the project's rank in number
+// order; the importer is their reporter; the dates, the stages, the horizon and the block are the
+// source's, and a ticket imported as done or dropped carries its note or reason on its act
+// (docs/adr/0063 D2). Every ticket records the file it came from and the job.
+//
+// Each created row is an act of the importer naming the job: `created` on each ticket, with
+// `confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`
+// on each question, `linked` on both ends of each link; and `imported` on the job. The event
+// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
+// nobody's inbox is told.
+//
+// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
+// execution would import that has an error, or whose number is a ticket of the project by now,
+// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
+// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
+// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
+// its pointer. The same administrators, never an agent; an archived project is `409
+// project_archived`; a dry run older than twenty-four hours is `404`.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution (the `ExecuteImport` operationId).
+func (c *Client) ExecuteImportWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExecuteImportRequestWithBody(c.Server, tenant, project, pImport, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ExecuteImport Execute a dry run, with corrections per file
+//
+// The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the
+// corrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008
+// D5) — against the project as it stands now, and every ticket, question and link is created in
+// one transaction, the project's sequence advanced past the highest number, or nothing is. The
+// tickets keep their numbers and take their places at the bottom of the project's rank in number
+// order; the importer is their reporter; the dates, the stages, the horizon and the block are the
+// source's, and a ticket imported as done or dropped carries its note or reason on its act
+// (docs/adr/0063 D2). Every ticket records the file it came from and the job.
+//
+// Each created row is an act of the importer naming the job: `created` on each ticket, with
+// `confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`
+// on each question, `linked` on both ends of each link; and `imported` on the job. The event
+// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
+// nobody's inbox is told.
+//
+// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
+// execution would import that has an error, or whose number is a ticket of the project by now,
+// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
+// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
+// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
+// its pointer. The same administrators, never an agent; an archived project is `409
+// project_archived`; a dry run older than twenty-four hours is `404`.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution (the `ExecuteImport` operationId).
+func (c *Client) ExecuteImport(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, body ExecuteImportJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExecuteImportRequest(c.Server, tenant, project, pImport, body)
 	if err != nil {
 		return nil, err
 	}
@@ -13312,6 +14133,40 @@ func NewRestoreTicketRequest(server string, tenant TenantSlug, key TicketKeyPath
 	return req, nil
 }
 
+// NewExportTenantRequest constructs an http.Request for the ExportTenant method
+func NewExportTenantRequest(server string, tenant TenantSlug) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/export", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListSavedFiltersRequest constructs an http.Request for the ListSavedFilters method
 func NewListSavedFiltersRequest(server string, tenant TenantSlug, params *ListSavedFiltersParams) (*http.Request, error) {
 	var err error
@@ -14781,6 +15636,199 @@ func NewArchiveProjectRequest(server string, tenant TenantSlug, project ProjectK
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewExportProjectRequest constructs an http.Request for the ExportProject method
+func NewExportProjectRequest(server string, tenant TenantSlug, project ProjectKey) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/export", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateImportRequestWithBody constructs an http.Request for the CreateImport method, with any body, and a specified content type
+func NewCreateImportRequestWithBody(server string, tenant TenantSlug, project ProjectKey, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/imports", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetImportRequest constructs an http.Request for the GetImport method
+func NewGetImportRequest(server string, tenant TenantSlug, project ProjectKey, pImport ImportID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "import", pImport, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/imports/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewExecuteImportRequest calls the generic ExecuteImport builder with application/json body
+func NewExecuteImportRequest(server string, tenant TenantSlug, project ProjectKey, pImport ImportID, body ExecuteImportJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewExecuteImportRequestWithBody(server, tenant, project, pImport, "application/json", bodyReader)
+}
+
+// NewExecuteImportRequestWithBody constructs an http.Request for the ExecuteImport method, with any body, and a specified content type
+func NewExecuteImportRequestWithBody(server string, tenant TenantSlug, project ProjectKey, pImport ImportID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "import", pImport, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/imports/%s/execution", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -20765,6 +21813,21 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore (the `RestoreTicket` operationId).
 	RestoreTicketWithResponse(ctx context.Context, tenant TenantSlug, key TicketKeyPath, reqEditors ...RequestEditorFn) (*RestoreTicketResponse, error)
 
+	// ExportTenantWithResponse The tenant's tickets as an archive, the union over its projects
+	//
+	// The export of every project of the tenant the caller can see, archived ones included, in one
+	// `tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all
+	// of them under `<tenant>/`, and one `manifest.json`, `links.json` and `attachments.json` over
+	// all of them, each link once. A restricted project the caller cannot see is absent, without a
+	// count; the confidential tickets left out are counted per project and in total. Any member, an
+	// agent too; a token restricted to a project is refused, as on every route of the tenant outside
+	// a project. One act `exported` on the tenant, never published.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/export (the `ExportTenant` operationId).
+	ExportTenantWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*ExportTenantResponse, error)
+
 	// ListSavedFiltersWithResponse The caller's saved filters and those shared with the tenant
 	//
 	// The caller's own filters and every filter a member shared with the tenant, oldest first, each
@@ -21236,6 +22299,133 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/archive (the `ArchiveProject` operationId).
 	ArchiveProjectWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*ArchiveProjectResponse, error)
+
+	// ExportProjectWithResponse The project's tickets as an archive
+	//
+	// A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done
+	// and dropped ones included, deleted ones not —, its `…/markdown` document named by its key,
+	// `<tenant>/<PROJECT>-<n>.md`; and three manifests at the root:
+	//
+	// - `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of
+	//   tickets, the time, the exporter, and the confidential tickets the caller cannot see and the
+	//   archive therefore leaves out, as a count (docs/adr/0065 D5);
+	// - `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends
+	//   the caller can see, once, by its source key, its type and its target key;
+	// - `attachments.json`, an array of `ExportAttachment`: every attachment of those tickets by its
+	//   ticket, name, type, size and URL — never its bytes (docs/adr/0016 D5).
+	//
+	// The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
+	// an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
+	// is `404`. Every export is recorded, one act `exported` on the project — data left the system
+	// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/export (the `ExportProject` operationId).
+	ExportProjectWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*ExportProjectResponse, error)
+
+	// CreateImportWithBodyWithResponse Read an upload of ticket files into a dry run's report
+	//
+	// The first phase of an import (docs/adr/0051 D1, D2): every file of the upload is read, and the
+	// answer is the new job, a dry run whose report says per file what the execution would do.
+	// Nothing is imported yet. The upload is `multipart/form-data` with one or more parts named
+	// `file`: one archive — a `tar.gz` or a `zip`, known by its bytes, not its name — or Markdown
+	// files, one per part, named by the part's file name.
+	//
+	// A file is read as a ticket file of a repository (`NNN-<slug>.md`, `local_NNN-<slug>.md`,
+	// docs/adr/0063 D3), as cowork's own export (`<PROJECT>-<n>.md`, grammar v1), or, without
+	// frontmatter, as an archived record that becomes one done task (D4); everything else is listed
+	// as skipped (D5), the manifests of an export — `manifest.json`, `links.json`,
+	// `attachments.json` — as read beside the tickets. A `/context` document is an error
+	// (docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of
+	// the project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is
+	// detected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred
+	// (docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);
+	// the confidential flag follows the rule of the source (docs/adr/0065 D7).
+	//
+	// An administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never
+	// an agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`
+	// (docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of
+	// multipart overhead is `413 payload_too_large`, and so are files that hold more than
+	// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived
+	// project is `409 project_archived`. Recorded as the act `created` on the `import_job`; the
+	// dry run is kept for twenty-four hours, after which its read and its execution answer `404`.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports (the `CreateImport` operationId).
+	CreateImportWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateImportResponse, error)
+
+	// GetImportWithResponse An import job with its report
+	//
+	// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
+	// the tenant's administrators, a token's `read` scope; a job of another project, and a dry run
+	// older than twenty-four hours, is `404`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/imports/{import} (the `GetImport` operationId).
+	GetImportWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, reqEditors ...RequestEditorFn) (*GetImportResponse, error)
+
+	// ExecuteImportWithBodyWithResponse Execute a dry run, with corrections per file
+	//
+	// The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the
+	// corrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008
+	// D5) — against the project as it stands now, and every ticket, question and link is created in
+	// one transaction, the project's sequence advanced past the highest number, or nothing is. The
+	// tickets keep their numbers and take their places at the bottom of the project's rank in number
+	// order; the importer is their reporter; the dates, the stages, the horizon and the block are the
+	// source's, and a ticket imported as done or dropped carries its note or reason on its act
+	// (docs/adr/0063 D2). Every ticket records the file it came from and the job.
+	//
+	// Each created row is an act of the importer naming the job: `created` on each ticket, with
+	// `confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`
+	// on each question, `linked` on both ends of each link; and `imported` on the job. The event
+	// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
+	// nobody's inbox is told.
+	//
+	// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
+	// execution would import that has an error, or whose number is a ticket of the project by now,
+	// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
+	// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
+	// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
+	// its pointer. The same administrators, never an agent; an archived project is `409
+	// project_archived`; a dry run older than twenty-four hours is `404`.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution (the `ExecuteImport` operationId).
+	ExecuteImportWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExecuteImportResponse, error)
+
+	// ExecuteImportWithResponse Execute a dry run, with corrections per file
+	//
+	// The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the
+	// corrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008
+	// D5) — against the project as it stands now, and every ticket, question and link is created in
+	// one transaction, the project's sequence advanced past the highest number, or nothing is. The
+	// tickets keep their numbers and take their places at the bottom of the project's rank in number
+	// order; the importer is their reporter; the dates, the stages, the horizon and the block are the
+	// source's, and a ticket imported as done or dropped carries its note or reason on its act
+	// (docs/adr/0063 D2). Every ticket records the file it came from and the job.
+	//
+	// Each created row is an act of the importer naming the job: `created` on each ticket, with
+	// `confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`
+	// on each question, `linked` on both ends of each link; and `imported` on the job. The event
+	// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
+	// nobody's inbox is told.
+	//
+	// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
+	// execution would import that has an error, or whose number is a ticket of the project by now,
+	// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
+	// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
+	// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
+	// its pointer. The same administrators, never an agent; an archived project is `409
+	// project_archived`; a dry run older than twenty-four hours is `404`.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution (the `ExecuteImport` operationId).
+	ExecuteImportWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, body ExecuteImportJSONRequestBody, reqEditors ...RequestEditorFn) (*ExecuteImportResponse, error)
 
 	// SortProjectRankWithBodyWithResponse Reorder the project's open tickets by their score
 	//
@@ -24627,6 +25817,61 @@ func (r RestoreTicketResponse) ContentType() string {
 	return ""
 }
 
+// ExportTenantResponse200Headers the declared response headers of an HTTP 200 response for ExportTenant
+type ExportTenantResponse200Headers struct {
+	ContentDisposition *string
+}
+
+// ExportTenantResponseDefaultHeaders the declared response headers of an HTTP default response for ExportTenant
+type ExportTenantResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ExportTenantResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ExportTenantResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ExportTenantResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ExportTenantResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ExportTenantResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportTenantResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportTenantResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExportTenantResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListSavedFiltersResponse200Headers the declared response headers of an HTTP 200 response for ListSavedFilters
 type ListSavedFiltersResponse200Headers struct {
 	ETag *string
@@ -26057,6 +27302,233 @@ func (r ArchiveProjectResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ArchiveProjectResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ExportProjectResponse200Headers the declared response headers of an HTTP 200 response for ExportProject
+type ExportProjectResponse200Headers struct {
+	ContentDisposition *string
+}
+
+// ExportProjectResponseDefaultHeaders the declared response headers of an HTTP default response for ExportProject
+type ExportProjectResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ExportProjectResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ExportProjectResponse200Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ExportProjectResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ExportProjectResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ExportProjectResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportProjectResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportProjectResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExportProjectResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CreateImportResponse201Headers the declared response headers of an HTTP 201 response for CreateImport
+type CreateImportResponse201Headers struct {
+	Location *string
+}
+
+// CreateImportResponseDefaultHeaders the declared response headers of an HTTP default response for CreateImport
+type CreateImportResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type CreateImportResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *ImportJob
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers201 the parsed response headers for an HTTP 201 response
+	Headers201 *CreateImportResponse201Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *CreateImportResponseDefaultHeaders
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateImportResponse) GetJSON201() *ImportJob {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateImportResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateImportResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateImportResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateImportResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateImportResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetImportResponseDefaultHeaders the declared response headers of an HTTP default response for GetImport
+type GetImportResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetImportResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ImportJob
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetImportResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetImportResponse) GetJSON200() *ImportJob {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetImportResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetImportResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetImportResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetImportResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetImportResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ExecuteImportResponseDefaultHeaders the declared response headers of an HTTP default response for ExecuteImport
+type ExecuteImportResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ExecuteImportResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *ImportJob
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ExecuteImportResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ExecuteImportResponse) GetJSON200() *ImportJob {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ExecuteImportResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ExecuteImportResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ExecuteImportResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExecuteImportResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExecuteImportResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -30928,6 +32400,27 @@ func (c *ClientWithResponses) RestoreTicketWithResponse(ctx context.Context, ten
 	return ParseRestoreTicketResponse(rsp)
 }
 
+// ExportTenantWithResponse The tenant's tickets as an archive, the union over its projects
+//
+// The export of every project of the tenant the caller can see, archived ones included, in one
+// `tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all
+// of them under `<tenant>/`, and one `manifest.json`, `links.json` and `attachments.json` over
+// all of them, each link once. A restricted project the caller cannot see is absent, without a
+// count; the confidential tickets left out are counted per project and in total. Any member, an
+// agent too; a token restricted to a project is refused, as on every route of the tenant outside
+// a project. One act `exported` on the tenant, never published.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/export (the `ExportTenant` operationId).
+func (c *ClientWithResponses) ExportTenantWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*ExportTenantResponse, error) {
+	rsp, err := c.ExportTenant(ctx, tenant, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportTenantResponse(rsp)
+}
+
 // ListSavedFiltersWithResponse The caller's saved filters and those shared with the tenant
 //
 // The caller's own filters and every filter a member shared with the tenant, oldest first, each
@@ -31596,6 +33089,163 @@ func (c *ClientWithResponses) ArchiveProjectWithResponse(ctx context.Context, te
 		return nil, err
 	}
 	return ParseArchiveProjectResponse(rsp)
+}
+
+// ExportProjectWithResponse The project's tickets as an archive
+//
+// A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done
+// and dropped ones included, deleted ones not —, its `…/markdown` document named by its key,
+// `<tenant>/<PROJECT>-<n>.md`; and three manifests at the root:
+//
+//   - `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of
+//     tickets, the time, the exporter, and the confidential tickets the caller cannot see and the
+//     archive therefore leaves out, as a count (docs/adr/0065 D5);
+//   - `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends
+//     the caller can see, once, by its source key, its type and its target key;
+//   - `attachments.json`, an array of `ExportAttachment`: every attachment of those tickets by its
+//     ticket, name, type, size and URL — never its bytes (docs/adr/0016 D5).
+//
+// The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
+// an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
+// is `404`. Every export is recorded, one act `exported` on the project — data left the system
+// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/export (the `ExportProject` operationId).
+func (c *ClientWithResponses) ExportProjectWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*ExportProjectResponse, error) {
+	rsp, err := c.ExportProject(ctx, tenant, project, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportProjectResponse(rsp)
+}
+
+// CreateImportWithBodyWithResponse Read an upload of ticket files into a dry run's report
+//
+// The first phase of an import (docs/adr/0051 D1, D2): every file of the upload is read, and the
+// answer is the new job, a dry run whose report says per file what the execution would do.
+// Nothing is imported yet. The upload is `multipart/form-data` with one or more parts named
+// `file`: one archive — a `tar.gz` or a `zip`, known by its bytes, not its name — or Markdown
+// files, one per part, named by the part's file name.
+//
+// A file is read as a ticket file of a repository (`NNN-<slug>.md`, `local_NNN-<slug>.md`,
+// docs/adr/0063 D3), as cowork's own export (`<PROJECT>-<n>.md`, grammar v1), or, without
+// frontmatter, as an archived record that becomes one done task (D4); everything else is listed
+// as skipped (D5), the manifests of an export — `manifest.json`, `links.json`,
+// `attachments.json` — as read beside the tickets. A `/context` document is an error
+// (docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of
+// the project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is
+// detected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred
+// (docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);
+// the confidential flag follows the rule of the source (docs/adr/0065 D7).
+//
+// An administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never
+// an agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`
+// (docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of
+// multipart overhead is `413 payload_too_large`, and so are files that hold more than
+// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived
+// project is `409 project_archived`. Recorded as the act `created` on the `import_job`; the
+// dry run is kept for twenty-four hours, after which its read and its execution answer `404`.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports (the `CreateImport` operationId).
+func (c *ClientWithResponses) CreateImportWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateImportResponse, error) {
+	rsp, err := c.CreateImportWithBody(ctx, tenant, project, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateImportResponse(rsp)
+}
+
+// GetImportWithResponse An import job with its report
+//
+// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
+// the tenant's administrators, a token's `read` scope; a job of another project, and a dry run
+// older than twenty-four hours, is `404`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/imports/{import} (the `GetImport` operationId).
+func (c *ClientWithResponses) GetImportWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, reqEditors ...RequestEditorFn) (*GetImportResponse, error) {
+	rsp, err := c.GetImport(ctx, tenant, project, pImport, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetImportResponse(rsp)
+}
+
+// ExecuteImportWithBodyWithResponse Execute a dry run, with corrections per file
+//
+// The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the
+// corrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008
+// D5) — against the project as it stands now, and every ticket, question and link is created in
+// one transaction, the project's sequence advanced past the highest number, or nothing is. The
+// tickets keep their numbers and take their places at the bottom of the project's rank in number
+// order; the importer is their reporter; the dates, the stages, the horizon and the block are the
+// source's, and a ticket imported as done or dropped carries its note or reason on its act
+// (docs/adr/0063 D2). Every ticket records the file it came from and the job.
+//
+// Each created row is an act of the importer naming the job: `created` on each ticket, with
+// `confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`
+// on each question, `linked` on both ends of each link; and `imported` on the job. The event
+// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
+// nobody's inbox is told.
+//
+// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
+// execution would import that has an error, or whose number is a ticket of the project by now,
+// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
+// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
+// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
+// its pointer. The same administrators, never an agent; an archived project is `409
+// project_archived`; a dry run older than twenty-four hours is `404`.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution (the `ExecuteImport` operationId).
+func (c *ClientWithResponses) ExecuteImportWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExecuteImportResponse, error) {
+	rsp, err := c.ExecuteImportWithBody(ctx, tenant, project, pImport, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExecuteImportResponse(rsp)
+}
+
+// ExecuteImportWithResponse Execute a dry run, with corrections per file
+//
+// The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the
+// corrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008
+// D5) — against the project as it stands now, and every ticket, question and link is created in
+// one transaction, the project's sequence advanced past the highest number, or nothing is. The
+// tickets keep their numbers and take their places at the bottom of the project's rank in number
+// order; the importer is their reporter; the dates, the stages, the horizon and the block are the
+// source's, and a ticket imported as done or dropped carries its note or reason on its act
+// (docs/adr/0063 D2). Every ticket records the file it came from and the job.
+//
+// Each created row is an act of the importer naming the job: `created` on each ticket, with
+// `confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`
+// on each question, `linked` on both ends of each link; and `imported` on the job. The event
+// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
+// nobody's inbox is told.
+//
+// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
+// execution would import that has an error, or whose number is a ticket of the project by now,
+// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
+// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
+// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
+// its pointer. The same administrators, never an agent; an archived project is `409
+// project_archived`; a dry run older than twenty-four hours is `404`.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution (the `ExecuteImport` operationId).
+func (c *ClientWithResponses) ExecuteImportWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, body ExecuteImportJSONRequestBody, reqEditors ...RequestEditorFn) (*ExecuteImportResponse, error) {
+	rsp, err := c.ExecuteImport(ctx, tenant, project, pImport, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExecuteImportResponse(rsp)
 }
 
 // SortProjectRankWithBodyWithResponse Reorder the project's open tickets by their score
@@ -35245,6 +36895,55 @@ func ParseRestoreTicketResponse(rsp *http.Response) (*RestoreTicketResponse, err
 	return response, nil
 }
 
+// ParseExportTenantResponse parses an HTTP response from a ExportTenantWithResponse call
+func ParseExportTenantResponse(rsp *http.Response) (*ExportTenantResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportTenantResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ExportTenantResponse200Headers
+		if values := rsp.Header.Values("Content-Disposition"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Disposition", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentDisposition = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers ExportTenantResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListSavedFiltersResponse parses an HTTP response from a ListSavedFiltersWithResponse call
 func ParseListSavedFiltersResponse(rsp *http.Response) (*ListSavedFiltersResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -36566,6 +38265,203 @@ func ParseArchiveProjectResponse(rsp *http.Response) (*ArchiveProjectResponse, e
 		response.Headers200 = &headers
 	case true:
 		var headers ArchiveProjectResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseExportProjectResponse parses an HTTP response from a ExportProjectWithResponse call
+func ParseExportProjectResponse(rsp *http.Response) (*ExportProjectResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportProjectResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ExportProjectResponse200Headers
+		if values := rsp.Header.Values("Content-Disposition"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Content-Disposition", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ContentDisposition = &value
+		}
+		response.Headers200 = &headers
+	case true:
+		var headers ExportProjectResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCreateImportResponse parses an HTTP response from a CreateImportWithResponse call
+func ParseCreateImportResponse(rsp *http.Response) (*CreateImportResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateImportResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest ImportJob
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 201:
+		var headers CreateImportResponse201Headers
+		if values := rsp.Header.Values("Location"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "Location", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.Location = &value
+		}
+		response.Headers201 = &headers
+	case true:
+		var headers CreateImportResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetImportResponse parses an HTTP response from a GetImportWithResponse call
+func ParseGetImportResponse(rsp *http.Response) (*GetImportResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetImportResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ImportJob
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetImportResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseExecuteImportResponse parses an HTTP response from a ExecuteImportWithResponse call
+func ParseExecuteImportResponse(rsp *http.Response) (*ExecuteImportResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExecuteImportResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ImportJob
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers ExecuteImportResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -40268,6 +42164,9 @@ type ServerInterface interface {
 	// RestoreTicket Restore a deleted ticket from the bin
 	// (PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore)
 	RestoreTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, key TicketKeyPath)
+	// ExportTenant The tenant's tickets as an archive, the union over its projects
+	// (GET /api/v1/tenants/{tenant}/export)
+	ExportTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// ListSavedFilters The caller's saved filters and those shared with the tenant
 	// (GET /api/v1/tenants/{tenant}/filters)
 	ListSavedFilters(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListSavedFiltersParams)
@@ -40340,6 +42239,18 @@ type ServerInterface interface {
 	// ArchiveProject Archive a project
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey)
+	// ExportProject The project's tickets as an archive
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/export)
+	ExportProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey)
+	// CreateImport Read an upload of ticket files into a dry run's report
+	// (POST /api/v1/tenants/{tenant}/projects/{project}/imports)
+	CreateImport(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey)
+	// GetImport An import job with its report
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/imports/{import})
+	GetImport(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, pImport ImportID)
+	// ExecuteImport Execute a dry run, with corrections per file
+	// (POST /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution)
+	ExecuteImport(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, pImport ImportID)
 	// SortProjectRank Reorder the project's open tickets by their score
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/rank)
 	SortProjectRank(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey)
@@ -42293,6 +44204,32 @@ func (siw *ServerInterfaceWrapper) RestoreTicket(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ExportTenant operation middleware
+func (siw *ServerInterfaceWrapper) ExportTenant(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportTenant(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListSavedFilters operation middleware
 func (siw *ServerInterfaceWrapper) ListSavedFilters(w http.ResponseWriter, r *http.Request) {
 
@@ -43526,6 +45463,164 @@ func (siw *ServerInterfaceWrapper) ArchiveProject(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ArchiveProject(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportProject operation middleware
+func (siw *ServerInterfaceWrapper) ExportProject(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportProject(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateImport operation middleware
+func (siw *ServerInterfaceWrapper) CreateImport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateImport(w, r, tenant, project)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetImport operation middleware
+func (siw *ServerInterfaceWrapper) GetImport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "import" -------------
+	var pImport ImportID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "import", r.PathValue("import"), &pImport, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "import", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetImport(w, r, tenant, project, pImport)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExecuteImport operation middleware
+func (siw *ServerInterfaceWrapper) ExecuteImport(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "import" -------------
+	var pImport ImportID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "import", r.PathValue("import"), &pImport, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "import", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExecuteImport(w, r, tenant, project, pImport)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -48428,6 +50523,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets", wrapper.ListDeletedTickets)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets/{key}", wrapper.PurgeTicket)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/deleted-tickets/{key}/restore", wrapper.RestoreTicket)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/export", wrapper.ExportTenant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters", wrapper.ListSavedFilters)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters", wrapper.CreateSavedFilter)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/filters/{filter}", wrapper.DeleteSavedFilter)
@@ -48452,6 +50548,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/access/{person_id}", wrapper.RemoveProjectAccess)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/access/{person_id}", wrapper.SetProjectAccess)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/archive", wrapper.ArchiveProject)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/export", wrapper.ExportProject)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/imports", wrapper.CreateImport)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/imports/{import}", wrapper.GetImport)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution", wrapper.ExecuteImport)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/rank", wrapper.SortProjectRank)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/repositories", wrapper.ListRepositories)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/repositories", wrapper.BindRepository)
@@ -50405,6 +52505,63 @@ func (response RestoreTicketdefaultApplicationProblemPlusJSONResponse) VisitRest
 	return err
 }
 
+type ExportTenantRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type ExportTenantResponseObject interface {
+	VisitExportTenantResponse(w http.ResponseWriter) error
+}
+
+type ExportTenant200ResponseHeaders struct {
+	ContentDisposition *string
+}
+
+type ExportTenant200ApplicationgzipResponse struct {
+	Body          io.Reader
+	Headers       ExportTenant200ResponseHeaders
+	ContentLength int64
+}
+
+func (response ExportTenant200ApplicationgzipResponse) VisitExportTenantResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/gzip")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportTenantdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ExportTenantdefaultApplicationProblemPlusJSONResponse) VisitExportTenantResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListSavedFiltersRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params ListSavedFiltersParams
@@ -51659,6 +53816,210 @@ type ArchiveProjectdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ArchiveProjectdefaultApplicationProblemPlusJSONResponse) VisitArchiveProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExportProjectRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectKey `json:"project"`
+}
+
+type ExportProjectResponseObject interface {
+	VisitExportProjectResponse(w http.ResponseWriter) error
+}
+
+type ExportProject200ResponseHeaders struct {
+	ContentDisposition *string
+}
+
+type ExportProject200ApplicationgzipResponse struct {
+	Body          io.Reader
+	Headers       ExportProject200ResponseHeaders
+	ContentLength int64
+}
+
+func (response ExportProject200ApplicationgzipResponse) VisitExportProjectResponse(w http.ResponseWriter) error {
+
+	w.Header().Set("Content-Type", "application/gzip")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	if response.Headers.ContentDisposition != nil {
+		w.Header().Set("Content-Disposition", fmt.Sprint(*response.Headers.ContentDisposition))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportProjectdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ExportProjectdefaultApplicationProblemPlusJSONResponse) VisitExportProjectResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateImportRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectKey `json:"project"`
+	Body    *multipart.Reader
+}
+
+type CreateImportResponseObject interface {
+	VisitCreateImportResponse(w http.ResponseWriter) error
+}
+
+type CreateImport201ResponseHeaders struct {
+	Location *string
+}
+
+type CreateImport201JSONResponse struct {
+	Body    ImportJob
+	Headers CreateImport201ResponseHeaders
+}
+
+func (response CreateImport201JSONResponse) VisitCreateImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.Location != nil {
+		w.Header().Set("Location", fmt.Sprint(*response.Headers.Location))
+	}
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateImportdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response CreateImportdefaultApplicationProblemPlusJSONResponse) VisitCreateImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetImportRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectKey `json:"project"`
+	Import  ImportID   `json:"import"`
+}
+
+type GetImportResponseObject interface {
+	VisitGetImportResponse(w http.ResponseWriter) error
+}
+
+type GetImport200JSONResponse ImportJob
+
+func (response GetImport200JSONResponse) VisitGetImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetImportdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetImportdefaultApplicationProblemPlusJSONResponse) VisitGetImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExecuteImportRequestObject struct {
+	Tenant  TenantSlug `json:"tenant"`
+	Project ProjectKey `json:"project"`
+	Import  ImportID   `json:"import"`
+	Body    *ExecuteImportJSONRequestBody
+}
+
+type ExecuteImportResponseObject interface {
+	VisitExecuteImportResponse(w http.ResponseWriter) error
+}
+
+type ExecuteImport200JSONResponse ImportJob
+
+func (response ExecuteImport200JSONResponse) VisitExecuteImportResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExecuteImportdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ExecuteImportdefaultApplicationProblemPlusJSONResponse) VisitExecuteImportResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -55363,6 +57724,9 @@ type StrictServerInterface interface {
 	// RestoreTicket Restore a deleted ticket from the bin
 	// (PUT /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore)
 	RestoreTicket(ctx context.Context, request RestoreTicketRequestObject) (RestoreTicketResponseObject, error)
+	// ExportTenant The tenant's tickets as an archive, the union over its projects
+	// (GET /api/v1/tenants/{tenant}/export)
+	ExportTenant(ctx context.Context, request ExportTenantRequestObject) (ExportTenantResponseObject, error)
 	// ListSavedFilters The caller's saved filters and those shared with the tenant
 	// (GET /api/v1/tenants/{tenant}/filters)
 	ListSavedFilters(ctx context.Context, request ListSavedFiltersRequestObject) (ListSavedFiltersResponseObject, error)
@@ -55435,6 +57799,18 @@ type StrictServerInterface interface {
 	// ArchiveProject Archive a project
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/archive)
 	ArchiveProject(ctx context.Context, request ArchiveProjectRequestObject) (ArchiveProjectResponseObject, error)
+	// ExportProject The project's tickets as an archive
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/export)
+	ExportProject(ctx context.Context, request ExportProjectRequestObject) (ExportProjectResponseObject, error)
+	// CreateImport Read an upload of ticket files into a dry run's report
+	// (POST /api/v1/tenants/{tenant}/projects/{project}/imports)
+	CreateImport(ctx context.Context, request CreateImportRequestObject) (CreateImportResponseObject, error)
+	// GetImport An import job with its report
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/imports/{import})
+	GetImport(ctx context.Context, request GetImportRequestObject) (GetImportResponseObject, error)
+	// ExecuteImport Execute a dry run, with corrections per file
+	// (POST /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution)
+	ExecuteImport(ctx context.Context, request ExecuteImportRequestObject) (ExecuteImportResponseObject, error)
 	// SortProjectRank Reorder the project's open tickets by their score
 	// (PUT /api/v1/tenants/{tenant}/projects/{project}/rank)
 	SortProjectRank(ctx context.Context, request SortProjectRankRequestObject) (SortProjectRankResponseObject, error)
@@ -56749,6 +59125,32 @@ func (sh *strictHandler) RestoreTicket(w http.ResponseWriter, r *http.Request, t
 	}
 }
 
+// ExportTenant operation middleware
+func (sh *strictHandler) ExportTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request ExportTenantRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportTenant(ctx, request.(ExportTenantRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportTenant")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportTenantResponseObject); ok {
+		if err := validResponse.VisitExportTenantResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListSavedFilters operation middleware
 func (sh *strictHandler) ListSavedFilters(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListSavedFiltersParams) {
 	var request ListSavedFiltersRequestObject
@@ -57456,6 +59858,130 @@ func (sh *strictHandler) ArchiveProject(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ArchiveProjectResponseObject); ok {
 		if err := validResponse.VisitArchiveProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportProject operation middleware
+func (sh *strictHandler) ExportProject(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey) {
+	var request ExportProjectRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportProject(ctx, request.(ExportProjectRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportProject")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportProjectResponseObject); ok {
+		if err := validResponse.VisitExportProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateImport operation middleware
+func (sh *strictHandler) CreateImport(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey) {
+	var request CreateImportRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+
+	if reader, err := r.MultipartReader(); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode multipart body: %w", err))
+		return
+	} else {
+		request.Body = reader
+	}
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateImport(ctx, request.(CreateImportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateImport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateImportResponseObject); ok {
+		if err := validResponse.VisitCreateImportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetImport operation middleware
+func (sh *strictHandler) GetImport(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, pImport ImportID) {
+	var request GetImportRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Import = pImport
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetImport(ctx, request.(GetImportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetImport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetImportResponseObject); ok {
+		if err := validResponse.VisitGetImportResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExecuteImport operation middleware
+func (sh *strictHandler) ExecuteImport(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, pImport ImportID) {
+	var request ExecuteImportRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Import = pImport
+
+	var body ExecuteImportJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExecuteImport(ctx, request.(ExecuteImportRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExecuteImport")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExecuteImportResponseObject); ok {
+		if err := validResponse.VisitExecuteImportResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

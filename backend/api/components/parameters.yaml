@@ -320,3 +320,9 @@ PullRequestID:
   required: true
   description: The id of a ticket's link to a pull request or a commit
   schema: {type: string, format: uuid}
+ImportID:
+  name: import
+  in: path
+  required: true
+  description: The import job's id
+  schema: {type: string, format: uuid}

@@ -56,6 +56,7 @@ tags:
   - name: chat
   - name: dashboard
   - name: integrations
+  - name: imports
 paths:
   /api/v1/version:
     $ref: './meta.yaml#/version'
@@ -147,6 +148,16 @@ paths:
     $ref: './repositories.yaml#/repositories'
   /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository}:
     $ref: './repositories.yaml#/repository'
+  /api/v1/tenants/{tenant}/projects/{project}/imports:
+    $ref: './imports.yaml#/imports'
+  /api/v1/tenants/{tenant}/projects/{project}/imports/{import}:
+    $ref: './imports.yaml#/import'
+  /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution:
+    $ref: './imports.yaml#/importExecution'
+  /api/v1/tenants/{tenant}/projects/{project}/export:
+    $ref: './imports.yaml#/projectExport'
+  /api/v1/tenants/{tenant}/export:
+    $ref: './imports.yaml#/tenantExport'
   /api/v1/tenants/{tenant}/events:
     $ref: './events.yaml#/events'
   /api/v1/tenants/{tenant}/chat:
@@ -264,6 +275,14 @@ components:
       $ref: './components/schemas.yaml#/ChatUiEvent'
     ChatDoneEvent:
       $ref: './components/schemas.yaml#/ChatDoneEvent'
+    # The manifests inside an export archive (imports.yaml): no operation
+    # answers them as JSON either; the importer and cowork-mcp read them.
+    ExportManifest:
+      $ref: './components/schemas.yaml#/ExportManifest'
+    ExportLink:
+      $ref: './components/schemas.yaml#/ExportLink'
+    ExportAttachment:
+      $ref: './components/schemas.yaml#/ExportAttachment'
   securitySchemes:
     bearerToken:
       type: http

@@ -20,7 +20,9 @@ FieldError:
   properties:
     pointer:
       type: string
-      description: A JSON pointer into the body, or query:<name> / header:<name>
+      description: |
+        A JSON pointer into the body, or query:<name> / header:<name>; the refused execution of an
+        import names a file of its upload as file:<path>
     message: {type: string}
     current:
       type: [string, number, integer, boolean, object, array, 'null']
@@ -503,7 +505,7 @@ AuditAction:
     interest, ranked, overridden, asked, answered, booked, voided, locked, uploaded, downloaded,
     exported, deleted, restored, purged, revoked, refused, archived, confidential_set,
     confidential_lifted, expired, logged_in, logged_out, login_failed, unlocked, password_changed,
-    password_reset, deactivated, reactivated, read, merged, closed, reopened, accepted]
+    password_reset, deactivated, reactivated, read, merged, closed, reopened, accepted, imported]
 AuditEvent:
   type: object
   required: [id, created_at, actor, entity_type, action]
@@ -2714,3 +2716,386 @@ SearchHitList:
         $ref: '#/SearchHit'
     next_cursor:
       type: [string, 'null']
+ImportStatus:
+  type: string
+  enum: [dry_run, executed]
+  description: |
+    `dry_run`: the report of what the execution would do, kept for twenty-four hours and executed at
+    most once (docs/adr/0051 D2, D3, D7); `executed`: the import committed, and the report says what
+    it created
+ImportOutcome:
+  type: string
+  enum: [create, conflict, error, skip, exclude, created]
+  description: |
+    What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its
+    number is a ticket of the project already, deleted ones in the bin included, or was one that was
+    purged — a repeated import is a duplicate, not an update, and a number is never handed out twice
+    (docs/adr/0064 D3, docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors` says
+    why (docs/adr/0051 D2). `skip`: it is no ticket file, or it is a manifest of an export the import
+    reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it out
+    (docs/adr/0063 D1). `created`: the execution created its ticket. A dry run is not executed while
+    a file it would import is `conflict` or `error`: exclude the file, or correct the source and make
+    a new dry run
+ImportFormat:
+  type: string
+  enum: [repository, export, plain]
+  description: |
+    The grammar a file was read in. `repository`: a ticket file of a repository's docs/tickets/ —
+    `id: T<n>`, `urgency`, `blocked-by`, `filed-from`, the `local_` prefix (docs/adr/0063 D3).
+    `export`: cowork's own grammar v1, `key: <tenant>/<PROJECT>-<n>` (docs/adr/0044 D1). `plain`: a
+    file without frontmatter, an archived record that becomes one done task (docs/adr/0063 D4)
+ImportMessage:
+  type: object
+  required: [field, line, message]
+  properties:
+    field:
+      type: [string, 'null']
+      description: |
+        The frontmatter key, or the part of the file — `file`, `body`, `Q<n>`, `links.json` — the
+        message is about
+    line:
+      type: [integer, 'null']
+      description: The line of the file, from 1, where one applies
+    message: {type: string}
+ImportBlock:
+  type: object
+  description: The block of a ticket the import creates as blocked (docs/adr/0009 D2)
+  required: [kind, reason, from, ticket]
+  properties:
+    kind:
+      $ref: '#/BlockKind'
+    reason: {type: string}
+    from:
+      $ref: '#/TicketState'
+    ticket:
+      type: [string, 'null']
+      description: The key of the ticket a block of kind `ticket` waits on
+ImportColumns:
+  type: object
+  description: |
+    The ticket's columns as the import reads them (docs/adr/0010 D5); a value outside its vocabulary
+    is an error of the file and null here, never a guess
+  required: [severity, security, threat, horizon, effort, progress_refinement, progress, progress_review,
+    opened, decided, done]
+  properties:
+    severity:
+      oneOf:
+        - $ref: '#/Severity'
+        - type: 'null'
+    security:
+      oneOf:
+        - $ref: '#/SecurityClass'
+        - type: 'null'
+    threat: {type: [string, 'null']}
+    horizon:
+      description: The horizon, read from `horizon` or `urgency`; `later` where the source names none (docs/adr/0010 D3)
+      oneOf:
+        - $ref: '#/Horizon'
+        - type: 'null'
+    effort:
+      oneOf:
+        - $ref: '#/Effort'
+        - type: 'null'
+    progress_refinement: {type: integer, description: The refinement stage; 0 where the source names none}
+    progress: {type: integer, description: The implementation stage; 0 where the source names none}
+    progress_review: {type: integer, description: The review stage; 0 where the source names none}
+    opened:
+      type: [string, 'null']
+      format: date
+      description: The `opened` date; null where the source names none, and the ticket is then opened at the execution
+    decided: {type: [string, 'null'], format: date}
+    done: {type: [string, 'null'], format: date, description: The `done` date of a ticket imported as done}
+ImportAssignee:
+  type: object
+  required: [source, person]
+  properties:
+    source:
+      type: string
+      description: The assignee as the file writes it, `Name <identity>` (docs/adr/0044 D1)
+    person:
+      description: |
+        The member it is: the identity resolved — `local:<username>`, or `oidc:<issuer>#<subject>` of the
+        configured issuer — to a member who can see the project. Null when it resolves to nobody, never
+        guessed by the name: the ticket is then imported without an assignee, unless a correction names
+        one (docs/adr/0044 D1)
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+ImportQuestion:
+  type: object
+  description: An open question the import creates as an entity of the ticket (docs/adr/0011 D2, D4)
+  required: [number, question, status]
+  properties:
+    number: {type: integer}
+    question: {type: string}
+    status:
+      $ref: '#/QuestionStatus'
+ImportLink:
+  type: object
+  description: A link the import creates, read from this file's end (docs/adr/0012)
+  required: [type, direction, key, source]
+  properties:
+    type:
+      $ref: '#/LinkType'
+    direction:
+      type: string
+      enum: [outgoing, incoming]
+      description: Outgoing when this file's ticket is the link's source
+    key: {type: string, description: The other end's key in the project}
+    source:
+      type: string
+      enum: [blocked-by, filed-from, links.json]
+      description: Where the import read the link
+ImportBlockCorrection:
+  type: object
+  additionalProperties: false
+  description: The block a correction to the state `blocked` gives the ticket (docs/adr/0009 D2)
+  required: [kind, reason]
+  properties:
+    kind:
+      $ref: '#/BlockKind'
+    reason: {type: string, minLength: 1, maxLength: 2000}
+    from:
+      $ref: '#/TicketState'
+ImportCorrection:
+  type: object
+  additionalProperties: false
+  description: |
+    A person's correction of one file before the execution (docs/adr/0051 D2, docs/adr/0063 D1,
+    docs/adr/0008 D5): leave it out, or change its type, its state or its assignee. A file that
+    names `exclude: true` takes no other correction; a skipped file takes none at all. The state
+    `blocked` takes `block`, whose kind is not `ticket` — a block on a ticket is a `blocks` link, made
+    after the import — and whose `from` is the file's own state unless that is `blocked`, `done` or
+    `dropped`, when it is required; `block` with another state is refused. A correction to `done`
+    takes the file's `shipped` line, or the import note `imported from archive; the source carried no
+    verification note` (docs/adr/0063 D2); one to `dropped` the file's `dropped-reason`, or `imported
+    from archive; the source carried no reason`. `assignee` is a person id — a member who can see the
+    project — or null for nobody
+  required: [path]
+  properties:
+    path: {type: string, minLength: 1, maxLength: 1024, description: The file's path as the report names it}
+    exclude: {type: boolean}
+    type:
+      $ref: '#/TicketType'
+    state:
+      $ref: '#/TicketState'
+    block:
+      $ref: '#/ImportBlockCorrection'
+    assignee:
+      type: [string, 'null']
+      format: uuid
+ImportFile:
+  type: object
+  description: |
+    One file of the upload as the import reads it (docs/adr/0051 D2, docs/adr/0063). The fields after
+    `reason` are null, or empty, for a skipped file and for one whose frontmatter cannot be read at all
+  required: [path, outcome, reason, format, number, key, conflict, title, type, type_reason, state,
+    block_candidate, block, columns, assignee, parent, note, questions, links, attachments, confidential,
+    confidential_reason, warnings, errors, correction]
+  properties:
+    path: {type: string, description: 'The file''s path in the upload, `/`-separated'}
+    outcome:
+      $ref: '#/ImportOutcome'
+    reason:
+      type: [string, 'null']
+      description: Why the file is skipped or excluded
+    format:
+      oneOf:
+        - $ref: '#/ImportFormat'
+        - type: 'null'
+    number:
+      type: [integer, 'null']
+      description: |
+        The ticket's number, kept from the source (docs/adr/0007 D6): `id: T<n>` or the `NNN` of the
+        file name, or the number of an export's key
+    key:
+      type: [string, 'null']
+      description: The key the ticket gets — or got — in the project, `<tenant>/<PROJECT>-<n>`
+    conflict:
+      type: [string, 'null']
+      description: The key of the project's ticket that holds the number — a deleted one included — or held it until it was purged
+    title: {type: [string, 'null']}
+    type:
+      oneOf:
+        - $ref: '#/TicketType'
+        - type: 'null'
+    type_reason:
+      type: [string, 'null']
+      description: Why the import chose the type — named by the file, or detected by its content and open to correction (docs/adr/0008 D5)
+    state:
+      oneOf:
+        - $ref: '#/TicketState'
+        - type: 'null'
+    block_candidate:
+      description: |
+        The kind a repository's `blocked-by` names beside a state that is not `blocked`: the import never
+        infers `blocked` (docs/adr/0009); a correction to `blocked` with this kind confirms it
+      oneOf:
+        - $ref: '#/BlockKind'
+        - type: 'null'
+    block:
+      oneOf:
+        - $ref: '#/ImportBlock'
+        - type: 'null'
+    columns:
+      oneOf:
+        - $ref: '#/ImportColumns'
+        - type: 'null'
+    assignee:
+      oneOf:
+        - $ref: '#/ImportAssignee'
+        - type: 'null'
+    parent:
+      type: [string, 'null']
+      description: The key of the parent in the project
+    note:
+      type: [string, 'null']
+      description: |
+        The verification note of a ticket imported as done, or the reason of one imported as dropped,
+        which the import records on the state's act (docs/adr/0009 D5, docs/adr/0063 D2)
+    questions:
+      type: array
+      items:
+        $ref: '#/ImportQuestion'
+    links:
+      type: array
+      items:
+        $ref: '#/ImportLink'
+    attachments:
+      type: array
+      description: The file names the source lists; an export carries no bytes, and the import brings no file (docs/adr/0051 D4)
+      items: {type: string}
+    confidential:
+      type: boolean
+      description: The ticket is created confidential (docs/adr/0065 D7)
+    confidential_reason:
+      type: [string, 'null']
+      description: |
+        Why it is confidential — or why it is not where the source might suggest it: a
+        `publication-accepted` date, a `shipped` line that names the fix
+    warnings:
+      type: array
+      description: What the import reads in a way the person should know, or leaves out — nothing is dropped silently
+      items:
+        $ref: '#/ImportMessage'
+    errors:
+      type: array
+      description: Why the file cannot be imported as it stands
+      items:
+        $ref: '#/ImportMessage'
+    correction:
+      description: The correction the execution applied to the file; null in a dry run and where none was sent
+      oneOf:
+        - $ref: '#/ImportCorrection'
+        - type: 'null'
+ImportSummary:
+  type: object
+  required: [files, create, conflict, error, skip, exclude, created, open, confidential, highest_number]
+  properties:
+    files: {type: integer, description: Every file of the upload}
+    create: {type: integer}
+    conflict: {type: integer}
+    error: {type: integer}
+    skip: {type: integer}
+    exclude: {type: integer}
+    created: {type: integer}
+    open:
+      type: integer
+      description: The tickets to create, or created, in a state that is not `done` or `dropped`
+    confidential:
+      type: integer
+      description: The tickets to create, or created, confidential
+    highest_number:
+      type: [integer, 'null']
+      description: The highest number to create, or created; the project's sequence advances past it (docs/adr/0007 D6)
+ImportJob:
+  type: object
+  description: |
+    An import job on a project (docs/adr/0051 D1): a dry run's report until it is executed or
+    twenty-four hours pass, then the report of the execution
+  required: [id, project, status, created_by, created_at, expires_at, executed_by, executed_at, summary, files]
+  properties:
+    id: {type: string, format: uuid}
+    project: {type: string, description: The project's key}
+    status:
+      $ref: '#/ImportStatus'
+    created_by:
+      $ref: '#/Person'
+    created_at: {type: string, format: date-time}
+    expires_at:
+      type: [string, 'null']
+      format: date-time
+      description: When the dry run is gone; null once it is executed
+    executed_by:
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+    executed_at: {type: [string, 'null'], format: date-time}
+    summary:
+      $ref: '#/ImportSummary'
+    files:
+      type: array
+      description: Every file of the upload, in the order the upload carried them
+      items:
+        $ref: '#/ImportFile'
+ImportExecution:
+  type: object
+  additionalProperties: false
+  properties:
+    corrections:
+      type: array
+      maxItems: 10000
+      items:
+        $ref: '#/ImportCorrection'
+ExportManifest:
+  type: object
+  description: '`manifest.json` of an export archive (docs/adr/0051 D4)'
+  required: [format, tenant, projects, exported_at, exported_by, tickets, confidential_not_included]
+  properties:
+    format:
+      type: string
+      enum: [cowork export v1]
+    tenant: {type: string, description: 'The tenant''s slug'}
+    projects:
+      type: array
+      description: The project of a project export; every project the caller sees, by key, of a tenant export
+      items:
+        $ref: '#/ExportManifestProject'
+    exported_at: {type: string, format: date-time}
+    exported_by:
+      type: string
+      description: The exporter as grammar v1 writes a person, `Name <identity>` (docs/adr/0044 D1)
+    tickets: {type: integer, description: The documents the archive holds}
+    confidential_not_included:
+      type: integer
+      description: |
+        The confidential tickets of these projects the exporter cannot see, which the archive leaves out
+        — "n confidential tickets not included" (docs/adr/0065 D5)
+ExportManifestProject:
+  type: object
+  required: [key, name, archived, tickets, confidential_not_included]
+  properties:
+    key: {type: string, description: The project's key}
+    name: {type: string}
+    archived: {type: boolean}
+    tickets: {type: integer, description: The documents of this project the archive holds}
+    confidential_not_included: {type: integer}
+ExportLink:
+  type: object
+  description: One link of `links.json`, once (docs/adr/0051 D4, docs/adr/0012 D1)
+  required: [source, type, target]
+  properties:
+    source: {type: string, description: 'The source''s key, <tenant>/<PROJECT>-<n>'}
+    type:
+      $ref: '#/LinkType'
+    target: {type: string, description: 'The target''s key; relates-to is stored and written once'}
+ExportAttachment:
+  type: object
+  description: One attachment of `attachments.json` — its metadata and URL, never its bytes (docs/adr/0016 D5)
+  required: [ticket, name, type, size, url]
+  properties:
+    ticket: {type: string, description: 'The ticket''s key'}
+    name: {type: string}
+    type: {type: string, description: The stored content type}
+    size: {type: integer, format: int64}
+    url: {type: string, description: 'The path of its bytes, `…/attachments/{attachment}/content`'}

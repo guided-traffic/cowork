@@ -1077,6 +1077,8 @@ every error body carries one of these as `code`.
 | `parent_cycle` | 409 | The new parent is the ticket itself or one of its descendants (docs/adr/0008 D2) |
 | `link_cycle` | 409 | The blocks link would close a cycle of prerequisites (docs/adr/0012 D4) |
 | `open_prerequisites` | 409 | Tickets that block this one are not done or dropped; `errors[]` lists them, and a person may override with a reason (docs/adr/0012 D7) |
+| `import_executed` | 409 | The dry run was executed already; a dry run is executed at most once (docs/adr/0051 D3) |
+| `import_conflict` | 409 | A file the execution would import has an error, or its number is a ticket of the project — or was one, purged; `errors[]` names each as `file:<path>`, and nothing was imported: exclude the file, or correct the source and make a new dry run (docs/adr/0064 D3, docs/adr/0051 D2) |
 | `period_locked` | 409 | The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8) |
 | `attachment_limit` | 409 | The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6) |
 | `attachment_quota` | 409 | The tenant's attachments would hold more bytes than COWORK_ATTACHMENT_TENANT_QUOTA allows; nothing was stored (docs/adr/0016 D6) |
