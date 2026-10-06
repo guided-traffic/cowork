@@ -890,13 +890,30 @@ new names only. Two things to know:
 - **A `cowork-mcp` of 0.4 does not work against it**, and is unsupported
   ([SECURITY.md](../../SECURITY.md)): its token reads without the capability it looks for, and its
   routes for the horizon are gone. Every person's `cowork-mcp` of 0.5 keeps working.
-- **A rollback to 0.5 over it is safe.** 0.5 reads everything the migration leaves, and the
-  migration's checks still take the `override-urgency` that 0.5 writes beside `set-horizon` into
+- **A rollback to 0.5 over it is safe** — over it alone, not over the release that narrows the
+  checks, below. 0.5 reads everything the migration leaves, and the checks of that release and the
+  one after it, 0.6 and 0.7, take the `override-urgency` that 0.5 writes beside `set-horizon` into
   every agent token it makes and every chat capability set it stores; once the image goes forward
-  again, this release reads such a set without the old name. One thing is lost in that window: a
+  again, 0.6 and 0.7 read such a set without the old name. One thing is lost in that window: a
   saved filter 0.5 stores with the key `urgency` — which 0.5 still takes — loses that condition
-  under this release, which reads it as a filter without a horizon, until a later release's
-  migration rewrites it to `horizon`. Read from the code of 0.5.1, not run.
+  under 0.6 and 0.7, which read it as a filter without a horizon, until the migration of the release
+  that narrows the checks rewrites it to `horizon`. Read from the code of 0.5.1, not run.
+
+**The release that narrows the capability checks**
+([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D4 and [ADR 0010](../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1, as amended
+2026-10-06) completes the contract above. Its migration rewrites again what a rollback to 0.5 left —
+every stored `override-urgency` to `set-horizon`, and a saved filter's `urgency` to `horizon`, which
+gives the filter back the condition the window lost, unless its conditions were saved again
+meanwhile — and then the checks of the tokens' and the chat's capability sets refuse
+`override-urgency`. Two things to know:
+
+- **A rollback to the release directly before it is safe**: no release from 0.6.0 on writes the
+  old name.
+- **A rollback to 0.5 over it is not.** 0.5 writes `override-urgency` beside `set-horizon` into
+  every agent token it makes and every chat capability set it stores that holds `set-horizon`; the
+  checks refuse that write, so making such a token or choosing such a set fails. 0.5 is
+  unsupported ([SECURITY.md](../../SECURITY.md)). Read from the code of 0.5.1, not run.
 
 ## Uninstall
 

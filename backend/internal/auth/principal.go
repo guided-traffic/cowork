@@ -44,21 +44,12 @@ var AllCapabilities = []string{CapDecide, CapClose, CapDrop, CapRank, CapSetHori
 // confirmation an injected text could record an answer in the person's name.
 var DefaultChatCapabilities = []string{CapRank, CapSetHorizon, CapInterest, CapUpload, CapCreateProject}
 
-// oldSetHorizon is the name set-horizon had before (docs/adr/0043 D4 as
-// amended 2026-10-06). The API refuses it, but the checks of the stored sets
-// still take it until a later release, because release 0.5, after an image
-// rollback, stores it beside set-horizon in every set it writes.
-const oldSetHorizon = "override-urgency"
-
 // Canonical is a capability set as this release reads it: in the order
-// given, each name once, and without override-urgency, which a set release
-// 0.5 wrote carries only beside set-horizon — so dropping it loses nothing,
-// and no answer names a capability the API no longer has (docs/adr/0043 D4
-// as amended 2026-10-06).
+// given, each name once (docs/adr/0043 D4).
 func Canonical(capabilities []string) []string {
 	out := make([]string, 0, len(capabilities))
 	for _, c := range capabilities {
-		if c != oldSetHorizon && !slices.Contains(out, c) {
+		if !slices.Contains(out, c) {
 			out = append(out, c)
 		}
 	}

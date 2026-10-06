@@ -277,10 +277,9 @@ func TestTheHorizonFilter(t *testing.T) {
 // docs/adr/0043 D4 as amended 2026-10-06: the capability is set-horizon and
 // nothing else. A set is answered as it is stored — the token, the token
 // list, the tenant's tokens, /me/token's request set —, a set that names
-// override-urgency is refused, and the chat holds set-horizon for a horizon
-// it sets. A set the release before stored after an image rollback, with
-// override-urgency beside set-horizon, is read and answered without the old
-// name and holds set-horizon.
+// override-urgency is refused with 400, and the chat holds set-horizon for a
+// horizon it sets. The checks of the stored sets refuse the old name as well
+// (migration 40, TestTheNarrowingMigrationRewritesAgainAndRefusesTheOldName).
 func TestTheCapabilityIsSetHorizonOnly(t *testing.T) {
 	w := newWorld(t)
 	names := withAccounts(t, w)
@@ -331,23 +330,12 @@ func TestTheCapabilityIsSetHorizonOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, stored, "the chat stores its set in the catalogue's order, and nothing beside it")
 
-	rolledBack, _, err := f.Token(ctx, fixture.TokenSpec{UserID: w.MemberA, Agent: true,
-		Capabilities: []string{"rank", "set-horizon", "override-urgency"}})
-	require.NoError(t, err)
-	written := decode[apigen.CurrentToken](t, s.do(t, caller{Token: rolledBack, Agent: "claude-code/opus/s1"}, http.MethodGet, "/api/v1/me/token", nil))
-	assert.Equal(t, []apigen.Capability{"rank", "set-horizon"}, written.Capabilities, "a token the release before wrote")
-	assert.Equal(t, []apigen.Capability{"rank", "set-horizon"}, written.Request.Capabilities)
-	require.NoError(t, f.Exec(ctx, `UPDATE chat_capabilities SET capabilities = ARRAY['rank', 'set-horizon', 'override-urgency']
-		WHERE user_id = $1`, w.MemberA))
-	assert.Equal(t, []apigen.Capability{"rank", "set-horizon"},
-		decode[apigen.ChatCapabilities](t, b.request(http.MethodGet, "/api/v1/me/chat", nil)).Capabilities, "a chat set the release before wrote")
-
 	filed := b.request(http.MethodPost, "/api/v1/tenants/"+w.SlugA+"/projects/ALPHA/tickets", task("for the chat"))
 	require.Equal(t, http.StatusCreated, filed.StatusCode)
 	tk := decode[apigen.Ticket](t, filed)
 	marked := b.request(http.MethodPut, ticketPath(w.SlugA, "ALPHA", tk.Number)+"/horizon",
 		map[string]any{"value": "next", "reason": "the person asked"},
 		withHeader("X-Cowork-Agent", "chat/stub:model/c1"), withHeader("If-Match", strconv.Quote(strconv.Itoa(tk.Version))))
-	require.Equal(t, http.StatusOK, marked.StatusCode, "the chat holds set-horizon, from a set the release before wrote")
+	require.Equal(t, http.StatusOK, marked.StatusCode, "the chat holds set-horizon, from the set its person chose")
 	assert.Equal(t, apigen.HorizonNext, decode[apigen.Ticket](t, marked).Horizon)
 }

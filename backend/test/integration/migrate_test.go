@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -13,10 +14,12 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/test/fixture"
@@ -442,8 +445,8 @@ func TestHorizonMigrationKeepsWhatTicketsShow(t *testing.T) {
 // docs/adr/0043 D4 as amended 2026-10-05, docs/adr/0028 D3: migration 37 lets
 // the capability sets of the tokens and of the chat name set-horizon beside
 // override-urgency, which the release before reads; it rewrites no row — the
-// rewrite and the old name's removal are migration 38's —, and a name outside
-// the catalogue stays refused.
+// rewrite is migration 38's, the old name's removal from the checks migration
+// 40's —, and a name outside the catalogue stays refused.
 func TestTheCapabilityMigrationTakesBothNamesAndRewritesNothing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -494,10 +497,11 @@ func TestTheCapabilityMigrationTakesBothNamesAndRewritesNothing(t *testing.T) {
 // Every override-urgency in the capability sets of the tokens — a revoked
 // one's too — and of the chat becomes set-horizon, each name once, in the
 // order it was first named; a saved filter's urgency becomes horizon, a
-// horizon already there winning; nothing else of a row moves. The checks
-// still take the old name, which the release before writes after an image
-// rollback, and refuse a name outside the catalogue; the forced row-level
-// security the rewrite lifts is restored.
+// horizon already there winning; nothing else of a row moves. At version 38
+// the checks still take the old name, which the release before writes after
+// an image rollback, and refuse a name outside the catalogue; the forced
+// row-level security the rewrite lifts is restored. Migration 40 narrows the
+// checks (TestTheNarrowingMigrationRewritesAgainAndRefusesTheOldName).
 func TestTheContractMigrationRewritesTheNamesBefore(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -569,8 +573,7 @@ func TestTheContractMigrationRewritesTheNamesBefore(t *testing.T) {
 		filterIDs[label] = id
 	}
 
-	_, err = store.Migrate(ctx, ownerURL, runtimeRole)
-	require.NoError(t, err)
+	migrateTo(t, ownerURL, 38)
 
 	for label, c := range tokens {
 		var got []string
@@ -705,4 +708,166 @@ func TestTheModerationMigrationWidensTheFilterPoliciesAndChangesNoRow(t *testing
 	var forced bool
 	require.NoError(t, f.QueryRow(ctx, "SELECT relforcerowsecurity FROM pg_class WHERE oid = 'saved_filters'::regclass").Scan(&forced))
 	assert.True(t, forced)
+}
+
+// docs/adr/0043 D4 and docs/adr/0010 D1 as amended 2026-10-06, docs/adr/0028
+// D3: migration 40 rewrites again what release 0.5 stored after an image
+// rollback over migration 38 — every override-urgency in the capability sets
+// of the tokens, a revoked one's too, and of the chat becomes set-horizon,
+// each name once in the order it was first named; a saved filter's urgency
+// becomes horizon, a horizon already there winning, a shared filter's through
+// the moderation guard of migration 39; nothing else of a row moves. Then both
+// checks refuse the old name, take every name of the catalogue and still
+// refuse one outside it; the forced row-level security the migration lifts is
+// restored.
+func TestTheNarrowingMigrationRewritesAgainAndRefusesTheOldName(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	name := fmt.Sprintf("cowork_it_narrowing_%d", time.Now().UnixNano())
+	require.NoError(t, createDatabase(ctx, env.AdminURL, name))
+	t.Cleanup(func() {
+		dropCtx, dropCancel := context.WithTimeout(context.Background(), time.Minute)
+		defer dropCancel()
+		assert.NoError(t, dropDatabase(dropCtx, env.AdminURL, name))
+	})
+	adminURL, err := withUserAndDatabase(env.AdminURL, "", "", name)
+	require.NoError(t, err)
+	ownerURL, err := withUserAndDatabase(env.AdminURL, ownerRole, ownerRole, name)
+	require.NoError(t, err)
+
+	migrateTo(t, ownerURL, 39)
+	f, err := fixture.Connect(ctx, adminURL)
+	require.NoError(t, err)
+	t.Cleanup(f.Close)
+	person, err := f.Person(ctx, uniqueSlug("narrowing"), "Narrowing")
+	require.NoError(t, err)
+	tenant, err := f.Tenant(ctx, uniqueSlug("narrowing"), "Narrowing")
+	require.NoError(t, err)
+
+	// Release 0.5 stores override-urgency after set-horizon in every set that
+	// holds set-horizon (auth.Stored of 0.5.1).
+	tokens := map[string]struct {
+		before, after []string
+		revoked       bool
+	}{
+		"0.5, a chosen set":      {before: []string{"rank", "set-horizon", "override-urgency"}, after: []string{"rank", "set-horizon"}},
+		"0.5, every capability":  {before: append(slices.Clone(auth.AllCapabilities), "override-urgency"), after: auth.AllCapabilities},
+		"the old name first":     {before: []string{"override-urgency", "rank", "set-horizon"}, after: []string{"set-horizon", "rank"}},
+		"revoked":                {before: []string{"set-horizon", "override-urgency"}, after: []string{"set-horizon"}, revoked: true},
+		"without the capability": {before: []string{"close"}, after: []string{"close"}},
+		"the new name only":      {before: []string{"set-horizon", "upload"}, after: []string{"set-horizon", "upload"}},
+	}
+	tokenIDs := map[string]uuid.UUID{}
+	for label, c := range tokens {
+		_, id, err := f.Token(ctx, fixture.TokenSpec{UserID: person, Agent: true, Capabilities: c.before, Revoked: c.revoked})
+		require.NoError(t, err, label)
+		tokenIDs[label] = id
+	}
+
+	chats := map[string]struct{ before, after []string }{
+		"0.5, a chosen set": {before: []string{"rank", "set-horizon", "interest", "upload", "override-urgency"},
+			after: []string{"rank", "set-horizon", "interest", "upload"}},
+		"the old name alone": {before: []string{"override-urgency"}, after: []string{"set-horizon"}},
+		"untouched set":      {before: []string{"rank"}, after: []string{"rank"}},
+	}
+	chatOwners := map[string]uuid.UUID{}
+	chosenAt := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	for label, c := range chats {
+		owner, err := f.Person(ctx, uniqueSlug("chat"), label)
+		require.NoError(t, err)
+		require.NoError(t, f.Exec(ctx, `INSERT INTO chat_capabilities (user_id, capabilities, updated_at) VALUES ($1, $2, $3)`,
+			owner, c.before, chosenAt))
+		chatOwners[label] = owner
+	}
+
+	filters := map[string]struct {
+		before, after string
+		shared        bool
+	}{
+		"saved by 0.5 with urgency": {before: `{"urgency": ["now", "!icebox"], "state": ["filed"]}`,
+			after: `{"horizon": ["now", "!icebox"], "state": ["filed"]}`},
+		"shared, with urgency": {before: `{"urgency": ["next"]}`, after: `{"horizon": ["next"]}`, shared: true},
+		"both, horizon wins":   {before: `{"horizon": ["next"], "urgency": ["now"]}`, after: `{"horizon": ["next"]}`},
+		"saved with horizon":   {before: `{"horizon": ["later"]}`, after: `{"horizon": ["later"]}`},
+	}
+	filterIDs := map[string]uuid.UUID{}
+	savedAt := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
+	for label, c := range filters {
+		var id uuid.UUID
+		require.NoError(t, f.QueryRow(ctx, `INSERT INTO saved_filters (tenant_id, owner_id, name, parameters, shared, version, updated_at)
+			VALUES ($1, $2, $3, $4::jsonb, $5, 3, $6) RETURNING id`, tenant, person, label, c.before, c.shared, savedAt).Scan(&id))
+		filterIDs[label] = id
+	}
+
+	res, err := store.Migrate(ctx, ownerURL, runtimeRole)
+	require.NoError(t, err)
+	embedded, err := store.EmbeddedVersion()
+	require.NoError(t, err)
+	assert.EqualValues(t, embedded-39, res.Applied, "migration 40 and every later one")
+
+	for label, c := range tokens {
+		var got []string
+		require.NoError(t, f.QueryRow(ctx, `SELECT capabilities FROM tokens WHERE id = $1`, tokenIDs[label]).Scan(&got), label)
+		assert.Equal(t, c.after, got, "a token: %s", label)
+	}
+	revoked, err := f.QueryCount(ctx, `SELECT count(*) FROM tokens WHERE id = $1 AND revoked_at IS NOT NULL`, tokenIDs["revoked"])
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, revoked, "a revoked token stays revoked")
+
+	for label, c := range chats {
+		var got []string
+		var at time.Time
+		require.NoError(t, f.QueryRow(ctx, `SELECT capabilities, updated_at FROM chat_capabilities WHERE user_id = $1`,
+			chatOwners[label]).Scan(&got, &at), label)
+		assert.Equal(t, c.after, got, "a chat: %s", label)
+		assert.True(t, chosenAt.Equal(at), "the time the person chose stays: %s", label)
+	}
+
+	for label, c := range filters {
+		var (
+			got     string
+			version int
+			shared  bool
+			at      time.Time
+		)
+		require.NoError(t, f.QueryRow(ctx, `SELECT parameters::text, version, shared, updated_at FROM saved_filters WHERE id = $1`,
+			filterIDs[label]).Scan(&got, &version, &shared, &at), label)
+		assert.JSONEq(t, c.after, got, "a filter: %s", label)
+		assert.Equal(t, 3, version, "a filter keeps its version: %s", label)
+		assert.Equal(t, c.shared, shared, "a filter stays shared or not: %s", label)
+		assert.True(t, savedAt.Equal(at), "a filter keeps its time: %s", label)
+	}
+
+	// refused asserts that a write failed on the named check.
+	refused := func(err error, check, msg string) {
+		t.Helper()
+		var pgErr *pgconn.PgError
+		if assert.ErrorAs(t, err, &pgErr, msg) {
+			assert.Equal(t, "23514", pgErr.Code, msg)
+			assert.Equal(t, check, pgErr.ConstraintName, msg)
+		}
+	}
+	untouched := chatOwners["untouched set"]
+	_, _, err = f.Token(ctx, fixture.TokenSpec{UserID: person, Agent: true, Capabilities: []string{"rank", "set-horizon", "override-urgency"}})
+	refused(err, "tokens_capabilities_check", "a token as 0.5 writes it is refused")
+	refused(f.Exec(ctx, `UPDATE tokens SET capabilities = ARRAY['override-urgency'] WHERE id = $1`, tokenIDs["the new name only"]),
+		"tokens_capabilities_check", "a stored set is held to the check as well")
+	refused(f.Exec(ctx, `UPDATE chat_capabilities SET capabilities = ARRAY['rank', 'set-horizon', 'override-urgency'] WHERE user_id = $1`,
+		untouched), "chat_capabilities_capabilities_check", "a chat set as 0.5 writes it is refused")
+
+	_, _, err = f.Token(ctx, fixture.TokenSpec{UserID: person, Agent: true, Capabilities: auth.AllCapabilities})
+	assert.NoError(t, err, "a token takes every name of the catalogue")
+	assert.NoError(t, f.Exec(ctx, `UPDATE chat_capabilities SET capabilities = $1 WHERE user_id = $2`, auth.AllCapabilities, untouched),
+		"the chat takes every name of the catalogue")
+
+	_, _, err = f.Token(ctx, fixture.TokenSpec{UserID: person, Agent: true, Capabilities: []string{"horizon"}})
+	refused(err, "tokens_capabilities_check", "a name outside the catalogue stays refused")
+	refused(f.Exec(ctx, `UPDATE chat_capabilities SET capabilities = ARRAY['set-urgency'] WHERE user_id = $1`, untouched),
+		"chat_capabilities_capabilities_check", "a name outside the catalogue stays refused for the chat")
+
+	for _, table := range []string{"tokens", "chat_capabilities", "saved_filters"} {
+		var forced bool
+		require.NoError(t, f.QueryRow(ctx, "SELECT relforcerowsecurity FROM pg_class WHERE oid = $1::regclass", table).Scan(&forced))
+		assert.True(t, forced, "row-level security is forced on %s again", table)
+	}
 }

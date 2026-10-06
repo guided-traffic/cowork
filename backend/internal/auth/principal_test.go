@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"slices"
 	"strings"
 	"testing"
 
@@ -67,25 +66,6 @@ func TestCanonical(t *testing.T) {
 	assert.Equal(t, []string{CapRank, CapSetHorizon, CapUpload}, Canonical([]string{CapRank, CapSetHorizon, CapRank, CapUpload}))
 	assert.Equal(t, []string{}, Canonical(nil))
 	assert.Equal(t, AllCapabilities, Canonical(AllCapabilities))
-}
-
-// docs/adr/0043 D4 as amended 2026-10-06: a set release 0.5 wrote after an
-// image rollback carries override-urgency beside set-horizon; it is read
-// without the old name and holds set-horizon, so nothing is lost and nothing
-// names a capability the API no longer has.
-func TestASetWrittenByTheReleaseBeforeIsReadWithoutTheOldName(t *testing.T) {
-	written := []string{CapRank, CapSetHorizon, CapUpload, oldSetHorizon}
-	assert.Equal(t, []string{CapRank, CapSetHorizon, CapUpload}, Canonical(written))
-	assert.Equal(t, DefaultChatCapabilities, Canonical(append(slices.Clone(DefaultChatCapabilities), oldSetHorizon)),
-		"the chat default as 0.5 stores it")
-	assert.Equal(t, AllCapabilities, Canonical(append(slices.Clone(AllCapabilities), oldSetHorizon)),
-		"an agent token's default as 0.5 stores it")
-
-	_, caps := Mark(true, written, "")
-	assert.NotContains(t, caps, oldSetHorizon)
-	p := Principal{Scope: domain.ScopeWrite, Agent: UnknownAgent, Capabilities: caps}
-	assert.True(t, p.Can(CapSetHorizon))
-	assert.Nil(t, Authorize(p, domain.RoleMember, Need{Role: domain.RoleMember, Scope: domain.ScopeWrite, Capability: CapSetHorizon}))
 }
 
 func TestAuthorize(t *testing.T) {

@@ -566,7 +566,10 @@ expand and a later contract ([ADR 0028] D3):
   out an answer names both.
 - **The contract**, in a release after the expand and once no supported client reads the old names,
   takes them out of the document, the code and the tests, and a migration of its own rewrites what
-  the database stored under them.
+  the database stored under them. Where the release before still writes an old name into a column
+  whose check takes it, the check keeps the name until the first release whose release before no
+  longer writes it; that release's migration rewrites again what an image rollback wrote in between
+  and then narrows the check ([ADR 0028] D3).
 
 The horizon went through both ([ADR 0010] D1 as amended 2026-10-05 and 2026-10-06). Release 0.5
 answered `urgency`, `urgency_derived`, `urgency_rule` and `urgency_override` beside `horizon` and
@@ -575,9 +578,12 @@ filter's `urgency` and the capability `override-urgency`, and stored `override-u
 `set-horizon`. The release after it knows the new names only — an old one sent is `400`, a field or
 a parameter the operation does not have —, and
 [migration 38](../../backend/internal/store/migrations/000038_horizon_names_only.up.sql) rewrote
-the stored capability sets and a saved filter's `urgency`. The checks of the capability sets still
-take `override-urgency` until a later release, since 0.5 writes it beside `set-horizon` after an
-image rollback; `auth.Canonical` drops it wherever a set is read, so no answer carries it. What keeps the old word is what no
+the stored capability sets and a saved filter's `urgency`. The checks of the capability sets took
+`override-urgency` in 0.6 and 0.7, since 0.5 writes it beside `set-horizon` after an image rollback,
+and those releases dropped it wherever a set was read;
+[migration 40](../../backend/internal/store/migrations/000040_capability_checks_set_horizon_only.up.sql)
+rewrote the three again and took the old name out of both checks, which refuse it now
+(`TestTheNarrowingMigrationRewritesAgainAndRefusesTheOldName`). What keeps the old word is what no
 client reads as API: the enum `urgency` and its columns (`TicketRow.UrgencyOverride` …, mapped in
 `ticketView` and `setOverride`), and the audit record's act `overridden` with its payload
 `urgency_override`, which the activity, the context and the session start read as setting the
