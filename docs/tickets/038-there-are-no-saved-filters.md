@@ -26,19 +26,21 @@ another member's filter that names what the reader cannot see withheld; the back
 applies, saves — one key per content of the dialog — shares and deletes filters, a shared one
 naming its owner ([`saved-filters.ts`](../../frontend/src/app/features/project/saved-filters.ts)),
 and the tenant's ticket list (T53) applies them through the same bar, `project` included, a
-condition a list leaves out named under the bar with why (`leftOut`); integration tests across two
-persons and two tenants
+condition a list leaves out named under the bar with why (`leftOut`); the tenant board applies,
+saves and shares them through the same bar
+([`tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts)) — `toBoard` puts a
+filter's projects into the address, `!OPS` leaving a swimlane out, and hands every other condition
+to each swimlane's list, its `horizon` narrowed to the board's three (`horizonsOf`), and
+`boardLeftOut` names `include_terminal`, which a board leaves out
+([`saved-filter-model.ts`](../../frontend/src/app/features/project/saved-filter-model.ts)); unit
+tests for the bar on all three pages; integration tests across two persons and two tenants
 ([`api_filters_test.go`](../../backend/test/integration/api_filters_test.go)).
 
-Outstanding: the tenant board's filter bar does not apply them — the board carries the address's
-`project` filter only; no end-to-end path walks a saved filter — the images could not be built
-where the backlog's bar was made; a tenant administrator cannot remove a shared filter of a person
-who left, which stays shared until its owner deletes it.
+Outstanding: no end-to-end path walks a saved filter — the images could not be built where the
+backlog's bar was made; a tenant administrator cannot remove a shared filter of a person who left,
+which stays shared until its owner deletes it.
 
 ## Required changes
 
-1. The tenant board's filter bar applies, saves and shares a filter as the backlog's does, through
-   `SavedFilters` — with what a board leaves out as its `leftOut` — and `toBacklog`'s counterpart
-   for the board.
-2. An end-to-end spec: a member saves the backlog's filter shared, a second person applies it and
+1. An end-to-end spec: a member saves the backlog's filter shared, a second person applies it and
    sees its owner; `make docker-build e2e`.

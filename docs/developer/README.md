@@ -144,7 +144,8 @@ and the person-level lists — "next for me" among them — are sections of [dat
 [api.md](api.md#the-person-level-routes), [events.md](events.md#the-person-level-stream) and
 [frontend.md](frontend.md#the-person-level-pages); the tenant board is a section of
 [frontend.md](frontend.md#the-tenant-board), over the project board's list and the event stream as
-they are, and the tenant's ticket list one of [frontend.md](frontend.md#the-tenants-ticket-list),
+they are, narrowed by a saved filter as the backlog's lists are, and the tenant's ticket list one of
+[frontend.md](frontend.md#the-tenants-ticket-list),
 whose address is its filter and which applies the saved filters as the backlog does; the rank
 itself, its rebalancing and the score are sections of
 [domain.md](domain.md#rank) and [domain.md](domain.md#the-score), the repository bindings one of [domain.md](domain.md#repositories),

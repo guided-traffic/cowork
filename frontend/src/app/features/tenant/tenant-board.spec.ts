@@ -7,14 +7,17 @@ import { ActivatedRoute, provideRouter, Router } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import { Select } from 'primeng/select';
 import type { Mock, MockInstance } from 'vitest';
-import { Problem, Project, Ticket } from '../../api/models';
+import { Problem, Project, SavedFilter, Ticket } from '../../api/models';
 import { EntityCache } from '../../core/entity-cache';
 import { MembersService } from '../../core/members.service';
 import { ProjectsService } from '../../core/projects.service';
+import { SavedFiltersService } from '../../core/saved-filters.service';
 import { SessionService } from '../../core/session.service';
 import { TicketActions } from '../../core/ticket-actions.service';
 import { ProjectTicketPagesParams, TicketPage, TicketsService } from '../../core/tickets.service';
 import { ColumnId } from '../project/board-model';
+import { boardLeftOut } from '../project/saved-filter-model';
+import { SavedFilters } from '../project/saved-filters';
 import { MoveDialog } from '../ticket/move-dialog';
 import { nearMargin } from './board-lane';
 import { TenantBoard } from './tenant-board';
@@ -175,7 +178,10 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
           useValue: { transition, setHorizon: vi.fn() },
         },
         { provide: MembersService, useValue: { list: signal([]) } },
-        { provide: SessionService, useValue: { tenant, oversight } },
+        {
+          provide: SessionService,
+          useValue: { tenant, oversight, person: signal({ id: 'p-ada' }) },
+        },
         {
           provide: ProjectsService,
           useValue: { list: projects, projects: { isLoading: projectsLoading } },
@@ -189,6 +195,16 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
               lists.push({ params, list });
               return list;
             },
+          },
+        },
+        {
+          provide: SavedFiltersService,
+          useValue: {
+            list: signal([]),
+            reload: vi.fn(),
+            create: vi.fn(),
+            update: vi.fn(),
+            remove: vi.fn(),
           },
         },
       ],
@@ -232,6 +248,9 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
 
   /** The list of the swimlane of the project, once it asked for it. */
   const listOf = (key: string) => lists.find((each) => each.params()?.project === key)?.list;
+
+  /** What the swimlane of the project asks for, once it does. */
+  const paramsOf = (key: string) => lists.find((each) => each.params()?.project === key)?.params();
 
   /** Puts the tickets into the cache and has the swimlane's list answer their keys, in this rank. */
   async function load(fixture: ComponentFixture<TenantBoard>, key: string, tickets: Ticket[]) {
@@ -436,6 +455,7 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
 
       expect(page.querySelector('app-board-lane')).toBeNull();
       expect(page.querySelector('[data-testid="project-filter"]')).toBeNull();
+      expect(page.querySelector('app-saved-filters')).toBeNull();
     });
 
     it('are none outside a tenant', async () => {
@@ -590,6 +610,150 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
       await fixture.whenStable();
 
       expect(navigate.mock.calls[0][1]?.queryParams).toEqual({ project: null });
+    });
+  });
+
+  describe('a saved filter (docs/adr/0018 D5, docs/adr/0049 D6)', () => {
+    const saved = (parameters: SavedFilter['parameters']): SavedFilter => ({
+      id: 'f-1',
+      name: 'Mine',
+      owner: { id: 'p-ada', display_name: 'Ada', username: 'ada' },
+      shared: false,
+      parameters,
+      redacted: false,
+      warnings: [],
+      version: 1,
+      created_at: '2026-10-01T00:00:00Z',
+      updated_at: '2026-10-01T00:00:00Z',
+    });
+    const bar = (fixture: ComponentFixture<TenantBoard>) =>
+      fixture.debugElement.query(By.directive(SavedFilters)).componentInstance as SavedFilters;
+    const projectsWritten = () => navigate.mock.lastCall?.[1]?.queryParams?.['project'];
+
+    /** The person picks a filter, or none, and the router hands the page the projects it wrote. */
+    async function apply(fixture: ComponentFixture<TenantBoard>, filter: SavedFilter | null) {
+      bar(fixture).chosen.emit(filter);
+      fixture.componentRef.setInput('project', projectsWritten() ?? undefined);
+      await fixture.whenStable();
+    }
+
+    it('puts its projects into the address and hands every other condition to the swimlanes’ lists', async () => {
+      projects.set([project('COW'), project('DOC'), project('OPS')]);
+      const { fixture, page } = await render();
+      const filter = saved({
+        project: ['OPS', 'COW'],
+        assignee: ['me'],
+        severity: ['high'],
+        q: 'deploy',
+      });
+
+      await apply(fixture, filter);
+      await see(fixture, 'COW');
+      await see(fixture, 'OPS');
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith([], {
+        relativeTo: TestBed.inject(ActivatedRoute),
+        queryParams: { project: ['OPS', 'COW'] },
+        queryParamsHandling: 'merge',
+        replaceUrl: true,
+      });
+      expect(lanesShown(page)).toEqual(['COW', 'OPS']);
+      expect(paramsOf('OPS')).toEqual({
+        tenant: 'acme',
+        project: 'OPS',
+        pages: Number.POSITIVE_INFINITY,
+        horizon: ['now', 'release', 'next'],
+        assignee: ['me'],
+        severity: ['high'],
+        q: 'deploy',
+      });
+      expect(paramsOf('COW')).toMatchObject({ assignee: ['me'], severity: ['high'], q: 'deploy' });
+      expect(bar(fixture).applied()).toBe(filter);
+      expect(text(page, '[data-testid="board-beyond"]')).toBe(
+        'Also filtered by assignee=me · severity=high · q="deploy"',
+      );
+    });
+
+    it('narrows the board’s horizons to those the filter names, and never widens them', async () => {
+      const { fixture } = await render();
+      await see(fixture, 'COW');
+
+      await apply(fixture, saved({ horizon: ['now', 'later'] }));
+      expect(paramsOf('COW')?.horizon).toEqual(['now']);
+
+      await apply(fixture, saved({ horizon: ['!next'] }));
+      expect(paramsOf('COW')?.horizon).toEqual(['now', 'release']);
+    });
+
+    it('hands the bar what the board applies now, to save', async () => {
+      const { fixture } = await render(['COW', '!OPS']);
+      expect(bar(fixture).current()).toEqual({ project: ['COW', '!OPS'] });
+
+      await apply(fixture, saved({ project: ['OPS'], type: ['bug'] }));
+      fixture.componentRef.setInput('project', 'DOC');
+      await fixture.whenStable();
+
+      expect(bar(fixture).current()).toEqual({ project: ['DOC'], type: ['bug'] });
+    });
+
+    it('says under the bar that a board leaves include_terminal out, and does not ask for it', async () => {
+      const { fixture, page } = await render();
+      await see(fixture, 'COW');
+
+      await apply(fixture, saved({ include_terminal: true, type: ['bug'] }));
+
+      expect(bar(fixture).leftOut()).toEqual(boardLeftOut);
+      expect(text(page, '[data-testid="filter-notes"]')).toBe(
+        'include_terminal: a board shows no closed ticket; the tenant’s ticket list applies this condition',
+      );
+      expect(paramsOf('COW')).not.toHaveProperty('include_terminal');
+      expect(paramsOf('COW')?.type).toEqual(['bug']);
+      expect(text(page, '[data-testid="board-beyond"]')).toBe('Also filtered by type=bug');
+    });
+
+    it('shows no swimlane of a project it excludes, and the select keeps the exclusion', async () => {
+      projects.set([project('COW'), project('DOC'), project('OPS')]);
+      const { fixture, page } = await render();
+
+      await apply(fixture, saved({ project: ['!OPS'] }));
+
+      expect(lanesShown(page)).toEqual(['COW', 'DOC']);
+      const select = fixture.debugElement.query(By.css('[data-testid="project-filter"]'));
+      expect((select.componentInstance as Select).modelValue()).toEqual([]);
+      expect(text(page, '[data-testid="board-beyond"]')).toBe('Also filtered by project=!OPS');
+
+      select.triggerEventHandler('ngModelChange', ['COW']);
+
+      expect(projectsWritten()).toEqual(['COW', '!OPS']);
+    });
+
+    it('clears every condition when none is chosen', async () => {
+      const { fixture, page } = await render();
+      await see(fixture, 'COW');
+      await apply(fixture, saved({ project: ['COW'], severity: ['high'] }));
+
+      await apply(fixture, null);
+
+      expect(projectsWritten()).toBeNull();
+      expect(paramsOf('COW')).toEqual({
+        tenant: 'acme',
+        project: 'COW',
+        pages: Number.POSITIVE_INFINITY,
+        horizon: ['now', 'release', 'next'],
+      });
+      expect(bar(fixture).applied()).toBeNull();
+      expect(page.querySelector('[data-testid="board-beyond"]')).toBeNull();
+    });
+
+    it('starts another tenant without the filter applied', async () => {
+      const { fixture } = await render();
+      await apply(fixture, saved({ severity: ['high'] }));
+
+      tenant.set('globex');
+      await fixture.whenStable();
+
+      expect(bar(fixture).applied()).toBeNull();
+      expect(bar(fixture).current()).toEqual({});
     });
   });
 

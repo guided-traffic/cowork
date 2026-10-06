@@ -116,7 +116,14 @@ numbered pages ([ADR 0048](0048-cursor-pagination-on-every-list-numbered-pages-o
 whose address carries every filter of ADR 0049 D1, the backlog's filters and the project as the
 selects of its bar, and to which saved filters apply as to the backlog, `project` included, through
 the same filter bar ([`features/tenant/tenant-tickets.ts`](../../frontend/src/app/features/tenant/tenant-tickets.ts)).
-Not built: D5 on the tenant board.
+*(2026-10-06:)* D5 on the tenant board, built on the recommendation, the owner reviewing the result:
+the same filter bar beside the project filter; a saved filter's projects go into the address — one
+it excludes, `!OPS`, leaves its swimlane out —, every other condition to each swimlane's list as a
+pre-filter ([ADR 0049](0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md)
+D6), its `horizon` narrowing the board's `now`, `release` and `next` and never widening them, and
+`include_terminal`, which would only add the closed tickets a board never shows, left out and named
+under the bar ([`features/tenant/tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts)).
+A swimlane under a filter counts the cards the filter lets through, against the WIP limits too.
 
 **Built** (phase 3, 2026-10-05): D6 as made concrete the same day — `GET
 /api/v1/tenants/{tenant}/dashboard` ([`dashboard.go`](../../backend/internal/api/dashboard.go),

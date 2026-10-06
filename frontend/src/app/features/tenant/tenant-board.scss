@@ -33,6 +33,12 @@
   max-width: 100%;
 }
 
+// A line of its own under the bar, as the saved filter's notes are.
+.beyond {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+}
+
 .lanes {
   display: flex;
   flex-direction: column;
