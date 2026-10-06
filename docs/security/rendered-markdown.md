@@ -55,7 +55,11 @@ tricks, a `<noscript>` break-out — and hold every output to the allow-list
 ([`richtext_test.go`](../../backend/internal/richtext/richtext_test.go)); the integration tier does
 the same through the API ([`api_rendered_test.go`](../../backend/test/integration/api_rendered_test.go)),
 and the frontend's tests that Angular's sanitiser stays on
-([`rendered-text.spec.ts`](../../frontend/src/app/shared/rendered-text.spec.ts)).
+([`rendered-text.spec.ts`](../../frontend/src/app/shared/rendered-text.spec.ts)). In a real browser,
+behind the shell's policy, the end-to-end tier shows a body with headings, a table, code, a link, the
+ticket's own PNG loaded from its attachment's path, a raw `<img>` with a handler and a
+`javascript:` link: both hostile lines stay text, neither runs, and the policy refuses nothing, in
+Chromium and WebKit ([`rendered.spec.ts`](../../frontend/e2e/rendered.spec.ts)).
 
 ## The allow-list
 

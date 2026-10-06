@@ -274,10 +274,15 @@ the production bundle behind nginx with this policy, in Chromium and WebKit, in 
 with the API mocked: no violation was reported while the shell, the settings and the chat panel ran
 a turn; and again on 2026-10-04, after the routing moved to the Ingress, in Chromium behind the
 Ingress stand-in and behind ingress-nginx with the real backend: no violation through the login,
-the tenant page and the backlog. Not verified: every page of the UI under the policy — the rendered
-Markdown of a ticket's page and the search's results among them, added on 2026-10-05 and run under no
-policy since — a page that needs another source fails
-in the browser with a violation in the console, and nginx has no unit test.
+the tenant page and the backlog. Since 2026-10-06 the end-to-end tier watches the policy on two
+paths over the built images behind the Ingress stand-in, in Chromium and WebKit and both colour
+schemes, and fails on any refusal: a ticket's page whose body renders headings, a table, code, a link,
+its own image and hostile lines ([`rendered.spec.ts`](../../frontend/e2e/rendered.spec.ts)), and the
+search from the top bar through the results of a tenant and of every tenant of the person to a hit's
+comment ([`search.spec.ts`](../../frontend/e2e/search.spec.ts)); no violation is reported on either.
+Not verified: the other pages under the policy — the suite's other paths run under it but do not
+watch for a refusal — a page that needs another source fails in the browser with a violation in the
+console, and nginx has no unit test.
 
 ## What this does not cover
 

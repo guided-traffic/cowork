@@ -36,11 +36,16 @@ to each swimlane's list, its `horizon` narrowed to the board's three (`horizonsO
 tests for the bar on all three pages; integration tests across two persons and two tenants
 ([`api_filters_test.go`](../../backend/test/integration/api_filters_test.go)).
 
-Outstanding: no end-to-end path walks a saved filter — the images could not be built where the
-backlog's bar was made; a tenant administrator cannot remove a shared filter of a person who left,
+In the browser, [`filters.spec.ts`](../../frontend/e2e/filters.spec.ts) walks the backlog's bar
+with two identities: a member saves the backlog's filter shared, and the administrator applies it
+from the saved filters and sees its owner — in Chromium and WebKit, each in both schemes, in three
+local runs of the whole tier with two workers on 2026-10-06.
+
+Outstanding: a tenant administrator cannot remove a shared filter of a person who left,
 which stays shared until its owner deletes it.
 
 ## Required changes
 
-1. An end-to-end spec: a member saves the backlog's filter shared, a second person applies it and
-   sees its owner; `make docker-build e2e`.
+1. Decide what becomes of a shared filter whose owner left the tenant — today it stays shared,
+   under the name of a person who is no longer a member — and build the answer. The question is
+   open; nothing is built on it.

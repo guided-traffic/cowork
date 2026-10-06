@@ -1,7 +1,7 @@
 ---
 id: T35
 title: the person-level pages and the start page have no end-to-end path
-state: in-progress
+state: done
 severity: low
 security: none
 threat:
@@ -11,7 +11,8 @@ blocked-by:
 filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-05
-done:
+done: 2026-10-06
+shipped: frontend/e2e/start.spec.ts, a person of one tenant landing on next for me at the start page and reaching the tenant by its name in the top bar, in Chromium and WebKit and both colour schemes
 ---
 
 ## Current state
@@ -36,13 +37,17 @@ and a reload that finds a page unchanged is a `304` (D7). `TestNextForMeAcrossTe
 project and confidential tickets, `TestThePersonLevelStream` the stream across the tenants, and
 `TestThePolledListsAnswerNotModified` the `304`s.
 
-What is missing is an end-to-end path through the start page; "assigned to me" is walked with two
-identities by [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts), which passes (run 37285901009 of commit `65337eb`).
+"Assigned to me" is walked with two identities by
+[`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts), and the start page by
+[`start.spec.ts`](../../frontend/e2e/start.spec.ts): a member of one tenant lands at `/` on "next for
+me", which shows the ticket assigned to them beside its tenant, and reaches the tenant's front page by
+its name in the top bar, which offers no switcher — in Chromium and WebKit, each in both schemes, in
+three local runs of the whole tier with two workers on 2026-10-06. The description lives in
+[testing.md](../developer/testing.md#end-to-end-tests).
 
 ## Required changes
 
-1. A path through the start page: a person with one tenant lands on "next for me" and reaches the
-   tenant by its name in the top bar.
+None.
 
 ## Open questions
 

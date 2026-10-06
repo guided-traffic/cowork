@@ -96,6 +96,10 @@ not follow the event stream.
 | `TestSearchNeverShowsWhatTheCallerCannotSee` | the tenant, the restricted project, the confidential ticket — in the body, a comment, a question, the options, a file name, the key and by trigram, for the tenant's search and the person's; the union across tenants, its narrowing and its cursor; the restricted tokens; an assignee joining the circle |
 | `TestKeyPrefix`, `TestSnippetParts`, `TestSearchPositionRoundTrips` ([`search_test.go`](../../backend/internal/api/search_test.go)) | the key's recognition, no `LIKE` wildcard passing; the snippet's parts; the rank read back exactly |
 | [`search.spec.ts`](../../frontend/src/app/features/search/search.spec.ts), `shell.spec.ts` | the results page for both scopes, its links and fragments, the snippet as text, *Load more*, a failure; the box's target in and outside a tenant and under oversight, the words of the page shown |
+| [`e2e/search.spec.ts`](../../frontend/e2e/search.spec.ts) (end-to-end) | in Chromium and WebKit, both schemes: the box inside a tenant lists that tenant's hits, where each was found and the word marked in its snippet; *Search all your tenants* adds a second tenant's hit with its tenant; a comment's hit opens the ticket scrolled to the comment; the shell's content-security policy refuses nothing ([testing.md](testing.md#end-to-end-tests)) |
+
+Not verified: how the ranking reads on real tickets, and how long a search of a tenant of thousands
+of tickets takes — neither was measured.
 
 [ADR 0007]: ../adr/0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md
 [ADR 0018]: ../adr/0018-the-views-of-the-first-release.md

@@ -136,8 +136,15 @@ front page `/t/{slug}` is the dashboard ([`features/tenant/dashboard.ts`](../../
 live through the event stream at most once a second on its own tenant's events, its filters in the
 page's address, its
 charts bars in CSS over the preset's tokens. Looked at as the production build against a mocked
-API in Chromium, in both schemes; not verified: WebKit, real data, the owner's review, and how long
-the queries take over a large tenant; no end-to-end test walks the page yet.
+API in Chromium, in both schemes; ~~not verified: WebKit, real data, the owner's review, and how long
+the queries take over a large tenant; no end-to-end test walks the page yet.~~ *(Amended
+2026-10-06: an end-to-end path walks it with two identities over the built images, in Chromium and
+WebKit and both schemes — the member's tiles leaving out a confidential ticket and a project
+restricted away from the member, a filter chosen in the page kept in the address across a reload, a
+ticket one identity moves moving the other's tile within five seconds, a deleted ticket leaving both
+— and a picture per browser and scheme compares it
+([ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md) D3).
+Not verified: the owner's review, and how long the queries take over a large tenant.)*
 
 ## Context
 

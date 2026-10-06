@@ -8,8 +8,8 @@ import { baseURL } from './support/identities';
  * and sets `COWORK_BASE_URL`; the default is the stack of `make e2e-up` (support/identities.ts).
  *
  * Every path tagged `@smoke` runs in Chromium and WebKit, each in both colour schemes (D3, D8);
- * anything else in Chromium only. The dark screenshots run in the dark projects only. No retries:
- * a flaky test is a defect, not a setting (D7).
+ * anything else in Chromium only. A path tagged `@dark` — a screenshot of the dark scheme alone —
+ * runs in the dark projects only. No retries: a flaky test is a defect, not a setting (D7).
  */
 const ci = !!process.env['CI'];
 
@@ -42,7 +42,7 @@ export default defineConfig({
     {
       name: 'chromium-light',
       use: { ...devices['Desktop Chrome'], colorScheme: 'light' },
-      testIgnore: /visual\.spec\.ts/,
+      grepInvert: /@dark/,
     },
     {
       name: 'chromium-dark',
@@ -52,7 +52,7 @@ export default defineConfig({
       name: 'webkit-light',
       use: { ...devices['Desktop Safari'], colorScheme: 'light' },
       grep: /@smoke/,
-      testIgnore: /visual\.spec\.ts/,
+      grepInvert: /@dark/,
     },
     {
       name: 'webkit-dark',

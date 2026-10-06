@@ -2,9 +2,12 @@ import { APIRequestContext, APIResponse, request } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import type {
   Account,
+  Attachment,
+  Comment,
   Effort,
   Horizon,
   Project,
+  Question,
   SecurityClass,
   Severity,
   Ticket,
@@ -24,6 +27,12 @@ import type {
 
 /** The tenant every test works in, made by the global setup; each test owns a project in it. */
 export const tenant = 'e2e';
+
+/**
+ * A second tenant of the administrator, made by the global setup, for what spans the person's
+ * tenants; a test owns a project in it as it does in the fixture tenant.
+ */
+export const otherTenant = 'e2e-other';
 
 /** A failed call names its operation, its status and the problem body. */
 async function ok<T>(what: string, response: APIResponse): Promise<T> {
@@ -121,15 +130,16 @@ export class Session {
     return created.token;
   }
 
-  /** A local account of the tenant with a temporary password, which its person changes first. */
+  /** A local account of a tenant with a temporary password, which its person changes first. */
   async createAccount(
     username: string,
     temporaryPassword: string,
     role: 'viewer' | 'member' | 'admin' = 'member',
+    slug = tenant,
   ): Promise<Account> {
     return ok(
       `create the account ${username}`,
-      await this.context.post(`/api/v1/tenants/${tenant}/accounts`, {
+      await this.context.post(`/api/v1/tenants/${slug}/accounts`, {
         data: {
           username,
           display_name: `E2E ${username}`,
@@ -140,16 +150,45 @@ export class Session {
       }),
     );
   }
+
+  /**
+   * Restricts a project to the tenant's administrators and its access list, over the version just
+   * read (docs/adr/0034 D3, docs/adr/0050 D3).
+   */
+  async restrict(slug: string, project: string): Promise<void> {
+    const path = `/api/v1/tenants/${slug}/projects/${project}`;
+    const etag = await etagOf(`read the project ${project}`, await this.context.get(path));
+    await ok(
+      `restrict the project ${project}`,
+      await this.context.put(`${path}/restriction`, {
+        data: { restricted: true },
+        headers: { 'If-Match': etag },
+      }),
+    );
+  }
+}
+
+/** The `ETag` of a read that must have answered. */
+async function etagOf(what: string, response: APIResponse): Promise<string> {
+  await ok(what, response);
+  const etag = response.headers()['etag'];
+  if (!etag) {
+    throw new Error(`${what}: no ETag`);
+  }
+  return etag;
 }
 
 export interface Filing {
   title: string;
+  body?: string;
   type?: TicketType;
   severity?: Severity;
   security?: SecurityClass;
   threat?: string;
   effort?: Effort;
   horizon?: Horizon;
+  /** The person the ticket is assigned to, by id. */
+  assignee?: string;
 }
 
 /** What a transition carries beside the two states: a reason, a block (docs/adr/0009 D2). */
@@ -242,6 +281,81 @@ export class Seed {
       await this.context.get(this.path(project, '/tickets'), { params: { horizon } }),
     );
     return list.items;
+  }
+
+  /** Replaces the ticket's body over the version just read (docs/adr/0050 D3). */
+  async replaceBody(project: string, number: number, body: string): Promise<Ticket> {
+    const etag = await etagOf(
+      `read ${project}-${number}`,
+      await this.context.get(this.path(project, `/tickets/${number}`)),
+    );
+    return ok(
+      `replace the body of ${project}-${number}`,
+      await this.context.put(this.path(project, `/tickets/${number}/body`), {
+        data: { body },
+        headers: { 'If-Match': etag },
+      }),
+    );
+  }
+
+  /** Makes the ticket confidential over the version just read (docs/adr/0065). */
+  async confidential(project: string, number: number): Promise<Ticket> {
+    const etag = await etagOf(
+      `read ${project}-${number}`,
+      await this.context.get(this.path(project, `/tickets/${number}`)),
+    );
+    return ok(
+      `make ${project}-${number} confidential`,
+      await this.context.put(this.path(project, `/tickets/${number}/confidential`), {
+        data: { confidential: true },
+        headers: { 'If-Match': etag },
+      }),
+    );
+  }
+
+  /** Uploads a file to the ticket (docs/adr/0016). */
+  async attach(
+    project: string,
+    number: number,
+    file: { name: string; mimeType: string; buffer: Buffer },
+  ): Promise<Attachment> {
+    return ok(
+      `attach ${file.name} to ${project}-${number}`,
+      await this.context.post(this.path(project, `/tickets/${number}/attachments`), {
+        multipart: { file },
+        headers: { 'Idempotency-Key': randomUUID() },
+      }),
+    );
+  }
+
+  /** A comment on the ticket. */
+  async comment(project: string, number: number, body: string): Promise<Comment> {
+    return ok(
+      `comment on ${project}-${number}`,
+      await this.context.post(this.path(project, `/tickets/${number}/comments`), {
+        data: { body },
+        headers: { 'Idempotency-Key': randomUUID() },
+      }),
+    );
+  }
+
+  /** A question open in the tenant, asked as the token's person (docs/adr/0011 D2). */
+  async ask(project: string, number: number, question: string): Promise<Question> {
+    return ok(
+      `ask on ${project}-${number}`,
+      await this.context.post(this.path(project, `/tickets/${number}/questions`), {
+        data: { question },
+        headers: { 'Idempotency-Key': randomUUID() },
+      }),
+    );
+  }
+
+  /** Deletes the ticket into the bin (docs/adr/0024 D1). */
+  async remove(project: string, number: number): Promise<void> {
+    await ok(
+      `delete ${project}-${number}`,
+      await this.context.delete(this.path(project, `/tickets/${number}`)),
+    );
   }
 
   async dispose(): Promise<void> {

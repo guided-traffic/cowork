@@ -16,7 +16,7 @@ Read against the tree on 2026-10-04.
 | Frontend unit | `make frontend-test` | — | Node.js and `frontend/node_modules` (`make frontend-install`) | Components and services, vitest on jsdom, no browser |
 | Chart | `make helm-lint`, `make helm-template` | — | Helm | Strict lint and a render per `deploy/helm/cowork/ci/*-values.yaml` |
 | Release tooling | `make test-release-tooling` | — | Node.js and `npm ci` at the root | The semantic-release plugins still render notes |
-| End-to-end | `make e2e`, after `make docker-build` | — | Docker, the two images of one commit, Chromium and WebKit (`make e2e-browsers`), `curl`, `openssl` | The images together, read-only, behind the Ingress stand-in with TLS, against a PostgreSQL, a MinIO and a Dex of its own: the login in a browser — the local form, a temporary password, Dex —, the session cookie and the CSRF check, filing and moving a ticket, the board and its drag, the backlog's drag, in Chromium and WebKit and both colour schemes, and a coarse dark-mode screenshot ([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md), [below](#end-to-end-tests)) |
+| End-to-end | `make e2e`, after `make docker-build` | — | Docker, the two images of one commit, Chromium and WebKit (`make e2e-browsers`), `curl`, `openssl` | The images together, read-only, behind the Ingress stand-in with TLS, against a PostgreSQL, a MinIO and a Dex of its own: the login in a browser — the local form, a temporary password, Dex —, the session cookie and the CSRF check, filing, editing and moving a ticket, the board and its drag, the backlog's drag, the score's marker and sort, the conversation and the prerequisite tree in a second browser, the rendered Markdown and the search under the shell's content-security policy, the start page, a shared saved filter, deletion and the bin, the dashboard with two identities, in Chromium and WebKit and both colour schemes, and coarse screenshots of the board and the dashboard ([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md), [below](#end-to-end-tests)) |
 
 Per-tier timeouts: the integration target passes `-timeout=10m`; the end-to-end suite gives a
 test 30 seconds and an assertion 10, and its CI job has ten minutes; the others use the Go default.
@@ -388,16 +388,23 @@ browser reaches both through the published ports. **Why TLS**: WebKit stores no 
 
 | File | What it walks |
 |---|---|
-| [`playwright.config.ts`](../../frontend/e2e/playwright.config.ts) | Four projects — `chromium-light`, `chromium-dark`, `webkit-light`, `webkit-dark`, by `colorScheme` —; WebKit runs the tests tagged `@smoke` (all of today's); `visual.spec.ts` runs in the dark projects only; no retries (D7); trace and video kept for a failed test; four workers, two under `CI` |
-| [`global-setup.ts`](../../frontend/e2e/global-setup.ts) | Once per run, through the API: the local administrator signs in, makes the tenant `e2e` (the installation's first, so that Dex's people may sign in), maps `team-red` to `member` in it, makes the token `e2e-seed` the workers seed with (`COWORK_E2E_TOKEN`), seeds the visual board, and keeps its session in `e2e/.auth/admin.json` (ignored) |
+| [`playwright.config.ts`](../../frontend/e2e/playwright.config.ts) | Four projects — `chromium-light`, `chromium-dark`, `webkit-light`, `webkit-dark`, by `colorScheme` —; WebKit runs the tests tagged `@smoke` (all of today's); a test tagged `@dark` — the board's screenshot — runs in the dark projects only; no retries (D7); trace and video kept for a failed test; four workers, two under `CI` |
+| [`global-setup.ts`](../../frontend/e2e/global-setup.ts) | Once per run, through the API: the local administrator signs in, makes the tenant `e2e` (the installation's first, so that Dex's people may sign in), maps `team-red` to `member` in it, makes the tenant `e2e-other` — the administrator's second, for what spans a person's tenants —, makes the token `e2e-seed` the workers seed with (`COWORK_E2E_TOKEN`), seeds the visual board, and keeps its session in `e2e/.auth/admin.json` (ignored) |
 | [`login.spec.ts`](../../frontend/e2e/login.spec.ts) | The local administrator through the form: the session cookie stored with `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/` and invisible to the page's script, kept across a reload, a write through it (filing a ticket), the same write without `X-Requested-With` refused `403 csrf`, the sign-out, the session gone; a local account the administrator makes signing in with its temporary password, sent to the password page, choosing its own, signing in again with it; `bob@example.com` through *Sign in with Dex*, Dex's form, back as a member of `e2e` by the mapping |
 | [`tickets.spec.ts`](../../frontend/e2e/tickets.spec.ts) | A ticket filed with the dialog of the project's header, in the horizon `later` of the backlog, moved `filed → analysed` on its page, the move in the API and back in the backlog |
 | [`board.spec.ts`](../../frontend/e2e/board.spec.ts) | A project's address opening its board, and the navigation's link too; a card dragged from Refinement to Ready — the transition `analysed → decided`, in the column, the count, the live region and the API, and after a reload |
 | [`tenant-board.spec.ts`](../../frontend/e2e/tenant-board.spec.ts) | Passes in CI (run 37285901009 of commit `65337eb`, 2026-10-05) and locally: two projects' swimlanes through the address's filter; a card dragged from Refinement to Ready in its swimlane — the transition `analysed → decided`, in the column, the live region and the API —, then dragged onto the other swimlane, which says no while it is over it; let go there, the toast that says why, the card where it was and the ticket unchanged in the API |
 | [`ticket-list.spec.ts`](../../frontend/e2e/ticket-list.spec.ts) | Passes in CI (run 37285901009 of commit `65337eb`, 2026-10-05) and locally: the tenant's ticket list over two projects through the address's `project`, each row with its project; the address's `severity` narrowing it, and the same after a reload; a ticket filed through the API meanwhile at the top without a reload; a row opening its ticket; *Clear filters* leaving the address without a filter |
-| [`backlog.spec.ts`](../../frontend/e2e/backlog.spec.ts) | A row dragged by its handle to the top of `later` — the order in the page, the live region and the project's rank in the API —, and one dragged into the empty `next` — the horizon in the page and the API, and the reason field a person may leave with Escape |
-| [`visual.spec.ts`](../../frontend/e2e/visual.spec.ts) | The board of the tenant `e2e-visual` in the dark scheme against its picture ([below](#the-dark-mode-screenshot)) |
-| [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts) | Passes in CI (run 37285901009 of commit `65337eb`, 2026-10-05) and locally: the phase's path with two identities, each in a browser context of its own — the administrator makes a local account (its temporary password changed through the API, `signInWithNewPassword`) and files a ticket with the dialog, assigned to it; the account's page, open on "Assigned to me" with its stream live before the ticket exists, shows it and the bell counts it without a reload; its inbox says "assigned it to you"; it opens the ticket from there, moves it to `analysed` and closes it by hand with a verification note; the administrator's page of the ticket, open all along, shows it done |
+| [`backlog.spec.ts`](../../frontend/e2e/backlog.spec.ts) | A row dragged by its handle to the top of `later` — the order in the page, the live region and the project's rank in the API —, and one dragged into the empty `next` — the horizon in the page and the API, and the reason field a person may leave with Escape; a ticket of a higher score that the rank puts last, marked *score* with its arrow up and its sentence, the only mark; *Sort by score* asked and confirmed — the rows by score, no mark left, the live region's count of the tickets that changed their place, and the rank in the API |
+| [`visual.spec.ts`](../../frontend/e2e/visual.spec.ts) | The board of the tenant `e2e-visual` in the dark scheme, and its dashboard in both schemes, against their pictures ([below](#the-screenshots)) |
+| [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts) | Passes in CI (run 37285901009 of commit `65337eb`, 2026-10-05) and locally: the phase's path with two identities, each in a browser context of its own — the administrator makes a local account (its temporary password changed through the API, `signInWithNewPassword`) and files a ticket with the dialog, assigned to it; the account's page, open on "Assigned to me" with its stream live before the ticket exists, shows it and the bell counts it without a reload; its inbox says "assigned it to you"; it opens the ticket from there, edits the title in place and the body as Markdown, moves it to `analysed` and closes it by hand with a verification note; the administrator's page of the ticket, open all along, shows the new title, the body as the server rendered it, and the ticket done |
+| [`conversation.spec.ts`](../../frontend/e2e/conversation.spec.ts) | Two identities on one ticket: a member's page of it open, its stream live; the administrator writes a comment, edits it and withdraws it after the question, edits the text of the question they asked, and from another ticket's page links that ticket as blocking this one — the member's page shows the comment, its new text and on request its earlier one, then *withdrawn* without either text, the question's new text, and the prerequisite tree with the blocker and `1 open` |
+| [`rendered.spec.ts`](../../frontend/e2e/rendered.spec.ts) | A body with a heading, a table, code, a link, the ticket's own PNG attachment as an image and two hostile lines (a raw `<img>` with a handler, a `javascript:` link), seeded through the API: the page shows the markup, the link with its `rel` and `target`, the image from its attachment's path and loaded, the hostile lines as text with nothing of them run, and the shell's content-security policy refuses nothing (`policyViolations`) |
+| [`start.spec.ts`](../../frontend/e2e/start.spec.ts) | A member of one tenant with a critical ticket in `now` assigned to them: `/` is "Next for me" with the ticket, its tenant and *yours*; no tenant switcher, the tenant's name in the top bar a link to its front page |
+| [`search.spec.ts`](../../frontend/e2e/search.spec.ts) | A word of the test's own in a title and a body, in a comment of a long ticket and in a ticket of `e2e-other`: the top bar's box inside `e2e` lists that tenant's two hits with where each was found and the word marked in its snippet, and not the other tenant's; *Search all your tenants* lists all three with their tenants; the comment's hit opens the ticket scrolled to the comment, which the plain address leaves below the fold; the policy refuses nothing |
+| [`filters.spec.ts`](../../frontend/e2e/filters.spec.ts) | Two identities on one backlog: the member narrows it by its search, saves the filter under a name and shares it; the administrator picks it among the saved filters by its name and its owner, and the backlog applies it — the search field, the rows — with *by* and the owner beside it and nothing to delete |
+| [`deletion.spec.ts`](../../frontend/e2e/deletion.spec.ts) | The administrator deletes a ticket from its page after the question and lands on the backlog without it; a member gets *No such ticket* at its address and an open backlog without it; restored from *Deleted tickets*, it is back in the member's backlog without a reload; deleted again, it is purged after the two questions and is not in the bin after a reload |
+| [`dashboard.spec.ts`](../../frontend/e2e/dashboard.spec.ts) | A tenant of the test's own, so that the tiles count its tickets alone: two projects, one restricted away from a member, a confidential ticket in the other; the administrator's front page counts all three, the member's one — the open tickets, the severities, the recent tickets, the projects' cards; the member's project filter lands in the address and survives a reload; a ticket the member moves on its page in a second tab moves the administrator's state tile within five seconds; a ticket the administrator deletes leaves both dashboards |
 
 Every path checks that the page shows the scheme its project emulates (`.app-dark` on `<html>`, or
 not).
@@ -406,36 +413,48 @@ not).
 |---|---|---|
 | `test`, `asAdmin` | [`support/fixtures.ts`](../../frontend/e2e/support/fixtures.ts) | A test without a session (the login's paths), and one that starts as the local administrator from `.auth/admin.json` |
 | `project` | `support/fixtures.ts` | A project of `e2e` with a key of its own (`E` and seven random characters), made per test, so tests run in parallel without a reset (D7) |
-| `seed` (per worker) | `support/fixtures.ts`, [`support/api.ts`](../../frontend/e2e/support/api.ts) `Seed` | The administrator's token: `project`, `file` (a ticket at the end of its horizon, `later` by default), `transition` (with a reason or a block), `ticket`, `horizon` (a horizon's open tickets in the rank) |
-| `Session`, `sessionContext`, `signIn` | `support/api.ts` | A request context that holds a session and writes with the origin and `X-Requested-With: cowork`, for what only a session does: a tenant, a mapping, a token, a local account |
+| `member`, `Person` | `support/fixtures.ts` | A member of `e2e` made for the test — a local account, its temporary password changed — signed in in a browser context of its own in the project's scheme: its `page`, its person's `id` (to assign a ticket to) and the `name` the pages show; the second identity of a path, closed after the test |
+| `newAccount(browser, role, slug)`, `newContext(browser, storageState)` | `support/fixtures.ts` | The same for any role and tenant, which the caller closes; a browser context beside the test's own in its project's scheme, with the administrator's session when given `adminState` |
+| `policyViolations(page)` | `support/fixtures.ts` | What the page's content-security policy refuses from then on, across navigations: every document's `securitypolicyviolation` events and the console errors that name the policy (WebKit reports through the console); a test asserts it empty at its end |
+| `seed` (per worker) | `support/fixtures.ts`, [`support/api.ts`](../../frontend/e2e/support/api.ts) `Seed` | The administrator's token: `project`, `file` (a ticket at the end of its horizon, `later` by default, with a `body` and an `assignee` when given), `transition` (with a reason or a block), `ticket`, `horizon` (a horizon's open tickets in the rank), `replaceBody` and `confidential` (over the version just read), `attach` (a file), `comment`, `ask` (a question open in the tenant), `remove` (into the bin); `Seed.create(baseURL, token, slug)` seeds another tenant, such as `otherTenant` |
+| `Session`, `sessionContext`, `signIn` | `support/api.ts` | A request context that holds a session and writes with the origin and `X-Requested-With: cowork`, for what only a session does: a tenant, a mapping, a token, a local account of any tenant, a project's restriction |
 | `signInWithNewPassword` | `support/api.ts` | A browser context's own request context signed in as a local account, its temporary password changed: the context's pages are then that person's — the second identity of a path |
 | `expectScheme(page)` | `support/fixtures.ts` | The page's scheme is the emulated one |
 | `drag(page, handle, target, at)` | `support/fixtures.ts` | A drag the Angular CDK takes: press, a few pixels past its threshold, twenty steps to the point `at` of the target, release |
 | identities | [`support/identities.ts`](../../frontend/e2e/support/identities.ts) | `COWORK_BASE_URL`, the administrator (`COWORK_E2E_ADMIN`, `COWORK_E2E_ADMIN_PASSWORD`), Dex's `bob`, `freshPassword()` |
 
-Selectors are `data-testid` (`getByTestId`) except where the page has none to give: a PrimeNG menu
-item, found by its role and name (*Sign out*), and Dex's own login form, by its inputs' names.
+A path finds what it touches by its role and accessible name first (`getByRole`), by its label
+next, and by `data-testid` (`getByTestId`) where the page names an element in no accessible way or
+no role and name tell it apart; a component gets a test id or an `aria-label` for a test only then
+([ADR 0056](../adr/0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md)
+D7 as amended 2026-10-06). A confirmation is the `alertdialog` its header names. The paths written
+before that rule find things by `data-testid`, but for a PrimeNG menu item (*Sign out*) and Dex's
+own login form, found by its inputs' names.
 
-### The dark-mode screenshot
+### The screenshots
 
-[`visual.spec.ts`](../../frontend/e2e/visual.spec.ts) compares the board of the project `VIEW` in
-the tenant `e2e-visual` — a card in every column, seeded by the global setup
+[`visual.spec.ts`](../../frontend/e2e/visual.spec.ts) compares two pages of the tenant `e2e-visual`
+— the project `VIEW` with a card in every column, seeded by the global setup
 ([`support/visual.ts`](../../frontend/e2e/support/visual.ts)) so that the navigation lists the same
-one project in every run — with one picture per browser,
-[`screenshots/visual.spec.ts/board-<project>.png`](../../frontend/e2e/screenshots/visual.spec.ts/),
-at most 2 % of the pixels different (`maxDiffPixelRatio`), animations stopped.
-[`screenshot.css`](../../frontend/e2e/screenshot.css) takes out what differs by build, not by
-change: PrimeNG's license notice of a build without the PrimeUI key (CI builds without it) and the
-version line.
+one project in every run — with one picture per browser and scheme,
+[`screenshots/visual.spec.ts/<page>-<project>.png`](../../frontend/e2e/screenshots/visual.spec.ts/):
+the board in the dark projects (`board`, tagged `@dark`) and the tenant's dashboard in all four
+(`dashboard`), at most 2 % of the pixels different (`maxDiffPixelRatio`), animations stopped.
+[`screenshot.css`](../../frontend/e2e/screenshot.css) takes out what differs by build or by the day of
+the run, not by change: PrimeNG's license notice of a build without the PrimeUI key (CI builds
+without it), the version line, the dashboard's period and how long its longest blocked ticket has
+waited. The bell's count stays in: it counts the administrator's unread notifications, which the
+paths that ran before made, and its badge is too small a share of the page to fail the comparison.
 
 One picture serves every platform, and the threshold is what that costs. Measured on 2026-10-04
 with Playwright 1.63: the renderings of macOS and of Linux (`mcr.microsoft.com/playwright:v1.63.0-noble`
 on arm64) differ in about 1.2 % of the pixels at Playwright's per-pixel threshold, before its
 anti-aliasing exclusion, and pass against each other's picture; a sidebar, the cards or the top bar
 turned light fail it (8 to 22 % of the pixels, both browsers); card titles turned dark on the dark
-cards **pass** — text is too small a share of the page for this comparison. The committed pictures
-are the Linux renderings, the platform CI runs on; amd64, the runners' architecture, has not been
-compared. After a deliberate change, make them again in that image, against the stack of
+cards **pass** — text is too small a share of the page for this comparison. The dashboard's pictures,
+made on 2026-10-06 in the same image, pass on macOS as well. The committed pictures are the Linux
+renderings, the platform CI runs on; amd64, the runners' architecture, has not been compared for the
+dashboard. After a deliberate change, make them again in that image, against the stack of
 `make e2e-up`, whose namespace it joins:
 
 ```bash
@@ -444,9 +463,11 @@ docker run --rm --network container:cowork-e2e-dex -v "$PWD/frontend:/work" -w /
   npx playwright test -c e2e visual.spec.ts --update-snapshots=all
 ```
 
-The image's tag is the version of `@playwright/test` in `frontend/package.json`, and moves with it.
-A picture made on macOS (`--update-snapshots=all` without the container) passes as well, by the
-measurement above, with the same margin the other way.
+`--update-snapshots=missing` instead writes only the pictures that are not there, after the changed
+page's old ones are deleted, and leaves the others as they were. The image's tag is the version of
+`@playwright/test` in `frontend/package.json`, and moves with it. A picture made on macOS
+(`--update-snapshots=all` without the container) passes as well, by the measurement above, with the
+same margin the other way.
 
 ### In CI
 

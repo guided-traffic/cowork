@@ -798,7 +798,7 @@ a search hit's — scrolls the page to that part once it has loaded.
 | [`TicketBody`](../../frontend/src/app/features/ticket/ticket-body.ts) | The body edited as Markdown and replaced as a whole ([ADR 0011] D1), `PUT …/body` over the version the editing began with | Written over at once while the body is still the one it began with; otherwise the editor keeps the text and shows [`ConflictNote`](../../frontend/src/app/shared/conflict-note.ts): *Write mine over it*, or *Take the new version* into the editor |
 | [`TicketFields`](../../frontend/src/app/features/ticket/ticket-fields.ts) | The fields; the horizon as a select — `PUT …/horizon` with the choice, `later` clearing the horizon set — and after a horizon other than `later` a field for the reason a person may add (Enter sends the horizon again with it, Escape, an empty Enter or leaving the field drops it, as in the backlog); the parent from [`ParentPicker`](../../frontend/src/app/features/ticket/parent-picker.ts); for a tenant administrator (the session's role `admin`) the confidential flag in [`ConfidentialDialog`](../../frontend/src/app/features/ticket/confidential-dialog.ts), which sets it with an optional reason and lifts it only with one ([ADR 0065] D3, D6) | The page's dialog for a field and for the horizon; the confidential dialog says so in its form |
 | [`PrerequisiteTree`](../../frontend/src/app/features/ticket/prerequisite-tree.ts) | Nothing: `GET …/prerequisites`, 200 nodes, *Prerequisites* or *Dependents* (`direction=up`) | — |
-| [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a tenant administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts. An edit sends the comment's mentions: those it holds, but one whose `@<name>` the text held and the edit took out, and the persons picked in the edit | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
+| [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a tenant administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts, until a newer version of the comment — an edit, a withdrawal, which hides them as it hides the text — closes them. An edit sends the comment's mentions: those it holds, but one whose `@<name>` the text held and the edit took out, and the persons picked in the edit | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
 | [`EditQuestion`](../../frontend/src/app/features/ticket/conversation-forms.ts) | The asker changes an open question's text, options and recommendation over its version | As a comment |
 | [`TimeCard`](../../frontend/src/app/features/ticket/records-cards.ts) | The author corrects an entry in its row over its version, or voids it; *corrected* shows its earlier values | Time entries are not published: the card loads them again and shows the conflict note |
 | [`TicketDelete`](../../frontend/src/app/features/ticket/ticket-delete.ts), beside the moves for a tenant administrator | The deletion ([ADR 0024] D1, D7): the open tickets that wait on it read first (`TicketActions.dependents`), then the page's dialog names them — a deletion does not refuse over them — and says that the ticket can be restored from the deleted tickets for thirty days; confirmed, `DELETE …/{number}`, a toast, and the project's backlog | — |
@@ -842,6 +842,16 @@ request carries the session cookie like any other. Every load of a preview is a 
 records as `downloaded` — the API answers `Cache-Control: no-store`, so a page opened again loads it
 again. The card lists every file of the ticket, those of its comments marked *on a comment*; a
 comment lists its own.
+
+**Not verified:** how the page's editors and cards look on a real screen, in either scheme — the
+title and body editors with their conflict note, the horizon select and its reason field, the parent
+picker, the confidential dialog, a comment's editor, its earlier texts and its withdrawal, the
+question's editor and the tree card. The end-to-end tier drives the title and body editors, the
+comment's, the question's and the tree in Chromium and WebKit in both schemes and asserts what they
+hold ([testing.md](testing.md#end-to-end-tests)); it compares no picture of them, and nobody has
+looked at them. Nor how a tree of hundreds of nodes reads: the card draws at most 200, and the route
+answers a graph of forty tickets and a hundred and eighty links in milliseconds in the integration
+tier.
 
 ### An editor belongs to its ticket
 
@@ -1115,8 +1125,9 @@ against the generated client with `HttpTestingController`, components against mo
 (ADR 0053 D7). The generated client, `main.ts` and the production route stub are excluded from
 coverage (`coverageExclude` in [`angular.json`](../../frontend/angular.json)). The production
 bundle in its image is walked by the end-to-end suite in [`frontend/e2e/`](../../frontend/e2e/), in
-Chromium and WebKit and both schemes ([testing.md](testing.md#end-to-end-tests)): the `data-testid`
-attributes it finds things by are part of a page's contract, and `ng lint` covers the suite too.
+Chromium and WebKit and both schemes ([testing.md](testing.md#end-to-end-tests)): the roles,
+accessible names and labels it finds things by, and the `data-testid` attributes where nothing
+accessible names an element, are part of a page's contract, and `ng lint` covers the suite too.
 
 [ADR 0009]: ../adr/0009-ticket-states-are-the-frontmatter-states-plus-blocked.md
 [ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md

@@ -1,5 +1,5 @@
 import { keyOf, Session, sessionContext, signInWithNewPassword, tenant } from './support/api';
-import { expect, expectScheme, test } from './support/fixtures';
+import { expect, expectScheme, newContext, test } from './support/fixtures';
 import { adminState, baseURL, freshPassword } from './support/identities';
 
 /**
@@ -11,12 +11,14 @@ import { adminState, baseURL, freshPassword } from './support/identities';
  * 2. the account, whose page is open on "Assigned to me" before the ticket exists, sees it there and
  *    the bell count it within the event stream's latency, without reloading
  *    (docs/adr/0020 D2, D4), and finds it in its inbox, "assigned it to you";
- * 3. the account opens it from the inbox, moves it forward, and closes it by hand with a
+ * 3. the account opens it from the inbox, edits its title in place and its body as Markdown
+ *    (docs/adr/0018 D2, docs/adr/0011 D1), moves it forward, and closes it by hand with a
  *    verification note (docs/adr/0009 D5);
- * 4. the administrator's open page of the ticket shows it done, again through the stream.
+ * 4. the administrator's open page of the ticket shows the new title, the body as the server
+ *    rendered it, and the ticket done, again through the stream.
  */
 test(
-  'the owner files a ticket, assigns it to a second identity, which sees it in assigned to me and its inbox, moves it and closes it',
+  'the owner files a ticket, assigns it to a second identity, which sees it in assigned to me and its inbox, edits it, moves it and closes it',
   { tag: '@smoke' },
   async ({ page, browser, project }) => {
     const username = `e2e-${Math.random().toString(36).slice(2, 10)}`;
@@ -36,12 +38,7 @@ test(
     await signInWithNewPassword(page.context().request, baseURL, username, temporary, chosen);
 
     // The administrator, in a browser context of their own with the session of the global setup.
-    const owner = await browser.newContext({
-      baseURL,
-      ignoreHTTPSErrors: true,
-      storageState: adminState,
-      colorScheme: test.info().project.use.colorScheme,
-    });
+    const owner = await newContext(browser, adminState);
     try {
       const ownerPage = await owner.newPage();
 
@@ -84,6 +81,32 @@ test(
       // The account opens it from the inbox, moves it forward and closes it with a note.
       await group.getByTestId(`open-${key}`).click();
       await expect(page).toHaveURL(new RegExp(`/t/${tenant}/tickets/${project}-1$`));
+
+      // The account edits the title in place and the body as Markdown; the administrator's page,
+      // open all along, shows both, the body as the server rendered it.
+      await page.getByRole('button', { name: 'Edit the title' }).click();
+      const title = page.getByRole('textbox', { name: 'Title' });
+      await title.fill('Check the second identity in its own browser');
+      await title.press('Enter');
+      await expect(title).toBeHidden();
+      await page.getByTestId('body-edit').click();
+      await page
+        .getByRole('textbox', { name: 'Description, in Markdown' })
+        .fill('## Steps\n\n1. Sign in as the second identity\n2. Move it **forward**');
+      await page.getByTestId('body-save').click();
+      const body = page.getByTestId('body');
+      await expect(body.getByRole('heading', { name: 'Steps' })).toBeVisible();
+      await expect(body.getByRole('listitem')).toHaveText([
+        'Sign in as the second identity',
+        'Move it forward',
+      ]);
+      await expect(ownerPage.getByTestId('ticket-title')).toHaveText(
+        'Check the second identity in its own browser',
+      );
+      const shown = ownerPage.getByTestId('body');
+      await expect(shown.getByRole('heading', { name: 'Steps' })).toBeVisible();
+      await expect(shown.locator('strong')).toHaveText('forward');
+
       await page.getByTestId('move-analysed').click();
       await expect(page.getByTestId('move-decided')).toBeVisible();
       await page.getByTestId('more-moves').click();
