@@ -30,15 +30,17 @@ condition a list leaves out named under the bar with why (`leftOut`); integratio
 persons and two tenants
 ([`api_filters_test.go`](../../backend/test/integration/api_filters_test.go)).
 
+In the browser, [`filters.spec.ts`](../../frontend/e2e/filters.spec.ts) walks the backlog's bar
+with two identities: a member saves the backlog's filter shared, and the administrator applies it
+from the saved filters and sees its owner — in Chromium and WebKit, each in both schemes, in three
+local runs of the whole tier with two workers on 2026-10-06.
+
 Outstanding: the tenant board's filter bar does not apply them — the board carries the address's
-`project` filter only; no end-to-end path walks a saved filter — the images could not be built
-where the backlog's bar was made; a tenant administrator cannot remove a shared filter of a person
-who left, which stays shared until its owner deletes it.
+`project` filter only; a tenant administrator cannot remove a shared filter of a person who left,
+which stays shared until its owner deletes it.
 
 ## Required changes
 
 1. The tenant board's filter bar applies, saves and shares a filter as the backlog's does, through
    `SavedFilters` — with what a board leaves out as its `leftOut` — and `toBacklog`'s counterpart
    for the board.
-2. An end-to-end spec: a member saves the backlog's filter shared, a second person applies it and
-   sees its owner; `make docker-build e2e`.
