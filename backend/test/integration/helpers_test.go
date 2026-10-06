@@ -208,5 +208,7 @@ func seedEveryTenantTable(t *testing.T, w world) {
 			title, state, url, found_in, first_seen_at, last_seen_at)
 			VALUES ($1, $2, 'pull_request', 'example.org/seed/repo', 1, 'seed', 'open', 'https://example.org/seed/repo/pull/1',
 			'subject', now(), now())`, s.tenant, first))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO import_jobs (tenant_id, project_id, created_by, expires_at, report, source)
+			VALUES ($1, $2, $3, now() + interval '1 day', '{}', '\x')`, s.tenant, s.project, s.person))
 	}
 }
