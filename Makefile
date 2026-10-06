@@ -91,6 +91,7 @@ GOSEC ?= $(LOCALBIN)/gosec-$(GOSEC_VERSION)
 GOVULNCHECK ?= $(LOCALBIN)/govulncheck-$(GOVULNCHECK_VERSION)
 SQLC ?= $(LOCALBIN)/sqlc-$(SQLC_VERSION)
 OAPI_CODEGEN ?= $(LOCALBIN)/oapi-codegen-$(OAPI_CODEGEN_VERSION)
+KUBECONFORM ?= $(LOCALBIN)/kubeconform-$(KUBECONFORM_VERSION)
 
 ## Tool Versions
 # renovate: datasource=go depName=github.com/golangci/golangci-lint/v2/cmd/golangci-lint
@@ -105,6 +106,21 @@ GOVULNCHECK_VERSION ?= v1.8.0
 SQLC_VERSION ?= v1.31.1
 # renovate: datasource=go depName=github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 OAPI_CODEGEN_VERSION ?= v2.8.0
+# renovate: datasource=go depName=github.com/yannh/kubeconform/cmd/kubeconform
+KUBECONFORM_VERSION ?= v0.8.0
+
+# The operator releases the example manifests of deploy/examples/ are written
+# against (docs/adr/0058 D1, D2): make examples-lint validates them against the
+# CustomResourceDefinitions of exactly these releases, and fails while an
+# example names another one, so a version Renovate moves is the moment to
+# update the example or to say it is stale. The MinIO Operator is archived;
+# v7.1.1 is its last release.
+# renovate: datasource=github-releases depName=cloudnative-pg/cloudnative-pg
+CNPG_VERSION ?= v1.30.1
+# renovate: datasource=github-releases depName=minio/operator
+MINIO_OPERATOR_VERSION ?= v7.1.1
+EXAMPLES_DIR = deploy/examples
+EXAMPLES_SCHEMAS = $(LOCALBIN)/examples-schemas
 
 # gosec bounds: the self-hosted runners share one machine across jobs.
 GOSEC_CONCURRENCY ?= 4
@@ -430,6 +446,21 @@ helm-lint: ## Lint the chart with every values file under deploy/helm/cowork/ci/
 helm-template: ## Render the chart with every values file under deploy/helm/cowork/ci/ and print nothing unless it fails.
 	@for f in $(HELM_CHART)/ci/*-values.yaml; do echo "helm template with $$f"; helm template cowork $(HELM_CHART) -f $$f > /dev/null; done
 
+# The CustomResourceDefinitions of the two releases are fetched at their tags
+# and turned into the JSON schemas kubeconform reads (backend/tools/crdschema);
+# the built-in kinds are checked against kubeconform's default schemas. Both
+# need the network. It proves the examples parse, nothing more (docs/adr/0058 D2).
+.PHONY: examples-lint
+examples-lint: $(KUBECONFORM) ## Validate deploy/examples/ against the CRD schemas of the operator releases they name (syntax only).
+	@grep -q "CloudNativePG $(CNPG_VERSION:v%=%)" $(EXAMPLES_DIR)/cloudnative-pg-cluster.yaml || { echo "$(EXAMPLES_DIR)/cloudnative-pg-cluster.yaml does not name CloudNativePG $(CNPG_VERSION:v%=%): update the example to that release"; exit 1; }
+	@grep -q "MinIO Operator $(MINIO_OPERATOR_VERSION)" $(EXAMPLES_DIR)/minio-tenant.yaml || { echo "$(EXAMPLES_DIR)/minio-tenant.yaml does not name the MinIO Operator $(MINIO_OPERATOR_VERSION): update the example to that release"; exit 1; }
+	@rm -rf $(EXAMPLES_SCHEMAS) && mkdir -p $(EXAMPLES_SCHEMAS)/crds
+	curl -fsSL -o $(EXAMPLES_SCHEMAS)/crds/clusters.yaml https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/$(CNPG_VERSION)/config/crd/bases/postgresql.cnpg.io_clusters.yaml
+	curl -fsSL -o $(EXAMPLES_SCHEMAS)/crds/tenants.yaml https://raw.githubusercontent.com/minio/operator/$(MINIO_OPERATOR_VERSION)/resources/base/crds/minio.min.io_tenants.yaml
+	cd $(BACKEND_DIR) && $(GOCMD) run ./tools/crdschema -out $(EXAMPLES_SCHEMAS) $(EXAMPLES_SCHEMAS)/crds/clusters.yaml $(EXAMPLES_SCHEMAS)/crds/tenants.yaml
+	$(KUBECONFORM) -strict -summary -schema-location default -schema-location '$(EXAMPLES_SCHEMAS)/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' $(EXAMPLES_DIR)/*.yaml
+	@for f in $(EXAMPLES_DIR)/*.sh; do echo "sh -n $$f"; sh -n $$f; done
+
 ##@ Dependencies
 
 ## Location to install dependencies to
@@ -455,6 +486,9 @@ $(SQLC): $(LOCALBIN)
 
 $(OAPI_CODEGEN): $(LOCALBIN)
 	$(call go-install-tool,$(OAPI_CODEGEN),github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen,$(OAPI_CODEGEN_VERSION))
+
+$(KUBECONFORM): $(LOCALBIN)
+	$(call go-install-tool,$(KUBECONFORM),github.com/yannh/kubeconform/cmd/kubeconform,$(KUBECONFORM_VERSION))
 
 # go-install-tool 'go install's a package into $(LOCALBIN) under the versioned
 # path its variable names. $1 - target path, ending in -$3; $2 - package;
