@@ -124,7 +124,7 @@ reason; [`mcpcli/cli_test.go`](../../backend/internal/mcpcli/cli_test.go) the co
 (`https` except on loopback, the token's shape, no value echoed), the subcommands, the hooks
 silent outside a repository, `token check`, `serve` refusing an API it does not know, and the
 model of the `SessionStart` hook's input — the one Claude Code's hook reference shows — in the
-mark of the server of the same project directory.
+mark of the server of the same project directory, and the starts without one.
 [`domain/repository_test.go`](../../backend/internal/domain/repository_test.go) is the table of
 remote identities, sub-directories and proposed keys.
 

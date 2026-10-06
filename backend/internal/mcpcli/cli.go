@@ -342,9 +342,12 @@ func sessionContext(ctx context.Context, e Env) int {
 	ctx, cancel := context.WithTimeout(ctx, hookBudget)
 	defer cancel()
 	c := connect(e, cfg, "claude-code", in.Model, in.SessionID)
-	if in.Model != "" && cfg.project != "" && c.session.Memory != nil {
-		// Claude Code may leave the model out, after /clear for one: the
-		// model recorded before stands. A failure costs the mark its model.
+	// Claude Code may leave the model out. After /clear or a compaction the
+	// running Claude Code goes on with its model, and the one recorded before
+	// stands; any other start without one, a session restored through
+	// conversation recovery for one, records none, so the mark says unknown
+	// rather than an older session's model. A failure costs the mark its model.
+	if cfg.project != "" && c.session.Memory != nil && (in.Model != "" || (in.Source != "clear" && in.Source != "compact")) {
 		_ = c.session.Memory.SetModel(cfg.project, in.Model)
 	}
 	if _, err := tools.CheckVersion(ctx, c.session, e.Build.Version); err != nil {

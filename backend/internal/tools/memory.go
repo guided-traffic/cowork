@@ -27,10 +27,10 @@ type Memory interface {
 	// SetLastStart records a start.
 	SetLastStart(key MemoryKey, at time.Time) error
 	// Model is the model last recorded for the project directory; "" when
-	// none was.
+	// none was, or the last record was "".
 	Model(projectDir string) (string, error)
 	// SetModel records the model of the session started in the project
-	// directory.
+	// directory; "" records that it named none.
 	SetModel(projectDir, model string) error
 }
 

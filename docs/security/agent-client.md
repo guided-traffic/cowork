@@ -30,7 +30,7 @@ machine.
 (`claude-code`), the model the one Claude Code names to the `SessionStart` hook — in the server
 too, which the MCP protocol does not tell it, through the file the hook writes for the project
 directory ([ADR 0067](../adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
-D5), and `unknown` until a hook has named one —, the session a short random id or the hook's
+D5), and `unknown` while none is recorded —, the session a short random id or the hook's
 session id. Like every part of the mark, the model is the client's word: it is attribution and no
 rule reads it. The
 header only narrows ([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)

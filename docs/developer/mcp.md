@@ -168,11 +168,15 @@ tell a server its model, so the SessionStart hook hands it over
 D5): `session-context` writes the input's `model` with `Memory.SetModel` under `CLAUDE_PROJECT_DIR`
 — the one value Claude Code gives both the hook and the server, which gets no session id — and
 `client.header` reads it with `Memory.Model` at each request of `serve`, so a session started after
-the server, or started again, is named. An input without a model leaves the recorded one, and a
-server without `CLAUDE_PROJECT_DIR` or a recorded model sends `unknown`. The last session started
+the server, or started again, is named. An input without a model leaves the recorded one after
+`/clear` or a compaction (`source` `clear`, `compact`), where the running Claude Code goes on with
+its model, and records none after any other start — a session restored through conversation
+recovery is not marked with an older session's model; a server without `CLAUDE_PROJECT_DIR` or a
+recorded model sends `unknown`. The last session started
 in a directory names the model of every server there, and a switch with `/model` inside a session
 is not seen. `TestTheSessionStartHookNamesTheModelOfTheServer` runs the hook on the input Claude
-Code's [hook reference](https://code.claude.com/docs/en/hooks) shows and the server around it.
+Code's [hook reference](https://code.claude.com/docs/en/hooks) shows, on starts without a model,
+and the server around it.
 
 ## The plugin
 

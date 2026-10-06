@@ -246,7 +246,12 @@ func TestTheSessionStartHookNamesTheModelOfTheServer(t *testing.T) {
 	hook("/Users/ada/src/other", strings.Replace(sessionStartInput, "claude-opus-5", "claude-haiku-4-5", 1))
 	assert.Equal(t, mark, watch(), "a session in another project directory names its own server's model")
 	hook("/Users/ada/src/app", `{"session_id": "abc123", "hook_event_name": "SessionStart", "source": "clear"}`)
-	assert.Equal(t, mark, watch(), "a start without a model leaves the model recorded before")
+	assert.Equal(t, mark, watch(), "after /clear the running Claude Code keeps its model: the one recorded before stands")
+	hook("/Users/ada/src/app", `{"session_id": "abc123", "hook_event_name": "SessionStart", "source": "compact"}`)
+	assert.Equal(t, mark, watch(), "a compaction continues the session: the one recorded before stands")
+	hook("/Users/ada/src/app", `{"session_id": "def456", "hook_event_name": "SessionStart", "source": "resume"}`)
+	assert.Equal(t, "claude-code/unknown/"+strings.Split(mark, "/")[2], watch(),
+		"a session restored without a model is not marked with an older session's")
 
 	require.NoError(t, cs.Close())
 	select {

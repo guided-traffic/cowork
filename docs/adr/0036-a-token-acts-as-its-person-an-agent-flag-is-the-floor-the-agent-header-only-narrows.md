@@ -164,8 +164,8 @@ unflagged token in someone's name.
   with the model and a session id it generates. *(Made concrete 2026-10-06: the model is the one
   Claude Code names to the `SessionStart` hook in the server's project directory
   ([ADR 0067](0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
-  D5 as amended) — MCP does not tell a server its model —, and `unknown` until a hook has named
-  one; the session id is the server's own.)*
+  D5 as amended) — MCP does not tell a server its model —, and `unknown` while none is recorded;
+  the session id is the server's own.)*
 
 ## Alternatives Considered
 

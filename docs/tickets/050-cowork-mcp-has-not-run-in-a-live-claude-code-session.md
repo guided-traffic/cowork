@@ -28,7 +28,8 @@ The model in the agent mark of the server's acts comes from the SessionStart hoo
 `session-context` records the `model` of Claude Code's hook input per project directory
 (`CLAUDE_PROJECT_DIR`), and `serve` reads it at each request
 ([`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go) `sessionContext`, `client.header`;
-ADR 0067 D5). `TestTheSessionStartHookNamesTheModelOfTheServer` runs it on the input Claude Code's
+ADR 0067 D5); a start without a model keeps the recorded one after `/clear` or a compaction and
+records none otherwise. `TestTheSessionStartHookNamesTheModelOfTheServer` runs it on the input Claude Code's
 [hook reference](https://code.claude.com/docs/en/hooks) shows, not on one recorded from a live
 session. A model switched with `/model` inside a session fires no SessionStart, so the mark keeps
 the model the session started with; Claude Code has a `PostModelSwitch` hook event, which does not
@@ -40,7 +41,11 @@ block and whose input carries `from_model` and `to_model`.
    [claude-code.md](../operations/claude-code.md) describes, start `claude` in a bound repository,
    and walk the phase's verification — the session names its ticket, Claude records its state,
    opens a question and finishes with a verification note, each act in the UI with the agent icon
-   and the session's model in its mark, `claude-code/<model>/<id>`.
+   and the session's model in its mark, `claude-code/<model>/<id>`. Capture the `SessionStart`
+   hook's input of that session — a hook command that copies its standard input to a file — and
+   put it, its paths shortened, in place of `sessionStartInput` in
+   [`mcpcli/cli_test.go`](../../backend/internal/mcpcli/cli_test.go), so the test runs on a
+   recorded input.
 
 ## Open questions
 
