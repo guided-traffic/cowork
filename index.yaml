@@ -2,8 +2,31 @@ apiVersion: v1
 entries:
   cowork:
   - apiVersion: v2
+    appVersion: 0.7.0
+    created: "2026-10-06T13:40:32.605651235Z"
+    description: Multi-tenant backlog and kanban board for people and LLM agents working
+      across many projects
+    digest: 8853d1bd9a691f0f4380dd8c6493826640ba51ac7b520428c7444e6dc45a128e
+    home: https://github.com/guided-traffic/cowork
+    keywords:
+    - backlog
+    - kanban
+    - tickets
+    - llm
+    - multi-tenant
+    maintainers:
+    - name: Guided Traffic
+      url: https://github.com/guided-traffic
+    name: cowork
+    sources:
+    - https://github.com/guided-traffic/cowork
+    type: application
+    urls:
+    - https://guided-traffic.github.io/cowork/cowork-0.7.0.tgz
+    version: 0.7.0
+  - apiVersion: v2
     appVersion: 0.6.0
-    created: "2026-10-06T06:29:00.891501018Z"
+    created: "2026-10-06T13:40:32.604719152Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: 3e26c1c017afacb424c31a7434ba7118175c73d678bf2ce5d0bf29242f18f9be
@@ -26,7 +49,7 @@ entries:
     version: 0.6.0
   - apiVersion: v2
     appVersion: 0.5.1
-    created: "2026-10-06T06:29:00.890194516Z"
+    created: "2026-10-06T13:40:32.60365592Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: 2fc1e6b76ecbf512148dbc718a7945779db6826833006037a53788dc093f9eb2
@@ -49,7 +72,7 @@ entries:
     version: 0.5.1
   - apiVersion: v2
     appVersion: 0.5.0
-    created: "2026-10-06T06:29:00.888948307Z"
+    created: "2026-10-06T13:40:32.601452062Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: 18e7244a515aeaab65363693b539075ea9079dfcf9b363be72714a506b9afce0
@@ -72,7 +95,7 @@ entries:
     version: 0.5.0
   - apiVersion: v2
     appVersion: 0.4.1
-    created: "2026-10-06T06:29:00.887680356Z"
+    created: "2026-10-06T13:40:32.600362691Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: 062915f1b84cbdc9850b0e3b6a736e7722bf5ee2828018ba930f8e971c0eb058
@@ -95,7 +118,7 @@ entries:
     version: 0.4.1
   - apiVersion: v2
     appVersion: 0.4.0
-    created: "2026-10-06T06:29:00.884977832Z"
+    created: "2026-10-06T13:40:32.599441108Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: a9b6def7176febd0ead7b21b632293237d0ddacf5509cffcbd31cfbb44e28483
@@ -118,7 +141,7 @@ entries:
     version: 0.4.0
   - apiVersion: v2
     appVersion: 0.3.1
-    created: "2026-10-06T06:29:00.883811945Z"
+    created: "2026-10-06T13:40:32.59844263Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: a20876e86f341e1aad3b1e12ba8d57e45dfe82b12d55839bfbfc6c4cd04deba9
@@ -141,7 +164,7 @@ entries:
     version: 0.3.1
   - apiVersion: v2
     appVersion: 0.3.0
-    created: "2026-10-06T06:29:00.88265798Z"
+    created: "2026-10-06T13:40:32.597374569Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: 1b9474e9850e7f658fbcd991db89b2d40aec96c4400dd096472e07b3c894c8dc
@@ -164,7 +187,7 @@ entries:
     version: 0.3.0
   - apiVersion: v2
     appVersion: 0.2.0
-    created: "2026-10-06T06:29:00.881383637Z"
+    created: "2026-10-06T13:40:32.596349281Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: 23efd4e3cbb61e9fe0d76f3f5b771e079b819cb9126c3501ea21bc247f327a57
@@ -187,7 +210,7 @@ entries:
     version: 0.2.0
   - apiVersion: v2
     appVersion: 0.1.1
-    created: "2026-10-06T06:29:00.880269889Z"
+    created: "2026-10-06T13:40:32.595346784Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: 7ef312fc33fb7b8c2fe04e4cc8a40f7196df2f099059590fb2c8a5566816458c
@@ -210,7 +233,7 @@ entries:
     version: 0.1.1
   - apiVersion: v2
     appVersion: 0.1.0
-    created: "2026-10-06T06:29:00.87933693Z"
+    created: "2026-10-06T13:40:32.594418939Z"
     description: Multi-tenant backlog and kanban board for people and LLM agents working
       across many projects
     digest: 1ea39b98752030d21e567cb0b1b93b4c20a97e83ba6eb5b9176892b0f4186d48
@@ -231,4 +254,4 @@ entries:
     urls:
     - https://guided-traffic.github.io/cowork/cowork-0.1.0.tgz
     version: 0.1.0
-generated: "2026-10-06T06:29:00.878075322Z"
+generated: "2026-10-06T13:40:32.593321914Z"
