@@ -76,10 +76,13 @@ local account, `oidc:<issuer>#<subject>` for a person of the identity provider, 
 at the first `#`. The name loses `<` and `>`, so the first `<` starts the identity; a person
 with neither identity, whom no route makes, is written by name alone. With an identity the value
 has a `<` and is therefore double-quoted: `assignee: "Ada Lovelace <local:ada>"`.
-[`exportDocument`](../../backend/internal/api/export.go) reads the identity with the query
+[`exportAssignee`](../../backend/internal/api/export.go) reads the identity with the query
 `ExportPerson` ([`export.sql`](../../backend/internal/store/queries/read/export.sql)), only when
 the ticket row carries the display name, under the same read policy of `users` in the same
-transaction: the document writes both or neither.
+transaction: the document writes both or neither. The transaction is `READ COMMITTED`, so a
+person whose membership is removed between the ticket row and that read is no longer readable;
+the query then finds no row and the document writes neither, rather than failing
+(`TestExportAssignee`).
 
 **Body.** The body with surrounding whitespace trimmed, after a blank line; nothing when it is
 empty.
