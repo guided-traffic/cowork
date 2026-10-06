@@ -69,7 +69,17 @@ build-mcp` with `GOOS=` and `GOARCH=` reproduces it locally.
 
 **Renovate** ([`renovate.yml`](../../.github/workflows/renovate.yml), [`renovate.json`](../../renovate.json))
 runs daily on a self-hosted runner: minor and patch updates automerge after CI, majors wait
-for a review (except GitHub Actions).
+for a review (except GitHub Actions). Every action is named by a version tag, never a branch and
+never a commit SHA
+([ADR 0061](../adr/0061-images-are-published-to-docker-hub-the-runners-secrets-and-pages-are-verified.md)
+D7): its major where the action publishes one (`actions/checkout@v7`), else its full release
+(`aquasecurity/trivy-action@v0.36.0`, `renovatebot/github-action@v46.3.7`). A new action is named
+the same way, and `renovate.json` has no `pinDigests` rule. Renovate's github-actions manager moves
+the tags. The Trivy the scan runs is the action release's default — `v0.70.0` at `v0.36.0` — since
+no step sets the action's `version` input, so it moves with the action's next release. What a tag
+that moves can reach — `DOCKERHUB_PAT` in `container-malware-scan` and `build`, the App token in
+`renovate.yml`, the job tokens — is the owner's accepted risk:
+[docs/security/release-pipeline.md](../security/release-pipeline.md).
 
 Every job says `runs-on: self-hosted`. Which of the runners, the secrets (`DOCKERHUB_PAT`,
 `APP_CLIENT_ID`, `APP_PRIVATE_KEY`) and the `gh-pages` branch were verified for this

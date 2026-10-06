@@ -16,7 +16,8 @@ included; the owner chose the second, as recommended: it is the set a person pic
 one `session_start` offers an agent; D4: the tenant board's columns are the project board's of D1), and made concrete
 2026-10-05 (D6: one route, the definition of each tile, what the period bounds, the front page
 beside the tiles; a time booking reaches the dashboard at its next reload, settled on the
-recommendation, the owner reviewing the result).
+recommendation, the owner reviewing the result), and amended 2026-10-06 by the owner (D5: a tenant
+administrator unshares or deletes another person's shared filter).
 Date: 2026-09-29. Decided by the owner as the answer to the catalog question "which views are
 v1?": the widest option — the minimum the earlier records require, plus a
 tenant-wide board with swimlanes per project, saved filters, and dashboards. The
@@ -49,6 +50,18 @@ same tickets, one model for both boards, so that a card stands in the same colum
 one column per state as D4 read, which would have been a second model with the `done` column the
 owner turned down on the project board, and over the project board's five columns without
 `next`, which would have left `next` to each project's board.
+
+The amendment of 2026-10-06 is the owner's answer to what becomes of a shared filter whose owner
+left the tenant, which stayed shared under the name of a person who is no member any more, and
+which only that person could change. The owner chose that a tenant administrator may unshare or
+delete **any** shared filter of the tenant — such a filter among them —, each a recorded act, and
+may neither change another person's filter otherwise, its name or its conditions, nor touch one
+that is not shared. What the act needs beyond the role is not part of the answer and follows from
+two records as they stand: `admin` scope, the scope of what the `admin` role allows
+([ADR 0035](0035-personal-access-tokens.md) D3), as an administrator's withdrawal of another
+person's comment takes it; and no agent, since
+[ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D3 keeps every administration act and `admin` scope from an agent.
 
 **Partly built** (phase 3, 2026-10-03): D1 as amended 2026-10-04 — the project opening on its
 board, whose tab stands left of the backlog's, and the backlog's groups named as horizons
@@ -124,6 +137,19 @@ D6), its `horizon` narrowing the board's `now`, `release` and `next` and never w
 `include_terminal`, which would only add the closed tickets a board never shows, left out and named
 under the bar ([`features/tenant/tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts)).
 A swimlane under a filter counts the cards the filter lets through, against the WIP limits too.
+*(2026-10-06:)* D5 as amended the same day: `PATCH …/filters/{filter}` with `{"shared": false}` and
+nothing else, and `DELETE …/filters/{filter}`, take another person's shared filter from a tenant
+administrator with `admin` scope, never from an agent (`mayChangeFilter` in
+[`api/filters.go`](../../backend/internal/api/filters.go)), each recorded as the owner's acts are;
+[migration 39](../../backend/internal/store/migrations/000039_saved_filters_moderated_by_administrators.up.sql)
+widens the restrictive policies of `saved_filters` for exactly that, and its trigger
+`saved_filters_moderation_guard` refuses whatever else a change of another person's filter would
+change — its name, its parameters, a filter left shared —, since a policy sees the row and not the
+columns a statement sets; the filter bar offers an administrator *Stop sharing* and *Delete* on
+another person's filter it applies, and on one the server withholds (`redacted`), which an
+administrator may choose to withdraw without the list applying it, at once as the owner's own acts
+are, an owner who left the tenant named "a former member"
+([`features/project/saved-filters.ts`](../../frontend/src/app/features/project/saved-filters.ts)).
 
 **Built** (phase 3, 2026-10-05): D6 as made concrete the same day — `GET
 /api/v1/tenants/{tenant}/dashboard` ([`dashboard.go`](../../backend/internal/api/dashboard.go),
@@ -230,7 +256,11 @@ filter, because a tenant with many projects would otherwise render everything.
 **D5 — Saved filters.** A saved filter is a named set of the list filter parameters (the API
 record defines them), owned by a person, optionally shared with the tenant, applicable to
 the backlog, the tenant list view and the tenant board. It is a parameter set, not a query
-language.
+language. *(Amended 2026-10-06 by the owner:)* Its owner changes and deletes it, and a tenant
+administrator unshares or deletes any shared filter of the tenant — one whose owner left the
+tenant among them —, each a recorded act and an administration act (`admin` scope, no agent);
+the administrator changes nothing else of another person's filter and nothing of one that is not
+shared.
 
 **D6 — Per tenant: a dashboard with a fixed set of tiles, filterable by project and by
 period.** The tiles of the first release: open tickets by state; open by severity; open

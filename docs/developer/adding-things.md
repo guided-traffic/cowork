@@ -225,4 +225,8 @@ Add it to `release.yml` as a Makefile target, add its name to the `needs:` list 
 `semantic-release` in the same change (ADR 0003 D4), and add the job's exact name to the
 required status checks of the `main` ruleset
 ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)
-D6) — a renamed job is the same change.
+D6) — a renamed job is the same change. Name every action it uses by a version tag, never a
+commit SHA
+([ADR 0061](../adr/0061-images-are-published-to-docker-hub-the-runners-secrets-and-pages-are-verified.md)
+D7); when the job holds a secret or a job token that writes, add it to the table of
+[docs/security/release-pipeline.md](../security/release-pipeline.md).

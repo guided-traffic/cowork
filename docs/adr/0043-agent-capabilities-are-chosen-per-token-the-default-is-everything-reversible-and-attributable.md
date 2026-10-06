@@ -2,9 +2,11 @@
 
 ## Status
 
-Accepted, amended 2026-10-01 by [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
-D7 and D8 (`create-project` and `record-answer` become selectable capabilities; creating a
-project and recording a person's answer leave the hard-off list), amended 2026-10-02 (D4:
+Accepted, amended 2026-10-01 (D3, D4: `create-project` and `record-answer` become selectable
+capabilities; creating a project and recording a person's answer leave the hard-off list — the
+owner's grant in the answer to the catalog question "repository binding?", whose context
+[ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
+records), amended 2026-10-02 (D4:
 `create-project` follows the tenant setting of
 [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D9 instead of the `admin` role), amended 2026-10-04 (D4: `rank` and `override-urgency` cover a filing's place and
@@ -14,6 +16,27 @@ until a later release rewrites the stored sets), amended 2026-10-06 (D4: that re
 stored sets rewritten to `set-horizon`, the old name refused on input and dropped on read, as ADR 0010 D1
 records it; the checks of the stored sets keep the old name until a release after it, so that an image
 rollback to the release before stays safe, [ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3),
+amended 2026-10-06 once more (D4's `interest` row, the Consequences and the References: they say
+what [ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4 holds instead
+of amending it, and that [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) had no
+agent rule for this record to amend, by the owner's rule that every amendment is made in place in the record it changes;
+no rule changes), amended 2026-10-06 a third time (the note on what is built of D3: the saved filter
+an agent saves, changes, shares and deletes is its person's own, while a tenant administrator's
+unshare or deletion of another person's shared filter — the owner's answer recorded in
+[ADR 0018](0018-the-views-of-the-first-release.md) D5 that day — is an administration act and
+hard-off by D3 as it stands; no rule changes),
+amended 2026-10-06 by the owner a fourth time, as the answers to the review after experience of
+the six agent acts no record had listed (D2: removing a `blocks` link before `done`, the backward
+moves and reopens, removing its person's stake, editing an open question its person asked and
+editing a project stay an agent's, at the baseline, the owner accepting the risk of each, named
+in the Residual risks; D3: an agent assigns a confidential ticket only to its own person or to
+nobody; the Consequences' count of D3's acts),
+amended 2026-10-06 by the owner a fifth time, as the answer to which acts on its person's saved
+filters are an agent's (D2: saving, changing, sharing and unsharing its person's saved filter join
+the baseline, the owner accepting the reach of sharing, named in the Residual risks; D3: deleting a
+saved filter is among its deletions, refused to every agent by the rule a ticket's deletion meets)
+— over leaving all five acts open, over making sharing hard-off as well, and over making every
+write on a saved filter hard-off,
 amended 2026-10-03 (D4: `close` covers both ways to `done`
 of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
 that fills the last progress stage and done by hand — an agent's only from `in-progress` or
@@ -43,10 +66,18 @@ and `cowork-mcp` reads it at start into its tool descriptions; `finish_work` mak
 furthest move the token may — `done` with `close` from `in-progress` or `review`, else
 `review` from `in-progress` — and says what remains for a person. The token page (phase 3, 2026-10-03) offers the nine
 switches with the full and assisted shortcuts, and all of them off — the baseline only — which
-the API takes as an empty list; only a list left out is every capability. Acts no record lists are open to agents
+the API takes as an empty list; only a list left out is every capability. ~~Acts no record lists are open to agents
 — reassigning a confidential ticket, removing a `blocks` link, backward moves and reopens
 (since 2026-10-03 the withdrawal of a done by hand and the lower stage that reopens among them),
-removing a stake, editing a question, editing a project — until a review after experience.
+removing a stake, editing a question, editing a project — until a review after experience.~~
+*(2026-10-06:)* The owner reviewed those six acts: five are D2's baseline as amended that day,
+which the handlers already allowed, and assigning a confidential ticket is D3's, built the same
+day — an agent-marked filing or `PATCH` that leaves a ticket confidential with an assignee other
+than the agent's person and other than the one it had is `403 agent_forbidden`, `hard-off:
+assigning a confidential ticket to anyone but the agent's person` (`mayAssign` in
+[`tickets.go`](../../backend/internal/api/tickets.go)), a `PATCH` that makes the ticket
+confidential in the same write included; assigning nobody, the agent's own person or the assignee
+as it was passes.
 Amended 2026-10-04 (D5: a session the agent header marks, and the chat in the UI, which is one —
 provisionally, with [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md))
 and built the same day. Amended again on 2026-10-04 by the owner's answers to the chat's open
@@ -57,8 +88,19 @@ and the chat proposes nothing: every call runs at once).
 *(2026-10-05:)* D3's "deleting, restoring or purging anything" is built for tickets as the hard-off rule
 `deleting, restoring or purging` ([`api/deletion.go`](../../backend/internal/api/deletion.go)): an
 agent-marked request — a token's or the chat's — that deletes, restores or purges a ticket is
-`403 agent_forbidden`. Saving, changing, sharing and deleting a saved filter is an act no record lists
-and is open to agents until the review after experience.
+`403 agent_forbidden`. ~~Saving, changing, sharing and deleting~~ ~~a saved filter~~ ~~*(2026-10-06:)* its
+person's own saved filter is an act no record lists and is open to agents until the review after
+experience;~~ a tenant administrator's unshare or deletion of another person's shared filter
+(ADR 0018 D5 as amended 2026-10-06) is an administration act, refused to an agent ~~as
+`hard-off: administration`~~ *(2026-10-06:)* — the unshare as `hard-off: administration`, the
+deletion as `hard-off: deleting, restoring or purging`, the rule the deletion meets first.
+*(2026-10-06:)* D2 and D3 as amended that day for the saved filters are built the same day: an
+agent-marked request — a token's or the chat's — that deletes a saved filter is `403
+agent_forbidden`, `hard-off: deleting, restoring or purging`, before the filter is read
+(`filterDeletion` in [`api/filters.go`](../../backend/internal/api/filters.go)); saving, changing,
+sharing and unsharing its person's own filter need `filterNeed` and no capability, each recorded
+with the agent mark (`TestAnAgentKeepsItsPersonsSavedFilterAndDeletesNone`, which asserts each of
+the five acts as allowed or refused, a token with no capability included).
 *(2026-10-05:)* D4's amendment of 2026-10-05 is built, its expand half: `set-horizon` is the
 capability's name in `auth.AllCapabilities`, `auth.DefaultChatCapabilities`, the tool descriptions,
 the chat's instructions and the UI's nine switches; `auth.Canonical` reads `override-urgency` as
@@ -112,14 +154,37 @@ D6) or the token's scope ([ADR 0035](0035-personal-access-tokens.md) D3).
 **D2 — The baseline every agent token has** (with `write` scope): create tickets, replace
 the body, comment, create links, ask questions, set progress, register `watch`, and the
 transitions `filed → analysed`, `decided → in-progress`, into `blocked` and back.
+*(Amended 2026-10-06 by the owner, the review after experience of the acts no record had
+listed:)* the baseline holds five more, each recorded with the agent mark and the capabilities
+the request held — removing a link, an open `blocks` link into a ticket before its `done`
+included ([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D7 as amended that day);
+the backward moves and reopens of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md)
+— `in-progress → decided` or `→ analysed`, `decided → analysed`, `review → in-progress`,
+`dropped → filed`, the withdrawal of a done by hand and the write that lowers a stage of a ticket
+done by its stages, each with its reason; removing its person's stake, or lowering it to `watch`,
+whatever weight the person gave it; editing an open question its person asked — its text,
+options, recommendation and the person asked —, one the person asked without an agent included;
+and editing a project's name, description and WIP limits. The owner kept all five over a
+capability or a hard-off rule for each; the risk each leaves is named in the Residual risks.
+*(Amended 2026-10-06 by the owner once more, the answer to which acts on its person's saved filters
+are an agent's:)* the baseline also holds saving, changing, sharing and unsharing its person's saved
+filter ([ADR 0018](0018-the-views-of-the-first-release.md) D5), each recorded with the agent mark
+and the capabilities the request held; the owner accepted the reach of sharing, named in the
+Residual risks. Deleting one is D3's.
 
 **D3 — The hard-off list: acts no agent token can be given.** ~~Answering a question~~
 *(amended 2026-10-01: recording a person's answer is the `record-answer` capability, ADR
-0066 D8; the decision stays the person's)*; deleting, restoring or purging anything; booking
+0066 D8; the decision stays the person's)*; deleting, restoring or purging anything *(amended
+2026-10-06 by the owner: deleting a saved filter is among them, its person's own included)*; booking
 time; overriding the prerequisite refusal on `done`; every administration act — members,
 mappings, grants, tokens, ~~projects~~ *(amended 2026-10-01: creating a project and binding a
 repository is the `create-project` capability, ADR 0066 D7; archiving, restricting and
-deleting projects stay here)*, tenants, time-period locks; `admin` scope. Opening any of
+deleting projects stay here)*, tenants, time-period locks; `admin` scope; *(added 2026-10-06
+by the owner)* assigning a confidential ticket to anyone but the agent's own person — the
+assignee is admitted to it ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D9), a disclosure no later act takes back —, at a filing and on a change, the change that makes
+the ticket confidential included; assigning it to nobody, or leaving the assignee as it was,
+admits nobody and stays an agent's. Opening any of
 these is an amendment of the record that closed it, not of this one.
 
 **D4 — The selectable capabilities, each on by default:**
@@ -131,7 +196,7 @@ these is an amendment of the record that closed it, not of this one.
 | `drop` | the transition `→ dropped` with a reason |
 | `rank` | moving the rank and adopting the score ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)); *(amended 2026-10-04)* naming a filing's place in its horizon (ADR 0014 D2) |
 | ~~`override-urgency`~~ `set-horizon` *(renamed 2026-10-05, [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1: ~~the API takes the old name as the new until a later release drops it; a set stored with it keeps it, which the release before reads, until that release rewrites it — [ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3~~; amended 2026-10-06: the old name is refused on input and dropped on read; the checks take it until a later release, for an image rollback to the release before)* | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3); *(amended 2026-10-04)* the ticket's horizon, which the override now is — set on a ticket with a reason, or named at its filing when it is not `later` |
-| `interest` | `need` and `urgent` interest, not only `watch` ([ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4 amended by this) |
+| `interest` | `need` and `urgent` interest, not only `watch` ([ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4, which names this capability) |
 | `upload` | uploading attachments ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)) |
 | `create-project` *(added 2026-10-01, ADR 0066 D7)* | creating a project and binding a repository, where the person ~~is tenant `admin`~~ *(amended 2026-10-02)* may create projects (ADR 0034 D9), with `write` scope |
 | `record-answer` *(added 2026-10-01, ADR 0066 D8)* | recording and updating an answer the person gave, marked as recorded by the agent |
@@ -187,12 +252,14 @@ scope alone.
   marks each act as the agent's; a person who wants a human gate before `decided` or `done`
   unticks two switches.
 - The earlier records' agent lines become capability names: ADR 0013 D4's "an agent may only
-  `watch`" is now "unless the token has `interest`"; ADR 0014's rank rule likewise through
-  `rank`. Those records are amended in place by reference to this one.
+  `watch`" reads, in place since 2026-10-01, "`need` and `urgent` as well when its token carries
+  the `interest` capability". ADR 0014 had no agent rule to change: the acts on the rank are an
+  agent's with `rank` because D4 grants them, and ADR 0014 names the capability where it speaks
+  of an agent — a filing's place (D2) and the sort by the score (D3).
 - Two persons, two trust levels, same product: a client tenant can hand its agent an
   "assisted" token while the owner runs "full".
-- D3 keeps five acts human for every installation; a request to open one is a conversation
-  about that record, not a switch.
+- D3 keeps ~~five~~ six *(amended 2026-10-06: the confidential assignment)* acts human for
+  every installation; a request to open one is a conversation about that record, not a switch.
 
 ## Alternatives Considered
 
@@ -205,6 +272,14 @@ scope alone.
   once. Lost.
 - **Opening the hard-off list too.** Would make an agent able to answer its own questions,
   delete, book time; those records exist for reasons unrelated to agent trust. Not offered.
+- *(Added 2026-10-06, the question on its person's saved filters.)* **All five acts on a saved
+  filter left to an agent**, as built until then: a steered agent removes a filter its person
+  relies on, and a deletion is "deleting anything" in D3's own words. Lost. **Sharing hard-off as
+  well**: what an agent shares reaches every member of the tenant, but its person shares or
+  unshares the same filter with one act in the browser, and the agent could still name the filter
+  and its conditions for its person alone. Lost. **Every write on a saved filter hard-off**: an
+  agent could no longer keep its person's filters at all, for a risk that sharing alone carries.
+  Lost.
 
 ## Residual risks
 
@@ -222,6 +297,35 @@ scope alone.
   stores with the key `urgency` — which 0.5 still takes — loses that condition under this release,
   which reads the filter as if it named no horizon, until the migration of the later release
   rewrites it to `horizon`. Read from the code of 0.5.1, not run.
+- *(Added 2026-10-06, accepted by the owner with D2's amendment.)* Five acts need neither a
+  capability nor a person, so a token's narrower set — the "assisted" one included — does not
+  hold them, and a steered agent can make each of them:
+  - **Removing an open `blocks` link** steps around the prerequisite override that D3 keeps a
+    person's: an agent with `close` removes the open `blocks` links into its ticket and then
+    closes it, two calls of its own. ADR 0012 D7's refusal then holds an agent only as long as
+    the links stand; the removals are on both tickets' activity, marked as the agent's.
+  - **A backward move or a reopen** undoes what its person kept for themselves: a token without
+    `decide` moves a decided ticket back to `analysed`, a token without `close` withdraws its
+    person's done by hand or lowers a stage of a ticket done by its stages, a token without
+    `drop` reopens a dropped ticket — each with a reason on record.
+  - **Removing or lowering its person's stake** withdraws a `need` or `urgent` weight a token
+    without `interest` could not have set, and lowers the ticket's score with it.
+  - **Editing an open question its person asked** can reword it, change its options or its
+    recommendation, or ask it of someone else before the person asked answers it, also when the
+    person asked it in the browser; the act of the edit keeps the earlier values.
+  - **Editing a project** renames it or changes its description and the WIP limits its person
+    set, while creating a project needs `create-project`.
+  A person who wants none of them gives an agent a `read` token; every act is in the tenant's
+  audit view by token.
+- *(Added 2026-10-06, accepted by the owner with D2's amendment for the saved filters.)* **Sharing
+  its person's saved filter** needs no capability, and a shared filter reaches every member of the
+  tenant, whatever projects each of them sees: its name and its conditions are read by each of
+  them, under the person's name as its owner, except that a reader who cannot see a project or a
+  ticket a condition names gets the filter `redacted` — without its conditions, its name and its
+  owner still shown. The name and the `q` condition are free text, so a steered agent can write
+  into them what it read and share it beyond the projects it read it in, where a comment, read only
+  by those who see its ticket, does not reach. Each share is recorded with the agent mark, and its
+  person, or a tenant administrator, unshares it.
 - Capabilities multiply the test matrix: each switch has an allowed and a refused test in the
   integration tier, with the fixture identities.
 
@@ -230,5 +334,7 @@ scope alone.
 - [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) — the flag this generalises
 - [ADR 0035](0035-personal-access-tokens.md) D3 — scope never exceeds the person
 - [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D2, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D7, [ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md) D6, [ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7 — the hard-off list's sources
-- [ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4, [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) — amended by D4
+- [ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4, [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D2, D3 — the stakes and the rank, whose agent acts D4's `interest` and `rank` grant
 - [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) — the tools that read the capabilities
+- [ADR 0018](0018-the-views-of-the-first-release.md) D5 — the saved filters, whose acts D2 and D3 divide between the baseline and the hard-off list
+- [ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md) D9 — the admission by assignment that D3 keeps from an agent; [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D3–D5 — the backward moves and reopens D2 holds

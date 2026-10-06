@@ -14,7 +14,11 @@ move in the rank counts, the first key given to a ticket a release before the ra
 without one does not; D4: a move in the rank takes no `If-Match`, written when the rank was
 built) and 2026-10-04 (D4: a person's choice of the chat's capabilities takes no `If-Match`, written
 when it was built for the owner's answers recorded in
-[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)). A value cowork derives from another entity — the urgency re-derived when a link or
+[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)), and
+made concrete 2026-10-05 (D1: the score of
+[ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D4 does not count, a sort of the
+project's rank by the score counts for every ticket it moves, a rebalancing of the rank's keys does
+not). A value cowork derives from another entity — the urgency re-derived when a link or
 another ticket changes, a parent's progress derived from its children — falls under D1's own
 reason: counting it would fail an edit on a concurrent change elsewhere.
 

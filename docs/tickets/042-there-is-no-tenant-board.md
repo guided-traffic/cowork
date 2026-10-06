@@ -50,9 +50,10 @@ board has not been looked at in a browser: the observer's root, the
 shell's content area, and the pointer under a dragged card are covered by fakes in the unit tests
 only.
 
-**Left out on purpose:** saved filters are T38's and are being built separately; nothing here
-builds or depends on them. Until they exist the board's filter is the address's `project`, the
-parameter set T38's filter bar applies to it.
+The board carries the saved-filter bar of the backlog and the tenant's ticket list
+([`tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts) `applyFilter`,
+`toBoard` in [`saved-filter-model.ts`](../../frontend/src/app/features/project/saved-filter-model.ts)):
+a filter's projects go into the address, every other condition to each swimlane's list.
 
 ## Required changes
 

@@ -2,9 +2,10 @@
 
 ## Status
 
-Accepted, amended 2026-10-01 by [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
-(D2: `record_answer` and `create_project` added; `session_start` binds by remote or
-proposes). Decided by the owner as the answer to the catalog question "tool granularity?": a small set of workflow tools with a generic `api` escape hatch, over CRUD
+Accepted, amended 2026-10-01 (D2: `record_answer` and `create_project` added — the owner's grant
+in the answer to the catalog question "repository binding?", whose context
+[ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
+records; how `session_start` binds by remote or proposes a project is ADR 0066 D3). Decided by the owner as the answer to the catalog question "tool granularity?": a small set of workflow tools with a generic `api` escape hatch, over CRUD
 tools generated from the resource model, over the escape hatch alone, and over both sets
 side by side. The rules of D3–D6 were put to the owner with the question and not objected to.
 

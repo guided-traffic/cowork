@@ -5362,8 +5362,14 @@ type ClientInterface interface {
 
 	// DeleteSavedFilter Delete a saved filter
 	//
-	// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
-	// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+	// Its owner's act with `write` scope, and never an agent's: a deletion is on the hard-off list
+	// (docs/adr/0043 D3), so an agent's request is 403 `agent_forbidden`, `hard-off: deleting,
+	// restoring or purging`, before the filter is looked at. A tenant administrator deletes another
+	// person's shared filter — one whose owner left the tenant among them —, an administration act
+	// with `admin` scope (docs/adr/0018 D5): a token with less than `admin` scope is 403
+	// `insufficient_scope`. Another person's shared filter is 403 `forbidden` to everyone else, a
+	// filter the caller cannot see — or one already gone, or no longer shared — 404. Recorded as
+	// `deleted`.
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
 	DeleteSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5377,9 +5383,15 @@ type ClientInterface interface {
 
 	// UpdateSavedFilterWithBody Rename, change, share or unshare a saved filter
 	//
-	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+	// the whole set, checked as on creation. A tenant administrator unshares another person's
+	// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+	// nothing else, an administration act with `admin` scope that no agent makes
+	// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+	// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+	// filter answered is one the administrator no longer reads. Another person's shared filter is
+	// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+	// with the fields that changed.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5388,9 +5400,15 @@ type ClientInterface interface {
 
 	// UpdateSavedFilter Rename, change, share or unshare a saved filter
 	//
-	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+	// the whole set, checked as on creation. A tenant administrator unshares another person's
+	// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+	// nothing else, an administration act with `admin` scope that no agent makes
+	// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+	// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+	// filter answered is one the administrator no longer reads. Another person's shared filter is
+	// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+	// with the fields that changed.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5845,7 +5863,8 @@ type ClientInterface interface {
 	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
-	// confidential (docs/adr/0065 D2). An archived project refuses.
+	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5862,7 +5881,8 @@ type ClientInterface interface {
 	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
-	// confidential (docs/adr/0065 D2). An archived project refuses.
+	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5892,7 +5912,9 @@ type ClientInterface interface {
 	// UpdateTicketWithBody Change a ticket's fields
 	//
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9).
+	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
+	// makes confidential — only to its own person or to nobody, and another new assignee is 403
+	// `agent_forbidden` (docs/adr/0043 D3).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -5917,7 +5939,9 @@ type ClientInterface interface {
 	// UpdateTicket Change a ticket's fields
 	//
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9).
+	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
+	// makes confidential — only to its own person or to nobody, and another new assignee is 403
+	// `agent_forbidden` (docs/adr/0043 D3).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -7846,8 +7870,14 @@ func (c *Client) CreateSavedFilter(ctx context.Context, tenant TenantSlug, param
 
 // DeleteSavedFilter Delete a saved filter
 //
-// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
-// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+// Its owner's act with `write` scope, and never an agent's: a deletion is on the hard-off list
+// (docs/adr/0043 D3), so an agent's request is 403 `agent_forbidden`, `hard-off: deleting,
+// restoring or purging`, before the filter is looked at. A tenant administrator deletes another
+// person's shared filter — one whose owner left the tenant among them —, an administration act
+// with `admin` scope (docs/adr/0018 D5): a token with less than `admin` scope is 403
+// `insufficient_scope`. Another person's shared filter is 403 `forbidden` to everyone else, a
+// filter the caller cannot see — or one already gone, or no longer shared — 404. Recorded as
+// `deleted`.
 //
 // Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
 func (c *Client) DeleteSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7881,9 +7911,15 @@ func (c *Client) GetSavedFilter(ctx context.Context, tenant TenantSlug, filter S
 
 // UpdateSavedFilterWithBody Rename, change, share or unshare a saved filter
 //
-// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+// the whole set, checked as on creation. A tenant administrator unshares another person's
+// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+// nothing else, an administration act with `admin` scope that no agent makes
+// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+// filter answered is one the administrator no longer reads. Another person's shared filter is
+// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+// with the fields that changed.
 //
 // Takes any type of body and a specified content type.
 //
@@ -7902,9 +7938,15 @@ func (c *Client) UpdateSavedFilterWithBody(ctx context.Context, tenant TenantSlu
 
 // UpdateSavedFilter Rename, change, share or unshare a saved filter
 //
-// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+// the whole set, checked as on creation. A tenant administrator unshares another person's
+// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+// nothing else, an administration act with `admin` scope that no agent makes
+// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+// filter answered is one the administrator no longer reads. Another person's shared filter is
+// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+// with the fields that changed.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -8689,7 +8731,8 @@ func (c *Client) ListProjectTickets(ctx context.Context, tenant TenantSlug, proj
 // named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
-// confidential (docs/adr/0065 D2). An archived project refuses.
+// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
 //
 // Takes any type of body and a specified content type.
 //
@@ -8716,7 +8759,8 @@ func (c *Client) CreateTicketWithBody(ctx context.Context, tenant TenantSlug, pr
 // named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
-// confidential (docs/adr/0065 D2). An archived project refuses.
+// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -8776,7 +8820,9 @@ func (c *Client) GetTicket(ctx context.Context, tenant TenantSlug, project Proje
 // UpdateTicketWithBody Change a ticket's fields
 //
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9).
+// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
+// makes confidential — only to its own person or to nobody, and another new assignee is 403
+// `agent_forbidden` (docs/adr/0043 D3).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -8811,7 +8857,9 @@ func (c *Client) UpdateTicketWithBody(ctx context.Context, tenant TenantSlug, pr
 // UpdateTicket Change a ticket's fields
 //
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9).
+// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
+// makes confidential — only to its own person or to nobody, and another new assignee is 403
+// `agent_forbidden` (docs/adr/0043 D3).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -19545,8 +19593,14 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteSavedFilterWithResponse Delete a saved filter
 	//
-	// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
-	// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+	// Its owner's act with `write` scope, and never an agent's: a deletion is on the hard-off list
+	// (docs/adr/0043 D3), so an agent's request is 403 `agent_forbidden`, `hard-off: deleting,
+	// restoring or purging`, before the filter is looked at. A tenant administrator deletes another
+	// person's shared filter — one whose owner left the tenant among them —, an administration act
+	// with `admin` scope (docs/adr/0018 D5): a token with less than `admin` scope is 403
+	// `insufficient_scope`. Another person's shared filter is 403 `forbidden` to everyone else, a
+	// filter the caller cannot see — or one already gone, or no longer shared — 404. Recorded as
+	// `deleted`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -19564,9 +19618,15 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateSavedFilterWithBodyWithResponse Rename, change, share or unshare a saved filter
 	//
-	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+	// the whole set, checked as on creation. A tenant administrator unshares another person's
+	// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+	// nothing else, an administration act with `admin` scope that no agent makes
+	// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+	// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+	// filter answered is one the administrator no longer reads. Another person's shared filter is
+	// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+	// with the fields that changed.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -19575,9 +19635,15 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateSavedFilterWithResponse Rename, change, share or unshare a saved filter
 	//
-	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+	// the whole set, checked as on creation. A tenant administrator unshares another person's
+	// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+	// nothing else, an administration act with `admin` scope that no agent makes
+	// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+	// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+	// filter answered is one the administrator no longer reads. Another person's shared filter is
+	// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+	// with the fields that changed.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -20056,7 +20122,8 @@ type ClientWithResponsesInterface interface {
 	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
-	// confidential (docs/adr/0065 D2). An archived project refuses.
+	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -20073,7 +20140,8 @@ type ClientWithResponsesInterface interface {
 	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
-	// confidential (docs/adr/0065 D2). An archived project refuses.
+	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -20107,7 +20175,9 @@ type ClientWithResponsesInterface interface {
 	// UpdateTicketWithBodyWithResponse Change a ticket's fields
 	//
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9).
+	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
+	// makes confidential — only to its own person or to nobody, and another new assignee is 403
+	// `agent_forbidden` (docs/adr/0043 D3).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -20132,7 +20202,9 @@ type ClientWithResponsesInterface interface {
 	// UpdateTicketWithResponse Change a ticket's fields
 	//
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9).
+	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
+	// makes confidential — only to its own person or to nobody, and another new assignee is 403
+	// `agent_forbidden` (docs/adr/0043 D3).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -29046,8 +29118,14 @@ func (c *ClientWithResponses) CreateSavedFilterWithResponse(ctx context.Context,
 
 // DeleteSavedFilterWithResponse Delete a saved filter
 //
-// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
-// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+// Its owner's act with `write` scope, and never an agent's: a deletion is on the hard-off list
+// (docs/adr/0043 D3), so an agent's request is 403 `agent_forbidden`, `hard-off: deleting,
+// restoring or purging`, before the filter is looked at. A tenant administrator deletes another
+// person's shared filter — one whose owner left the tenant among them —, an administration act
+// with `admin` scope (docs/adr/0018 D5): a token with less than `admin` scope is 403
+// `insufficient_scope`. Another person's shared filter is 403 `forbidden` to everyone else, a
+// filter the caller cannot see — or one already gone, or no longer shared — 404. Recorded as
+// `deleted`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -29077,9 +29155,15 @@ func (c *ClientWithResponses) GetSavedFilterWithResponse(ctx context.Context, te
 
 // UpdateSavedFilterWithBodyWithResponse Rename, change, share or unshare a saved filter
 //
-// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+// the whole set, checked as on creation. A tenant administrator unshares another person's
+// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+// nothing else, an administration act with `admin` scope that no agent makes
+// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+// filter answered is one the administrator no longer reads. Another person's shared filter is
+// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+// with the fields that changed.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -29094,9 +29178,15 @@ func (c *ClientWithResponses) UpdateSavedFilterWithBodyWithResponse(ctx context.
 
 // UpdateSavedFilterWithResponse Rename, change, share or unshare a saved filter
 //
-// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+// the whole set, checked as on creation. A tenant administrator unshares another person's
+// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+// nothing else, an administration act with `admin` scope that no agent makes
+// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+// filter answered is one the administrator no longer reads. Another person's shared filter is
+// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+// with the fields that changed.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -29773,7 +29863,8 @@ func (c *ClientWithResponses) ListProjectTicketsWithResponse(ctx context.Context
 // named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
-// confidential (docs/adr/0065 D2). An archived project refuses.
+// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -29796,7 +29887,8 @@ func (c *ClientWithResponses) CreateTicketWithBodyWithResponse(ctx context.Conte
 // named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
-// confidential (docs/adr/0065 D2). An archived project refuses.
+// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -29848,7 +29940,9 @@ func (c *ClientWithResponses) GetTicketWithResponse(ctx context.Context, tenant 
 // UpdateTicketWithBodyWithResponse Change a ticket's fields
 //
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9).
+// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
+// makes confidential — only to its own person or to nobody, and another new assignee is 403
+// `agent_forbidden` (docs/adr/0043 D3).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -29879,7 +29973,9 @@ func (c *ClientWithResponses) UpdateTicketWithBodyWithResponse(ctx context.Conte
 // UpdateTicketWithResponse Change a ticket's fields
 //
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9).
+// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
+// makes confidential — only to its own person or to nobody, and another new assignee is 403
+// `agent_forbidden` (docs/adr/0043 D3).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a

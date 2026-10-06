@@ -34,9 +34,9 @@ func apiTool() Tool {
 			"is the contract. A POST carries an Idempotency-Key the tool makes. Only paths under /api/v1/ of this " +
 			"installation; the token goes nowhere else.",
 		Operations: []string{"getOpenAPI"},
-		limits: limitsOf("The same rules hold as everywhere: an agent never deletes, books time, overrides prerequisites or "+
-			"administers members, tokens or tenants, and decide, close, drop, rank, set-horizon, interest, upload, "+
-			"create-project and record-answer are capabilities. "+refusalNote,
+		limits: limitsOf("The same rules hold as everywhere: an agent never deletes, books time, overrides prerequisites, "+
+			"assigns a confidential ticket to anyone but its person or administers members, tokens or tenants, and decide, "+
+			"close, drop, rank, set-horizon, interest, upload, create-project and record-answer are capabilities. "+refusalNote,
 			capDecide, capClose, capDrop, "rank", capSetHorizon, capInterest, "upload", capCreateProject, capRecordAnswer),
 	}, func(s *jsonschema.Schema) {
 		enum(s, "method", http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete)

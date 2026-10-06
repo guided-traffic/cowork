@@ -9,7 +9,8 @@ const rows = (page: Page) =>
  * A saved filter shared with the tenant (docs/adr/0018 D5, docs/adr/0049 D7): a member narrows the
  * backlog, saves the filter under a name and shares it; the administrator, a second person in a
  * browser of their own, picks it among the saved filters by its name and owner, and the backlog
- * applies its conditions, the owner named beside it.
+ * applies its conditions, the owner named beside it — and offers the administrator to stop sharing
+ * it or to delete it, and no other change of it (D5 as amended 2026-10-06).
  */
 test(
   'a member saves the backlog’s filter shared, and a second person applies it and sees its owner',
@@ -48,8 +49,14 @@ test(
     );
     await expect(rows(page)).toHaveText([/The export forgets the files/]);
     await expect(page.getByTestId('filter-owner')).toHaveText(`by ${member.name}`);
-    await expect(page.getByRole('button', { name: `Delete the saved filter ${name}` })).toHaveCount(
-      0,
-    );
+    await expect(
+      page.getByRole('button', { name: `Stop sharing ${name} of ${member.name}`, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: `Delete ${name} of ${member.name}`, exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: `Stop sharing ${name}`, exact: true }),
+    ).toHaveCount(0);
   },
 );

@@ -29,8 +29,9 @@ func TestRender(t *testing.T) {
 		"every-key": {
 			Key: "acme/VKO-12", Title: "Export drops attachments: zip is empty", Type: "bug", State: "in-progress",
 			Severity: "high", Security: "hardening", Threat: "a crafted name could escape the archive",
-			Horizon: "now", Effort: "M", ProgressRefinement: 100, Progress: 40, Assignee: "Ada Lovelace", Parent: "acme/VKO-3",
+			Horizon: "now", Effort: "M", ProgressRefinement: 100, Progress: 40, Parent: "acme/VKO-3",
 			Opened: *at("2026-09-30T22:30:00-02:00"), Decided: at("2026-10-01T09:00:00Z"),
+			Assignee:    Person{Name: "Ada Lovelace", Issuer: "https://login.example.com", Subject: "CgNhZGESBWxvY2Fs"},
 			Attachments: []string{"trace.txt", "screen \"1\".png"},
 			Body:        "## Current state\n\nThe zip has no files.\n",
 		},
@@ -86,4 +87,32 @@ func TestScalar(t *testing.T) {
 	} {
 		assert.Equal(t, want, scalar(in), in)
 	}
+}
+
+// docs/adr/0044 D1: a person is `Name <identity>`, the way git writes an
+// author — local:<username> for a local account, oidc:<issuer>#<subject> for
+// a person of the identity provider. The name loses its angle brackets, so
+// the first < starts the identity; a person without an identity keeps the
+// name alone, and no person writes nothing.
+func TestPerson(t *testing.T) {
+	for _, c := range []struct {
+		in   Person
+		want string
+	}{
+		{Person{Name: "Ada Lovelace", Username: "ada"}, "Ada Lovelace <local:ada>"},
+		{Person{Name: "Ada Lovelace", Issuer: "https://login.example.com/dex", Subject: "CgNhZGESBWxvY2Fs"},
+			"Ada Lovelace <oidc:https://login.example.com/dex#CgNhZGESBWxvY2Fs>"},
+		{Person{Name: "Sam", Issuer: "https://login.example.com", Subject: "a#b>c"},
+			"Sam <oidc:https://login.example.com#a#b>c>"},
+		{Person{Name: "  <Ada>  the\n<first>  ", Username: "ada"}, "Ada the first <local:ada>"},
+		{Person{Name: "<>", Username: "ada"}, "<local:ada>"},
+		{Person{Name: "Ada Lovelace", Issuer: "https://login.example.com"}, "Ada Lovelace"},
+		{Person{Name: "Ada Lovelace"}, "Ada Lovelace"},
+		{Person{}, ""},
+	} {
+		assert.Equal(t, c.want, person(c.in), "%+v", c.in)
+	}
+	assert.Contains(t, string(Render(Ticket{Assignee: Person{Name: "Ada Lovelace", Username: "ada"}})),
+		"\nassignee: \"Ada Lovelace <local:ada>\"\n", "quoted, since a plain YAML value has no < or :")
+	assert.NotContains(t, string(Render(Ticket{})), "assignee:", "an unassigned ticket has no key")
 }

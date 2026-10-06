@@ -120,7 +120,7 @@ reaches further than its person does at that moment.
 |---|---|
 | `read` | every read of what the person may see, the tenant's member list included; for a tenant administrator also the tenant's audit view, its group mappings, a project's access list ([`api/members.go`](../../backend/internal/api/members.go) `adminRead`) and the tokens that can act in the tenant |
 | `write` | additionally what a member does: filing and editing tickets, transitions, links, comments, questions and answers, stakes, progress, uploads, booking time; creating a project where the person may ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D9); revoking another of the person's tokens |
-| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, deleting a ticket and restoring it, which the bin undoes for thirty days ([tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one), [H-54](tenancy.md#h-54)) — never purging it, which takes a session —, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); revoking a member's token that can act in the tenant — never the acts that only a session makes ([below](#what-only-a-session-does)) |
+| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, deleting a ticket and restoring it, which the bin undoes for thirty days ([tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one), [H-54](tenancy.md#h-54)) — never purging it, which takes a session —, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`), unsharing or deleting another person's shared saved filter ([`api/filters.go`](../../backend/internal/api/filters.go) `mayChangeFilter`, [tenancy.md](tenancy.md#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw)); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); revoking a member's token that can act in the tenant — never the acts that only a session makes ([below](#what-only-a-session-does)) |
 
 ## What only a session does
 
@@ -382,18 +382,20 @@ Without a capability, an agent with `write` scope whose person is a member has t
 (ADR 0043 D2, as the handlers build it): filing a ticket and editing its fields and its body,
 comments, links, questions, the progress stages short of the done act, a `watch` stake, the
 transitions `filed → analysed`, `decided → in-progress`, `in-progress → review`, into `blocked`
-and back, and the acts of H-6. An agent's horizon needs a reason as well as `set-horizon`, for
+and back, the five acts the owner left to every agent, and saving, changing, sharing and unsharing
+its person's saved filter ([H-6](#h-6); ADR 0043 D2 as amended 2026-10-06). An agent's horizon needs a reason as well as `set-horizon`, for
 `later` too on `PUT …/horizon` (`400` without one; a person may leave it out,
 [ADR 0010](../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3).
 
 | Hard-off rule ([`auth/authorize.go`](../../backend/internal/auth/authorize.go)) | Refuses |
 |---|---|
-| administration | the tenant's settings, archiving a project, the tenant's local accounts, its members' grants, its group mappings, a project's restriction and access list |
+| administration | the tenant's settings, archiving a project, the tenant's local accounts, its members' grants, its group mappings, a project's restriction and access list, unsharing another person's shared saved filter — deleting one meets the deletion rule first |
 | booking time | booking, editing and voiding time entries — refused before the `Idempotency-Key` is looked at |
 | overriding the prerequisite refusal | `override_prerequisites` on the done act: a transition to `done`, or the `PATCH` that fills the last progress stage |
 | setting or lifting the confidential flag | `PUT …/confidential` |
 | token administration | revoking another token of the person |
-| deleting, restoring or purging | `DELETE …/{number}`, `PUT …/deleted-tickets/{key}/restore`, `DELETE …/deleted-tickets/{key}` ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7) — the purge refuses an agent before this rule is reached: a token by `session_required`, a marked session as [above](#what-only-a-session-does) |
+| deleting, restoring or purging | `DELETE …/{number}`, `PUT …/deleted-tickets/{key}/restore`, `DELETE …/deleted-tickets/{key}` ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7) — the purge refuses an agent before this rule is reached: a token by `session_required`, a marked session as [above](#what-only-a-session-does); `DELETE …/filters/{filter}`, a saved filter's deletion, its person's own included, before the filter is read ([`api/filters.go`](../../backend/internal/api/filters.go) `filterDeletion`; ADR 0043 D3 as amended 2026-10-06) |
+| assigning a confidential ticket to anyone but the agent's person | a filing, or a `PATCH`, that leaves a ticket confidential with an assignee who is neither the agent's person nor the one it had — the `PATCH` that makes the ticket confidential in the same write included ([`api/tickets.go`](../../backend/internal/api/tickets.go) `mayAssign`; ADR 0043 D3, [ADR 0065](../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md) D9). Assignment admits the assignee to the ticket; assigning nobody, the agent's own person or the assignee as it was admits nobody new and passes |
 
 Four rules live in the handlers and answer `agent_forbidden` with their own detail: an agent
 edits or withdraws only comments an agent of the same person wrote
@@ -421,21 +423,20 @@ token-creating route stores its answer without the plaintext.
 ## What this does not cover
 
 <a id="h-6"></a>
-### H-6 — Some agent acts are open by default and await review
+### H-6 — Five agent acts, and sharing its person's saved filter, are allowed by the owner's decision
 
-Live today. ADR 0043 gives an agent a baseline, nine capabilities and a hard-off list; the
-acts below are on none of them and are built allowed, each recorded with the agent mark and
-the capability set that applied:
+Live today, by the owner's decision of 2026-10-06, the review after experience of the acts ADR
+0043 had not listed (ADR 0043 D2 as amended that day, and its Residual risks). The five acts below
+need no capability, so the "assisted" set holds them as much as the full one; each is recorded
+with the agent mark and the capability set that applied, and the owner accepted the risk each
+leaves:
 
-- **Reassigning a confidential ticket.** Assignment admits the new assignee
-  ([ADR 0065](../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
-  D9). An agent of a person who sees the ticket can assign it to anyone in the tenant who sees
-  its project, and the disclosure cannot be taken back
-  ([`api/tickets.go`](../../backend/internal/api/tickets.go) `applyRelations`).
-- **Removing a `blocks` link.** An agent with `close` cannot override the prerequisite
-  refusal, but it can remove the open `blocks` links into its ticket and then close it: two
-  calls around a hard-off rule ([`api/links.go`](../../backend/internal/api/links.go)
-  `UnlinkTickets`).
+- **Removing a `blocks` link**, an open one before its ticket's `done` included. An agent with
+  `close` cannot override the prerequisite refusal, but it can remove the open `blocks` links into
+  its ticket and then close it: two calls around a hard-off rule
+  ([`api/links.go`](../../backend/internal/api/links.go) `UnlinkTickets`;
+  [ADR 0012](../adr/0012-four-typed-directed-links-within-a-tenant.md) D7 as amended 2026-10-06).
+  The removal is on both tickets' activity, marked as the agent's.
 - **Backward moves and reopens.** `in-progress → decided` or `→ analysed`,
   `decided → analysed`, `review → in-progress`, `dropped → filed`, the withdrawal of a done by
   hand and the `PATCH` that lowers a stage of a ticket done by its stages need no capability,
@@ -444,20 +445,40 @@ the capability set that applied:
   ([`api/transitions.go`](../../backend/internal/api/transitions.go) `checkTransition`,
   [`api/tickets.go`](../../backend/internal/api/tickets.go) `stageInputs`).
 - **Removing its person's stake**, or lowering it to `watch`, whatever weight the person gave
-  it; only setting `need` or `urgent` needs `interest`
-  ([`api/interest.go`](../../backend/internal/api/interest.go)).
+  it; only setting `need` or `urgent` needs `interest`, and a `need` or `urgent` weight removed
+  lowers the ticket's score ([`api/interest.go`](../../backend/internal/api/interest.go)).
 - **Editing an open question its person asked** — its text, options, recommendation and the
-  person asked — also one the person asked without an agent, while withdrawing a question is
-  limited to what an agent asked ([`api/questions.go`](../../backend/internal/api/questions.go)
-  `mayEdit`).
+  person asked — also one the person asked without an agent, before the person asked answers it,
+  while withdrawing a question is limited to what an agent asked
+  ([`api/questions.go`](../../backend/internal/api/questions.go) `mayEdit`). The edit's act keeps
+  the earlier values.
 - **Editing a project's** name, description and WIP limits, while creating one needs
   `create-project` ([`api/projects.go`](../../backend/internal/api/projects.go) `edit`).
-- **Saving, changing, sharing and deleting its person's saved filter** ([`api/filters.go`](../../backend/internal/api/filters.go)):
-  a shared filter shows every member of the tenant its name and conditions, with the person as its
-  owner.
 
-The integration tests assert the first six as allowed and an agent's saved filter as its marked act, so closing one is a deliberate change. Nobody can switch them off per installation; a person who wants none of them gives an
-agent a `read` token, and an administrator finds them in the tenant's audit view by token.
+The sixth act of that review is closed: an agent assigns a confidential ticket only to its own
+person or to nobody, by the hard-off rule
+[above](#capabilities-the-baseline-and-the-hard-off-list).
+
+Decided by the owner the same day (ADR 0043 D2 and D3 as amended 2026-10-06): an agent
+**saves, changes, shares and unshares its person's saved filter** at the baseline, each recorded
+with the agent mark, and **deletes no saved filter** — the hard-off rule `deleting, restoring or
+purging`, its person's own filter included
+([`api/filters.go`](../../backend/internal/api/filters.go) `filterDeletion`). The owner accepted
+the reach of sharing: a shared filter shows every member of the tenant — whatever projects each of
+them sees — its name and its conditions, with the person as its owner; a reader who cannot see a
+project or a ticket a condition names gets it `redacted`, its name and its owner still shown. The
+name and the `q` condition are free text, so a steered agent can write into them what it read in
+one project and share it with members who cannot see that project, where a comment, read only by
+those who see its ticket, does not reach. The person, or a tenant administrator, unshares it.
+Another person's shared filter, which a tenant administrator unshares or deletes, is out of an
+agent's reach: the unshare is an administration act, the deletion a deletion.
+
+The integration tests assert the five as allowed, the confidential assignment as refused, and each
+of an agent's five acts on its person's saved filter as allowed or refused, a token with no
+capability included (`TestAnAgentKeepsItsPersonsSavedFilterAndDeletesNone`), so changing one is a
+deliberate change. Nobody can switch these acts off per installation; a person who wants none of
+them gives an agent a `read` token, and an administrator finds them in the tenant's audit view by
+token.
 
 <a id="h-7"></a>
 ### H-7 — An open event stream outlives a revocation by up to one heartbeat

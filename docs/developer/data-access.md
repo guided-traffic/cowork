@@ -46,8 +46,8 @@ The grants are per table and per column: `SELECT`, `INSERT` where rows are creat
 on the columns a route may change — table-wide only on `ticket_counters`, `idempotency_keys`
 and `login_locks` — and `DELETE` only on `ticket_links`, `ticket_interest`,
 `project_repositories`, `idempotency_keys`, `sessions`, `login_attempts`, `login_locks`,
-`memberships`, `group_mappings`, `project_access`, `saved_filters` — to its owner, by a restrictive
-policy — and `notifications` — to its retention job and the purge alone —, and, since migration 32,
+`memberships`, `group_mappings`, `project_access`, `saved_filters` — to its owner, and a shared one
+to an administrator of the tenant, by a restrictive policy — and `notifications` — to its retention job and the purge alone —, and, since migration 32,
 on `tickets`, `questions`, `comments`, `comment_revisions`, `attachments`, `time_entries` and
 `time_entry_revisions`, which restrictive policies hold to the purge of a deleted ticket
 ([below](#deletion-and-the-purge)). `audit_events` gets `SELECT, INSERT` and
@@ -119,6 +119,7 @@ wrapper's transaction; an empty value leaves a setting unset.
 | `app.token_hash` | `LookupToken`, the hex SHA-256 of the presented token | the `tokens` policy admits exactly that row |
 | `app.session_hash` | `LookupSession`, and `Caller.SessionHash` in every transaction of a session's request: the hex SHA-256 of the presented cookie; in the identity provider's transactions the session a login replaces or a refresh holds | `app_session_hash()`: the `sessions` policies admit exactly that row — to read it, to end it |
 | `app.person_lookup` | `FindPerson` only: the address or username an administrator adds a member by | `app_person_lookup()`: the `users` policy admits the persons it names to an administrator of the current tenant, and no other person of the installation (migration 20) |
+| `app.saved_filter_id` | `Writer.UnshareAnothersFilter` only, for its one statement: the saved filter a tenant administrator unshares | `app_saved_filter_id()`: the read policy of `saved_filters` admits that filter, unshared, to an administrator of the current tenant (migration 39) — PostgreSQL holds an update's new row to the read policy |
 
 A transaction-local setting reads `''`, not `NULL`, on a pooled connection after its
 transaction ended, and a bare `''::uuid` raises. Every policy therefore reads a setting through
@@ -181,7 +182,16 @@ an administrator of its tenant, a mapped membership only in a transaction named
 ones that hold reading to the filter's owner or a shared filter, and inserting, changing and
 deleting to its owner (`owner_id = app_user_id()`,
 [migration 33](../../backend/internal/store/migrations/000033_saved_filters.up.sql);
-`TestTheSavedFilterPoliciesHoldAPersonToTheirOwn`).
+`TestTheSavedFilterPoliciesHoldAPersonToTheirOwn`) — and since
+[migration 39](../../backend/internal/store/migrations/000039_saved_filters_moderated_by_administrators.up.sql)
+to an administrator of the current tenant (`app_is_tenant_admin()`) changing another person's
+shared filter into one that is not shared, deleting it, and reading it back unshared while
+`app.saved_filter_id` names it — and the trigger `saved_filters_moderation_guard` refuses
+(SQLSTATE `42501`) any other change of a filter that is not the caller's own, its name or its
+parameters, which a policy cannot see; the queries `UnshareSavedFilter` and `DeleteSharedSavedFilter`
+name `shared` as the policies do, and the unshare runs only through `Writer.UnshareAnothersFilter`
+([`store/filters.go`](../../backend/internal/store/filters.go)), which names the filter
+(`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`).
 
 ## Mutate: acts, idempotency, publication
 

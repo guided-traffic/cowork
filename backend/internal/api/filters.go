@@ -25,10 +25,15 @@ const (
 	fieldParameters   = "parameters"
 )
 
-// filing a filter is the person's own write: any role of the tenant, with
-// write scope. No record lists it among an agent's acts, so it is open to
-// agents as the other unlisted acts are (docs/adr/0043).
+// filterNeed is what saving, changing, sharing and unsharing the person's own
+// filter need: any role of the tenant, with write scope; to an agent they are
+// the baseline (docs/adr/0043 D2 as amended 2026-10-06).
 var filterNeed = auth.Need{Role: domain.RoleViewer, Scope: domain.ScopeWrite}
+
+// filterDeletion is what deleting a filter needs: filterNeed, and never an
+// agent, since a filter's deletion is among the deletions of docs/adr/0043 D3
+// (as amended 2026-10-06), the tickets' rule.
+var filterDeletion = auth.Need{Role: domain.RoleViewer, Scope: domain.ScopeWrite, HardOff: auth.HardOffDeletion}
 
 func filterURL(t tenantScope, id uuid.UUID) string {
 	return "/api/v1/tenants/" + t.Slug + "/filters/" + id.String()
@@ -165,7 +170,9 @@ func (s *Server) CreateSavedFilter(ctx context.Context, req apigen.CreateSavedFi
 }
 
 // UpdateSavedFilter renames, changes, shares or unshares the caller's filter
-// with If-Match (docs/adr/0050 D3).
+// with If-Match (docs/adr/0050 D3); a tenant administrator unshares another
+// person's shared filter the same way (docs/adr/0018 D5 as amended
+// 2026-10-06).
 func (s *Server) UpdateSavedFilter(ctx context.Context, req apigen.UpdateSavedFilterRequestObject) (apigen.UpdateSavedFilterResponseObject, error) {
 	t := tenantFrom(ctx)
 	p := principal(ctx)
@@ -181,8 +188,16 @@ func (s *Server) UpdateSavedFilter(ctx context.Context, req apigen.UpdateSavedFi
 		current int32
 	)
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
-		row, err := ownFilter(ctx, w.Reader, t, req.Filter)
+		row, err := visibleFilter(ctx, w.Reader, t, req.Filter)
 		if err != nil {
+			return err
+		}
+		another, perr := mayChangeFilter(p, t.Role, row.OwnerID, req.Body)
+		if perr != nil {
+			return perr
+		}
+		if another {
+			out, current, err = s.unshareAnothersFilter(ctx, w, t, row, version)
 			return err
 		}
 		ch, err := s.applyFilterPatch(p.PersonID, row, *req.Body)
@@ -222,25 +237,61 @@ func (s *Server) UpdateSavedFilter(ctx context.Context, req apigen.UpdateSavedFi
 	return apigen.UpdateSavedFilter200JSONResponse{Body: out, Headers: apigen.UpdateSavedFilter200ResponseHeaders{ETag: etag(current)}}, nil
 }
 
-// DeleteSavedFilter removes the caller's filter.
+// unshareAnothersFilter is a tenant administrator's unshare of another
+// person's shared filter at the version the request read: shared and nothing
+// else changes, recorded as updated. The filter answered is the one the
+// administrator no longer reads.
+func (s *Server) unshareAnothersFilter(ctx context.Context, w *store.Writer, t tenantScope, row readq.GetSavedFilterRow,
+	version int32) (apigen.SavedFilter, int32, error) {
+	current := map[string]any{fieldShared: row.Shared}
+	if row.Version != version {
+		return apigen.SavedFilter{}, 0, stale(row.Version, current)
+	}
+	changed, err := w.UnshareAnothersFilter(ctx, row.ID, version)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apigen.SavedFilter{}, 0, stale(row.Version, current)
+	}
+	if err != nil {
+		return apigen.SavedFilter{}, 0, err
+	}
+	w.Record(store.Event{EntityType: entitySavedFilter, EntityID: row.ID, Action: actionUpdated,
+		Before: map[string]any{fieldShared: true}, After: map[string]any{fieldShared: false}})
+	row.Shared, row.Version, row.UpdatedAt = false, changed.Version, changed.UpdatedAt
+	out, err := s.filterView(ctx, w.Reader, t, row)
+	return out, changed.Version, err
+}
+
+// DeleteSavedFilter removes the caller's filter, or — a tenant
+// administrator's act — another person's shared one (docs/adr/0018 D5 as
+// amended 2026-10-06). An agent deletes neither: it meets the hard-off rule
+// of deletion before the filter is read (docs/adr/0043 D3).
 func (s *Server) DeleteSavedFilter(ctx context.Context, req apigen.DeleteSavedFilterRequestObject) (apigen.DeleteSavedFilterResponseObject, error) {
 	t := tenantFrom(ctx)
 	p := principal(ctx)
-	if perr := auth.Authorize(p, t.Role, filterNeed); perr != nil {
+	if perr := auth.Authorize(p, t.Role, filterDeletion); perr != nil {
 		return nil, perr
 	}
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
-		row, err := ownFilter(ctx, w.Reader, t, req.Filter)
+		row, err := visibleFilter(ctx, w.Reader, t, req.Filter)
 		if err != nil {
 			return err
 		}
-		n, err := w.DeleteSavedFilter(ctx, writeq.DeleteSavedFilterParams{TenantID: t.ID, ID: row.ID, OwnerID: p.PersonID})
+		another, perr := mayChangeFilter(p, t.Role, row.OwnerID, nil)
+		if perr != nil {
+			return perr
+		}
+		var n int64
+		if another {
+			n, err = w.DeleteSharedSavedFilter(ctx, writeq.DeleteSharedSavedFilterParams{TenantID: t.ID, ID: row.ID})
+		} else {
+			n, err = w.DeleteSavedFilter(ctx, writeq.DeleteSavedFilterParams{TenantID: t.ID, ID: row.ID, OwnerID: p.PersonID})
+		}
 		if err != nil {
 			return err
 		}
 		if n == 0 {
-			// A concurrent deletion came first: the filter is gone for this
-			// request as for any later one.
+			// A concurrent deletion came first, or its owner stopped sharing
+			// it: the filter is gone for this request as for any later one.
 			return noSuchFilter()
 		}
 		w.Record(store.Event{EntityType: entitySavedFilter, EntityID: row.ID, Action: actionDeleted,
@@ -265,17 +316,26 @@ func visibleFilter(ctx context.Context, r *store.Reader, t tenantScope, id uuid.
 	return row, err
 }
 
-// ownFilter reads a filter its owner changes: another person's shared filter
-// is 403, one the caller cannot see 404.
-func ownFilter(ctx context.Context, r *store.Reader, t tenantScope, id uuid.UUID) (readq.GetSavedFilterRow, error) {
-	row, err := visibleFilter(ctx, r, t, id)
-	if err != nil {
-		return row, err
+// mayChangeFilter holds a change of a filter the caller can see — their own
+// or a shared one — to docs/adr/0018 D5 as amended 2026-10-06: its owner
+// changes it; a tenant administrator unshares another person's shared filter,
+// a patch of shared false and nothing else, or deletes it, an administration
+// act with admin scope that no agent makes (docs/adr/0043 D3). patch is nil
+// for a deletion. It reports whether the act is on another person's filter.
+func mayChangeFilter(p auth.Principal, role domain.Role, owner uuid.UUID, patch *apigen.SavedFilterPatch) (bool, *problem.Error) {
+	if owner == p.PersonID {
+		return false, nil
 	}
-	if row.OwnerID != principal(ctx).PersonID {
-		return row, problem.New(problem.Forbidden, "only its owner changes a saved filter")
+	if role != domain.RoleAdmin {
+		return false, problem.New(problem.Forbidden, "only its owner changes a saved filter; a tenant administrator unshares or deletes a shared one")
 	}
-	return row, nil
+	if perr := auth.Authorize(p, role, administer); perr != nil {
+		return false, perr
+	}
+	if patch != nil && (patch.Name != nil || patch.Parameters != nil || patch.Shared == nil || *patch.Shared) {
+		return false, problem.New(problem.Forbidden, "an administrator unshares another person's filter and changes nothing else of it")
+	}
+	return true, nil
 }
 
 // checkFilter holds a filter's name and parameters to what a list takes, with

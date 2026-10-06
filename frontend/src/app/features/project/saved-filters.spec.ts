@@ -1,4 +1,4 @@
-import { Component, signal, WritableSignal } from '@angular/core';
+import { Component, computed, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { MessageService } from 'primeng/api';
@@ -46,8 +46,10 @@ describe('SavedFilters', () => {
   let update: MockInstance<SavedFiltersService['update']>;
   let remove: MockInstance<SavedFiltersService['remove']>;
   let reload: MockInstance<SavedFiltersService['reload']>;
+  let role: WritableSignal<string>;
 
   beforeEach(() => {
+    role = signal('member');
     list = signal([
       filter('mine'),
       filter('shared-mine', { shared: true }),
@@ -76,7 +78,11 @@ describe('SavedFilters', () => {
         { provide: SavedFiltersService, useValue: { list, create, update, remove, reload } },
         {
           provide: SessionService,
-          useValue: { person: signal({ id: 'p-ada' }), tenant: signal('acme') },
+          useValue: {
+            person: signal({ id: 'p-ada' }),
+            tenant: signal('acme'),
+            membership: computed(() => ({ tenant: { slug: 'acme' }, role: role() })),
+          },
         },
       ],
     });
@@ -98,6 +104,8 @@ describe('SavedFilters', () => {
 
   const select = (fixture: ComponentFixture<Host>) =>
     fixture.debugElement.query(By.css('[data-testid="saved-filters"]')).componentInstance as Select;
+  const choices = (fixture: ComponentFixture<Host>) =>
+    (select(fixture).options() ?? []) as { id: string; label: string; disabled: boolean }[];
   const el = (fixture: ComponentFixture<Host>, testId: string) =>
     (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(`[data-testid="${testId}"]`);
 
@@ -138,7 +146,145 @@ describe('SavedFilters', () => {
 
     expect(el(fixture, 'filter-owner')?.textContent).toBe('by Sam');
     expect(el(fixture, 'share-filter')).toBeNull();
+    expect(el(fixture, 'unshare-filter')).toBeNull();
     expect(el(fixture, 'delete-filter')).toBeNull();
+  });
+
+  // docs/adr/0018 D5 as amended 2026-10-06.
+  it('offers an administrator to unshare and delete another member’s shared filter, and nothing else of it', async () => {
+    role.set('admin');
+    const fixture = await render();
+    fixture.componentInstance.applied.set(list()[2]);
+    await settle(fixture);
+
+    expect(el(fixture, 'filter-owner')?.textContent).toBe('by Sam');
+    expect(el(fixture, 'share-filter')).toBeNull();
+    expect(el(fixture, 'unshare-filter')?.getAttribute('aria-label')).toBe(
+      'Stop sharing Filter team of Sam',
+    );
+    expect(el(fixture, 'delete-filter')?.getAttribute('aria-label')).toBe(
+      'Delete Filter team of Sam',
+    );
+  });
+
+  it('unshares another member’s filter as an administrator, which leaves the list without it', async () => {
+    role.set('admin');
+    const fixture = await render();
+    fixture.componentInstance.applied.set(list()[2]);
+    await settle(fixture);
+
+    el(fixture, 'unshare-filter')?.click();
+    await settle(fixture);
+
+    expect(update).toHaveBeenCalledExactlyOnceWith(list()[2], { shared: false });
+    expect(fixture.componentInstance.chosen.at(-1)).toBeNull();
+  });
+
+  it('deletes another member’s shared filter as an administrator', async () => {
+    role.set('admin');
+    const fixture = await render();
+    fixture.componentInstance.applied.set(list()[2]);
+    await settle(fixture);
+
+    el(fixture, 'delete-filter')?.click();
+    await settle(fixture);
+
+    expect(remove).toHaveBeenCalledExactlyOnceWith(list()[2]);
+    expect(fixture.componentInstance.chosen.at(-1)).toBeNull();
+  });
+
+  // docs/adr/0018 D5 as amended 2026-10-06: any shared filter, one the server withholds too.
+  it('lets an administrator choose a filter the server withholds, to withdraw it, and applies none', async () => {
+    role.set('admin');
+    const fixture = await render();
+    const host = fixture.componentInstance;
+    expect(choices(fixture).find((c) => c.id === 'hidden')?.disabled).toBe(false);
+
+    fixture.debugElement
+      .query(By.css('[data-testid="saved-filters"]'))
+      .triggerEventHandler('ngModelChange', 'hidden');
+    await settle(fixture);
+
+    expect(host.chosen).toEqual([null]);
+    expect(el(fixture, 'filter-owner')?.textContent).toBe('by Sam');
+    expect(el(fixture, 'filter-notes')?.textContent).toBe(
+      'not applied: it names something you cannot see',
+    );
+    el(fixture, 'unshare-filter')?.click();
+    await settle(fixture);
+
+    expect(update).toHaveBeenCalledExactlyOnceWith(list()[3], { shared: false });
+    expect(host.chosen).toEqual([null]);
+    expect(el(fixture, 'unshare-filter')).toBeNull();
+  });
+
+  it('deletes a filter the server withholds as an administrator, the list left as it is', async () => {
+    role.set('admin');
+    const fixture = await render();
+    fixture.debugElement
+      .query(By.css('[data-testid="saved-filters"]'))
+      .triggerEventHandler('ngModelChange', 'hidden');
+    await settle(fixture);
+
+    el(fixture, 'delete-filter')?.click();
+    await settle(fixture);
+
+    expect(remove).toHaveBeenCalledExactlyOnceWith(list()[3]);
+    expect(fixture.componentInstance.chosen).toEqual([null]);
+    expect(el(fixture, 'filter-owner')).toBeNull();
+  });
+
+  it('holds a filter the server withholds no longer once the list applies another', async () => {
+    role.set('admin');
+    const fixture = await render();
+    fixture.debugElement
+      .query(By.css('[data-testid="saved-filters"]'))
+      .triggerEventHandler('ngModelChange', 'hidden');
+    await settle(fixture);
+
+    fixture.componentInstance.applied.set(list()[0]);
+    await settle(fixture);
+    fixture.componentInstance.applied.set(null);
+    await settle(fixture);
+
+    expect(el(fixture, 'filter-owner')).toBeNull();
+    expect(el(fixture, 'filter-notes')).toBeNull();
+  });
+
+  // The tenant no longer reads a person who left it: the API names them by their id alone.
+  it('names the owner who left the tenant a former member', async () => {
+    role.set('admin');
+    const gone = filter('gone', {
+      shared: true,
+      name: 'Left behind',
+      owner: { id: 'p-gone', display_name: '', username: null },
+    });
+    list.update((filters) => [...filters, gone]);
+    const fixture = await render();
+    fixture.componentInstance.applied.set(gone);
+    await settle(fixture);
+
+    expect(choices(fixture).at(-1)?.label).toBe('Left behind · a former member');
+    expect(el(fixture, 'filter-owner')?.textContent).toBe('by a former member');
+    expect(el(fixture, 'unshare-filter')?.getAttribute('aria-label')).toBe(
+      'Stop sharing Left behind of a former member',
+    );
+    expect(el(fixture, 'delete-filter')?.getAttribute('aria-label')).toBe(
+      'Delete Left behind of a former member',
+    );
+  });
+
+  it('offers an administrator the owner’s acts on their own filter', async () => {
+    role.set('admin');
+    const fixture = await render();
+    fixture.componentInstance.applied.set(list()[1]);
+    await settle(fixture);
+
+    expect(el(fixture, 'share-filter')?.getAttribute('aria-label')).toBe(
+      'Stop sharing Filter shared-mine',
+    );
+    expect(el(fixture, 'unshare-filter')).toBeNull();
+    expect(el(fixture, 'filter-owner')).toBeNull();
   });
 
   it('shares the person’s own filter and hands the changed one to the list', async () => {

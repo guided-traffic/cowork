@@ -514,7 +514,8 @@ projectTickets:
       named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
       `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
       `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
-      confidential (docs/adr/0065 D2). An archived project refuses.
+      confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
+      person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
@@ -570,7 +571,9 @@ ticket:
     summary: Change a ticket's fields
     description: |
       `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-      assignee (docs/adr/0065 D9).
+      assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
+      makes confidential — only to its own person or to nobody, and another new assignee is 403
+      `agent_forbidden` (docs/adr/0043 D3).
 
       The three progress stages — `progress_refinement`, `progress` (implementation),
       `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a

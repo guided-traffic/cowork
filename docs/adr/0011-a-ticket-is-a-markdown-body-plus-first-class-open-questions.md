@@ -2,12 +2,18 @@
 
 ## Status
 
-Accepted, amended 2026-09-29 (D6: images from the attachment endpoint, see
-[ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md))
-and 2026-10-01 (D2: an agent may record a person's answer, see
+Accepted, amended 2026-09-29 (D6: images only from the attachment endpoint, since the owner chose
+attachments for the first release in the answer to the catalog question "attachments?"; the rule
+for embedding them is the one
+[ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
+D7 proposed with that choice) and 2026-10-01 (D2: an agent may record and change the answer its
+person gave in chat — the owner's decision in the answer to the catalog question "repository
+binding?", whose context
 [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
-D8) and 2026-10-04 (D2: the token a question was asked through and the one its answer was recorded
-through, by the owner's decision that every act made through a token is shown as such,
+records; amended 2026-10-06: the rest of that rule, who may change such an answer and what the
+ticket shows, moved into D2 from that record, and the Consequences' line on the agent marked in
+place, by the owner's rule that every amendment is made in place in the record it changes; no rule
+changes) and 2026-10-04 (D2: the token a question was asked through and the one its answer was recorded through, by the owner's decision that every act made through a token is shown as such,
 [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6; built the same day,
 [migration 27](../../backend/internal/store/migrations/000027_acts_through_a_token.up.sql)).
 Date: 2026-09-29. Decided by the owner as the answer to the catalog question "enrichment:
@@ -63,7 +69,10 @@ question belongs to exactly one ticket. **Only a person decides an answer**; ~~a
 ask, may withdraw its own question, and may not touch the answer~~ *(amended 2026-10-01,
 [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
 D8: an agent with the `record-answer` capability may record and update the answer its person
-gave in chat; the actor is the person, the record says an agent wrote it down)*. An agent may
+gave in chat; the actor is the person, the record says an agent wrote it down)* *(amended
+2026-10-06, the rest of that rule moved here from ADR 0066 D8: an agent changes only an answer an
+agent recorded, and only its own person's; a person may always change their own answer; the ticket
+shows the answer as the person's, recorded by the agent)*. An agent may
 ask and may withdraw its own question.
 
 **D3 — The person-level list "open decisions" is a query over questions,** filtered by "asked
@@ -95,8 +104,9 @@ security page of the UI.
 - One table more than the plain-body variant, one form, and an export that has to merge two
   sources in a stable order.
 - The owner's "one decision at a time" ritual has a home: an agent files a question, the
-  owner answers it in the UI or confirms in chat and the agent records nothing — the answer is
-  the owner's act, in the owner's name.
+  owner answers it in the UI or confirms in chat ~~and the agent records nothing~~ *(amended
+  2026-10-01 with D2, marked here 2026-10-06: and an agent with `record-answer` may write down
+  what the owner confirmed)* — the answer is the owner's act, in the owner's name.
 - Diffs of the body in the timeline make a rewritten current state reviewable without
   keeping history in the body itself.
 - D6 costs a sanitiser dependency and a test; without it, ADR 0004's team product would

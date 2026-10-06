@@ -32,6 +32,11 @@ the administration, no refusal, D6's refusal narrowed to the per-file and per-ti
 the recommendation, and it was built on the owner's instruction of 2026-10-05 to build the
 recommended option, the owner reviewing the result.
 
+Amended 2026-10-06 (D7 and the References: they say that
+[ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6 states the image
+rule in place instead of claiming to amend it, by the owner's rule that every amendment is made in place
+in the record it changes; no rule changes).
+
 **Partly built** (phase 2, 2026-10-02): D1–D6 and D8 — [`internal/storage`](../../backend/internal/storage/)
 over `minio-go`, the `attachments` table (migration 14), upload, list, metadata and download
 under the ticket's path. ~~D6's per-tenant quota is neither enforced nor reported~~ *(built
@@ -133,8 +138,8 @@ see.)*
 
 **D7 — Markdown may embed a raster-image attachment of the same ticket, and nothing else.**
 The sanitiser of [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md)
-D6 allows `<img>` sources only on the attachment endpoint; ADR 0011 D6 is amended
-accordingly. A link to any other attachment renders as a download link.
+D6 allows `<img>` sources only on the attachment endpoint, which ADR 0011 D6 states in place.
+A link to any other attachment renders as a download link.
 
 **D8 — No virus scanning in the first release, and this is said aloud.** The defences of
 D3–D5 mean that nothing uploaded executes on the server and nothing but a raster image is
@@ -198,7 +203,7 @@ amendment when an installation needs it.
 
 ## References
 
-- [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6 — the sanitiser this record amends
+- [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6 — the sanitiser, whose image rule names the attachment endpoint of D7
 - [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1 — the tenant in the object key
 - [ADR 0004](0004-cowork-is-a-team-product.md) — the other person whose browser receives the bytes
 - [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D3 — one origin, which is why delivery headers matter

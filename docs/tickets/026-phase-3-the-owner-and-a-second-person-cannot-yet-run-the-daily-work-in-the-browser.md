@@ -34,7 +34,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   dashboard as the tenant's front page, the tenant's ticket list, the tenant's tokens, the
   attachment quota, mentions, numbered administration pages with the audit page, and the
   end-to-end tier. What is left is listed per child below: the owner's reviews of what was
-  built on the recommendation, one open question, and the second half of the horizon's contract.
+  built on the recommendation and the second half of the horizon's contract.
   Every end-to-end path of the children is built and passes (2026-10-06).
 - `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
   as the local administrator or through Dex; the dev server's proxy holds no credential
@@ -79,8 +79,6 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    - T32 — the owner's review of the attachment quota
    - T34 — the owner's look at the score's marker and the sort by score
    - T36 — the owner's review of the mention
-   - T38 — the owner's answer on a shared filter whose owner left the tenant
-   - T39 — the owner's word on its three decisions
    - T40 — the owner's review of the tenant's tokens page
    - T42 — the owner's look at the tenant board and its saved-filter bar
    - T43 — the owner's review of the dashboard

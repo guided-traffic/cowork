@@ -8,6 +8,9 @@ ticket and nothing else ([ADR 0044] D1), in the shape of the ticket files cowork
 Read against the tree on 2026-10-05. Turning the Markdown people write into the HTML a browser shows
 is another package and another page, [rendered-markdown.md](rendered-markdown.md).
 
+The links are not in it: `/context` shows them, and the project export will write them once each
+in a links manifest beside the tickets ([ADR 0051] D4, not built yet).
+
 ## The route
 
 [`ExportTicket`](../../backend/internal/api/export.go) reads the ticket through the visibility
@@ -52,7 +55,7 @@ left out.
 | `progress-refinement` | always present: the refinement stage as the ticket shows it — derived while there are children, else the ticket's own ([ADR 0017] D2, D3) |
 | `progress` | always present: the implementation stage, likewise |
 | `progress-review` | always present: the review stage, likewise |
-| `assignee` | the assignee's display name |
+| `assignee` | the assignee as `Name <identity>`, see **Persons** below |
 | `parent` | the parent's full key, when the reader can see the parent |
 | `opened`, `decided`, `done` | dates, `YYYY-MM-DD` in UTC; `opened` always, the others when set |
 | `shipped` | state `done`: the note of the last transition to done |
@@ -66,6 +69,20 @@ not `true`, `false`, `yes`, `no`, `on`, `off`, `null`, `~` in any case, does not
 digit followed only by digits and `._:+-`, and does not end in a space — and otherwise as a
 double-quoted JSON string, which YAML reads the same (`scalar`). So `title: "No"` is quoted and
 `title: Fix it` is not.
+
+**Persons.** A person is written the way git writes an author, `Name <identity>` (`person`,
+[ADR 0044] D1): the display name, then the identity in angle brackets — `local:<username>` for a
+local account, `oidc:<issuer>#<subject>` for a person of the identity provider, the issuer ending
+at the first `#`. The name loses `<` and `>`, so the first `<` starts the identity; a person
+with neither identity, whom no route makes, is written by name alone. With an identity the value
+has a `<` and is therefore double-quoted: `assignee: "Ada Lovelace <local:ada>"`.
+[`exportAssignee`](../../backend/internal/api/export.go) reads the identity with the query
+`ExportPerson` ([`export.sql`](../../backend/internal/store/queries/read/export.sql)), only when
+the ticket row carries the display name, under the same read policy of `users` in the same
+transaction: the document writes both or neither. The transaction is `READ COMMITTED`, so a
+person whose membership is removed between the ticket row and that read is no longer readable;
+the query then finds no row and the document writes neither, rather than failing
+(`TestExportAssignee`).
 
 **Body.** The body with surrounding whitespace trimmed, after a blank line; nothing when it is
 empty.
@@ -107,7 +124,8 @@ blocked-from: review
 ## Open questions
 ```
 
-`every-key.md` shows an open ticket with a threat, an assignee, a parent, attachments and a body;
+`every-key.md` shows an open ticket with a threat, an assignee of the identity provider, a parent,
+attachments and a body (`context-full.md` an assignee with a local account);
 `questions.md` the three answer forms and a body with its own `## Open questions` heading;
 `done.md` and `dropped.md` the notes of the terminal states.
 
@@ -153,10 +171,12 @@ lines.
 
 The golden files are the specification's test: `TestRender` in
 [`markdown_test.go`](../../backend/internal/markdown/markdown_test.go) compares `Render` with
-them and `TestScalar` pins the quoting. After a deliberate change, `cd backend && go test
-./internal/markdown -update` rewrites them; the diff of the golden files is what a reviewer
-reads. The importer will read this form back ([ADR 0044] D3), so a change of the grammar is a
-change of a contract.
+them, `TestScalar` pins the quoting and `TestPerson` the form of a person. After a deliberate
+change, `cd backend && go test ./internal/markdown -update` rewrites them; the diff of the golden
+files is what a reviewer reads. The importer will read this form back ([ADR 0044] D3), so a
+change of the grammar is a change of a contract. The question form and the state notes stay as
+they are until the importer of phase 6 has read this repository's tickets with them ([ADR 0044]
+D1): what it cannot map is the evidence for a change.
 
 [ADR 0011]: ../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md
 [ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md
@@ -164,3 +184,4 @@ change of a contract.
 [ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
 [ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0044]: ../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md
+[ADR 0051]: ../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md

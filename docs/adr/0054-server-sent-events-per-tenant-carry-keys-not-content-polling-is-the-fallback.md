@@ -41,6 +41,12 @@ made concrete on 2026-10-05 for the dashboard of
 dashboard's time tile follows it at the next reload; settled on the recommendation, the owner
 reviewing the result).
 
+Amended 2026-10-06 (the Consequences and the References: they say what
+[ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D4 and
+[ADR 0053](0053-signals-and-services-no-store-framework.md) hold in place instead of claiming to
+amend them, by the owner's rule that every amendment is made in place in the record it changes; no rule
+changes).
+
 **Partly built** (phase 2, 2026-10-02): D1 without ~~`?me=true` (the person-level events arrive
 with the inbox)~~ — built 2026-10-04, below —, D2 without ~~`inbox.changed`~~ — built 2026-10-04,
 below — and ~~`membership.changed` (no route changes a
@@ -251,9 +257,9 @@ not send a turn again by itself; the person does, on another replica.)*
 - Browsers cap HTTP/1.1 connections per origin at six; HTTP/2 at the Ingress lifts that, and
   D8's per-person limit keeps a person with many tabs from starving their own API calls.
 - D7 means the polling path is built and tested too — the owner accepted that the fallback
-  exists, and the earlier records that assumed polling ([ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
-  D4, [ADR 0053](0053-signals-and-services-no-store-framework.md)) are amended to "pushed,
-  polled as fallback".
+  exists, and the earlier records that assumed polling say "pushed, polled as fallback" in
+  place since 2026-10-01: [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D4
+  and [ADR 0053](0053-signals-and-services-no-store-framework.md)'s line on live updates.
 - The `LISTEN/NOTIFY` payload is limited to 8000 bytes; D2's key-and-version events are far
   below it.
 
@@ -285,7 +291,7 @@ not send a turn again by itself; the person does, on another replica.)*
 
 - [ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md) D3 — the wrapper that publishes at commit
 - [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D3, D4, [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3 — what the stream must not leak
-- [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D4, [ADR 0053](0053-signals-and-services-no-store-framework.md) — amended by this record
+- [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D4, [ADR 0053](0053-signals-and-services-no-store-framework.md) — the inbox and the client's services, pushed over this stream and polled as the fallback
 - [ADR 0050](0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md) D2 — the version an event names
 - ~~`frontend/nginx/default.conf.template` — where D6's location lands~~ *(until 2026-10-04)*;
   [docs/operations/installation.md](../operations/installation.md#expose-it) — the Ingress

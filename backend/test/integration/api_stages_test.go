@@ -189,7 +189,8 @@ func TestDoneByHand(t *testing.T) {
 
 // docs/adr/0043 D4: an agent closes by hand with close, from in-progress and
 // review only; withdrawing a done by hand, lowering a stage that reopens and
-// the reopen of a dropped ticket need no capability (the open gate).
+// the reopen of a dropped ticket need no capability (D2, by the owner's
+// decision).
 func TestAgentDoneByHand(t *testing.T) {
 	e := newTicketEnv(t)
 	member := caller{Token: e.tk.MemberA}
@@ -214,14 +215,14 @@ func TestAgentDoneByHand(t *testing.T) {
 	res = e.move(t, agent, inProgress, apigen.Transition{From: toInProgress, To: toDone, Note: note})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
 	withdrawn := e.move(t, assisted, *res.JSON200, apigen.Transition{From: toDone, To: toInProgress, Reason: ptr("not verified")})
-	require.Equal(t, http.StatusOK, withdrawn.StatusCode(), "withdrawing is no close: the open gate")
+	require.Equal(t, http.StatusOK, withdrawn.StatusCode(), "withdrawing is no close: the baseline by the owner's decision")
 
 	staged := e.staged(t, member, e.walk(t, member, e.file(t, member, "ALPHA", task("Staged")), toAnalysed, toDecided, toInProgress, toReview),
 		100, 100, 95)
 	closed := e.patch(t, member, staged, apigen.TicketPatch{ProgressReview: ptr(100), Note: note})
 	require.Equal(t, http.StatusOK, closed.StatusCode(), string(closed.Body))
 	lowered := e.patch(t, assisted, *closed.JSON200, apigen.TicketPatch{ProgressReview: ptr(90), Reason: ptr("the review missed a case")})
-	require.Equal(t, http.StatusOK, lowered.StatusCode(), "a lower stage that reopens is no close: the open gate")
+	require.Equal(t, http.StatusOK, lowered.StatusCode(), "a lower stage that reopens is no close: the baseline by the owner's decision")
 	assert.Equal(t, apigen.TicketStateReview, lowered.JSON200.State)
 
 	dropped := e.move(t, member, e.file(t, member, "ALPHA", task("Dropped")), apigen.Transition{From: apigen.TicketStateFiled,
@@ -229,7 +230,7 @@ func TestAgentDoneByHand(t *testing.T) {
 	require.Equal(t, http.StatusOK, dropped.StatusCode())
 	reopened := e.move(t, assisted, *dropped.JSON200, apigen.Transition{From: apigen.TicketStateDropped, To: apigen.TicketStateFiled,
 		Reason: ptr("now after all")})
-	require.Equal(t, http.StatusOK, reopened.StatusCode(), "an agent's reopen: the open gate")
+	require.Equal(t, http.StatusOK, reopened.StatusCode(), "an agent's reopen: the baseline by the owner's decision")
 }
 
 // docs/adr/0009 D5, docs/adr/0017 D4, D5: the write that fills the last stage

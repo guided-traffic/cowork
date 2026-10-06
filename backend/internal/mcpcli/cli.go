@@ -43,7 +43,7 @@ type Env struct {
 	// environment names one.
 	Dir   string
 	Build Build
-	// Memory replaces the file under the user's cache directory, Doer the
+	// Memory replaces the files under the user's cache directory, Doer the
 	// network, Workspace the git command line: all three for tests.
 	Memory    tools.Memory
 	Doer      apigen.HttpRequestDoer
@@ -144,12 +144,22 @@ type client struct {
 	name    string
 	model   string
 	id      string
+	// project, set for the server, is the project directory whose recorded
+	// model the mark names while the client knows none of its own: MCP does
+	// not tell a server its model, and Claude Code tells the SessionStart
+	// hook (docs/adr/0067 D5). It is read at each request, so a session
+	// started after the server, or started again, is named.
+	project string
 }
 
 func (c *client) header() string {
+	model := c.model
+	if model == "" && c.project != "" && c.session.Memory != nil {
+		model, _ = c.session.Memory.Model(c.project)
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return tools.AgentHeader(c.name, c.model, c.id)
+	return tools.AgentHeader(c.name, model, c.id)
 }
 
 func (c *client) setName(name string) {
@@ -209,6 +219,7 @@ func serve(ctx context.Context, e Env) int {
 		return exitError
 	}
 	c := connect(e, cfg, "", "", "")
+	c.project = cfg.project
 	gate := &readiness{session: c.session, version: e.Build.Version, logger: logger}
 	startCtx, cancel := context.WithTimeout(ctx, startBudget)
 	err = gate.check(startCtx)
@@ -320,7 +331,8 @@ func hookConfig(e Env, in hookInput) (config, bool) {
 // sessionContext is the SessionStart hook (docs/adr/0067 D1, D2, D5): the
 // session block on standard output, nothing in a directory with no binding to
 // tell, and on an error one line naming the cause and the token page. It
-// always exits 0: a session is never blocked by it.
+// records the model Claude Code names for the server of the project
+// directory. It always exits 0: a session is never blocked by it.
 func sessionContext(ctx context.Context, e Env) int {
 	in := readHook(e.Stdin)
 	cfg, ok := hookConfig(e, in)
@@ -330,6 +342,14 @@ func sessionContext(ctx context.Context, e Env) int {
 	ctx, cancel := context.WithTimeout(ctx, hookBudget)
 	defer cancel()
 	c := connect(e, cfg, "claude-code", in.Model, in.SessionID)
+	// Claude Code may leave the model out. After /clear or a compaction the
+	// running Claude Code goes on with its model, and the one recorded before
+	// stands; any other start without one, a session restored through
+	// conversation recovery for one, records none, so the mark says unknown
+	// rather than an older session's model. A failure costs the mark its model.
+	if cfg.project != "" && c.session.Memory != nil && (in.Model != "" || (in.Source != "clear" && in.Source != "compact")) {
+		_ = c.session.Memory.SetModel(cfg.project, in.Model)
+	}
 	if _, err := tools.CheckVersion(ctx, c.session, e.Build.Version); err != nil {
 		fmt.Fprintln(e.Stdout, hookFailure(c.session, err))
 		return exitOK

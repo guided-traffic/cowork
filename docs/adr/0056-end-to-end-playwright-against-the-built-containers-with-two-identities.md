@@ -16,7 +16,7 @@ API).
 **Partly built.** The unit tiers and the frontend coverage report exist
 ([ADR 0003](0003-test-and-ci-policy.md), `make test`, `make frontend-test-coverage`, the
 `frontend` CI job's artefact and the PR comment's frontend line). ~~The end-to-end tier is not
-built;~~ ADR 0003 D2's row is amended to point here. *(Amended 2026-10-04: the end-to-end tier is
+built;~~ ADR 0003 D2's end-to-end row points here, in place since 2026-10-01. *(Amended 2026-10-04: the end-to-end tier is
 built — `frontend/e2e/`, `make e2e` ([`hack/e2e.sh`](../../hack/e2e.sh)) and the `e2e` job after
 `container-malware-scan` with its images, ten minutes, trace and video on failure, in
 `semantic-release`'s `needs:` (D1, D4). D3 as far as the UI has its pages: the login through the

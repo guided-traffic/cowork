@@ -2,9 +2,14 @@
 
 ## Status
 
-Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog question "state
-management?": Angular signals and services, over NgRx SignalStore, over classic NgRx, and
-over a query-cache library. The rules of D4–D7 were put to the owner with the question and
+Accepted, amended 2026-10-01 (the Consequences' line on live updates: pushed over the event
+stream, polled only as the fallback — the owner's answer to the catalog question "live updates?",
+whose stream
+[ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+records; amended 2026-10-06: the line marked in place, which it was not, by the owner's rule that
+every amendment is made in place in the record it changes; no rule changes). Date: 2026-10-01. Decided by the owner
+as the answer to the catalog question "state management?": Angular signals and services, over NgRx
+SignalStore, over classic NgRx, and over a query-cache library. The rules of D4–D7 were put to the owner with the question and
 not objected to.
 
 **Partly built** (phase 3, 2026-10-03): D1 with `SessionService`, `ProjectsService`,
@@ -71,7 +76,9 @@ settles signals in the zoneless test bed, as the shell's tests already do.
 - D4 adds a lifecycle hook to every tenant-scoped service; a forgotten one shows another
   tenant's cached card for a moment — the integration of two identities in the Playwright
   tier walks a tenant switch for that reason.
-- Live updates ([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md))
+- *(Amended 2026-10-01 by the owner's answer to the catalog question "live updates?", marked
+  here 2026-10-06: pushed over the event stream, polled only as the fallback.)* Live updates
+  ([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md))
   arrive as events that name a key; the owning service calls `reload()` on the affected
   `resource()` or refreshes the cache entry; polling on a timer is the fallback the same
   services run when the stream is down.

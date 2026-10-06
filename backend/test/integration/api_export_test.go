@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
+	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
 
 // docs/adr/0044 D1, D5: the canonical Markdown with its ETag, every call
@@ -51,8 +52,11 @@ func TestMarkdownExport(t *testing.T) {
 	require.NoError(t, err)
 	doc := string(raw)
 	today := time.Now().UTC().Format(time.DateOnly)
+	var username string
+	require.NoError(t, f.QueryRow(e.ctx, "SELECT username FROM users WHERE id = $1", e.MemberA).Scan(&username))
 	for _, line := range []string{
 		"key: " + tk.Key, "title: Ship the export", "type: task", "state: done",
+		"\nassignee: \"member-a <local:" + username + ">\"\n",
 		"progress-refinement: 100\nprogress: 100\nprogress-review: 100\n",
 		"opened: " + today, "done: " + today, "shipped: go test ./... passed", "attachments:\n  - notes.txt",
 		"## Current state\n\nNothing yet.", "### Q1: Which format?", "**Recommendation:** v1", "**Answer:** _open_",
@@ -74,4 +78,26 @@ func TestMarkdownExport(t *testing.T) {
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.ViewerA}, http.MethodGet, secretPath, nil), http.StatusNotFound, "not_found")
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberB}, http.MethodGet, path, nil), http.StatusNotFound, "not_found")
 	assert.Equal(t, http.StatusOK, e.s.do(t, caller{Token: e.tk.ViewerA}, http.MethodGet, path, nil).StatusCode, "any role reads")
+}
+
+// docs/adr/0044 D1: the export writes a person of the identity provider as
+// `Name <oidc:<issuer>#<subject>>`, the stable key of docs/adr/0029 D5, read
+// from the person's own row.
+func TestMarkdownExportWritesAPersonOfTheIdentityProvider(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	member := caller{Token: e.tk.MemberA}
+	yes := true
+	name := uniqueSlug("ada")
+	person := providerPerson(t, f, "https://login.example.com/dex", name+"@example.com", &yes, nil)
+	require.NoError(t, f.Member(e.ctx, e.A, person, domain.RoleMember))
+	tk := e.file(t, member, "ALPHA", task("Assigned to a person of the provider", func(b *apigen.TicketCreate) {
+		b.Assignee = &person
+	}))
+
+	res := e.s.do(t, member, http.MethodGet, fmt.Sprintf("%s/%d/markdown", e.projectTickets("ALPHA"), tk.Number), nil)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	raw, err := io.ReadAll(res.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), "\nassignee: \""+name+" <oidc:https://login.example.com/dex#sub-"+person.String()+">\"\n")
 }

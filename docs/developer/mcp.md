@@ -45,7 +45,7 @@ database driver, the object storage client or the API's handlers.
 | [`tools/start.go`](../../backend/internal/tools/start.go) | `Start`, the procedure of `session_start` and the SessionStart hook: the unbound block with the proposal, or the bound block — the active ticket's context or the candidates, what happened since, each act's line naming its person `via <agent>` or `through the token <name>` (`actLine`) — within `MaxBlock` |
 | [`tools/remind.go`](../../backend/internal/tools/remind.go) | `Remind`, the Stop hook's check |
 | [`tools/compat.go`](../../backend/internal/tools/compat.go) | `CheckVersion`, `CheckCompatibility` (the major version and the operations the served document has), `IncompatibleError` |
-| [`tools/memory.go`](../../backend/internal/tools/memory.go) | `Memory`, `InMemory`, `FileMemory` (one file per installation and binding under the user's cache directory) |
+| [`tools/memory.go`](../../backend/internal/tools/memory.go) | `Memory`, `InMemory`, `FileMemory` under the user's cache directory: one file per installation and binding for the time of the last start, one per project directory for the model the SessionStart hook read (`SetModel`, `Model`) |
 | [`tools/workspace.go`](../../backend/internal/tools/workspace.go) | `Workspace`, `GitWorkspace` (git remote, rev-parse, log, status), `BindingFile` and its reading and checking |
 | [`tools/keys.go`](../../backend/internal/tools/keys.go), [`query.go`](../../backend/internal/tools/query.go), [`limits.go`](../../backend/internal/tools/limits.go) | Keys resolved against the binding, the commit strings of ADR 0068; the list and read helpers; the capability line of a description |
 | `tools/tool_*.go` | The tools: `tool_tickets.go` (get_ticket, search — over the ticket lists' `q` filter, not the ranked search routes ([search.md](search.md#the-q-filter-and-the-mcp-tool)) —, file_ticket, record_state, comment, link, watch, place_ticket), `tool_flow.go` (transition, set_progress, finish_work), `tool_questions.go` (open_question, record_answer, and `person`, which resolves a person named as `me`, a username, a display name or an id through the tenant's member list — `open_question`'s `asked_of` and `comment`'s `mentions`), `tool_project.go` (session_start, create_project), `tool_api.go` (api) |
@@ -152,12 +152,31 @@ transport in place of the real ones.
 | Command | Contract |
 |---|---|
 | `serve` | Exits 1 at once on a configuration error, naming the variable; otherwise runs the server until the host closes standard input. A start-up check — the compatibility, then the token — that fails for good refuses every tool call with the reason; a failure to reach the installation is tried again at the next call (`readiness`) |
-| `session-context` | Reads the hook's JSON on standard input (`session_id`, `cwd`, `source`, `model`), prints the block on standard output, which Claude Code adds to the context; an unconfigured client or an unbound directory prints nothing; a failure prints one line naming the cause and the token page. Always exits 0, within a budget of 4.5 s |
+| `session-context` | Reads the hook's JSON on standard input (`session_id`, `cwd`, `source`, `model`), records the `model` for the server of the project directory ([below](#the-agent-mark)), prints the block on standard output, which Claude Code adds to the context; an unconfigured client or an unbound directory prints nothing; a failure prints one line naming the cause and the token page. Always exits 0, within a budget of 4.5 s |
 | `session-end` | Prints `{"systemMessage": "cowork: …"}` when `Remind` has a line — a message to the person, which neither blocks nor continues the turn — and nothing otherwise, also on every error. Always exits 0 |
 | `token check`, `lookup` | Results on standard output, `--json` for the structured form, exit 1 on an error |
 
-The requests of the hooks carry `claude-code/<model>/<session id>` from the hook's input; the
-server's carry the MCP client's name, `unknown` and a short id of its own.
+### The agent mark
+
+Every request carries `X-Cowork-Agent: <client>/<model>/<session>`
+([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
+D3), built by `tools.AgentHeader`, which keeps each part to at most 64 printable ASCII characters
+without `/` or a space and puts `unknown` for an empty model. The requests of the hooks carry `claude-code/<model>/<session id>` from the hook's
+input. The server's carry the MCP client's name, the model and a short id of its own; MCP does not
+tell a server its model, so the SessionStart hook hands it over
+([ADR 0067](../adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
+D5): `session-context` writes the input's `model` with `Memory.SetModel` under `CLAUDE_PROJECT_DIR`
+— the one value Claude Code gives both the hook and the server, which gets no session id — and
+`client.header` reads it with `Memory.Model` at each request of `serve`, so a session started after
+the server, or started again, is named. An input without a model leaves the recorded one after
+`/clear` or a compaction (`source` `clear`, `compact`), where the running Claude Code goes on with
+its model, and records none after any other start — a session restored through conversation
+recovery is not marked with an older session's model; a server without `CLAUDE_PROJECT_DIR` or a
+recorded model sends `unknown`. The last session started
+in a directory names the model of every server there, and a switch with `/model` inside a session
+is not seen. `TestTheSessionStartHookNamesTheModelOfTheServer` runs the hook on the input Claude
+Code's [hook reference](https://code.claude.com/docs/en/hooks) shows, on starts without a model,
+and the server around it.
 
 ## The plugin
 

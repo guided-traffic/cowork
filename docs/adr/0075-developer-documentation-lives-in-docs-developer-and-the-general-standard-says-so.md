@@ -17,6 +17,11 @@ repository was rewritten; the owner's general standard (`~/.claude/CLAUDE.md`, "
 standard") was changed on the owner's instruction to name `docs/developer/` and to say that a
 repository with a root `DEVELOPER.md` moves when that file is next restructured.
 
+Amended 2026-10-06 (the References: they say what
+[ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md) D1
+holds in place instead of claiming to amend it, by the owner's rule that every amendment is made in place
+in the record it changes; no rule changes).
+
 ## Context
 
 The general standard asked for a root `DEVELOPER.md` beside `README.md`; this repository had
@@ -68,6 +73,6 @@ change that moves the tree ([ADR 0002](0002-documentation-has-five-homes-and-tic
 ## References
 
 - [docs/developer/README.md](../developer/README.md) — the entry page
-- [ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md) D1 — the homes table, amended
+- [ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md) D1 — the homes table, which names `docs/developer/` and no `DEVELOPER.md` in place since 2026-10-01
 - [ADR 0072](0072-the-security-architecture-lives-in-docs-security-and-the-general-standard-says-so.md) — the sibling change to the general standard
 - `~/.claude/CLAUDE.md`, "Documentation standard" — changed in this session on the owner's instruction

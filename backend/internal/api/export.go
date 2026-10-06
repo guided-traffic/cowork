@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -74,9 +75,11 @@ func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, tc tick
 		ProgressRefinement: stages.Refinement, Progress: stages.Implementation, ProgressReview: stages.Review,
 		Opened: row.OpenedAt, Decided: row.DecidedAt, Done: row.DoneAt, Body: row.Body,
 	}
-	if row.AssigneeName != nil {
-		doc.Assignee = *row.AssigneeName
+	assignee, err := exportAssignee(ctx, r, row)
+	if err != nil {
+		return doc, err
 	}
+	doc.Assignee = assignee
 	if row.ParentNumber != nil {
 		doc.Parent = domain.FullKey(t.Slug, row.ProjectKey, *row.ParentNumber)
 	}
@@ -97,6 +100,26 @@ func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, tc tick
 			Recommendation: q.Recommendation, Status: q.Status, Answer: deref(q.Answer)})
 	}
 	return doc, nil
+}
+
+// exportAssignee is the assignee as the document writes them, the display name
+// with the identity (docs/adr/0044 D1), or nobody. The name comes with the
+// ticket row and the identity with a second statement; under READ COMMITTED a
+// person whose membership is removed between the two is gone from the second,
+// and the document writes neither rather than failing.
+func exportAssignee(ctx context.Context, r *store.Reader, row store.TicketRow) (markdown.Person, error) {
+	if row.AssigneeID == nil || row.AssigneeName == nil {
+		return markdown.Person{}, nil
+	}
+	p, err := r.ExportPerson(ctx, *row.AssigneeID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return markdown.Person{}, nil
+	}
+	if err != nil {
+		return markdown.Person{}, fmt.Errorf("read the assignee: %w", err)
+	}
+	return markdown.Person{Name: *row.AssigneeName, Username: deref(p.Username),
+		Issuer: deref(p.OidcIssuer), Subject: deref(p.OidcSubject)}, nil
 }
 
 // stateNote fills the note of the state the ticket is in: the verification

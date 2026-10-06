@@ -228,16 +228,21 @@ A project's restriction is held the same way, by a trigger, because a policy see
 the column and a member may rename a project: `projects_restriction_guard`, `BEFORE UPDATE OF
 restricted`, refuses a change of `restricted` unless the caller is an administrator of the tenant
 (SQLSTATE `42501`) — a superuser, whom row-level security does not bind either, excepted
-(`TestPoliciesOfThePersonsAndTheirAccounts`).
+(`TestPoliciesOfThePersonsAndTheirAccounts`). An administrator's unshare of another person's saved
+filter is held by a trigger for the same reason ([below](#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw)).
 
 At the start of every transaction the store sets `app.tenant_id`, `app.user_id`,
 `app.restricted_project_id`, `app.job` and `app.session_hash` — the hash of the session cookie
 a request presented, which is how a request finds its own session row — with
 `set_config(…, true)`, which dies with the
-transaction ([`store/tx.go`](../../backend/internal/store/tx.go) `setContext`). One transaction
-sets one more: the lookup of a person a tenant's administrator grants a role to names the address
-or username in `app.person_lookup`, read through `app_person_lookup()`
-([`store/members.go`](../../backend/internal/store/members.go) `FindPerson`). The person
+transaction ([`store/tx.go`](../../backend/internal/store/tx.go) `setContext`). Two transactions
+set one more each: the lookup of a person a tenant's administrator grants a role to names the
+address or username in `app.person_lookup`, read through `app_person_lookup()`
+([`store/members.go`](../../backend/internal/store/members.go) `FindPerson`), and a tenant
+administrator's unshare of another person's saved filter names that filter in
+`app.saved_filter_id`, read through `app_saved_filter_id()`, for its single statement
+([`store/filters.go`](../../backend/internal/store/filters.go) `Writer.UnshareAnothersFilter`,
+[below](#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw)). The person
 is the authenticated caller, carried in the context and never a call site's argument
 ([`store/caller.go`](../../backend/internal/store/caller.go)); the tenant is the one the
 boundary admitted, which every handler passes on. The policies read the settings through
@@ -407,13 +412,32 @@ The job reads the deleted tickets due of every tenant — their ids and tenants 
 tenant set**, and then binds itself to each tenant in turn; a request's purge always has a tenant,
 so it never reads past it.
 
-## Saved filters are their owner's
+## Saved filters are their owner's, and a shared one an administrator's to withdraw
 
 A saved filter carries its tenant and the canonical policy, and restrictive policies hold reading to
 its owner or a shared filter and every write to its owner
 ([migration 33](../../backend/internal/store/migrations/000033_saved_filters.up.sql);
-`TestTheSavedFilterPoliciesHoldAPersonToTheirOwn`). Its parameters name projects, tickets and
-persons as the lists take them. A member's shared filter that names a project or a ticket another
+`TestTheSavedFilterPoliciesHoldAPersonToTheirOwn`) — and, since
+[migration 39](../../backend/internal/store/migrations/000039_saved_filters_moderated_by_administrators.up.sql),
+an administrator of the current tenant (`app_is_tenant_admin()`) to two acts on another person's
+shared filter: a change into one that is not shared, and a delete
+([ADR 0018](../adr/0018-the-views-of-the-first-release.md) D5 as amended 2026-10-06 — a filter
+whose owner left the tenant stays shared until somebody withdraws it). A filter that is not shared
+stays its owner's alone to read and to write. The unshared row is one only its owner reads, and
+PostgreSQL holds an update's new row to the read policy, so the read policy admits an administrator
+to the one filter the transaction names in `app.saved_filter_id`, which `Writer.UnshareAnothersFilter`
+sets for its single statement and clears after it
+(`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`). The policies see the row, not
+the columns a statement sets, so that an administrator's unshare changes nothing but `shared` — not
+the name, not the conditions — is held three times: by the handler (`mayChangeFilter`), by the query
+(`UnshareSavedFilter`, which sets nothing else), and in the data layer by a trigger, as a project's
+restriction is: `saved_filters_moderation_guard`, `BEFORE UPDATE`, refuses with SQLSTATE `42501`
+any change of a filter that is not the caller's own to its name or its parameters, and any that
+leaves it shared — a transaction with no person set, which the policies admit to no row, excepted
+(the same test). The route takes the administrator's `admin`
+scope and refuses every agent; each act is recorded under the administrator's name
+(`TestAnAdministratorUnsharesOrDeletesAnotherPersonsSharedFilter`). Its parameters name projects,
+tickets and persons as the lists take them. A member's shared filter that names a project or a ticket another
 reader cannot see — or one that is gone — is answered to that reader `redacted`, its parameters and
 warnings withheld, as an act that names a hidden ticket is; its name and its owner stay, because the
 owner shared them. The name is free text, as a comment's is: what an owner writes into it, every
@@ -574,8 +598,11 @@ predicate (ADR 0065 D1).
 - **An agent sets it indirectly** by filing or classifying a ticket `live` or `boundary`,
   which is intended (ADR 0065 D6).
 - **Assignment admits** (ADR 0065 D9): a person who can see the ticket's project sees a
-  confidential ticket from the moment it is assigned to them. An agent can do that too
-  ([tokens.md](tokens.md) H-6).
+  confidential ticket from the moment it is assigned to them. An agent admits nobody but its own
+  person: it assigns a confidential ticket only to its person or to nobody, at a filing and on a
+  change, and is otherwise refused by the hard-off rule "assigning a confidential ticket to anyone
+  but the agent's person" ([`tickets.go`](../../backend/internal/api/tickets.go) `mayAssign`;
+  [tokens.md](tokens.md#capabilities-the-baseline-and-the-hard-off-list), ADR 0043 D3).
 - **The chat reads it for a person who sees it** and sends what it read to the provider the person
   picked, which for a hosted provider is a copy outside the installation — a risk the owner accepted
   ([chat.md H-37](chat.md#h-37)). The model is told never to copy a confidential ticket's text into

@@ -2,8 +2,11 @@
 
 ## Status
 
-Accepted, amended 2026-10-01 (D3: the minimum length is the configurable one of
-[ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D3),
+Accepted, amended 2026-10-01 (D3: the minimum length is the configurable one — the owner's
+condition, in the answer to the catalog question "local accounts beyond the one administrator?",
+that the minimum is configurable in the chart and no character class is required, a policy for
+every local account that
+[ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D3 holds),
 2026-10-03 (D1, D2, D3, D5–D7 made concrete by the first implementation, which has no identity
 provider yet) and 2026-10-04 (D1: every view names a local account by its plain username; D5: the
 administrator group in the init state; D6: the bootstrap tenant needs the local administrator or an

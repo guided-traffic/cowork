@@ -185,7 +185,8 @@ func TestDoneOverOpenPrerequisites(t *testing.T) {
 }
 
 // docs/adr/0043 D2–D4: the baseline moves, a capability per gated move, and
-// backward moves and reopens open to agents (the open gate).
+// backward moves and reopens, which the owner decided to leave in the
+// baseline.
 func TestAgentTransitions(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
@@ -218,10 +219,10 @@ func TestAgentTransitions(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, res.StatusCode())
 	assert.Equal(t, "missing capability: close", *res.ApplicationproblemJSONDefault.Detail)
 	back := e.move(t, bare, tk, apigen.Transition{From: toInProgress, To: toAnalysed, Reason: ptr("the analysis was wrong")})
-	require.Equal(t, http.StatusOK, back.StatusCode(), "an agent's backward move: the open gate")
+	require.Equal(t, http.StatusOK, back.StatusCode(), "an agent's backward move: the baseline by the owner's decision")
 	tk = e.walk(t, agent, *back.JSON200, toDecided, toInProgress, toDone)
 	reopen := e.move(t, bare, tk, apigen.Transition{From: toDone, To: toInProgress, Reason: ptr("regressed")})
-	require.Equal(t, http.StatusOK, reopen.StatusCode(), "an agent withdraws a done by hand: the open gate")
+	require.Equal(t, http.StatusOK, reopen.StatusCode(), "an agent withdraws a done by hand: the baseline by the owner's decision")
 
 	assert.Equal(t, http.StatusForbidden, e.move(t, caller{Token: e.tk.ViewerA}, *reopen.JSON200,
 		apigen.Transition{From: toInProgress, To: apigen.TicketStateReview}).StatusCode())

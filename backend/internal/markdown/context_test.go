@@ -16,8 +16,9 @@ import (
 func TestRenderContext(t *testing.T) {
 	ticket := Ticket{
 		Key: "acme/VKO-12", Title: "Export drops attachments", Type: "bug", State: "in-progress", Severity: "high",
-		Security: "none", Horizon: "now", Effort: "M", ProgressRefinement: 100, Progress: 40, Assignee: "Ada Lovelace",
+		Security: "none", Horizon: "now", Effort: "M", ProgressRefinement: 100, Progress: 40,
 		Opened: *at("2026-10-01T08:00:00Z"), Decided: at("2026-10-02T09:00:00Z"),
+		Assignee:    Person{Name: "Ada Lovelace", Username: "ada"},
 		Attachments: []string{"trace.txt"},
 		Body:        "## Current state\n\nThe zip has no files.\n",
 		Questions:   []Question{{Number: 1, Question: "Zip or tar?", Options: "- A: zip\n- B: tar", Recommendation: "A", Status: "open"}},
