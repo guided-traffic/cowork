@@ -36,6 +36,9 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   end-to-end tier. What is left is listed per child below: the owner's reviews of what was
   built on the recommendation and the second half of the horizon's contract.
   Every end-to-end path of the children is built and passes (2026-10-06).
+- **Released in 0.6.0 and 0.7.0** (2026-10-06): saved filters on the tenant board, the API's
+  horizon names alone, every end-to-end path of the children, a tenant administrator's withdrawal of
+  a shared filter, and the owner's answers on the agent acts, the export's persons and the CI.
 - `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
   as the local administrator or through Dex; the dev server's proxy holds no credential
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
@@ -74,8 +77,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
 
 1. **What is left of the children.** Each lands with its tests, the pages that describe what it
    built, and the Status of every ADR it builds:
-   - T52 — the narrowing of the two capability checks, in a release after the one that ships
-     migration 38 (the API's old names are removed)
+   - T52 — the narrowing of the two capability checks, due now that 0.6.0 shipped migration 38
    - T32 — the owner's review of the attachment quota
    - T34 — the owner's look at the score's marker and the sort by score
    - T36 — the owner's review of the mention

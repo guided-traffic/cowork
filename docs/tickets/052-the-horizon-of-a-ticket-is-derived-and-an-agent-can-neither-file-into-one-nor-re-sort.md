@@ -5,9 +5,9 @@ state: in-progress
 severity: low
 security: none
 threat:
-urgency: release      # rule 2: gated on the release — the narrowing waits for the release after the one that ships migration 38
+urgency: later        # rule 4: a decided fix, unblocked since 0.6.0 shipped migration 38
 effort: S
-blocked-by: release
+blocked-by:
 filed-from: the owner's report of 2026-10-04
 opened: 2026-10-04
 decided: 2026-10-04
@@ -50,8 +50,9 @@ later migration rewrites it.
 
 ## Required changes
 
-1. **The narrowing**, in a release after the one that ships migration 38, once no supported
-   release writes `override-urgency`: a migration that rewrites the three again — every
+1. **The narrowing**, now due: 0.6.0 shipped migration 38, and its code writes `override-urgency`
+   nowhere (`auth.Stored` and `auth.CapOverrideUrgency` are gone at the tag `v0.6.0`), so the release
+   before the one that carries the narrowing writes no old name: a migration that rewrites the three again — every
    `override-urgency` of `tokens.capabilities` and `chat_capabilities` to `set-horizon`, each name
    once, and the key `urgency` of `saved_filters.parameters` to `horizon`, for what a rollback to
    0.5 wrote in between — and then drops `override-urgency` from both checks; with its integration
