@@ -87,6 +87,33 @@ one whose owner left the tenant among them —, each a recorded act; an administ
 otherwise edit another person's filter (its name, its parameters) and may not touch another
 person's filter that is not shared. Recorded in ADR 0018 D5.
 
+### Q2: Which acts on its person saved filters are an agent's?
+
+An agent saves, changes, shares, unshares and deletes its person's saved filter as built, since no
+record lists these acts; ADR 0043 D3 keeps "deleting, restoring or purging anything" from every
+agent, and a shared filter reaches every member of the tenant, whatever projects each of them sees,
+its name and its `q` condition free text. A tenant administrator's unshare or deletion of another
+person's shared filter is an administration act and hard-off already.
+
+- **(a) Keep all five allowed**: nothing changes; a steered agent can delete a filter its person
+  relies on, which reads as a deletion that D3 keeps from every agent.
+- **(b) Deleting is D3's hard-off, the other four the baseline**: the deletion is refused with
+  `403 agent_forbidden` naming the rule a ticket's deletion meets; saving, changing, sharing and
+  unsharing join D2's baseline, the reach of sharing an accepted risk.
+- **(c) As (b), and sharing hard-off too**: no agent widens a filter's readers, but sharing and
+  unsharing its person's filter is one act of the person in the browser anyway, and an agent loses
+  the share its person asks it for.
+- **(d) Every write hard-off**: an agent keeps no filter of its person at all, for a risk that
+  sharing alone carries.
+
+Recommended: **(b)** — the deletion is what D3 already names, and the one risk of the other four,
+the reach of sharing, is recorded on every share and undone by one unshare.
+
+**Answer:** (b) — by the owner 2026-10-06, built the same day. Recorded in
+[ADR 0043](../../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D2 and D3 as amended 2026-10-06; the reach of sharing is
+[tokens.md](../../security/tokens.md#h-6) H-6.
+
 ## Not verified
 
 The end-to-end assertions of the administrator's controls in `filters.spec.ts` have not run; the
