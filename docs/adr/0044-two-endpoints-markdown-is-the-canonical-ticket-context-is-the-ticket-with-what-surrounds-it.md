@@ -22,7 +22,20 @@ reads `urgency` as `horizon`), built the same day in grammar v1, amended in plac
 parses the export yet, the golden files changed with it — except D3's, which arrives with the
 importer.
 
-**Partly built** (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03): D1, D5 and D6 for `/markdown`
+Amended 2026-10-06 by the owner, reviewing grammar v1 after experience (D1, the Context, the
+Residual risks). D1 writes a person as `Name <identity>`, the way git writes an author, over the
+display name alone (v1, which an import resolves by a name that is not unique) and over the
+identity alone (resolvable, less readable); built the same day, the golden files changed with it,
+since no reader parses the export yet. The Context says where the links go: into the project
+export only, as a links manifest beside the tickets with each link once
+([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4), over
+`/markdown`'s frontmatter, which would write a link at both its ends, and over an export without
+them; nothing is built for it before the export itself. D1's question form and state notes stay
+as v1 writes them until the importer of phase 6 has read this repository's tickets with them,
+over the recommendation inside the options text and over a key of cowork's own for the
+verification note.
+
+**Partly built** (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03; a person as `Name <identity>` since 2026-10-06): D1, D5 and D6 for `/markdown`
 ([`internal/markdown`](../../backend/internal/markdown/), golden files in its `testdata/`); every
 call is recorded, and in phase 2 every caller is a token. D2, D4, and D5 and D6 for `/context`
 since 2026-10-04 ([`RenderContext`](../../backend/internal/markdown/context.go)): the comments
@@ -43,6 +56,13 @@ the attachments, the recent activity. None of those are fields of the ticket; th
 entities pointing at it, and an import that read them back would duplicate them. The owner
 chose to keep the two documents apart by URL rather than by a marker inside one.
 
+*(Amended 2026-10-06 by the owner:)* The links still leave with the project. The project export
+writes them once each, in a links manifest beside the tickets
+([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4), so a
+backup restored through the importer keeps the graph
+([ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D2) while `/markdown` stays the single ticket, and no link is written at both its ends.
+
 ## Decision
 
 **D1 — `GET …/tickets/{number}/markdown` returns the canonical ticket and nothing else:**
@@ -54,7 +74,8 @@ It is what the importer reads and what a repository file looks like; a round tri
 is lossless. *(Made concrete 2026-10-02, grammar v1:)* the keys in that order, an absent value
 omitted — `threat` only when `security` is not `none`, ~~`urgency`~~ `horizon` *(amended
 2026-10-05)* the effective value, the horizon set or else `later`,
-`assignee` the display name, `parent` the full key, dates as UTC dates — *(made concrete
+~~`assignee` the display name~~ `assignee` the person as `Name <identity>` *(amended
+2026-10-06, below)*, `parent` the full key, dates as UTC dates — *(made concrete
 2026-10-03:)* `progress-refinement` before `progress`, which is the implementation stage, and
 `progress-review` after it, each always written, as the ticket shows them — then the state's note:
 `shipped` (the verification note of the `done` act), `dropped-reason`, and for `blocked` the
@@ -64,6 +85,30 @@ the body, `## Open questions` is always written and is the last heading of that 
 `### Q<n>: …` in number order, the options verbatim, `**Recommendation:** …` when there is
 one, and `**Answer:**` with the answer, `_open_` or `_withdrawn_`. The response is
 `text/markdown; charset=utf-8` with the ticket's `ETag` and is never answered `304`.
+
+*(Amended 2026-10-06 by the owner: a person is written the way git writes an author.)* The name
+is the display name, for a reader; the identity is the one the person already has, for the
+importer. A local account is `local:<username>`, its identity
+([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D2: the
+username is unique in the installation). A person of the identity provider is
+`oidc:<issuer>#<subject>`, the pair that is the person's stable key
+([ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
+D5). The issuer is written out although an installation has one: a `sub` is unique only for its
+issuer, the export also moves work between installations (ADR 0059), and an assignee is admitted
+to a confidential ticket ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D9), so a subject resolved against another issuer could hand a ticket to the wrong person. `#`
+ends the issuer because an issuer has no fragment (OpenID Connect Discovery; the configuration's
+`checkIssuer` refuses one). The name drops `<` and `>`, as git's does, so the first `<` starts
+the identity, and the value is double-quoted, as every value with `<` or `:` is. A person with
+neither identity — whom no route makes — is written by name alone. The importer resolves the
+identity and keeps the name for its report; an identity it cannot resolve, a provider identity
+of another issuer among them, is reported, never guessed by name.
+
+*(Kept 2026-10-06 by the owner:)* the question form and the state notes — `### Q<n>:`, the
+options verbatim, `**Recommendation:**`, `**Answer:**` with `_open_` or `_withdrawn_`, and
+`shipped` carrying the verification note of the `done` act — stay as v1 writes them until the
+importer of phase 6 has read this repository's tickets with them; what it cannot map is the
+evidence for a change.
 
 **D2 — `GET …/tickets/{number}/context` returns the ticket for reading:** the whole of D1,
 followed by read-only sections in a fixed order — `## Links` (typed, with the reverse view
@@ -124,8 +169,18 @@ concrete 2026-10-02: D1's key is `attachments`, a list of the names in upload or
 
 ## Residual risks
 
-- D1's frontmatter now carries `assignee` and `parent`; an import maps them by name and key
-  and reports what it could not resolve, as the import record will say.
+- D1's frontmatter now carries `assignee` and `parent`; an import maps them ~~by name and key~~
+  *(amended 2026-10-06:)* by the assignee's identity and the parent's key and reports what it
+  could not resolve, as the import record will say.
+- *(2026-10-06.)* The identity leaves the system with the document. Every reader of the ticket —
+  any role, a `read` token, an agent and a configured chat provider through `/context` — reads
+  the assignee's username, which the API's person shows already, or the issuer and the subject of
+  a person of the identity provider, which the API shows nowhere else — except as the display name
+  of a person whose issuer gave neither a name nor an address. It is an identifier, not a
+  credential: a login still goes through the issuer or the password.
+- *(2026-10-06.)* An issuer that ends in a bare `#` is not conformant, but `checkIssuer` lets its empty fragment
+  through; the first `#` of such a person's identity would end the issuer too early. Not handled;
+  the importer meets it first.
 - Two documents mean two caches and two ETags for one ticket; the API record treats them as
   two resources.
 
@@ -135,3 +190,5 @@ concrete 2026-10-02: D1's key is `attachments`, a list of the names in upload or
 - [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D6, [ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md), [ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md) D5 — what `/context` adds and what it never includes
 - [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) — the tools that call each
 - [ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D5 — exports are recorded
+- [ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md) D5, [ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D2 — the identities D1 writes; [`person`](../../backend/internal/markdown/markdown.go) and the query `ExportPerson` ([`export.sql`](../../backend/internal/store/queries/read/export.sql)) as built
+- [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4 — the project export and its links manifest

@@ -27,3 +27,13 @@ JOIN tickets t ON t.tenant_id = a.tenant_id AND t.id = a.ticket_id
 WHERE a.tenant_id = sqlc.arg(tenant_id) AND a.ticket_id = sqlc.arg(ticket_id)
   AND t.deleted_at IS NULL AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
 ORDER BY a.id;
+
+-- name: ExportPerson :one
+-- The identity the export writes beside a person's display name
+-- (docs/adr/0044 D1): the username of a local account (docs/adr/0033 D2), or
+-- the issuer and the subject of a person of the identity provider
+-- (docs/adr/0029 D5). The person's read policy decides, as it does for the
+-- display name the ticket row carries.
+SELECT username, oidc_issuer, oidc_subject
+FROM users
+WHERE id = sqlc.arg(user_id);

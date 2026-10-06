@@ -45,6 +45,30 @@ func (q *Queries) ExportAttachmentNames(ctx context.Context, arg ExportAttachmen
 	return items, nil
 }
 
+const exportPerson = `-- name: ExportPerson :one
+SELECT username, oidc_issuer, oidc_subject
+FROM users
+WHERE id = $1
+`
+
+type ExportPersonRow struct {
+	Username    *string
+	OidcIssuer  *string
+	OidcSubject *string
+}
+
+// The identity the export writes beside a person's display name
+// (docs/adr/0044 D1): the username of a local account (docs/adr/0033 D2), or
+// the issuer and the subject of a person of the identity provider
+// (docs/adr/0029 D5). The person's read policy decides, as it does for the
+// display name the ticket row carries.
+func (q *Queries) ExportPerson(ctx context.Context, userID uuid.UUID) (ExportPersonRow, error) {
+	row := q.db.QueryRow(ctx, exportPerson, userID)
+	var i ExportPersonRow
+	err := row.Scan(&i.Username, &i.OidcIssuer, &i.OidcSubject)
+	return i, err
+}
+
 const exportQuestions = `-- name: ExportQuestions :many
 SELECT q.number, q.question, q.options, q.recommendation, q.answer, q.status
 FROM questions q

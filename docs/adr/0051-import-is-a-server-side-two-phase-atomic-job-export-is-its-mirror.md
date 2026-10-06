@@ -8,6 +8,14 @@ over the importer as a client of the ordinary routes, over a generic batch API, 
 import job without the export. The rules of D6–D9 were put to the owner with the question
 and not objected to.
 
+Amended 2026-10-06 by the owner (D4: the links manifest), answering whether the links enter the
+export: into the project export only, each link once, over `/markdown`'s frontmatter, which
+would write a link at both its ends and change what one ticket's document is
+([ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
+D1), and over an export without them, which would lose the graph of a backup restored through
+the importer ([ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D2). The manifest is built with the export.
+
 **Not built.** No import, no export, no job entity.
 
 ## Context
@@ -48,9 +56,13 @@ A dry run is executed at most once; a second execution of the same dry run answe
 
 **D4 — Export is the mirror:** `GET /api/v1/tenants/{slug}/projects/{KEY}/export` returns an
 archive with every ticket of the project as its `/markdown` document, named by key, plus an
-attachment manifest (names, types, sizes, URLs — never bytes) and a `manifest.json` with the
+attachment manifest (names, types, sizes, URLs — never bytes), *(amended 2026-10-06 by the
+owner:)* a links manifest beside the tickets — every link with an end in the project, each once,
+by its source key, its type and its target key, since `/markdown` carries no links (ADR 0044
+D1) — and a `manifest.json` with the
 project, the export time and the exporter. A tenant export is the union over its projects
-(the backup record's second line).
+(the backup record's second line), each link in it once. The importer reads the links manifest
+with the tickets (D2, D9), so a restore through it keeps the graph.
 
 **D5 — The round trip is the proof.** The integration tier exports a project, imports it into
 an empty project, exports again and asserts the two archives are equal up to keys and times;
@@ -104,4 +116,5 @@ omitted; the person adds it after the import if it belongs.
 - [ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md) D1, D3 — the grammar imported and exported
 - [ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D6, [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D5, [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md), [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D5, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) — what the import must do
 - [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D3, [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) — who may import
+- [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md) D2 — the backup's second line, whose graph the links manifest keeps
 - [docs/planning/project-plan.md](../planning/project-plan.md) — phase 6, the cut-over

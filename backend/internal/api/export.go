@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -74,8 +75,13 @@ func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, tc tick
 		ProgressRefinement: stages.Refinement, Progress: stages.Implementation, ProgressReview: stages.Review,
 		Opened: row.OpenedAt, Decided: row.DecidedAt, Done: row.DoneAt, Body: row.Body,
 	}
-	if row.AssigneeName != nil {
-		doc.Assignee = *row.AssigneeName
+	if row.AssigneeID != nil && row.AssigneeName != nil {
+		p, err := r.ExportPerson(ctx, *row.AssigneeID)
+		if err != nil {
+			return doc, fmt.Errorf("read the assignee: %w", err)
+		}
+		doc.Assignee = markdown.Person{Name: *row.AssigneeName, Username: deref(p.Username),
+			Issuer: deref(p.OidcIssuer), Subject: deref(p.OidcSubject)}
 	}
 	if row.ParentNumber != nil {
 		doc.Parent = domain.FullKey(t.Slug, row.ProjectKey, *row.ParentNumber)

@@ -20,10 +20,11 @@ type Ticket struct {
 	// The three progress stages (docs/adr/0017 D2): Progress is the
 	// implementation stage and keeps its key.
 	ProgressRefinement, Progress, ProgressReview int
-	// Assignee is the display name; Parent the full key.
-	Assignee, Parent string
-	Opened           time.Time
-	Decided, Done    *time.Time
+	// Assignee is the person the ticket is assigned to; Parent the full key.
+	Assignee      Person
+	Parent        string
+	Opened        time.Time
+	Decided, Done *time.Time
 	// Shipped is the verification note of the done act; DroppedReason the
 	// reason of the dropped act.
 	Shipped, DroppedReason string
@@ -33,6 +34,14 @@ type Ticket struct {
 	Attachments                           []string
 	Body                                  string
 	Questions                             []Question
+}
+
+// Person is a person as the document writes them (docs/adr/0044 D1): the
+// display name for a reader and the identity for an importer. Username names
+// a local account (docs/adr/0033 D2); Issuer and Subject a person of the
+// identity provider (docs/adr/0029 D5).
+type Person struct {
+	Name, Username, Issuer, Subject string
 }
 
 // Question is one open question, rendered as ### Q<n>.
@@ -71,7 +80,7 @@ func Render(t Ticket) []byte {
 	raw("progress-refinement", strconv.Itoa(t.ProgressRefinement))
 	raw("progress", strconv.Itoa(t.Progress))
 	raw("progress-review", strconv.Itoa(t.ProgressReview))
-	field("assignee", t.Assignee)
+	field("assignee", person(t.Assignee))
 	field("parent", t.Parent)
 	raw("opened", day(&t.Opened))
 	raw("decided", day(t.Decided))
@@ -103,6 +112,26 @@ func Render(t Ticket) []byte {
 		b.WriteString("\n**Answer:** " + answer(q) + "\n")
 	}
 	return b.Bytes()
+}
+
+// person writes a person the way git writes an author, `Name <identity>`:
+// local:<username> for a local account, oidc:<issuer>#<subject> for a person
+// of the identity provider — an issuer has no fragment, so the first # ends
+// it. The name loses its angle brackets, as git's does, so the first < starts
+// the identity. A person with neither identity, whom no route makes, is
+// written by name alone.
+func person(p Person) string {
+	name := oneLine(strings.NewReplacer("<", "", ">", "").Replace(p.Name))
+	var id string
+	switch {
+	case p.Username != "":
+		id = "local:" + p.Username
+	case p.Issuer != "" && p.Subject != "":
+		id = "oidc:" + p.Issuer + "#" + p.Subject
+	default:
+		return name
+	}
+	return strings.TrimSpace(name + " <" + id + ">")
 }
 
 func answer(q Question) string {

@@ -11,7 +11,7 @@ effort: M
 progress-refinement: 100
 progress: 40
 progress-review: 0
-assignee: Ada Lovelace
+assignee: "Ada Lovelace <oidc:https://login.example.com#CgNhZGESBWxvY2Fs>"
 parent: acme/VKO-3
 opened: 2026-10-01
 decided: 2026-10-01
