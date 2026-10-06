@@ -27,7 +27,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   identity provider) and 5 (`cowork-mcp` and the chat) were built ahead of this phase and released
   in 0.3.0; phase 3 is the open phase before phase 6
   ([project-plan.md](../planning/project-plan.md)).
-- **Merged on `main` (`9c6948b`, 2026-10-05), not yet released:** everything the children below
+- **Released in 0.5.0** (`9c6948b`, 2026-10-05): everything the children below
   built — the horizon, the person-level pages with the inbox and "next for me" across every tenant,
   the ticket page's editors, the prerequisite tree, rendered and sanitised Markdown, search, the
   score with the rank's rebalancing, deletion with the bin, saved filters, the tenant board, the
@@ -35,7 +35,7 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   attachment quota, mentions, numbered administration pages with the audit page, and the
   end-to-end tier. What is left is listed per child below: end-to-end paths, one feature (saved
   filters on the tenant board), the owner's reviews of what was built on the recommendation, and
-  the owner's two changes outside the code.
+  the owner's change outside the code.
 - `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
   as the local administrator or through Dex; the dev server's proxy holds no credential
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
@@ -76,7 +76,6 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    built, and the Status of every ADR it builds:
    - T52 — the contract of the deprecated `urgency` names and of the capability's old name, in a
      release after the one that ships them
-   - T28 — by hand, against a released image: the UI shows no PrimeUI license notice (the owner)
    - T29 — the `main` ruleset requires `End-to-End Tests` (the owner)
    - T30 — the end-to-end path of the ticket page's editing
    - T31 — the end-to-end path of the conversation's writes and the prerequisite tree seen by a
@@ -106,6 +105,3 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    variable, value, route and problem code the phase added; the Status of every ADR the phase
    built says what is built; the phase-3 section is gone from
    [project-plan.md](../planning/project-plan.md).
-4. **A stale statement found while the phase was built:** ADR 0058 D2 runs the services locally
-   from a development `compose.yaml`, which does not exist — the development stack is the
-   Makefile's containers and `make dev`; the record is corrected in place.

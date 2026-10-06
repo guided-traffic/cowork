@@ -1,7 +1,7 @@
 ---
 id: T28
 title: the bundle budget's number is open, and nobody has looked at a released frontend image for the license notice
-state: in-progress
+state: done
 severity: low
 security: none
 threat:
@@ -11,7 +11,7 @@ blocked-by:
 filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-03
-done:
+done: 2026-10-06
 ---
 
 ## Current state
@@ -69,11 +69,11 @@ ADR 0054 (D3 amended, D7's client side built), ADR 0045's Status, the README ref
 [data-access.md](../developer/data-access.md), [frontend.md](../developer/frontend.md) and
 [tenancy.md](../security/tenancy.md) carry it.
 
-Left:
-
-- **A check by hand is outstanding:** nobody has looked at a released frontend image for the
-  license notice.
+**The released image shows no license notice** (checked 2026-10-06): `guidedtraffic/cowork-frontend:0.5.1`
+(linux/amd64) served on its own, loaded headless in Chromium and in WebKit — the app boots, no
+`#p-license-host` element (PrimeNG's `showInvalidLicenseBanner`) and no `[PrimeUI]` console warning;
+the same page with the key in its bundle replaced shows the banner, so the check can see it.
 
 ## Required changes
 
-1. By hand, against a released image: the UI shows no PrimeUI license notice (ADR 0052 D9).
+None left. The ticket closes by extraction — done — and moves to the archive.

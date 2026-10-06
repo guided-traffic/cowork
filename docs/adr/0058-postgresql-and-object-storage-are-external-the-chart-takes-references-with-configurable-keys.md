@@ -15,7 +15,8 @@ configurable. D3–D5 are the design for that condition and were not objected to
 2026-10-04 (D3: the OIDC client's row as built), and again on 2026-10-04 by the owner's answers on
 the chat recorded in [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)
 (D3: the chat's providers are a list, and each provider's key comes from a Secret of its own; built
-the same day).
+the same day). Amended 2026-10-06 (the Context and D2: there is no development `compose.yaml`;
+the tiers run their containers from the Makefile, as ADR 0038 has it since 2026-10-04).
 
 **Partly built** (phase 2, 2026-10-02): D1, D3 and D5 in part — the database and owner Secrets
 by URL key (`database.existingSecret`, `database.owner.existingSecret`), the session key
@@ -32,7 +33,8 @@ provider of `chat.providers`, two providers in that values file.
 [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 D8 keeps stateful systems out of the application chart; [ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
 added an S3-compatible store; [ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
-D2 runs both locally from `compose.yaml`; [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
+D2 runs both locally ~~from `compose.yaml`~~ *(amended 2026-10-06:)* as containers the Makefile
+starts; [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
 D2 constrains the database role. What the chart receives in a real cluster is whatever the
 database operator or the platform team produces: CloudNativePG writes `uri`, `host`,
 `user`, `password`, `dbname` into its `-app` Secret; another operator writes `connectionString`;
@@ -55,9 +57,11 @@ commands for an existing MinIO). Each file says in its first lines that it is an
 copy and adapt, not a supported deployment, and the operations page links to them.
 
 **D2 — The tests are what is verified; the examples are syntax-checked.** The integration
-and end-to-end tiers run against `postgres:18` and MinIO service containers with the
-development `compose.yaml` ([ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
-D5), and what those files configure is verified on every push. *(Amended:)* The example
+and end-to-end tiers run against `postgres:18` and MinIO service containers ~~with the
+development `compose.yaml`~~ *(amended 2026-10-06:)* the Makefile starts — `make postgres-up
+minio-up` for the integration tier, the stack of [`hack/e2e.sh`](../../hack/e2e.sh) under `make e2e` for the
+end-to-end tier ([ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
+D5) —, and what ~~those files~~ they configure is verified on every push. *(Amended:)* The example
 manifests are validated in CI with `kubeconform` against the operators' CRD schemas (a
 `make examples-lint` target in the `helm` job), which proves they parse against the versions
 pinned there and nothing more; the operations page says so, and names the operator versions
