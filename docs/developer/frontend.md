@@ -825,6 +825,16 @@ records as `downloaded` — the API answers `Cache-Control: no-store`, so a page
 again. The card lists every file of the ticket, those of its comments marked *on a comment*; a
 comment lists its own.
 
+**Not verified:** how the page's editors and cards look on a real screen, in either scheme — the
+title and body editors with their conflict note, the horizon select and its reason field, the parent
+picker, the confidential dialog, a comment's editor, its earlier texts and its withdrawal, the
+question's editor and the tree card. The end-to-end tier drives the title and body editors, the
+comment's, the question's and the tree in Chromium and WebKit in both schemes and asserts what they
+hold ([testing.md](testing.md#end-to-end-tests)); it compares no picture of them, and nobody has
+looked at them. Nor how a tree of hundreds of nodes reads: the card draws at most 200, and the route
+answers a graph of forty tickets and a hundred and eighty links in milliseconds in the integration
+tier.
+
 ### An editor belongs to its ticket
 
 The page is reused when its path names another ticket, so whatever it holds open would write to
@@ -1097,8 +1107,9 @@ against the generated client with `HttpTestingController`, components against mo
 (ADR 0053 D7). The generated client, `main.ts` and the production route stub are excluded from
 coverage (`coverageExclude` in [`angular.json`](../../frontend/angular.json)). The production
 bundle in its image is walked by the end-to-end suite in [`frontend/e2e/`](../../frontend/e2e/), in
-Chromium and WebKit and both schemes ([testing.md](testing.md#end-to-end-tests)): the `data-testid`
-attributes it finds things by are part of a page's contract, and `ng lint` covers the suite too.
+Chromium and WebKit and both schemes ([testing.md](testing.md#end-to-end-tests)): the roles,
+accessible names and labels it finds things by, and the `data-testid` attributes where nothing
+accessible names an element, are part of a page's contract, and `ng lint` covers the suite too.
 
 [ADR 0009]: ../adr/0009-ticket-states-are-the-frontmatter-states-plus-blocked.md
 [ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md

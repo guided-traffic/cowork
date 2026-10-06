@@ -1,5 +1,6 @@
 /*
- * What the dark-mode comparison of visual.spec.ts leaves out: what differs by build, not by change.
+ * What the comparisons of visual.spec.ts leave out: what differs by build or by the day of the run,
+ * not by change.
  */
 
 /* PrimeNG's notice in a build without the PrimeUI key (docs/adr/0052 D9): CI builds without it. */
@@ -9,5 +10,13 @@
 
 /* The build's version and commit in the navigation. */
 [data-testid='version'] {
+  visibility: hidden !important;
+}
+
+/* The dashboard's period and how long a ticket has been blocked: they move with the day of the run. */
+app-tenant-dashboard input[type='date'] {
+  color: transparent !important;
+}
+[data-testid='blocked-since'] {
   visibility: hidden !important;
 }

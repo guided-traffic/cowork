@@ -1,10 +1,25 @@
-import { test as base, expect, Locator, Page } from '@playwright/test';
-import { Seed, uniqueKey } from './api';
-import { adminState, baseURL, seedToken } from './identities';
+import { test as base, Browser, BrowserContext, expect, Locator, Page } from '@playwright/test';
+import { Session, Seed, sessionContext, signInWithNewPassword, tenant, uniqueKey } from './api';
+import { adminState, baseURL, freshPassword, seedToken } from './identities';
+
+/** A person of a path beside the one whose `page` the test has, in a browser context of their own. */
+export interface Person {
+  page: Page;
+  /** The person's id, which a ticket is assigned to. */
+  id: string;
+  /** The name the page shows them by. */
+  name: string;
+}
 
 interface TestFixtures {
   /** A project of the fixture tenant that belongs to this test alone, by its key. */
   project: string;
+  /**
+   * A member of the fixture tenant made for this test — a local account, its temporary password
+   * changed —, signed in in a browser context of its own: the second identity of a path
+   * (docs/adr/0056 D2).
+   */
+  member: Person;
 }
 
 interface WorkerFixtures {
@@ -28,12 +43,76 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await seed.project(key);
     await use(key);
   },
+  member: async ({ browser }, use) => {
+    const member = await newAccount(browser, 'member');
+    await use(member);
+    await member.page.context().close();
+  },
 });
 
 /** Tests that start as the local administrator, signed in by the global setup. */
 export const asAdmin = test.extend({ storageState: adminState });
 
 export { expect };
+
+/**
+ * A browser context beside the test's own, in the colour scheme of the test's project; with the
+ * administrator's session of the global setup when `storageState` names it.
+ */
+export async function newContext(browser: Browser, storageState?: string): Promise<BrowserContext> {
+  return browser.newContext({
+    baseURL,
+    ignoreHTTPSErrors: true,
+    storageState,
+    colorScheme: test.info().project.use.colorScheme,
+  });
+}
+
+/**
+ * A local account of a tenant, made by the administrator for this test, signed in in a browser
+ * context of its own with a password it chose (docs/adr/0033 D4). The caller closes the context.
+ */
+export async function newAccount(
+  browser: Browser,
+  role: 'viewer' | 'member' | 'admin',
+  slug = tenant,
+): Promise<Person> {
+  const username = `e2e-${Math.random().toString(36).slice(2, 10)}`;
+  const temporary = freshPassword();
+  const admin = await sessionContext(baseURL, adminState);
+  const account = await new Session(admin)
+    .createAccount(username, temporary, role, slug)
+    .finally(() => admin.dispose());
+  const context = await newContext(browser);
+  await signInWithNewPassword(context.request, baseURL, username, temporary, freshPassword());
+  return { page: await context.newPage(), id: account.id, name: account.display_name };
+}
+
+/**
+ * Collects what the page's content-security policy refuses from now on, across navigations: the
+ * `securitypolicyviolation` events of every document, and the browser's console errors that name
+ * the policy. The shell's policy is frontend/nginx/default.conf's (docs/security/trust-boundaries.md).
+ */
+export async function policyViolations(page: Page): Promise<string[]> {
+  const seen: string[] = [];
+  await page.exposeFunction('__coworkPolicyViolation', (violation: string) => {
+    seen.push(violation);
+  });
+  await page.addInitScript(() => {
+    document.addEventListener('securitypolicyviolation', (event) => {
+      const report = (window as unknown as Record<string, (violation: string) => void>)[
+        '__coworkPolicyViolation'
+      ];
+      report(`${event.effectiveDirective} refused ${event.blockedURI || '(inline)'}`);
+    });
+  });
+  page.on('console', (message) => {
+    if (message.type() === 'error' && /content security policy/i.test(message.text())) {
+      seen.push(message.text());
+    }
+  });
+  return seen;
+}
 
 /**
  * The page shows the scheme the project emulates: the theme follows `prefers-color-scheme` until

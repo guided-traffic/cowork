@@ -45,6 +45,28 @@ D6). D1 amended the same day with the build, for the reasons written there: `mak
 stack of its own instead of `make dev-up`'s containers — settled 2026-10-05 on the recommendation,
 the owner reviewing the result.)*
 
+*(Amended 2026-10-06: the paths of the first release's other views are written, and the whole tier
+passes in Chromium and WebKit, in both schemes, in three local runs with two workers:
+[`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts) edits the title and the body on its way;
+a comment written, edited and withdrawn, a question's text edited and a new blocker reach a second
+identity's open page of the ticket and its prerequisite tree
+([`conversation.spec.ts`](../../frontend/e2e/conversation.spec.ts)); a body's rendered Markdown with
+its own image loaded and its hostile lines as text, the shell's content-security policy refusing
+nothing ([`rendered.spec.ts`](../../frontend/e2e/rendered.spec.ts)); the score's marker and the sort
+by score ([`backlog.spec.ts`](../../frontend/e2e/backlog.spec.ts)); the start page of a person of one
+tenant ([`start.spec.ts`](../../frontend/e2e/start.spec.ts)); the search of a tenant and of the
+person's two tenants, a hit opening its comment, the policy refusing nothing
+([`search.spec.ts`](../../frontend/e2e/search.spec.ts)); a saved filter one member shares and a
+second person applies ([`filters.spec.ts`](../../frontend/e2e/filters.spec.ts)); the deletion, the
+restoration and the purge, to a member no such ticket meanwhile
+([`deletion.spec.ts`](../../frontend/e2e/deletion.spec.ts)); the dashboard with two identities, a
+member counting nothing of a project restricted away from them
+([`dashboard.spec.ts`](../../frontend/e2e/dashboard.spec.ts)), and its picture in both schemes beside
+the board's dark one ([`visual.spec.ts`](../../frontend/e2e/visual.spec.ts)). D3's path of a third
+identity outside a restricted project, seeing nothing of it anywhere, is still not built: the
+dashboard's path shows the dashboard's share of it only. D7 amended the same day by the owner's rule
+for these paths.)*
+
 ## Context
 
 The parts of cowork that unit and integration tests cannot reach are exactly the ones that
@@ -104,7 +126,10 @@ request.** `make frontend-test-coverage` (`@vitest/coverage-v8`: `text-summary`,
 "Frontend (lines)". End-to-end coverage is not merged into that number: the suite proves
 paths, the unit tier measures lines, and the two are not the same claim.
 
-**D7 — Test hygiene.** `data-testid` on everything a test touches; tests seed their data
+**D7 — Test hygiene.** ~~`data-testid` on everything a test touches;~~ *(amended 2026-10-06: a
+test finds what it touches by its role and its accessible name first, by its label next, and by a
+`data-testid` where the page names it in no accessible way; a component gets a test id or an
+`aria-label` for a test only then, and the test ids it has stay)*; tests seed their data
 through the API with an administrator token and assert through the UI; each test owns a
 project inside a fixture tenant, so tests run in parallel without a database reset; Playwright
 auto-waits, no sleeps; a flaky test is a defect ticket, not a retry setting.

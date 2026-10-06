@@ -221,7 +221,7 @@ also ran the chart behind ingress-nginx in a kind cluster.
 | PostgreSQL test image | `POSTGRES_IMAGE` in the `Makefile`, the service in `release.yml` | Renovate, held on the 18 line: the Makefile manager captures the tag without the image name, so the hold rule sees `18` |
 | MinIO test image | `MINIO_IMAGE` in the `Makefile`, pinned as `tag@digest`, with a `# renovate:` comment | Renovate, through the regex manager for `tag@digest` lines |
 | Dex test image | `DEX_IMAGE` in the `Makefile`, `ghcr.io/dexidp/dex:v2.45.1` pinned as `tag@digest`, with a `# renovate:` comment | Renovate, through the same regex manager — its pattern matches the line; no Renovate run has confirmed it |
-| Playwright and its browsers | `@playwright/test` in `frontend/package.json`; the browsers are the ones that version names (`make e2e-browsers`); the image that makes the screenshots' pictures, `mcr.microsoft.com/playwright:v<version>-noble`, is named in [testing.md](testing.md#the-dark-mode-screenshot) only | Renovate (npm); the image's tag follows by hand |
+| Playwright and its browsers | `@playwright/test` in `frontend/package.json`; the browsers are the ones that version names (`make e2e-browsers`); the image that makes the screenshots' pictures, `mcr.microsoft.com/playwright:v<version>-noble`, is named in [testing.md](testing.md#the-screenshots) only | Renovate (npm); the image's tag follows by hand |
 
 The two Makefile managers in `renovate.json` were matched against the `Makefile` locally; no
 Renovate run has confirmed them yet.
