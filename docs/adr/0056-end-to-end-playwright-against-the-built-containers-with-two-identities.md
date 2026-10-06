@@ -64,8 +64,8 @@ member counting nothing of a project restricted away from them
 ([`dashboard.spec.ts`](../../frontend/e2e/dashboard.spec.ts)), and its picture in both schemes beside
 the board's dark one ([`visual.spec.ts`](../../frontend/e2e/visual.spec.ts)). D3's path of a third
 identity outside a restricted project, seeing nothing of it anywhere, is still not built: the
-dashboard's path shows the dashboard's share of it only. D7 amended the same day by the owner's rule
-for these paths.)*
+dashboard's path shows the dashboard's share of it only. D7 amended the same day by the owner's answer:
+roles and accessible names first, over a test id on everything a test touches.)*
 
 ## Context
 
@@ -126,7 +126,7 @@ request.** `make frontend-test-coverage` (`@vitest/coverage-v8`: `text-summary`,
 "Frontend (lines)". End-to-end coverage is not merged into that number: the suite proves
 paths, the unit tier measures lines, and the two are not the same claim.
 
-**D7 — Test hygiene.** ~~`data-testid` on everything a test touches;~~ *(amended 2026-10-06: a
+**D7 — Test hygiene.** ~~`data-testid` on everything a test touches;~~ *(amended 2026-10-06 by the owner: a
 test finds what it touches by its role and its accessible name first, by its label next, and by a
 `data-testid` where the page names it in no accessible way; a component gets a test id or an
 `aria-label` for a test only then, and the test ids it has stay)*; tests seed their data

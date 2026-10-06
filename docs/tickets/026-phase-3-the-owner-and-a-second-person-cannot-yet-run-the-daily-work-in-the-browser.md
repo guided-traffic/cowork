@@ -33,8 +33,9 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   score with the rank's rebalancing, deletion with the bin, saved filters, the tenant board, the
   dashboard as the tenant's front page, the tenant's ticket list, the tenant's tokens, the
   attachment quota, mentions, numbered administration pages with the audit page, and the
-  end-to-end tier. What is left is listed per child below: end-to-end paths and the owner's
-  reviews of what was built on the recommendation.
+  end-to-end tier. What is left is listed per child below: the owner's reviews of what was
+  built on the recommendation, one open question, and the second half of the horizon's contract.
+  Every end-to-end path of the children is built and passes (2026-10-06).
 - `make dev` runs the whole stack with demo data, and the browser logs in through the real login,
   as the local administrator or through Dex; the dev server's proxy holds no credential
   ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
@@ -75,21 +76,14 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    built, and the Status of every ADR it builds:
    - T52 — the narrowing of the two capability checks, in a release after the one that ships
      migration 38 (the API's old names are removed)
-   - T30 — the end-to-end path of the ticket page's editing
-   - T31 — the end-to-end path of the conversation's writes and the prerequisite tree seen by a
-     second browser
    - T32 — the owner's review of the attachment quota
-   - T33 — the end-to-end check of the rendered Markdown under the shell's content-security policy
-   - T34 — the end-to-end path of the score's marker and the sort by score, and the owner's look
-   - T35 — the end-to-end path through the start page
+   - T34 — the owner's look at the score's marker and the sort by score
    - T36 — the owner's review of the mention
-   - T37 — the end-to-end path of the search
-   - T38 — the end-to-end path of a shared filter
-   - T39 — the end-to-end path of deletion, restore and the bin, and the owner's word on its three
-     decisions
+   - T38 — the owner's answer on a shared filter whose owner left the tenant
+   - T39 — the owner's word on its three decisions
    - T40 — the owner's review of the tenant's tokens page
-   - T42 — the owner's look at the tenant board
-   - T43 — the end-to-end path of the dashboard with two identities, and the owner's review
+   - T42 — the owner's look at the tenant board and its saved-filter bar
+   - T43 — the owner's review of the dashboard
    - T53 — the owner's look at the tenant's ticket list
 2. **The phase verification.** The Playwright path of T29,
    [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts), passes with both identities in both
