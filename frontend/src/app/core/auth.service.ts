@@ -1,11 +1,14 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, resource } from '@angular/core';
 import { Api } from '../api/api';
 import { getAuthOptions } from '../api/fn/auth/get-auth-options';
 import { loginLocal } from '../api/fn/auth/login-local';
 import { logout } from '../api/fn/auth/logout';
 import { changeMyPassword } from '../api/fn/me/change-my-password';
+import { getMe } from '../api/fn/me/get-me';
 import { LocalLoginResult, LogoutResult } from '../api/models';
 import { SessionService } from './session.service';
+import { SignInMemory } from './sign-in-memory';
 
 /**
  * The browser's login (docs/adr/0031, 0033): the session cookie is the backend's — `HttpOnly`,
@@ -16,16 +19,38 @@ import { SessionService } from './session.service';
 export class AuthService {
   private readonly api = inject(Api);
   private readonly session = inject(SessionService);
+  private readonly memory = inject(SignInMemory);
 
   /** What the login page offers (docs/adr/0033 D8): the local form, the identity provider, or neither. */
   readonly options = resource({ loader: () => this.api.invoke(getAuthOptions) });
 
   /**
    * Starts the session. Who is working is not asked again here: the login page replaces the
-   * document afterwards (`HARD_NAVIGATION`), and the new one asks.
+   * document afterwards (`HARD_NAVIGATION`), and the new one asks. A local sign-in that succeeds
+   * forgets that the person signs in through the identity provider: the login page no longer signs
+   * this browser in through it by itself (docs/adr/0029 D6).
    */
-  login(username: string, password: string): Promise<LocalLoginResult> {
-    return this.api.invoke(loginLocal, { body: { username, password } });
+  async login(username: string, password: string): Promise<LocalLoginResult> {
+    const result = await this.api.invoke(loginLocal, { body: { username, password } });
+    this.memory.forgetProvider();
+    return result;
+  }
+
+  /**
+   * Whether this browser holds a session now — `GET /api/v1/me`, asked anew, since another tab may
+   * have signed in meanwhile: a `401` is no, an answer yes, and any other failure is thrown, since
+   * then nobody can say.
+   */
+  async hasSession(): Promise<boolean> {
+    try {
+      await this.api.invoke(getMe);
+      return true;
+    } catch (error) {
+      if (error instanceof HttpErrorResponse && error.status === 401) {
+        return false;
+      }
+      throw error;
+    }
   }
 
   /** Changes the person's password; every other session of theirs ends (docs/adr/0033 D4). */
@@ -46,8 +71,13 @@ export class AuthService {
    * identity provider made may answer with the provider's own logout (docs/adr/0031 D4), which
    * this returns for the browser to go on to; `null` means the login page. Only a web address is
    * followed: a `javascript:` URL from a provider's discovery would otherwise run in this page.
+   *
+   * The browser forgets that the person signs in through the identity provider first, before the
+   * backend is asked and whatever it answers: an explicit sign-out is never undone by the login
+   * page signing in again by itself (docs/adr/0029 D6).
    */
   async logout(): Promise<string | null> {
+    this.memory.forgetProvider();
     // A 204 has no body, which the generated client hands on as null.
     const answer = (await this.api.invoke(logout)) as LogoutResult | null;
     return webAddress(answer?.end_session_url);

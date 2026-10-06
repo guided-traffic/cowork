@@ -552,6 +552,27 @@ describe('SessionService', () => {
     });
   });
 
+  describe("the login page's own sign-in (docs/adr/0029 D6)", () => {
+    beforeEach(() => sessionStorage.setItem('cowork.sign-in.attempt', '1'));
+    afterEach(() => sessionStorage.clear());
+
+    it('lets the tab try once more when its session ends, once it has a session again', async () => {
+      await load(person([asAdmin]));
+
+      expect(sessionStorage.getItem('cowork.sign-in.attempt')).toBeNull();
+    });
+
+    it('keeps the attempt noted while the tab has no session', async () => {
+      meRequest().flush(
+        { type: 'about:blank', title: 'Unauthenticated', status: 401, code: 'unauthenticated' },
+        { status: 401, statusText: 'Unauthorized' },
+      );
+      await settle();
+
+      expect(sessionStorage.getItem('cowork.sign-in.attempt')).toBe('1');
+    });
+  });
+
   describe("the application's other tabs in the browser", () => {
     it('hear whose session this tab has once it knows, and not again for the same person', async () => {
       TestBed.tick();

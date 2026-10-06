@@ -84,6 +84,8 @@ describe('AuthService', () => {
     } finally {
       vi.useRealTimers();
       TestBed.resetTestingModule();
+      localStorage.clear();
+      sessionStorage.clear();
     }
   });
 
@@ -167,6 +169,64 @@ describe('AuthService', () => {
       expect((error as HttpErrorResponse).status).toBe(401);
       expect(session.me.status()).toBe('error');
       http.expectNone('/api/v1/me');
+    });
+
+    it('forgets that the person signs in through the identity provider once it succeeds (docs/adr/0029 D6)', async () => {
+      localStorage.setItem('cowork.sign-in', 'oidc');
+      const done = service.login('hans', 's3cret');
+
+      http.expectOne('/auth/local').flush({ password_change_required: false });
+      await done;
+
+      expect(localStorage.getItem('cowork.sign-in')).toBeNull();
+    });
+
+    it('remembers the identity provider still when the local sign-in is refused', async () => {
+      localStorage.setItem('cowork.sign-in', 'oidc');
+      const done = service.login('hans', 'wrong').catch(() => undefined);
+
+      http.expectOne('/auth/local').flush(unauthenticated, unauthorized);
+      await done;
+
+      expect(localStorage.getItem('cowork.sign-in')).toBe('oidc');
+    });
+  });
+
+  describe('hasSession', () => {
+    beforeEach(startSignedOut);
+
+    it('asks GET /api/v1/me anew, and says yes to an answer', async () => {
+      const done = service.hasSession();
+
+      const request = http.expectOne('/api/v1/me');
+      expect(request.request.method).toBe('GET');
+      request.flush(hans);
+
+      expect(await done).toBe(true);
+    });
+
+    it('says no to a 401', async () => {
+      const done = service.hasSession();
+
+      http.expectOne('/api/v1/me').flush(unauthenticated, unauthorized);
+
+      expect(await done).toBe(false);
+    });
+
+    it.each([
+      ['a 500', { status: 500, statusText: 'Internal Server Error' }],
+      ['a 403', { status: 403, statusText: 'Forbidden' }],
+      ['no answer', { status: 0, statusText: 'Unknown Error' }],
+    ])('rejects with the HTTP error of %s, since nobody can say then', async (_what, status) => {
+      const done = service.hasSession();
+      const outcome = done.then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+      http.expectOne('/api/v1/me').flush('down', status);
+
+      expect(((await outcome) as HttpErrorResponse).status).toBe(status.status);
     });
   });
 
@@ -314,6 +374,29 @@ describe('AuthService', () => {
       expect((error as HttpErrorResponse).status).toBe(500);
       expect(session.person()?.display_name).toBe('Hans');
       http.expectNone('/api/v1/me');
+    });
+
+    it('forgets the identity provider before it asks the backend, so that the sign-out stays one (docs/adr/0029 D6)', async () => {
+      localStorage.setItem('cowork.sign-in', 'oidc');
+
+      const done = service.logout();
+
+      expect(localStorage.getItem('cowork.sign-in')).toBeNull();
+      http.expectOne('/auth/logout').flush({ end_session_url: 'https://login.example.com/logout' });
+      expect(await done).toBe('https://login.example.com/logout');
+      expect(localStorage.getItem('cowork.sign-in')).toBeNull();
+    });
+
+    it('forgets it also when the backend refuses the sign-out', async () => {
+      localStorage.setItem('cowork.sign-in', 'oidc');
+      const done = service.logout().catch(() => undefined);
+
+      http
+        .expectOne('/auth/logout')
+        .flush('down', { status: 500, statusText: 'Internal Server Error' });
+      await done;
+
+      expect(localStorage.getItem('cowork.sign-in')).toBeNull();
     });
   });
 });
