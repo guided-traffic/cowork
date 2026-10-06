@@ -1,0 +1,28 @@
+# The components shape (docs/adr/0058 D3, D4) in the migration mode onStart,
+# named explicitly (docs/adr/0057 D5): each role's user and password from a
+# Secret of its own — CloudNativePG's -app Secret for the owner — and the
+# location of both from one ConfigMap, as deploy/examples/cloudnative-pg-cluster.yaml
+# makes them; the storage's endpoint, region and path style from a ConfigMap,
+# its bucket a value of this installation's own.
+migrations:
+  mode: onStart
+database:
+  existingSecret: cowork-db-runtime
+  existingConfigMap: cowork-db-location
+  keys:
+    url: ""
+    sslmode: sslmode
+  owner:
+    existingSecret: cowork-db-app
+    existingConfigMap: cowork-db-location
+    keys:
+      url: ""
+      sslmode: sslmode
+session:
+  existingSecret: cowork-session
+storage:
+  existingSecret: cowork-storage
+  existingConfigMap: cowork-s3
+  keys:
+    bucket: ""
+  bucket: cowork

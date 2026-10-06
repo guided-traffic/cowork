@@ -1,0 +1,107 @@
+{{- if eq (include "cowork.migrationsMode" .) "job" }}
+{{- include "cowork.jobReferencesOnly" . }}
+# The migrations as a Helm hook (docs/adr/0057 D2): before the release's
+# resources are installed or upgraded, so a failed run fails the release before
+# a new pod starts. One attempt: a migration that fails fails the same way
+# again, and Helm's wait is bounded by --timeout. A Job that succeeded is
+# deleted; one that failed stays for its log until the next attempt replaces it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cowork.fullname" . }}-migrate
+  labels:
+    {{- include "cowork.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        {{- include "cowork.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # The ServiceAccount the chart creates does not exist before the
+      # release; the Job runs as the namespace's default one, or as the one
+      # the installation names when the chart creates none. It talks to no
+      # Kubernetes API, so no token is mounted either way.
+      serviceAccountName: {{ ternary "default" (include "cowork.serviceAccountName" .) .Values.serviceAccount.create }}
+      automountServiceAccountToken: false
+      securityContext:
+        {{- toYaml .Values.backend.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          args: ["migrate"]
+          securityContext:
+            {{- toYaml .Values.backend.securityContext | nindent 12 }}
+          # The owner role's credential, and the runtime role's, whose user
+          # the migrations grant to and the bootstrap connects as. After the
+          # schema step the run performs the bootstrap with the configuration
+          # the serving container has (docs/adr/0057 D4): the local
+          # administrator, the bootstrap tenant and the identity provider's
+          # administrator group. It never meets the provider and holds no
+          # client secret, no server key and no storage key.
+          env:
+            {{- include "cowork.databaseEnv" (dict "root" . "owner" false) | nindent 12 }}
+            {{- include "cowork.databaseEnv" (dict "root" . "owner" true) | nindent 12 }}
+            - name: COWORK_MIGRATE_BOOTSTRAP
+              value: "true"
+            - name: COWORK_LOG_LEVEL
+              value: {{ .Values.backend.config.logLevel | quote }}
+            - name: COWORK_LOG_FORMAT
+              value: {{ .Values.backend.config.logFormat | quote }}
+            - name: COWORK_PASSWORD_MIN_LENGTH
+              value: {{ .Values.auth.local.passwordMinLength | int64 | toString | quote }}
+            {{- if include "cowork.localAdminEnabled" . }}
+            - name: COWORK_LOCAL_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cowork.localAdminSecretName" . }}
+                  key: {{ include "cowork.localAdminUsernameKey" . }}
+            - name: COWORK_LOCAL_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cowork.localAdminSecretName" . }}
+                  key: {{ include "cowork.localAdminPasswordKey" . }}
+            {{- end }}
+            {{- if and (include "cowork.oidcEnabled" .) .Values.auth.oidc.adminGroup }}
+            - name: COWORK_OIDC_ISSUER
+              value: {{ .Values.auth.oidc.issuer | quote }}
+            - name: COWORK_ADMIN_GROUP
+              value: {{ .Values.auth.oidc.adminGroup | quote }}
+            {{- end }}
+            {{- if and .Values.bootstrap.tenant.slug .Values.bootstrap.tenant.name }}
+            - name: COWORK_BOOTSTRAP_TENANT_SLUG
+              value: {{ .Values.bootstrap.tenant.slug | quote }}
+            - name: COWORK_BOOTSTRAP_TENANT_NAME
+              value: {{ .Values.bootstrap.tenant.name | quote }}
+            {{- end }}
+            {{- if .Values.backend.config.baseURL }}
+            - name: COWORK_BASE_URL
+              value: {{ .Values.backend.config.baseURL | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

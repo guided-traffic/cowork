@@ -2,7 +2,12 @@ cowork {{ .Chart.AppVersion }} is being rolled out as release {{ .Release.Name }
 
 Backend:  Deployment {{ include "cowork.backend.fullname" . }}, Service {{ include "cowork.backend.fullname" . }}:{{ .Values.backend.service.port }}, for /api/ and /auth/
 Frontend: Deployment {{ include "cowork.frontend.fullname" . }}, Service {{ include "cowork.frontend.fullname" . }}:{{ .Values.frontend.service.port }}, the UI and nothing else
-Database: Secret {{ include "cowork.databaseSecretName" . }}, key {{ include "cowork.databaseSecretKey" . }}
+{{- $db := include "cowork.databaseSource" (dict "root" . "owner" false) | fromJson }}
+{{- if eq (toString $db.mode) "components" }}
+Database: the components — the user and the password from Secret {{ $db.secret }}{{ if $db.configMap }}, the location from ConfigMap {{ $db.configMap }}{{ else }}, the location as well{{ end }}
+{{- else }}
+Database: Secret {{ $db.secret }}, key {{ $db.key }}
+{{- end }}
 {{- if and .Values.database.url (not .Values.database.existingSecret) }}
   WARNING: database.url is set inline. The credential is stored in plain text in the
   release Secret and in `helm get values`; use database.existingSecret for anything
@@ -50,8 +55,18 @@ Login:    no local administrator and no identity provider (localAdmin and auth.o
   minute shared by every browser behind it. Name the Ingress controller's networks
   (docs/operations/installation.md).
 {{- end }}
+{{- if eq (include "cowork.migrationsMode" .) "job" }}
+Migrations: the Job {{ include "cowork.fullname" . }}-migrate, a Helm hook before every install and upgrade, as the owner role; it runs the bootstrap after the schema step
+  A failed Job fails the release before a pod starts: kubectl -n {{ .Release.Namespace }} logs job/{{ include "cowork.fullname" . }}-migrate
+  shows why while it is kept. Helm waits for it up to --timeout (5m by default); a longer migration needs a longer one.
+{{- else }}
 Migrations: {{ if .Values.backend.config.migrateOnStart }}an init container of every backend pod, as the owner role{{ else }}none; run `cowork migrate` with the owner credential before the pods start{{ end }}
+{{- end }}
+{{- if .Values.storage.existingConfigMap }}
+Attachments: from ConfigMap {{ .Values.storage.existingConfigMap }} — the endpoint, the bucket, the region and the path style whose key storage.keys names, the values for the others
+{{- else }}
 Attachments: {{ if .Values.storage.endpoint }}{{ .Values.storage.endpoint }}, bucket {{ .Values.storage.bucket }}{{ else }}no object storage; uploads are refused{{ end }}
+{{- end }}
 {{- if include "cowork.chatEnabled" . }}
 Chat:     on, {{ len .Values.chat.providers }} provider(s), the first the default:
 {{- range .Values.chat.providers }}

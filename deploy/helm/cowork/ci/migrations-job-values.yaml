@@ -1,0 +1,37 @@
+# The migration mode job (docs/adr/0057 D2, D4, D5): the migrations and the
+# bootstrap in a Helm hook Job. Every credential the Job reads comes from a
+# Secret that exists before the release — the runtime role's URL, the owner
+# role as the components of a Secret with no URL key and no ConfigMap, the
+# local administrator — and the bootstrap tenant maps the administrator group
+# of an identity provider, whose client secret the Job is not given.
+migrations:
+  mode: job
+database:
+  existingSecret: cowork-database
+  owner:
+    existingSecret: cowork-db-app
+    keys:
+      url: ""
+session:
+  existingSecret: cowork-session
+localAdmin:
+  existingSecret: cowork-local-admin
+bootstrap:
+  tenant:
+    slug: acme
+    name: Acme Corp
+auth:
+  oidc:
+    issuer: https://login.example.com/realms/cowork
+    clientId: cowork
+    existingSecret: cowork-oidc
+    allowedGroups:
+      - cowork-users
+    adminGroup: cowork-admins
+imagePullSecrets:
+  - name: registry
+backend:
+  config:
+    baseURL: https://cowork.example.com
+  nodeSelector:
+    kubernetes.io/os: linux
