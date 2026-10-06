@@ -33,7 +33,11 @@ export only, as a links manifest beside the tickets with each link once
 them; nothing is built for it before the export itself. D1's question form and state notes stay
 as v1 writes them until the importer of phase 6 has read this repository's tickets with them,
 over the recommendation inside the options text and over a key of cowork's own for the
-verification note.
+verification note. The owner left the identity string to the implementer, to be chosen from what
+the code holds and justified in D1; that choice, and the rest of D1's paragraph on persons — the
+name without `<` and `>`, a person without an identity written by name alone, how the importer
+resolves an identity —, are the implementer's, made concrete the same day and open to the owner's
+objection.
 
 **Partly built** (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03; a person as `Name <identity>` since 2026-10-06): D1, D5 and D6 for `/markdown`
 ([`internal/markdown`](../../backend/internal/markdown/), golden files in its `testdata/`); every
@@ -58,10 +62,12 @@ chose to keep the two documents apart by URL rather than by a marker inside one.
 
 *(Amended 2026-10-06 by the owner:)* The links still leave with the project. The project export
 writes them once each, in a links manifest beside the tickets
-([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4), so a
-backup restored through the importer keeps the graph
+([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4), so
+`/markdown` stays the single ticket and no link is written at both its ends. A backup restored
+through the importer
 ([ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-D2) while `/markdown` stays the single ticket, and no link is written at both its ends.
+D2) keeps the links between the tickets of a project; a link to another project is reported and
+omitted (ADR 0051 D2, D9, and its Residual risks).
 
 ## Decision
 
@@ -88,7 +94,9 @@ one, and `**Answer:**` with the answer, `_open_` or `_withdrawn_`. The response 
 
 *(Amended 2026-10-06 by the owner: a person is written the way git writes an author.)* The name
 is the display name, for a reader; the identity is the one the person already has, for the
-importer. A local account is `local:<username>`, its identity
+importer. *(The identity string chosen 2026-10-06 by the implementer, as the owner asked, from
+what the code holds, and open to the owner's objection:)* A local account is `local:<username>`,
+its identity
 ([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D2: the
 username is unique in the installation). A person of the identity provider is
 `oidc:<issuer>#<subject>`, the pair that is the person's stable key
@@ -98,11 +106,12 @@ issuer, the export also moves work between installations (ADR 0059), and an assi
 to a confidential ticket ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
 D9), so a subject resolved against another issuer could hand a ticket to the wrong person. `#`
 ends the issuer because an issuer has no fragment (OpenID Connect Discovery; the configuration's
-`checkIssuer` refuses one). The name drops `<` and `>`, as git's does, so the first `<` starts
-the identity, and the value is double-quoted, as every value with `<` or `:` is. A person with
-neither identity — whom no route makes — is written by name alone. The importer resolves the
-identity and keeps the name for its report; an identity it cannot resolve, a provider identity
-of another issuer among them, is reported, never guessed by name.
+`checkIssuer` refuses one). *(Made concrete 2026-10-06 by the implementer, open to the owner's
+objection:)* the name drops `<` and `>`, as git's does, so the first `<` starts the identity, and
+the value is double-quoted, as every value with `<` or `:` is. A person with neither identity —
+whom no route makes — is written by name alone. The importer resolves the identity and keeps the
+name for its report; an identity it cannot resolve, a provider identity of another issuer among
+them, is reported, never guessed by name.
 
 *(Kept 2026-10-06 by the owner:)* the question form and the state notes — `### Q<n>:`, the
 options verbatim, `**Recommendation:**`, `**Answer:**` with `_open_` or `_withdrawn_`, and
@@ -175,9 +184,10 @@ concrete 2026-10-02: D1's key is `attachments`, a list of the names in upload or
 - *(2026-10-06.)* The identity leaves the system with the document. Every reader of the ticket —
   any role, a `read` token, an agent and a configured chat provider through `/context` — reads
   the assignee's username, which the API's person shows already, or the issuer and the subject of
-  a person of the identity provider, which the API shows nowhere else — except as the display name
-  of a person whose issuer gave neither a name nor an address. It is an identifier, not a
-  credential: a login still goes through the issuer or the password.
+  a person of the identity provider, which the API shows nowhere else together — the subject alone
+  is already the display name of a person whose issuer sends no `name`, no `preferred_username`
+  and no address. It is an identifier, not a credential: a login still goes through the issuer or
+  the password.
 - *(2026-10-06.)* An issuer that ends in a bare `#` is not conformant, but `checkIssuer` lets its empty fragment
   through; the first `#` of such a person's identity would end the issuer too early. Not handled;
   the importer meets it first.

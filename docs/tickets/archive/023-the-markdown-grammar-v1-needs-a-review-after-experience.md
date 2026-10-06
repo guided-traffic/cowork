@@ -24,22 +24,27 @@ Decided by the owner's three answers below and extracted into
 D4; the grammar page is [markdown-grammar.md](../../developer/markdown-grammar.md).
 
 - **Links** stay out of `/markdown`. The project export writes them once each in a links manifest
-  beside the tickets (ADR 0051 D4), built with the export itself in phase 6.
+  beside the tickets (ADR 0051 D4), built with the export itself in phase 6. What the manifest
+  holds and how the importer reads it is the implementer's, open to the owner's objection; a
+  restore through the importer keeps the links within a project only (ADR 0051 Residual risks).
   [ADR 0059](../../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
   D2 never said the backup loses the links and is unchanged.
 - **A person** is written `Name <identity>`
   ([`person`](../../../backend/internal/markdown/markdown.go)): `local:<username>` for a local
   account, `oidc:<issuer>#<subject>` for a person of the identity provider, read by the query
-  `ExportPerson` in [`exportDocument`](../../../backend/internal/api/export.go). `assignee` is the
-  only key of the grammar that writes a person. Nothing in `internal/tools`, `cowork-mcp` or the
-  UI parses the field back: the tools hand the context document on as text.
+  `ExportPerson` in [`exportAssignee`](../../../backend/internal/api/export.go); a person who
+  leaves the reader's sight between the two reads is written by neither. The identity strings,
+  the issuer written out among them, and the rest of ADR 0044 D1's rules on persons are the
+  implementer's, open to the owner's objection. `assignee` is the only key of the grammar that
+  writes a person. Nothing in `internal/tools`, `cowork-mcp` or the UI parses the field back: the
+  tools hand the context document on as text.
 - **The question form and the state notes** stay as v1 writes them until the importer of phase 6
   has read this repository's tickets with them (ADR 0044 D1).
 
 Verified: `TestPerson`, `TestRender` and `TestRenderContext` with the golden files
 `every-key.md` (a person of the provider) and `context-full.md` (a local account);
-`TestMarkdownExport` and `TestMarkdownExportWritesAPersonOfTheIdentityProvider` against
-PostgreSQL.
+`TestExportAssignee` (a person out of sight); `TestMarkdownExport` and
+`TestMarkdownExportWritesAPersonOfTheIdentityProvider` against PostgreSQL.
 
 ## Required changes
 
@@ -73,10 +78,10 @@ manifest is built with the export in phase 6, nothing is built now.
 Recommended: **(c)** once identities exist (phase 4) — readable for a person and unambiguous for
 the importer.
 
-**Answer:** (c) — `Name <identity>`, the way git writes an author: `local:<username>` for a local
-account, `oidc:<issuer>#<subject>` for a person of the identity provider, the issuer written out
-because a subject is unique only for its issuer and the export moves between installations
-(ADR 0044 D1 states the choice and its reason). Built.
+**Answer:** (c) — `Name <identity>`, the way git writes an author; the identity string chosen
+from what the code holds, for example `local:<username>` for a local account and, for a person of
+the identity provider, the stable key that already exists (one issuer per installation, ADR 0029);
+the choice and its reason stated in ADR 0044 D1.
 
 ### Q3: Does the question and note form stay as v1 writes it?
 
