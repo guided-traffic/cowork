@@ -712,6 +712,13 @@ cowork tries again on its own." — and any other status without one as an unexp
 names the status; the backend's own errors always come as problem bodies with a request id
 ([ADR 0047](../adr/0047-errors-are-rfc-9457-problem-details-with-a-stable-code.md) D6).
 
+**The chart offers the Ingress only, no route of the Gateway API**
+([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3). On a cluster that serves through a Gateway, leave `ingress.enabled` false and write an
+`HTTPRoute` of your own, attached to your Gateway, with the three path rules below; the chart
+renders none and the release does not manage it. No Gateway API implementation has been tried with
+cowork.
+
 **Without the chart's Ingress** — an Ingress, an `HTTPRoute` or a mesh route of your own — route
 the same three paths on one host: `/api/` and `/auth/` to `<fullname>-backend:8080`, everything
 else to `<fullname>-frontend:80`. A request for `/api/` or `/auth/` that reaches the frontend all

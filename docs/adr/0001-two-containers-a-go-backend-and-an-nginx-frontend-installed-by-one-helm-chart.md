@@ -14,8 +14,10 @@ backend Service and everything else to the frontend Service, the frontend's ngin
 and never reaches the backend, and the chart ships no NetworkPolicy — network policies are the
 cluster administrator's; D7: the frontend takes no configuration; D8: its one `emptyDir` is `/tmp`;
 the path routing this record had rejected is the decision now, and the nginx proxy the rejected
-alternative, because it was an extra hop behind the reverse proxy the Ingress already is). Date:
-2026-09-29. The stack was set by the owner in the founding brief; the cut into
+alternative, because it was an extra hop behind the reverse proxy the Ingress already is), amended
+2026-10-06 by the owner (D3, the Alternatives and the Residual risks: the chart offers the Ingress
+only and no route of the Gateway API; an installation on a Gateway writes its own `HTTPRoute`).
+Date: 2026-09-29. The stack was set by the owner in the founding brief; the cut into
 two containers and the "latest release" policy (D2, D9) are the owner's explicit instructions
 of the same day, given after a first skeleton had embedded the UI into the Go binary — that
 shape is recorded under *Alternatives Considered*. The remaining shape rules were chosen while
@@ -130,7 +132,9 @@ administrator's policy — with `COWORK_TRUSTED_PROXIES` set, a pod inside those
 reaches the backend chooses its client address, and only such a policy keeps it from doing so
 ([docs/security/local-accounts.md](../security/local-accounts.md#h-17) H-17). The backend Service
 serves scripts, tokens and a port-forward inside the cluster as before; a port-forward to the
-frontend alone serves the UI without its API.
+frontend alone serves the UI without its API. *(Amended 2026-10-06 by the owner.)* The chart offers
+the Ingress only and no route of the Gateway API: an installation on a Gateway leaves the Ingress
+off and writes its own `HTTPRoute` with the same three path rules, outside the chart.
 
 ~~nginx serves the bundle, resolves every path the
 router owns to `index.html` (never cached, because it names the bundle hashes), serves hashed
@@ -258,6 +262,11 @@ what the framework supports: TypeScript stays inside Angular's peer range.
   timeout, buffering rule and set of error bodies to keep in step with the backend's, a resolver
   and four substituted variables, and a NetworkPolicy of the chart's to keep other pods from
   writing `X-Forwarded-For` to the backend.
+- **An `HTTPRoute` of the Gateway API in the chart** — beside the Ingress, one of the two switched
+  on (the recommendation), or in place of it — rejected by the owner on 2026-10-06. Kubernetes
+  retired ingress-nginx in March 2026 ([installation.md](../operations/installation.md#expose-it)),
+  and the route would have been a small template with the same three rules. The chart keeps one
+  route to template and verify, and an installation on a Gateway writes its own.
 - **Two origins with CORS.** More configuration in both halves for no benefit at this scale.
 - **A Go static file server instead of nginx.** A second Go program to maintain for what
   nginx does by default.
@@ -283,6 +292,10 @@ what the framework supports: TypeScript stays inside Angular's peer range.
 - *(Added 2026-10-04.)* Verified against one controller only, ingress-nginx v1.15.1 in a kind
   cluster: no other controller, no Gateway API implementation, no cloud load balancer in front, no
   TLS at the Ingress, no production cluster.
+- *(Added 2026-10-06.)* The chart offers no route of the Gateway API (D3). An installation on a
+  Gateway writes and keeps its own `HTTPRoute`, which no release of the chart updates; one that
+  stays on the retired ingress-nginx because the chart offers no route runs a controller without
+  security fixes ([installation.md](../operations/installation.md#expose-it)).
 - Not verified: the advisory-lock behaviour under two backend replicas starting at the same
   second against the same fresh database.
 - Not verified: `pgx` executing a multi-statement migration file through the simple protocol.

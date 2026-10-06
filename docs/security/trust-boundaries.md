@@ -346,3 +346,10 @@ D1). nginx's own hardening beyond `server_tokens off` and the shell's content-se
 `Strict-Transport-Security` for the UI shell — is not configured; HSTS belongs to whatever
 terminates TLS in front. An attachment download carries its own `nosniff` and `sandbox`
 from the backend ([attachments.md](attachments.md)).
+
+Which controller runs, and whether it still gets security fixes, is the installation's. The chart
+offers an Ingress and no route of the Gateway API
+([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
+D3): an installation on a Gateway writes its own `HTTPRoute`, and one that keeps the retired
+ingress-nginx runs a controller that gets no security fixes since March 2026
+([installation.md](../operations/installation.md#expose-it)).
