@@ -309,16 +309,6 @@
       "automerge": true
     },
     {
-      "description": "GitHub Actions: aquasecurity/trivy-action runs in the container scan after its login to Docker Hub, so it stays pinned to the commit SHA of a release with the tag in a comment",
-      "matchManagers": [
-        "github-actions"
-      ],
-      "matchPackageNames": [
-        "aquasecurity/trivy-action"
-      ],
-      "pinDigests": true
-    },
-    {
       "description": "Makefile-pinned Go tools (custom regex manager): automerge minor and patch updates at once, ahead of the Go version they must understand (ADR 0062 D3)",
       "matchManagers": [
         "custom.regex"

@@ -1,4 +1,4 @@
-# ADR 0061: Images Are Published to Docker Hub Under `guidedtraffic/`; the Self-Hosted Runners, the Release App Secrets and GitHub Pages Are Verified for This Repository
+# ADR 0061: Images Are Published to Docker Hub Under `guidedtraffic/`; the Self-Hosted Runners, the Release App Secrets and GitHub Pages Are Verified for This Repository; Actions Are Named by a Version Tag, Never a Commit SHA
 
 ## Status
 
@@ -19,6 +19,14 @@ mode; the integration job passed with them on the first run of the phase-2 code.
 2026-10-03 (run 37105034106): every job of "Test and Release" passes on the phase-2 branch,
 the container-scan legs among them — they log in with the organisation secret of D1, build
 each image on the runner's Docker daemon and scan it.
+
+Amended 2026-10-06 by the owner (D7, the Consequences, the Alternatives and the Residual
+risks): every action is named by a version tag, which may float, never by a commit SHA; the
+container scan keeps logging in with the publishing token; the release build keeps the workflow's
+permissions — each risk the owner's, accepted under *Residual risks*. Built the same day: both
+Trivy steps of the container scan name `aquasecurity/trivy-action@v0.36.0`, the action's latest
+release that day, instead of its branch `master`, and [`renovate.json`](../../renovate.json)
+carries no rule that pins a digest.
 
 ## Context
 
@@ -75,6 +83,18 @@ as they are, and each run pays the `apt-get` time.)*
 D7 apply from the first security ticket, and the README's coverage and Go Report Card badges
 resolve.
 
+**D7 — Every action is named by a version tag; the container scan logs in with the publishing
+token; the release build runs with the workflow's permissions** *(added 2026-10-06 by the owner)*.
+Every `uses:` of the three workflows names a version tag of the action — a major such as
+`actions/checkout@v7`, or a full release such as `aquasecurity/trivy-action@v0.36.0` where the
+action publishes no major tag — and never a branch or a commit SHA; a tag may float, and the
+workflows follow it. Renovate's github-actions manager keeps the tags current under the automerge
+rules of [ADR 0003](0003-test-and-ci-policy.md) D9, and `renovate.json` has no `pinDigests` rule.
+The `container-malware-scan` job of `release.yml` logs in to Docker Hub with `DOCKERHUB_PAT`, the
+token the release build publishes the images with; there is no read-only token for the scan. The
+`build` job of `build.yml` declares no `permissions:` of its own and runs with the workflow's
+block: `contents`, `pages`, `attestations` and `id-token` write, `actions` read.
+
 ## Consequences
 
 - One secret to create and the publishing path works as written; Docker Scout and the SBOM
@@ -83,6 +103,8 @@ resolve.
 - D5 and D1 block five gates today; the first pipeline ticket fixes them before any release.
 - The planning catalog's questions on registry, runners and secrets are closed; the
   repository-visibility question of the process block is answered by D6.
+- *(Added 2026-10-06.)* D7 keeps one Docker Hub secret, one permissions block in `build.yml` and
+  one form of reference in every workflow, and Renovate opens no digest pull requests for actions.
 
 ## Alternatives Considered
 
@@ -90,6 +112,16 @@ resolve.
   manage, a token per run, packages beside the repository; Docker Scout would have gone. The
   owner chose Docker Hub as the organisation's home for images. Lost.
 - **Publishing to both registries.** Double maintenance for no consumer. Lost.
+- *(Added 2026-10-06.)* **A commit SHA for every action**, its tag in a trailing comment, through
+  Renovate's `helpers:pinGitHubActionDigests` preset — the recommendation — or for the actions that
+  can reach the publishing token only. A new commit of an action would have waited for Renovate's
+  next run and left a pull request on record, which merges itself after CI all the same. The owner
+  names actions by versions that may float. Lost.
+- *(Added 2026-10-06.)* **A read-only Docker Hub token for the container scan**, the publishing
+  token only in `build.yml` — the recommendation: it takes the push right out of every pull
+  request's run, at the cost of a second secret. The owner keeps the publishing token. Lost.
+- *(Added 2026-10-06.)* **The `build` job with a `permissions:` block of its own**, the workflow's
+  dropped to `contents: read`. The owner keeps the workflow's block. Not built.
 
 ## Residual risks
 
@@ -97,10 +129,35 @@ resolve.
   red, visibly.
 - Docker Hub rate limits apply to anonymous pulls of the published images; the operations
   page notes it for installations without a pull secret.
+- *(Added 2026-10-06, the owner's accepted risks of D7; none has an attack path without a
+  compromised upstream of an action.)*
+  - **A moved tag runs with the publishing token.** A tag of `aquasecurity/trivy-action` or of any
+    other action of `container-malware-scan` or of `build` that its repository points at another
+    commit runs that commit with `DOCKERHUB_PAT` — push rights to the `guidedtraffic/cowork-*`
+    images — at the next pull request, push to `main` or release, and the workflow file shows no
+    change. A Renovate pull request is such a pull request: one for a new release of an action of
+    the scan runs it there with the token and merges itself once CI is green, before anyone reads
+    it ([release-pipeline.md](../security/release-pipeline.md#h-59) H-59,
+    [H-60](../security/release-pipeline.md#h-60)).
+  - **The release build runs with the workflow's permissions.** Any of the eight third-party steps
+    of `build` holds a job token that writes the repository's contents and releases and Pages, and
+    may ask for an OIDC token of the release workflow and store an attestation — the identity under
+    which `release-mcp` attests the `cowork-mcp` binaries
+    ([release-pipeline.md](../security/release-pipeline.md#h-61) H-61).
+  - **The Renovate workflow's actions run with the GitHub App.** `renovatebot/github-action@v46.3.7`
+    takes the App installation token with every permission of the App as its input, and
+    `actions/create-github-app-token@v3` takes `APP_PRIVATE_KEY`; a moved tag of either runs with
+    what it takes at the next night ([release-pipeline.md](../security/release-pipeline.md#h-60) H-60).
+  - **The other jobs' tokens.** A moved tag in `release-mcp` or `release-helm-gh` runs with a job
+    token that writes the repository's contents and releases at the next release, one in a job of
+    `release.yml` with a job token that writes comments on pull requests and issues at the next pull
+    request ([release-pipeline.md](../security/release-pipeline.md#h-60) H-60).
 
 ## References
 
 - [`.github/workflows/build.yml`](../../.github/workflows/build.yml), [`release.yml`](../../.github/workflows/release.yml) — the login, the image names, the runner label
 - [`deploy/helm/cowork/values.yaml`](../../deploy/helm/cowork/values.yaml) — the default repositories
+- [`renovate.json`](../../renovate.json), [`renovate.yml`](../../.github/workflows/renovate.yml) — the rules that move the action tags, and the App token Renovate runs with (D7)
+- [docs/security/release-pipeline.md](../security/release-pipeline.md) — what each job holds, and H-59 to H-61
 - [ADR 0003](0003-test-and-ci-policy.md) D4 — every job a required gate, which is why D5 matters
 - [ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md) D7 — the embargo a public repository needs

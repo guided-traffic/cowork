@@ -141,7 +141,8 @@ into the same projects, restricted tokens, and the timeline.
 Live today. A release attaches the six binaries, a SHA-256 file each and a build provenance
 attestation for each binary, which the release workflow makes with its own identity; `gh attestation
 verify` proves the file was built by that workflow of this repository from the tagged commit, so a
-release replaced by whoever can write releases fails it. The check is the person's step, and nothing
+release replaced by whoever can write releases fails it — unless a compromised step of that
+workflow made the attestation itself ([release-pipeline.md](release-pipeline.md#h-61) H-61). The check is the person's step, and nothing
 makes them take it: the checksum beside the binary comes from the same release, macOS refuses the
 unnotarised file at first start until the person lifts the quarantine, and Windows sees no
 Authenticode signature (ADR 0041 Residual risks). Mitigation: the verification step of

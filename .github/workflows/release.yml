@@ -659,10 +659,10 @@ jobs:
           load: true
           tags: cowork-${{ matrix.component }}:scan-${{ github.sha }}
 
-      # Both Trivy steps run after the login above, so they name the commit of a release, never a
-      # branch or a tag that can move; Renovate moves the SHA and the tag comment together.
+      # Like every action here, Trivy is named by the tag of a release, never by a branch or a
+      # commit SHA (docs/adr/0061 D7).
       - name: Run Trivy vulnerability scan
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: cowork-${{ matrix.component }}:scan-${{ github.sha }}
           format: 'table'
@@ -687,7 +687,7 @@ jobs:
 
       - name: Run Trivy scan (SARIF output)
         if: always()
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: cowork-${{ matrix.component }}:scan-${{ github.sha }}
           format: 'sarif'
