@@ -13,7 +13,8 @@ shown as such, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-f
 D6, the column `token_name`; D6: the tenant's view shows it beside the token's id) and 2026-10-05
 (D3: the purge's function runs inside the transaction that records its act instead of writing the
 act itself — the first implementation found that a function cannot know the token, the agent, the
-request and the source hash the row must carry; not yet put to the owner, see the Status below).
+request and the source hash the row must carry; ~~not yet put to the owner, see the Status below~~
+*(accepted by the owner 2026-10-06)*).
 Date: 2026-10-01. Decided by the owner as the answer to the catalog
 question "audit log — which form?": one table for every mutation of every entity, over a
 history table per entity and over trigger-written rows. The rules of D6–D7 were put to the
@@ -55,9 +56,9 @@ the owner role, executable by the runtime role alone, its `search_path` fixed wi
 empties `before`, `after`, `reason` and `note` of the current tenant's rows of one deleted ticket in
 a transaction that names the purge, and refuses everything else; the policy `audit_purge` admits
 that update to the owner role. The purge's own act is written by D2's wrapper in the same transaction
-(D3 as amended). The amendment is the implementer's and is open to the owner's objection: a function
-that wrote the row itself would need the request's facts handed in, and would trust them no more than
-the wrapper does. The tenant deletion's function is not built.
+(D3 as amended). The amendment is the implementer's ~~and is open to the owner's objection~~
+*(accepted by the owner 2026-10-06)*: a function that wrote the row itself would need the request's
+facts handed in, and would trust them no more than the wrapper does. The tenant deletion's function is not built.
 
 ## Context
 
@@ -111,10 +112,11 @@ publishes each row of a ticket's act with `NOTIFY` in that transaction
 `SELECT` on `audit_events` and nothing else. The two writes that are not inserts — the
 purge's emptying of content fields and the tenant deletion of ADR 0024 D6 — run through
 `SECURITY DEFINER` functions owned by the migration role, ~~each of which writes its own audit
-row first~~ *(amended 2026-10-05, built with the purge: each of which runs only inside the
-transaction that records its act through D2's wrapper, so that the act and the change commit
-together or not at all, and refuses outside its own case — the purge's function outside a
-transaction that names the purge, and for any ticket that is not deleted; the function cannot write
+row first~~ *(amended 2026-10-05, built with the purge, accepted by the owner 2026-10-06: each of
+which runs only inside the transaction that records its act through D2's wrapper, so that the act
+and the change commit together or not at all, and refuses outside its own case — the purge's
+function outside a transaction that names the purge, and for any ticket that is not deleted; the
+function cannot write
 the act itself, because the token, the agent mark, the request and the source hash the row carries
 are the request layer's, D2)*.
 

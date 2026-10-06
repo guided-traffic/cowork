@@ -8,7 +8,9 @@ deactivation for people, explicit deletion for tenants — over "dropped is the 
 soft delete for tickets alone, and over hard delete. The additional rules of D7 were put to
 the owner with the question and confirmed. Amended 2026-10-05, built on the recommendation, the
 owner reviewing the result (D7: the purge takes a browser session; a token, an administrator's
-`admin` token included, cannot make it).
+`admin` token included, cannot make it). Amended 2026-10-06 (D2: a purged ticket's children become
+roots, and a block that waited on it waits on its key as an external reference — two decisions of
+the implementer in building, accepted by the owner 2026-10-06).
 
 **Partly built** (phase 2, 2026-10-02): D4 for projects (archived, never deleted) and people
 (a `deactivated_at` column a token's person is refused by). ~~Ticket deletion, the purge, its
@@ -33,7 +35,8 @@ policies, the audit rows' content is emptied by an owner's function
 ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D3 as amended
 2026-10-05), and the attachment objects go after the commit. Two consequences the record did not
 name were decided in building: a purged ticket's children become roots, and a block that waited on
-it waits on its key as an external reference, an act on that ticket. D1's "search" is covered by
+it waits on its key as an external reference, an act on that ticket *(accepted by the owner
+2026-10-06, and stated in D2)*. D1's "search" is covered by
 the same filter — the `q` filter of the lists and the search of
 [ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md) D5, every ticket
 it reads —, and the person-level stream carries the deletion and the restoration across the
@@ -80,6 +83,9 @@ a job hard-deletes the ticket row, its comments, questions, links, interest, tim
 notifications and attachment metadata, and removes the attachment objects from storage. An
 administrator may purge earlier with a second confirmation. **The audit rows survive the
 purge**: they keep the ticket's key, the actor and the act, with the content fields emptied.
+*(Added 2026-10-06, decided by the implementer in building and accepted by the owner that day:)* a
+purged ticket's children become roots, and a ticket blocked on it waits on its key as an external
+reference from then on, an act recorded on that ticket.
 
 **D3 — Soft deletion is an application filter, not a policy.** Row-level security
 ([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md)) stays the
