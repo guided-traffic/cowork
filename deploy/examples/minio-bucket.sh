@@ -1,11 +1,13 @@
 #!/bin/sh
 # AN EXAMPLE TO COPY AND ADAPT, NOT A SUPPORTED DEPLOYMENT (docs/adr/0058 D1, D2).
 # Written against the MinIO client mc RELEASE.2025-08-13T08-35-41Z, its last
-# release, and a MinIO server of RELEASE.2025-04-08T15-41-24Z. `make
-# examples-lint` checks only that this is a shell script `sh -n` reads; the
-# policy is the one docs/operations/installation.md, "Object storage", ran
-# against the MinIO of `make minio-up`. The repositories of the MinIO server and
-# of mc are archived: no fix follows for either.
+# release. `make examples-lint` checks only that `sh -n` reads it. Run once, on
+# 2026-10-06, with other names and a stand-in for kubectl, against the MinIO of
+# `make minio-up` — Chainguard's build, version 2026-09-22T19-25-18Z: the key it
+# made put, read and deleted objects in its bucket and was refused listing the
+# bucket, another bucket and the administration. The repositories of the MinIO
+# server and of mc are archived, and MinIO publishes no image of either any
+# more: no fix follows from MinIO.
 #
 # What it makes, run by the store's administrator, for an existing MinIO or
 # the Tenant of minio-tenant.yaml: the bucket cowork, the policy
