@@ -407,13 +407,29 @@ The job reads the deleted tickets due of every tenant — their ids and tenants 
 tenant set**, and then binds itself to each tenant in turn; a request's purge always has a tenant,
 so it never reads past it.
 
-## Saved filters are their owner's
+## Saved filters are their owner's, and a shared one an administrator's to withdraw
 
 A saved filter carries its tenant and the canonical policy, and restrictive policies hold reading to
 its owner or a shared filter and every write to its owner
 ([migration 33](../../backend/internal/store/migrations/000033_saved_filters.up.sql);
-`TestTheSavedFilterPoliciesHoldAPersonToTheirOwn`). Its parameters name projects, tickets and
-persons as the lists take them. A member's shared filter that names a project or a ticket another
+`TestTheSavedFilterPoliciesHoldAPersonToTheirOwn`) — and, since
+[migration 39](../../backend/internal/store/migrations/000039_saved_filters_moderated_by_administrators.up.sql),
+an administrator of the current tenant (`app_is_tenant_admin()`) to two acts on another person's
+shared filter: a change into one that is not shared, and a delete
+([ADR 0018](../adr/0018-the-views-of-the-first-release.md) D5 as amended 2026-10-06 — a filter
+whose owner left the tenant stays shared until somebody withdraws it). A filter that is not shared
+stays its owner's alone to read and to write. The unshared row is one only its owner reads, and
+PostgreSQL holds an update's new row to the read policy, so the read policy admits an administrator
+to the one filter the transaction names in `app.saved_filter_id`, which `Writer.UnshareAnothersFilter`
+sets for its single statement and clears after it
+(`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`). The policies see the row, not
+the columns a statement sets: that an administrator's unshare changes nothing but `shared` — not
+the name, not the conditions — is held by the handler (`mayChangeFilter`) and by the query
+(`UnshareSavedFilter`, which sets nothing else), not by the data layer, which admits any change of
+another person's shared filter that leaves it unshared. The route takes the administrator's `admin`
+scope and refuses every agent; each act is recorded under the administrator's name
+(`TestAnAdministratorUnsharesOrDeletesAnotherPersonsSharedFilter`). Its parameters name projects,
+tickets and persons as the lists take them. A member's shared filter that names a project or a ticket another
 reader cannot see — or one that is gone — is answered to that reader `redacted`, its parameters and
 warnings withheld, as an act that names a hidden ticket is; its name and its owner stay, because the
 owner shared them. The name is free text, as a comment's is: what an owner writes into it, every

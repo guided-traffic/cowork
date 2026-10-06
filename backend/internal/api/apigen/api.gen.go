@@ -5362,8 +5362,12 @@ type ClientInterface interface {
 
 	// DeleteSavedFilter Delete a saved filter
 	//
-	// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
-	// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+	// Its owner's act with `write` scope. A tenant administrator deletes another person's shared
+	// filter — one whose owner left the tenant among them —, an administration act with `admin`
+	// scope that no agent makes (docs/adr/0018 D5, docs/adr/0043 D3): a token with less than
+	// `admin` scope is 403 `insufficient_scope`, an agent 403 `agent_forbidden`. Another person's
+	// shared filter is 403 `forbidden` to everyone else, a filter the caller cannot see — or one
+	// already gone, or no longer shared — 404. Recorded as `deleted`.
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
 	DeleteSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5377,9 +5381,15 @@ type ClientInterface interface {
 
 	// UpdateSavedFilterWithBody Rename, change, share or unshare a saved filter
 	//
-	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+	// the whole set, checked as on creation. A tenant administrator unshares another person's
+	// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+	// nothing else, an administration act with `admin` scope that no agent makes
+	// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+	// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+	// filter answered is one the administrator no longer reads. Another person's shared filter is
+	// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+	// with the fields that changed.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -5388,9 +5398,15 @@ type ClientInterface interface {
 
 	// UpdateSavedFilter Rename, change, share or unshare a saved filter
 	//
-	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+	// the whole set, checked as on creation. A tenant administrator unshares another person's
+	// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+	// nothing else, an administration act with `admin` scope that no agent makes
+	// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+	// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+	// filter answered is one the administrator no longer reads. Another person's shared filter is
+	// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+	// with the fields that changed.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -7846,8 +7862,12 @@ func (c *Client) CreateSavedFilter(ctx context.Context, tenant TenantSlug, param
 
 // DeleteSavedFilter Delete a saved filter
 //
-// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
-// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+// Its owner's act with `write` scope. A tenant administrator deletes another person's shared
+// filter — one whose owner left the tenant among them —, an administration act with `admin`
+// scope that no agent makes (docs/adr/0018 D5, docs/adr/0043 D3): a token with less than
+// `admin` scope is 403 `insufficient_scope`, an agent 403 `agent_forbidden`. Another person's
+// shared filter is 403 `forbidden` to everyone else, a filter the caller cannot see — or one
+// already gone, or no longer shared — 404. Recorded as `deleted`.
 //
 // Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
 func (c *Client) DeleteSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -7881,9 +7901,15 @@ func (c *Client) GetSavedFilter(ctx context.Context, tenant TenantSlug, filter S
 
 // UpdateSavedFilterWithBody Rename, change, share or unshare a saved filter
 //
-// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+// the whole set, checked as on creation. A tenant administrator unshares another person's
+// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+// nothing else, an administration act with `admin` scope that no agent makes
+// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+// filter answered is one the administrator no longer reads. Another person's shared filter is
+// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+// with the fields that changed.
 //
 // Takes any type of body and a specified content type.
 //
@@ -7902,9 +7928,15 @@ func (c *Client) UpdateSavedFilterWithBody(ctx context.Context, tenant TenantSlu
 
 // UpdateSavedFilter Rename, change, share or unshare a saved filter
 //
-// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+// the whole set, checked as on creation. A tenant administrator unshares another person's
+// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+// nothing else, an administration act with `admin` scope that no agent makes
+// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+// filter answered is one the administrator no longer reads. Another person's shared filter is
+// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+// with the fields that changed.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -19545,8 +19577,12 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteSavedFilterWithResponse Delete a saved filter
 	//
-	// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
-	// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+	// Its owner's act with `write` scope. A tenant administrator deletes another person's shared
+	// filter — one whose owner left the tenant among them —, an administration act with `admin`
+	// scope that no agent makes (docs/adr/0018 D5, docs/adr/0043 D3): a token with less than
+	// `admin` scope is 403 `insufficient_scope`, an agent 403 `agent_forbidden`. Another person's
+	// shared filter is 403 `forbidden` to everyone else, a filter the caller cannot see — or one
+	// already gone, or no longer shared — 404. Recorded as `deleted`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -19564,9 +19600,15 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateSavedFilterWithBodyWithResponse Rename, change, share or unshare a saved filter
 	//
-	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+	// the whole set, checked as on creation. A tenant administrator unshares another person's
+	// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+	// nothing else, an administration act with `admin` scope that no agent makes
+	// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+	// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+	// filter answered is one the administrator no longer reads. Another person's shared filter is
+	// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+	// with the fields that changed.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -19575,9 +19617,15 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateSavedFilterWithResponse Rename, change, share or unshare a saved filter
 	//
-	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-	// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-	// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+	// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+	// the whole set, checked as on creation. A tenant administrator unshares another person's
+	// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+	// nothing else, an administration act with `admin` scope that no agent makes
+	// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+	// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+	// filter answered is one the administrator no longer reads. Another person's shared filter is
+	// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+	// with the fields that changed.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -29046,8 +29094,12 @@ func (c *ClientWithResponses) CreateSavedFilterWithResponse(ctx context.Context,
 
 // DeleteSavedFilterWithResponse Delete a saved filter
 //
-// Its owner's act with `write` scope; another person's shared filter is 403 `forbidden`, a
-// filter the caller cannot see — or one already gone — 404. Recorded as `deleted`.
+// Its owner's act with `write` scope. A tenant administrator deletes another person's shared
+// filter — one whose owner left the tenant among them —, an administration act with `admin`
+// scope that no agent makes (docs/adr/0018 D5, docs/adr/0043 D3): a token with less than
+// `admin` scope is 403 `insufficient_scope`, an agent 403 `agent_forbidden`. Another person's
+// shared filter is 403 `forbidden` to everyone else, a filter the caller cannot see — or one
+// already gone, or no longer shared — 404. Recorded as `deleted`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -29077,9 +29129,15 @@ func (c *ClientWithResponses) GetSavedFilterWithResponse(ctx context.Context, te
 
 // UpdateSavedFilterWithBodyWithResponse Rename, change, share or unshare a saved filter
 //
-// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+// the whole set, checked as on creation. A tenant administrator unshares another person's
+// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+// nothing else, an administration act with `admin` scope that no agent makes
+// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+// filter answered is one the administrator no longer reads. Another person's shared filter is
+// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+// with the fields that changed.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -29094,9 +29152,15 @@ func (c *ClientWithResponses) UpdateSavedFilterWithBodyWithResponse(ctx context.
 
 // UpdateSavedFilterWithResponse Rename, change, share or unshare a saved filter
 //
-// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); another person's
-// shared filter is 403 `forbidden`, a filter the caller cannot see 404. `parameters` replaces
-// the whole set, checked as on creation. Recorded as `updated` with the fields that changed.
+// Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
+// the whole set, checked as on creation. A tenant administrator unshares another person's
+// shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+// nothing else, an administration act with `admin` scope that no agent makes
+// (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
+// with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
+// filter answered is one the administrator no longer reads. Another person's shared filter is
+// 403 `forbidden` to everyone else, a filter the caller cannot see 404. Recorded as `updated`
+// with the fields that changed.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

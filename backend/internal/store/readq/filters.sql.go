@@ -90,8 +90,10 @@ type ListSavedFiltersRow struct {
 }
 
 // Saved filters (docs/adr/0018 D5): the caller's own and the tenant's shared
-// ones, each with its owner. The policies of migration 33 admit no other row,
-// and every query names the owner's rule as well (docs/adr/0021 D4).
+// ones, each with its owner. The policies of migrations 33 and 39 admit no
+// other row — but the one an administrator's unshare names for its own
+// statement —, and every query names the owner's rule as well
+// (docs/adr/0021 D4).
 func (q *Queries) ListSavedFilters(ctx context.Context, arg ListSavedFiltersParams) ([]ListSavedFiltersRow, error) {
 	rows, err := q.db.Query(ctx, listSavedFilters,
 		arg.TenantID,

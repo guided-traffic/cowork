@@ -7,6 +7,7 @@ package writeq
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -30,6 +31,26 @@ func (q *Queries) DeleteSavedFilter(ctx context.Context, arg DeleteSavedFilterPa
 	return result.RowsAffected(), nil
 }
 
+const deleteSharedSavedFilter = `-- name: DeleteSharedSavedFilter :execrows
+DELETE FROM saved_filters
+WHERE tenant_id = $1 AND id = $2 AND shared
+`
+
+type DeleteSharedSavedFilterParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+// An administrator's deletion of another person's shared filter; one no
+// longer shared is no row.
+func (q *Queries) DeleteSharedSavedFilter(ctx context.Context, arg DeleteSharedSavedFilterParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteSharedSavedFilter, arg.TenantID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const insertSavedFilter = `-- name: InsertSavedFilter :one
 
 INSERT INTO saved_filters (tenant_id, owner_id, name, parameters, shared)
@@ -45,8 +66,9 @@ type InsertSavedFilterParams struct {
 	Shared     bool
 }
 
-// Saved filters (docs/adr/0018 D5): written by their owner only, which the
-// policies of migration 33 hold as well.
+// Saved filters (docs/adr/0018 D5): written by their owner, and another
+// person's shared filter unshared or deleted by an administrator of the
+// tenant; the policies of migrations 33 and 39 hold the same.
 func (q *Queries) InsertSavedFilter(ctx context.Context, arg InsertSavedFilterParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, insertSavedFilter,
 		arg.TenantID,
@@ -58,6 +80,35 @@ func (q *Queries) InsertSavedFilter(ctx context.Context, arg InsertSavedFilterPa
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const unshareSavedFilter = `-- name: UnshareSavedFilter :one
+UPDATE saved_filters
+SET shared = false, version = version + 1, updated_at = now()
+WHERE tenant_id = $1 AND id = $2 AND shared AND version = $3
+RETURNING version, updated_at
+`
+
+type UnshareSavedFilterParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+	Version  int32
+}
+
+type UnshareSavedFilterRow struct {
+	Version   int32
+	UpdatedAt time.Time
+}
+
+// An administrator's unshare of another person's filter, a compare-and-set on
+// the version that sets nothing but shared; a filter no longer shared, of
+// another version or deleted meanwhile is no row. Run it through
+// Writer.UnshareAnothersFilter, which names the filter for the read policy.
+func (q *Queries) UnshareSavedFilter(ctx context.Context, arg UnshareSavedFilterParams) (UnshareSavedFilterRow, error) {
+	row := q.db.QueryRow(ctx, unshareSavedFilter, arg.TenantID, arg.ID, arg.Version)
+	var i UnshareSavedFilterRow
+	err := row.Scan(&i.Version, &i.UpdatedAt)
+	return i, err
 }
 
 const updateSavedFilter = `-- name: UpdateSavedFilter :one

@@ -263,19 +263,7 @@ func TestTheSavedFilterPoliciesHoldAPersonToTheirOwn(t *testing.T) {
 	e.saveFilter(t, caller{Token: e.tk.MemberA}, e.SlugA, apigen.SavedFilterCreate{Name: "private", Parameters: apigen.SavedFilterParameters{}})
 	e.saveFilter(t, caller{Token: e.tk.MemberA}, e.SlugA, apigen.SavedFilterCreate{Name: "shared", Shared: ptr(true),
 		Parameters: apigen.SavedFilterParameters{}})
-	asViewer := func(sql string) (int64, error) {
-		conn, err := pgx.Connect(e.ctx, env.RuntimeURL)
-		require.NoError(t, err)
-		defer func() { _ = conn.Close(e.ctx) }()
-		tx, err := conn.Begin(e.ctx)
-		require.NoError(t, err)
-		defer func() { _ = tx.Rollback(e.ctx) }()
-		_, err = tx.Exec(e.ctx, "SELECT set_config('app.tenant_id', $1, true), set_config('app.user_id', $2, true)",
-			e.A.String(), e.ViewerA.String())
-		require.NoError(t, err)
-		tag, err := tx.Exec(e.ctx, sql)
-		return tag.RowsAffected(), err
-	}
+	asViewer := func(sql string) (int64, error) { return e.runAs(t, e.A, e.ViewerA, uuid.Nil, sql) }
 	n, err := asViewer(`SELECT name FROM saved_filters`)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, n, "the shared one, not the private one")
@@ -287,4 +275,172 @@ func TestTheSavedFilterPoliciesHoldAPersonToTheirOwn(t *testing.T) {
 	assert.Zero(t, n)
 	_, err = asViewer(`INSERT INTO saved_filters (tenant_id, owner_id, name) VALUES ('` + e.A.String() + `', '` + e.MemberA.String() + `', 'forged')`)
 	assert.ErrorContains(t, err, "row-level security", "nobody files a filter in another person's name")
+}
+
+// runAs runs one statement as the runtime role in the tenant's own
+// transaction for the person — with the filter named in app.saved_filter_id
+// unless named is uuid.Nil — and rolls it back.
+func (e ticketEnv) runAs(t *testing.T, tenant, person, named uuid.UUID, sql string) (int64, error) {
+	t.Helper()
+	conn, err := pgx.Connect(e.ctx, env.RuntimeURL)
+	require.NoError(t, err)
+	defer func() { _ = conn.Close(e.ctx) }()
+	tx, err := conn.Begin(e.ctx)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback(e.ctx) }()
+	name := ""
+	if named != uuid.Nil {
+		name = named.String()
+	}
+	_, err = tx.Exec(e.ctx, `SELECT set_config('app.tenant_id', $1, true), set_config('app.user_id', $2, true),
+		set_config('app.saved_filter_id', $3, true)`, tenant.String(), person.String(), name)
+	require.NoError(t, err)
+	tag, err := tx.Exec(e.ctx, sql)
+	return tag.RowsAffected(), err
+}
+
+// docs/adr/0018 D5 as amended 2026-10-06: a tenant administrator unshares or
+// deletes another person's shared filter — one whose owner left the tenant
+// among them —, each a recorded act; nothing else of it, nothing of a filter
+// that is not shared, never with less than admin scope and never in another
+// tenant.
+func TestAnAdministratorUnsharesOrDeletesAnotherPersonsSharedFilter(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	admin, member := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberA}
+	etag := func(f apigen.SavedFilter) string { return strconv.Quote(strconv.Itoa(f.Version)) }
+	unshare := apigen.SavedFilterPatch{Shared: ptr(false)}
+	acts := func(id uuid.UUID, action string) int {
+		return scalar[int](t, `SELECT count(*) FROM audit_events WHERE entity_type = 'saved_filter' AND entity_id = $1
+			AND action = $2 AND actor_user_id = $3`, id, action, e.AdminA)
+	}
+
+	team := e.saveFilter(t, member, e.SlugA, apigen.SavedFilterCreate{Name: "team", Shared: ptr(true),
+		Parameters: apigen.SavedFilterParameters{Severity: strs("high")}})
+	private := e.saveFilter(t, member, e.SlugA, apigen.SavedFilterCreate{Name: "private", Parameters: apigen.SavedFilterParameters{}})
+
+	// A filter that is not shared is not there for the administrator.
+	assertProblem(t, e.s.do(t, admin, http.MethodPatch, filtersPath(e.SlugA, private.Id), unshare, "If-Match", etag(private)),
+		http.StatusNotFound, "not_found")
+	assertProblem(t, e.s.do(t, admin, http.MethodDelete, filtersPath(e.SlugA, private.Id), nil), http.StatusNotFound, "not_found")
+
+	// Of a shared one the administrator changes nothing but its sharing.
+	for name, patch := range map[string]apigen.SavedFilterPatch{
+		"a rename":                  {Name: ptr("taken over")},
+		"a rename with the unshare": {Name: ptr("taken over"), Shared: ptr(false)},
+		"other conditions":          {Parameters: &apigen.SavedFilterParameters{}, Shared: ptr(false)},
+		"sharing it":                {Shared: ptr(true)},
+	} {
+		assertProblem(t, e.s.do(t, admin, http.MethodPatch, filtersPath(e.SlugA, team.Id), patch, "If-Match", etag(team)),
+			http.StatusForbidden, "forbidden")
+		assert.Zero(t, acts(team.Id, "updated"), name)
+	}
+	// Nobody else does either, and an administrator's token with less than
+	// admin scope does not.
+	for _, c := range []caller{{Token: e.tk.ViewerA}, {Token: e.tk.Both}} {
+		assertProblem(t, e.s.do(t, c, http.MethodPatch, filtersPath(e.SlugA, team.Id), unshare, "If-Match", etag(team)),
+			http.StatusForbidden, "forbidden")
+		assertProblem(t, e.s.do(t, c, http.MethodDelete, filtersPath(e.SlugA, team.Id), nil), http.StatusForbidden, "forbidden")
+	}
+	writeScope := caller{Token: e.tk.AdminAWrite}
+	assertProblem(t, e.s.do(t, writeScope, http.MethodPatch, filtersPath(e.SlugA, team.Id), unshare, "If-Match", etag(team)),
+		http.StatusForbidden, "insufficient_scope")
+	assertProblem(t, e.s.do(t, writeScope, http.MethodDelete, filtersPath(e.SlugA, team.Id), nil), http.StatusForbidden, "insufficient_scope")
+	assertProblem(t, e.s.do(t, admin, http.MethodPatch, filtersPath(e.SlugA, team.Id), unshare), http.StatusPreconditionRequired,
+		"precondition_required")
+	stale := assertProblem(t, e.s.do(t, admin, http.MethodPatch, filtersPath(e.SlugA, team.Id), unshare, "If-Match", `"7"`),
+		http.StatusPreconditionFailed, "precondition_failed")
+	assert.Equal(t, true, stale["errors"].([]any)[0].(map[string]any)["current"])
+
+	// The unshare: the filter stays its owner's as it was, and leaves every
+	// other list, the administrator's too.
+	res := e.s.do(t, admin, http.MethodPatch, filtersPath(e.SlugA, team.Id), unshare, "If-Match", etag(team))
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	unshared := decode[apigen.SavedFilter](t, res)
+	assert.False(t, unshared.Shared)
+	assert.Equal(t, team.Version+1, unshared.Version)
+	assert.Equal(t, etag(unshared), res.Header.Get("ETag"))
+	assert.Equal(t, e.MemberA, unshared.Owner.Id)
+	assertProblem(t, e.s.do(t, admin, http.MethodGet, filtersPath(e.SlugA, team.Id), nil), http.StatusNotFound, "not_found")
+	assert.NotContains(t, filterNames(e.savedFilters(t, admin, e.SlugA)), "team")
+	assert.NotContains(t, filterNames(e.savedFilters(t, caller{Token: e.tk.ViewerA}, e.SlugA)), "team")
+	kept := e.savedFilters(t, member, e.SlugA)["team"]
+	assert.False(t, kept.Shared)
+	assert.Equal(t, strs("high"), kept.Parameters.Severity, "nothing else of it changed")
+	assert.Equal(t, unshared.Version, kept.Version)
+	assert.Equal(t, 1, acts(team.Id, "updated"))
+	assert.JSONEq(t, `{"shared": true}`, scalar[string](t, `SELECT before::text FROM audit_events
+		WHERE entity_id = $1 AND action = 'updated' AND actor_user_id = $2`, team.Id, e.AdminA))
+	assert.JSONEq(t, `{"shared": false}`, scalar[string](t, `SELECT after::text FROM audit_events
+		WHERE entity_id = $1 AND action = 'updated' AND actor_user_id = $2`, team.Id, e.AdminA))
+
+	// Its owner shares it again; the administrator deletes it.
+	reshared := e.s.do(t, member, http.MethodPatch, filtersPath(e.SlugA, team.Id), apigen.SavedFilterPatch{Shared: ptr(true)},
+		"If-Match", etag(kept))
+	require.Equal(t, http.StatusOK, reshared.StatusCode)
+	e.send(t, admin, http.StatusNoContent, http.MethodDelete, filtersPath(e.SlugA, team.Id), nil)
+	assertProblem(t, e.s.do(t, member, http.MethodGet, filtersPath(e.SlugA, team.Id), nil), http.StatusNotFound, "not_found")
+	assert.Equal(t, 1, acts(team.Id, "deleted"))
+
+	// The shared filters of a person who left the tenant.
+	gone := caller{Token: e.tk.Both}
+	toUnshare := e.saveFilter(t, gone, e.SlugA, apigen.SavedFilterCreate{Name: "left behind", Shared: ptr(true),
+		Parameters: apigen.SavedFilterParameters{}})
+	toDelete := e.saveFilter(t, gone, e.SlugA, apigen.SavedFilterCreate{Name: "left behind too", Shared: ptr(true),
+		Parameters: apigen.SavedFilterParameters{}})
+	require.NoError(t, f.Exec(e.ctx, `DELETE FROM memberships WHERE tenant_id = $1 AND user_id = $2`, e.A, e.Both))
+	seen := e.savedFilters(t, caller{Token: e.tk.ViewerA}, e.SlugA)
+	assert.Equal(t, e.Both, seen["left behind"].Owner.Id, "a filter stays shared after its owner left")
+	e.send(t, admin, http.StatusOK, http.MethodPatch, filtersPath(e.SlugA, toUnshare.Id), unshare, "If-Match", etag(toUnshare))
+	e.send(t, admin, http.StatusNoContent, http.MethodDelete, filtersPath(e.SlugA, toDelete.Id), nil)
+	assert.Empty(t, e.savedFilters(t, caller{Token: e.tk.ViewerA}, e.SlugA))
+	assert.Equal(t, 1, acts(toUnshare.Id, "updated"))
+	assert.Equal(t, 1, acts(toDelete.Id, "deleted"))
+
+	// Another tenant's shared filter is out of reach, by either tenant's path.
+	inB := e.saveFilter(t, caller{Token: e.tk.MemberB}, e.SlugB, apigen.SavedFilterCreate{Name: "in B", Shared: ptr(true),
+		Parameters: apigen.SavedFilterParameters{}})
+	for _, slug := range []string{e.SlugA, e.SlugB} {
+		assertProblem(t, e.s.do(t, admin, http.MethodPatch, filtersPath(slug, inB.Id), unshare, "If-Match", etag(inB)),
+			http.StatusNotFound, "not_found")
+		assertProblem(t, e.s.do(t, admin, http.MethodDelete, filtersPath(slug, inB.Id), nil), http.StatusNotFound, "not_found")
+	}
+	assert.True(t, scalar[bool](t, `SELECT shared FROM saved_filters WHERE id = $1`, inB.Id))
+}
+
+// docs/adr/0021 D6, docs/adr/0018 D5 as amended 2026-10-06: the policies of
+// migration 39 admit an administrator of the current tenant to unshare and to
+// delete another person's shared filter and to nothing more — the unshared row
+// read back only for the filter the transaction names —, and a filter that is
+// not shared stays its owner's alone.
+func TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter(t *testing.T) {
+	e := newTicketEnv(t)
+	member := caller{Token: e.tk.MemberA}
+	private := e.saveFilter(t, member, e.SlugA, apigen.SavedFilterCreate{Name: "private", Parameters: apigen.SavedFilterParameters{}})
+	shared := e.saveFilter(t, member, e.SlugA, apigen.SavedFilterCreate{Name: "shared", Shared: ptr(true),
+		Parameters: apigen.SavedFilterParameters{}})
+	e.saveFilter(t, caller{Token: e.tk.MemberB}, e.SlugB, apigen.SavedFilterCreate{Name: "in B", Shared: ptr(true),
+		Parameters: apigen.SavedFilterParameters{}})
+	asAdmin := func(named uuid.UUID, sql string) (int64, error) { return e.runAs(t, e.A, e.AdminA, named, sql) }
+	where := func(f apigen.SavedFilter) string { return ` WHERE id = '` + f.Id.String() + `'` }
+
+	n, err := asAdmin(uuid.Nil, `SELECT name FROM saved_filters`)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, n, "the shared one, not the private one")
+	_, err = asAdmin(uuid.Nil, `UPDATE saved_filters SET name = 'taken over'`)
+	assert.ErrorContains(t, err, "row-level security", "a shared filter of another person changes only into one that is not shared")
+	_, err = asAdmin(uuid.Nil, `UPDATE saved_filters SET shared = false`+where(shared))
+	assert.ErrorContains(t, err, "row-level security", "the unshared row is read back only for the filter the transaction names")
+	n, err = asAdmin(shared.Id, `UPDATE saved_filters SET shared = false, version = version + 1`+where(shared)+` AND shared`)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, n, "the unshare, with the filter named")
+	n, err = asAdmin(uuid.Nil, `UPDATE saved_filters SET shared = true`+where(private))
+	require.NoError(t, err)
+	assert.Zero(t, n, "a filter that is not shared is out of reach")
+	n, err = asAdmin(uuid.Nil, `DELETE FROM saved_filters`)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, n, "the shared one is deleted, the private one stays")
+	n, err = e.runAs(t, e.B, e.AdminA, uuid.Nil, `DELETE FROM saved_filters`)
+	require.NoError(t, err)
+	assert.Zero(t, n, "an administrator of one tenant is none in another")
 }

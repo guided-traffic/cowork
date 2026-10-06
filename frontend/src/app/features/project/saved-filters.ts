@@ -33,12 +33,13 @@ interface Choice {
 /**
  * The saved filters in a list's filter bar (docs/adr/0018 D5) — the backlog's and the tenant's
  * ticket list's: the person's own and those shared with the tenant to apply, the one applied with
- * its owner — or, the person's own, to share, unshare and delete —, and saving the conditions the
- * list applies now under a name, shared or not. Another member's filter that names something the
- * person cannot see is listed and cannot be applied: the server withholds its conditions
- * (docs/adr/0065 D5). The list's own controls stay the list's: applying a filter hands its
- * conditions to the list, which may change them further; a condition the list does not apply is
- * named under the bar with why (`leftOut`).
+ * its owner — or, the person's own, to share, unshare and delete; another person's shared one, to
+ * a tenant administrator, to unshare and delete (D5 as amended 2026-10-06), both at once as the
+ * owner's own acts are —, and saving the conditions the list applies now under a name, shared or
+ * not. Another member's filter that names something the person cannot see is listed and cannot be
+ * applied: the server withholds its conditions (docs/adr/0065 D5). The list's own controls stay
+ * the list's: applying a filter hands its conditions to the list, which may change them further; a
+ * condition the list does not apply is named under the bar with why (`leftOut`).
  */
 @Component({
   selector: 'app-saved-filters',
@@ -100,6 +101,42 @@ interface Choice {
           </button>
         } @else {
           <span class="muted small" data-testid="filter-owner">by {{ f.owner.display_name }}</span>
+          @if (administers()) {
+            <button
+              pButton
+              type="button"
+              size="small"
+              [text]="true"
+              severity="secondary"
+              [iconOnly]="true"
+              [disabled]="busy()"
+              [pTooltip]="
+                'Stop sharing it with the tenant — it stays ' + f.owner.display_name + '’s'
+              "
+              [showDelay]="400"
+              [attr.aria-label]="'Stop sharing ' + f.name + ' of ' + f.owner.display_name"
+              data-testid="unshare-filter"
+              (click)="unshare(f)"
+            >
+              <i class="pi pi-eye-slash"></i>
+            </button>
+            <button
+              pButton
+              type="button"
+              size="small"
+              [text]="true"
+              severity="secondary"
+              [iconOnly]="true"
+              [disabled]="busy()"
+              [pTooltip]="'Delete this saved filter of ' + f.owner.display_name"
+              [showDelay]="400"
+              [attr.aria-label]="'Delete ' + f.name + ' of ' + f.owner.display_name"
+              data-testid="delete-filter"
+              (click)="removeAnothers(f)"
+            >
+              <i class="pi pi-trash"></i>
+            </button>
+          }
         }
       }
       <button
@@ -264,6 +301,11 @@ export class SavedFilters {
     })),
   );
   protected readonly conditions = computed(() => describe(this.current()));
+  /**
+   * The person administers the tenant: they unshare and delete another person's shared filter —
+   * one whose owner left the tenant among them — and change nothing else of it.
+   */
+  protected readonly administers = computed(() => this.session.membership()?.role === 'admin');
   protected readonly notes = computed(() => {
     const f = this.applied();
     return f ? notesOf(f, this.leftOut()) : [];
@@ -313,6 +355,37 @@ export class SavedFilters {
     await this.act(async () => {
       await this.filters.remove(filter);
       this.chosen.emit(null);
+    });
+  }
+
+  /**
+   * An administrator's unshare of another person's filter: it stays its owner's and leaves every
+   * other list, the administrator's too, so the list applies none from then on.
+   */
+  protected async unshare(filter: SavedFilter): Promise<void> {
+    await this.act(async () => {
+      await this.filters.update(filter, { shared: false });
+      this.chosen.emit(null);
+      this.messages.add({
+        severity: 'success',
+        summary: 'Filter no longer shared',
+        detail: `${filter.name} stays ${filter.owner.display_name}’s.`,
+        life: 3000,
+      });
+    });
+  }
+
+  /** An administrator's deletion of another person's shared filter. */
+  protected async removeAnothers(filter: SavedFilter): Promise<void> {
+    await this.act(async () => {
+      await this.filters.remove(filter);
+      this.chosen.emit(null);
+      this.messages.add({
+        severity: 'success',
+        summary: 'Filter deleted',
+        detail: `${filter.name} of ${filter.owner.display_name}`,
+        life: 3000,
+      });
     });
   }
 

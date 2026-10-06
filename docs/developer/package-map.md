@@ -82,7 +82,7 @@ Where things live and what each part is responsible for. Read against the tree o
 | [`export.go`](../../backend/internal/api/export.go) | The Markdown export and its own response type |
 | [`dashboard.go`](../../backend/internal/api/dashboard.go) | The tenant's dashboard (`GetDashboard`): its filters and period (`parseDashboardQuery`, the weeks and the cuts of `dashboardQuery`), the ten queries in one read (`dashboardRows.read`) and a function per tile that turns their rows into the answer ([api.md](api.md#the-dashboard)) |
 | [`deletion.go`](../../backend/internal/api/deletion.go) | Deleting a ticket into the bin, the bin (`ListDeletedTickets`), restoring and purging (`deletedTicket`), the need `deletion`; `RemovePurgedObjects`, which the purge job uses too ([domain.md](domain.md#deletion-the-bin-and-the-purge)) |
-| [`filters.go`](../../backend/internal/api/filters.go) | Saved filters: list, read, create, edit, delete; the parameters checked as a list checks them (`checkFilter`, `filterQuery`), read with their warnings and redacted for another reader (`filterView`, `hiddenNames`); the need `filterNeed` ([api.md](api.md#filters)) |
+| [`filters.go`](../../backend/internal/api/filters.go) | Saved filters: list, read, create, edit, delete; the parameters checked as a list checks them (`checkFilter`, `filterQuery`), read with their warnings and redacted for another reader (`filterView`, `hiddenNames`); the need `filterNeed`, and who changes a filter (`mayChangeFilter`): its owner, or a tenant administrator who unshares or deletes another person's shared one (`unshareAnothersFilter`) ([api.md](api.md#filters)) |
 
 ### `internal/store`, file by file
 
@@ -102,6 +102,7 @@ Where things live and what each part is responsible for. Read against the tree o
 | [`tickets.go`](../../backend/internal/store/tickets.go) | `TicketRow`, `TicketFilter`, `TicketOrder` with its cursor `Position`, `RankPosition` and `ScorePosition`, `TicketPage`, the list builder `ListTickets`, which leaves the deleted tickets out (`live`) |
 | [`deletion.go`](../../backend/internal/store/deletion.go) | The purge of a deleted ticket (`Writer.PurgeTicket`, `Purged`, `PurgeAfter`) and its job (`PurgeDeletedTickets`) ([data-access.md](data-access.md#deletion-and-the-purge)) |
 | [`tokens.go`](../../backend/internal/store/tokens.go) | `LookupToken`, `RecordTokenRefusal`, `TouchTokenLastUsed` |
+| [`filters.go`](../../backend/internal/store/filters.go) | `Writer.UnshareAnothersFilter`: a tenant administrator's unshare of another person's shared saved filter, its statement run with the filter named in `app.saved_filter_id` ([data-access.md](data-access.md#the-settings-the-policies-read)) |
 | [`roles.go`](../../backend/internal/store/roles.go) | The runtime role check, from the owner's connection and from the pool |
 | [`migrate.go`](../../backend/internal/store/migrate.go) | `Migrate`, `RoleFromURL`, `RuntimeRoleSetting`, `EmbeddedVersion`, `SchemaState`, `MigrationsFS` |
 | [`policy_test.go`](../../backend/internal/store/policy_test.go), [`queries_test.go`](../../backend/internal/store/queries_test.go) | The lints over the migration set and the query files ([testing.md](testing.md#backend-unit-tests)) |

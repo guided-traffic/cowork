@@ -120,7 +120,7 @@ reaches further than its person does at that moment.
 |---|---|
 | `read` | every read of what the person may see, the tenant's member list included; for a tenant administrator also the tenant's audit view, its group mappings, a project's access list ([`api/members.go`](../../backend/internal/api/members.go) `adminRead`) and the tokens that can act in the tenant |
 | `write` | additionally what a member does: filing and editing tickets, transitions, links, comments, questions and answers, stakes, progress, uploads, booking time; creating a project where the person may ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D9); revoking another of the person's tokens |
-| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, deleting a ticket and restoring it, which the bin undoes for thirty days ([tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one), [H-54](tenancy.md#h-54)) — never purging it, which takes a session —, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); revoking a member's token that can act in the tenant — never the acts that only a session makes ([below](#what-only-a-session-does)) |
+| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, archiving a project, setting or lifting the confidential flag, deleting a ticket and restoring it, which the bin undoes for thirty days ([tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one), [H-54](tenancy.md#h-54)) — never purging it, which takes a session —, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`), unsharing or deleting another person's shared saved filter ([`api/filters.go`](../../backend/internal/api/filters.go) `mayChangeFilter`, [tenancy.md](tenancy.md#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw)); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); revoking a member's token that can act in the tenant — never the acts that only a session makes ([below](#what-only-a-session-does)) |
 
 ## What only a session does
 
@@ -388,7 +388,7 @@ and back, and the acts of H-6. An agent's horizon needs a reason as well as `set
 
 | Hard-off rule ([`auth/authorize.go`](../../backend/internal/auth/authorize.go)) | Refuses |
 |---|---|
-| administration | the tenant's settings, archiving a project, the tenant's local accounts, its members' grants, its group mappings, a project's restriction and access list |
+| administration | the tenant's settings, archiving a project, the tenant's local accounts, its members' grants, its group mappings, a project's restriction and access list, unsharing or deleting another person's shared saved filter |
 | booking time | booking, editing and voiding time entries — refused before the `Idempotency-Key` is looked at |
 | overriding the prerequisite refusal | `override_prerequisites` on the done act: a transition to `done`, or the `PATCH` that fills the last progress stage |
 | setting or lifting the confidential flag | `PUT …/confidential` |
@@ -454,7 +454,8 @@ the capability set that applied:
   `create-project` ([`api/projects.go`](../../backend/internal/api/projects.go) `edit`).
 - **Saving, changing, sharing and deleting its person's saved filter** ([`api/filters.go`](../../backend/internal/api/filters.go)):
   a shared filter shows every member of the tenant its name and conditions, with the person as its
-  owner.
+  owner. Another person's shared filter, which a tenant administrator unshares or deletes, is out of
+  an agent's reach: that is an administration act.
 
 The integration tests assert the first six as allowed and an agent's saved filter as its marked act, so closing one is a deliberate change. Nobody can switch them off per installation; a person who wants none of them gives an
 agent a `read` token, and an administrator finds them in the tenant's audit view by token.

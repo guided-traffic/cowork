@@ -15,9 +15,10 @@ import { SessionService } from './session.service';
 /**
  * The saved filters of the tenant the pages show (docs/adr/0018 D5, docs/adr/0049 D6): the
  * person's own and those shared with the tenant, every page of them, and the owner's acts on
- * their own — saving, renaming or sharing with `If-Match`, deleting. The filters are not on the
- * event stream: the list loads again after each act, on `resync` and on `poll`, and when a page
- * that offers them opens.
+ * their own — saving, renaming or sharing with `If-Match`, deleting —, which are also a tenant
+ * administrator's unshare and deletion of another person's shared filter. The filters are not on
+ * the event stream: the list loads again after each act, on `resync` and on `poll`, and when a
+ * page that offers them opens.
  */
 @Injectable({ providedIn: 'root' })
 export class SavedFiltersService {
@@ -80,7 +81,10 @@ export class SavedFiltersService {
     return filter;
   }
 
-  /** Changes the person's filter over the version it was read in (docs/adr/0050 D3). */
+  /**
+   * Changes the person's filter — or, an administrator, unshares another person's — over the
+   * version it was read in (docs/adr/0050 D3).
+   */
   async update(filter: SavedFilter, patch: SavedFilterPatch): Promise<SavedFilter> {
     const changed = await this.api.invoke(updateSavedFilter, {
       tenant: this.session.tenant() as string,

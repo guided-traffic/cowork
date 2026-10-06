@@ -20,7 +20,11 @@ amended 2026-10-06 once more (D4's `interest` row, the Consequences and the Refe
 what [ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4 holds instead
 of amending it, and that [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) had no
 agent rule for this record to amend, by the owner's rule that every amendment is made in place in the record it changes;
-no rule changes),
+no rule changes), amended 2026-10-06 a third time (the note on what is built of D3: the saved filter
+an agent saves, changes, shares and deletes is its person's own, while a tenant administrator's
+unshare or deletion of another person's shared filter — the owner's answer recorded in
+[ADR 0018](0018-the-views-of-the-first-release.md) D5 that day — is an administration act and
+hard-off by D3 as it stands; no rule changes),
 amended 2026-10-03 (D4: `close` covers both ways to `done`
 of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
 that fills the last progress stage and done by hand — an agent's only from `in-progress` or
@@ -64,8 +68,11 @@ and the chat proposes nothing: every call runs at once).
 *(2026-10-05:)* D3's "deleting, restoring or purging anything" is built for tickets as the hard-off rule
 `deleting, restoring or purging` ([`api/deletion.go`](../../backend/internal/api/deletion.go)): an
 agent-marked request — a token's or the chat's — that deletes, restores or purges a ticket is
-`403 agent_forbidden`. Saving, changing, sharing and deleting a saved filter is an act no record lists
-and is open to agents until the review after experience.
+`403 agent_forbidden`. Saving, changing, sharing and deleting ~~a saved filter~~ *(2026-10-06:)* its
+person's own saved filter is an act no record lists and is open to agents until the review after
+experience; a tenant administrator's unshare or deletion of another person's shared filter
+(ADR 0018 D5 as amended 2026-10-06) is an administration act, refused to an agent as
+`hard-off: administration`.
 *(2026-10-05:)* D4's amendment of 2026-10-05 is built, its expand half: `set-horizon` is the
 capability's name in `auth.AllCapabilities`, `auth.DefaultChatCapabilities`, the tool descriptions,
 the chat's instructions and the UI's nine switches; `auth.Canonical` reads `override-urgency` as

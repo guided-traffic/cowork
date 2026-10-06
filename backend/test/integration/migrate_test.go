@@ -614,3 +614,95 @@ func TestTheContractMigrationRewritesTheNamesBefore(t *testing.T) {
 		assert.True(t, forced, "row-level security is forced on %s again", table)
 	}
 }
+
+// docs/adr/0028 D3, docs/adr/0018 D5 as amended 2026-10-06: migration 39
+// widens the policies of saved_filters for an administrator's unshare and
+// deletion of another person's shared filter and changes no row — what an
+// administrator of the tenant could not do on version 38 they do on 39, and a
+// filter that is not shared stays its owner's alone.
+func TestTheModerationMigrationWidensTheFilterPoliciesAndChangesNoRow(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	name := fmt.Sprintf("cowork_it_moderation_%d", time.Now().UnixNano())
+	require.NoError(t, createDatabase(ctx, env.AdminURL, name))
+	t.Cleanup(func() {
+		dropCtx, dropCancel := context.WithTimeout(context.Background(), time.Minute)
+		defer dropCancel()
+		assert.NoError(t, dropDatabase(dropCtx, env.AdminURL, name))
+	})
+	adminURL, err := withUserAndDatabase(env.AdminURL, "", "", name)
+	require.NoError(t, err)
+	ownerURL, err := withUserAndDatabase(env.AdminURL, ownerRole, ownerRole, name)
+	require.NoError(t, err)
+	runtimeURL, err := withUserAndDatabase(env.AdminURL, runtimeRole, runtimeRole, name)
+	require.NoError(t, err)
+
+	migrateTo(t, ownerURL, 38)
+	f, err := fixture.Connect(ctx, adminURL)
+	require.NoError(t, err)
+	t.Cleanup(f.Close)
+	tenant, err := f.Tenant(ctx, uniqueSlug("moderation"), "Moderation")
+	require.NoError(t, err)
+	owner, err := f.Person(ctx, uniqueSlug("owner"), "Owner")
+	require.NoError(t, err)
+	admin, err := f.Person(ctx, uniqueSlug("admin"), "Admin")
+	require.NoError(t, err)
+	require.NoError(t, f.Member(ctx, tenant, owner, domain.RoleMember))
+	require.NoError(t, f.Member(ctx, tenant, admin, domain.RoleAdmin))
+	savedAt := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	filter := func(name string, shared bool) uuid.UUID {
+		var id uuid.UUID
+		require.NoError(t, f.QueryRow(ctx, `INSERT INTO saved_filters (tenant_id, owner_id, name, parameters, shared, version, updated_at)
+			VALUES ($1, $2, $3, '{"state": ["filed"]}', $4, 3, $5) RETURNING id`, tenant, owner, name, shared, savedAt).Scan(&id))
+		return id
+	}
+	shared, private := filter("shared", true), filter("private", false)
+
+	// asAdmin runs one statement as the runtime role for the administrator,
+	// the filter named as the unshare names it, and rolls it back.
+	asAdmin := func(sql string, args ...any) int64 {
+		conn, err := pgx.Connect(ctx, runtimeURL)
+		require.NoError(t, err)
+		defer func() { _ = conn.Close(ctx) }()
+		tx, err := conn.Begin(ctx)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback(ctx) }()
+		_, err = tx.Exec(ctx, `SELECT set_config('app.tenant_id', $1, true), set_config('app.user_id', $2, true),
+			set_config('app.saved_filter_id', $3, true)`, tenant.String(), admin.String(), shared.String())
+		require.NoError(t, err)
+		tag, err := tx.Exec(ctx, sql, args...)
+		require.NoError(t, err)
+		return tag.RowsAffected()
+	}
+	unshare := `UPDATE saved_filters SET shared = false, version = version + 1, updated_at = now()
+		WHERE tenant_id = $1 AND id = $2 AND shared AND version = 3`
+	remove := `DELETE FROM saved_filters WHERE tenant_id = $1 AND id = $2`
+	assert.Zero(t, asAdmin(unshare, tenant, shared), "version 38 holds every write to the owner")
+	assert.Zero(t, asAdmin(remove, tenant, shared))
+
+	_, err = store.Migrate(ctx, ownerURL, runtimeRole)
+	require.NoError(t, err)
+
+	for id, want := range map[uuid.UUID]bool{shared: true, private: false} {
+		var (
+			isShared bool
+			version  int
+			at       time.Time
+			params   string
+		)
+		require.NoError(t, f.QueryRow(ctx, `SELECT shared, version, updated_at, parameters::text FROM saved_filters WHERE id = $1`, id).
+			Scan(&isShared, &version, &at, &params))
+		assert.Equal(t, want, isShared, "the migration changes no row")
+		assert.Equal(t, 3, version)
+		assert.True(t, savedAt.Equal(at))
+		assert.JSONEq(t, `{"state": ["filed"]}`, params)
+	}
+	assert.EqualValues(t, 1, asAdmin(unshare, tenant, shared), "an administrator unshares another person's shared filter")
+	assert.EqualValues(t, 1, asAdmin(remove, tenant, shared), "and deletes it")
+	assert.Zero(t, asAdmin(remove, tenant, private), "and never touches one that is not shared")
+	assert.Zero(t, asAdmin(`SELECT 1 FROM saved_filters WHERE id = $1`, private), "or reads it")
+
+	var forced bool
+	require.NoError(t, f.QueryRow(ctx, "SELECT relforcerowsecurity FROM pg_class WHERE oid = 'saved_filters'::regclass").Scan(&forced))
+	assert.True(t, forced)
+}

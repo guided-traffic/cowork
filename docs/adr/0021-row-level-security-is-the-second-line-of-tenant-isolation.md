@@ -17,7 +17,11 @@ themselves of [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction
 D2 (D6: a global administrator reads every tenant, inserts their own grant in any role and changes
 its role), and for the chat's capabilities of
 [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
-D5 (D6: `chat_capabilities`, a named table that only its person reads and writes; built 2026-10-04).
+D5 (D6: `chat_capabilities`, a named table that only its person reads and writes; built 2026-10-04),
+and on 2026-10-06 for the owner's answer recorded in
+[ADR 0018](0018-the-views-of-the-first-release.md) D5 that a tenant administrator unshares or
+deletes another person's shared saved filter (D3: an eighth setting, `app.saved_filter_id`; built
+the same day, migration 39).
 Date: 2026-09-30.
 Decided by the owner as the answer to the catalog question "how
 is tenant isolation enforced?": application filtering **and** PostgreSQL row-level security,
@@ -71,7 +75,11 @@ tenant set — to read the deleted tickets of every tenant, the one cross-tenant
 [ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
 D2, ids only), and adds `audit_purge`, the owner role's update of a purged ticket's audit rows.
 Migration 33 (2026-10-05) adds `saved_filters` with the canonical policy and restrictive ones that
-hold a person to their own filters and the shared ones.
+hold a person to their own filters and the shared ones. Migration 39 (2026-10-06) widens them for
+ADR 0018 D5 as amended that day: an administrator of the current tenant changes another person's
+shared filter only into one that is not shared, deletes it, and reads it back unshared only while
+the transaction names it in D3's `app.saved_filter_id`
+(`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`).
 
 ## Context
 
@@ -154,7 +162,12 @@ short one that claims it runs as the person and names no job)*, a token's gate c
 that follows a change of a group mapping, which names the job for that part only and clears it
 after. A seventh setting, `app.person_lookup`, carries the e-mail address or username a tenant's
 administrator adds a member by, in that lookup's transaction alone, read through
-`app_person_lookup()`.
+`app_person_lookup()`. *(Amended 2026-10-06:)* An eighth setting, `app.saved_filter_id`, names the
+one saved filter a tenant administrator unshares — another person's,
+[ADR 0018](0018-the-views-of-the-first-release.md) D5 as amended that day — for that statement
+alone, read through `app_saved_filter_id()`: PostgreSQL holds an update's new row to the read
+policy, and an unshared filter of another person is one nobody but its owner reads, so the read
+policy of `saved_filters` admits the named filter to an administrator of the current tenant.
 
 **D4 — Application queries still filter by tenant.** The policy is the second line, not the
 only one: every query on a tenant-bound table names `tenant_id` explicitly, both for the

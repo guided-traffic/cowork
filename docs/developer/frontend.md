@@ -522,7 +522,11 @@ list](#the-tenants-ticket-list) and [the tenant board](#the-tenant-board) hold a
 the person's filters by name and the
 shared ones with their owner — another member's that the server answers `redacted` is listed and
 disabled, *names something you cannot see* —; for the filter applied, the owner's share toggle and
-deletion, or its owner's name; *Save filter*, a dialog for a name and *Share with the tenant* over
+deletion, or its owner's name and — to a tenant administrator (`administers`, the membership's role)
+— *Stop sharing* and *Delete* ([ADR 0018] D5 as amended 2026-10-06), which act at once as the
+owner's own acts do, clear the filter from the list, since the administrator no longer reads it
+once it is unshared, and say what they did in a toast; a filter the server answers `redacted`
+cannot be applied and so offers neither: the API alone reaches it; *Save filter*, a dialog for a name and *Share with the tenant* over
 the conditions the bar applies now (`current`); and under the bar the applied filter's warnings and
 each of its conditions the list does not apply, with why (`leftOut`, `notesOf`).
 What a backlog makes of a filter is
