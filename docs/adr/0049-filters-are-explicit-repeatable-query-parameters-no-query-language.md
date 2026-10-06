@@ -26,8 +26,12 @@ value that no longer holds a warning beside it ([`api/filters.go`](../../backend
 The backlog applies them, and *(2026-10-05)* so does the tenant-wide list in the browser,
 `/t/{slug}/tickets`, whose address carries every parameter of D1 — D6's one set, `project`
 included —, so that a saved filter applied there is a link
-([`features/tenant/tenant-tickets.ts`](../../frontend/src/app/features/tenant/tenant-tickets.ts));
-the board does not yet. *(Built 2026-10-05:)* D6 on the dashboard of [ADR 0018](0018-the-views-of-the-first-release.md)
+([`features/tenant/tenant-tickets.ts`](../../frontend/src/app/features/tenant/tenant-tickets.ts)).
+*(2026-10-06:)* The tenant board applies them as D6's pre-filter: a filter's `project` picks the
+swimlanes, a `!` value leaving one out, and every other parameter narrows each swimlane's list, the
+filter's `horizon` within the board's three horizons, `include_terminal` left out because the board
+shows no closed ticket ([`features/tenant/tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts)).
+*(Built 2026-10-05:)* D6 on the dashboard of [ADR 0018](0018-the-views-of-the-first-release.md)
 D6 — `project` as the ticket lists take it, and as its period parameters the time lists' `from` and
 `to`, days ([`dashboard.go`](../../backend/internal/api/dashboard.go) `parseDashboardQuery`).
 

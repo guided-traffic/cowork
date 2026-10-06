@@ -26,6 +26,22 @@ export const columnSpecs: readonly ColumnSpec[] = [
 /** The horizons the board shows, each of its own column or columns. */
 export const boardHorizons: readonly Horizon[] = ['now', 'release', 'next'];
 
+/**
+ * The horizons a board's list asks for under a filter's `horizon` (docs/adr/0049 D2, D6): the
+ * board's own, narrowed to the filter's plain values where it names any and without its negated
+ * ones. A list asked for no horizon is every horizon: where the filter leaves none of the board's,
+ * the list asks for them and for none of them, which no ticket is.
+ */
+export function horizonsOf(filter: readonly string[] = []): string[] {
+  const plain = filter.filter((value) => !value.startsWith('!'));
+  const shown = boardHorizons.filter(
+    (horizon) => (plain.length === 0 || plain.includes(horizon)) && !filter.includes(`!${horizon}`),
+  );
+  return shown.length > 0
+    ? shown
+    : [...boardHorizons, ...boardHorizons.map((horizon) => `!${horizon}`)];
+}
+
 /** The column of a state; none for `done` and `dropped`, which the board does not show. */
 export function columnOf(state: TicketState): ColumnId | null {
   return columnSpecs.find((spec) => spec.states.includes(state))?.id ?? null;

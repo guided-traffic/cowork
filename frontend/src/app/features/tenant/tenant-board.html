@@ -13,7 +13,7 @@
         optionLabel="label"
         optionValue="key"
         [multiple]="true"
-        [ngModel]="chosen()"
+        [ngModel]="selected()"
         (ngModelChange)="choose($event)"
         placeholder="Every project"
         [filter]="true"
@@ -22,6 +22,15 @@
         ariaLabelledBy="tenant-board-filter"
         data-testid="project-filter"
       />
+      <app-saved-filters
+        [current]="currentFilter()"
+        [applied]="applied()"
+        [leftOut]="leftOut"
+        (chosen)="applyFilter($event)"
+      />
+      @if (beyond(); as rest) {
+        <small class="beyond muted" data-testid="board-beyond">Also filtered by {{ rest }}</small>
+      }
     }
   </header>
 
@@ -32,6 +41,7 @@
           <app-board-lane
             [project]="project"
             [tenant]="tenant"
+            [filter]="extra()"
             [dragFrom]="dragFrom()"
             [refusing]="refusing() === project.key"
             (dragStart)="dragStarted(project.key, $event)"
@@ -51,7 +61,7 @@
                 type="button"
                 [text]="true"
                 size="small"
-                (click)="choose([])"
+                (click)="showProjects([])"
                 data-testid="show-every-project"
               >
                 Show every project

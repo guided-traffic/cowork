@@ -6,7 +6,8 @@ search, the backlog, the two boards and the tenant's ticket list, the assistant,
 client, and the development loop.
 Read against the tree on 2026-10-04, the search, the rendered texts, the deleted tickets, the
 saved filters, the tenant's ticket list, the score and "next for me", the numbered pages of the members and the
-tokens, the tenant's tokens, the attachments' usage and the mentions on 2026-10-05. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
+tokens, the tenant's tokens, the attachments' usage and the mentions on 2026-10-05, the saved filters on the tenant board on
+2026-10-06. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
 the logo, the license, the content-security policy's build), [ADR 0053] (signals and services),
 [ADR 0054] (the event stream), [ADR 0055] (English, the browser's locale) and [ADR 0076] (the chat).
 
@@ -520,7 +521,8 @@ how many tickets moved, or that the backlog follows the score already.
 **Saved filters** ([ADR 0018] D5). The filter bar holds
 [`SavedFilters`](../../frontend/src/app/features/project/saved-filters.ts),
 `<app-saved-filters [current] [applied] [leftOut] (chosen)>`, the part [the tenant's ticket
-list](#the-tenants-ticket-list) holds as well: a select of the person's filters by name and the
+list](#the-tenants-ticket-list) and [the tenant board](#the-tenant-board) hold as well: a select of
+the person's filters by name and the
 shared ones with their owner — another member's that the server answers `redacted` is listed and
 disabled, *names something you cannot see* —; for the filter applied, the owner's share toggle and
 deletion, or its owner's name; *Save filter*, a dialog for a name and *Share with the tenant* over
@@ -565,7 +567,7 @@ in the same column and moves the same way on both:
 
 | Part | What it is |
 |---|---|
-| [`board-list.ts`](../../frontend/src/app/features/project/board-list.ts) `boardList` | The list: `projectTicketPages` with the horizons `now`, `release` and `next` and no page limit while a tenant is named, and the keys it answered last for the project, kept while it loads again or while it is not asked for |
+| [`board-list.ts`](../../frontend/src/app/features/project/board-list.ts) `boardList` | The list: `projectTicketPages` with the horizons `now`, `release` and `next` and no page limit while a tenant is named, and the keys it answered last for the project, kept while it loads again or while it is not asked for; a swimlane of the tenant board narrows it by the conditions of the saved filter the page applies, whose `horizon` narrows the board's three and never widens them (`horizonsOf` in `board-model.ts`: a filter that leaves none of them asks for them and for none of them, because a list asked for no horizon is every horizon) |
 | [`board-columns.ts`](../../frontend/src/app/features/project/board-columns.ts) `BoardColumns` | The grid: *Next* and the five state columns with their counts, the cards, the drag with its marks and its hold, and the card's menu; `idPrefix` keeps the ids of its headings unique where a page shows several, `headingLevel` puts its headings one level below a swimlane's (`aria-level`), `hold` holds it while a card is dragged elsewhere on the page |
 | [`board-moves.ts`](../../frontend/src/app/features/project/board-moves.ts) `BoardMoves` | The moves, provided by the page: what a move on its way shows, the transition at once or after the dialog, *Now*, the live region's sentence and where the keyboard goes after a move; the page shows the dialog and the live region |
 
@@ -635,7 +637,7 @@ functions in [`tenant-board-model.ts`](../../frontend/src/app/features/tenant/te
 | Function | Decides |
 |---|---|
 | `chosenKeys` | The filter of the address: `?project=`, repeated, each key once; none, every project |
-| `lanesOf` | The swimlanes: every project that is not archived, or those of them the filter names, in the order of the list |
+| `lanesOf`, `excludes` | The swimlanes: every project that is not archived, or those of them the filter names, in the order of the list, without a project the filter excludes, `!OPS` ([ADR 0049] D2) |
 | `laneOf` | The swimlane an element is in, by the `data-lane` of the swimlane's element |
 | `refusingLane` | The swimlane that says no to a dragged card: any but the card's own |
 
@@ -652,7 +654,26 @@ Without an `IntersectionObserver` every swimlane loads.
 **The filter** is a select of every project with a search, *Every project* when nothing is
 chosen. The choice is the address's `project`, repeated as the API's filters are ([ADR 0049] D1),
 written with `replaceUrl` and read back as the page's input, so a board can be linked and comes
-back as it was; a filter that names no project here says so and offers every project.
+back as it was; a filter that names no project here says so and offers every project. The select
+shows the projects the address names; one it excludes, `!OPS`, stays in the address when the
+select changes.
+
+**Saved filters** ([ADR 0018] D5) apply as on the backlog, through the same `SavedFilters` beside
+the select, with what the board applies — the address's projects and the applied filter's other
+conditions, `fromBoard` — as `current` and `boardLeftOut` as `leftOut`. What a board makes of a
+filter is `toBoard` in
+[`saved-filter-model.ts`](../../frontend/src/app/features/project/saved-filter-model.ts): its
+`project` goes into the address, which the swimlanes follow, and every other condition into the
+page's `extra`, which each swimlane hands its list as a pre-filter ([ADR 0049] D6) — its `horizon`
+narrowed to the board's three (`boardList`). What a condition selects beyond the board, a closed
+state or `done_after`, is loaded and placed nowhere, as a closed ticket always is.
+`include_terminal` would only add closed tickets, which no column holds: it stays out, and the bar
+says so, *a board shows no closed ticket*. Under the bar, *Also filtered by …* names what the board
+applies beyond its select (`describe`). Choosing none clears the projects and the rest. Only the
+projects are in the address: a reload keeps them and drops the other conditions with the applied
+filter, as the backlog drops its search and states. A swimlane counts what it shows, so under a
+filter its counts, and the WIP limits' marks, are those of the cards the filter lets through. The
+applied filter belongs to its tenant: another tenant's page starts without one.
 
 **Drags.** Each swimlane is a `cdkDropListGroup` of its own: a card goes among the columns of its
 swimlane with the project board's rules, menu and dialogs (one `BoardMoves`, one dialog and one

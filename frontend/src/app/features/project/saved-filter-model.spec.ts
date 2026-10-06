@@ -1,11 +1,14 @@
 import { SavedFilter, TicketState } from '../../api/models';
 import {
   backlogLeftOut,
+  boardLeftOut,
   describe as describeFilter,
   fromBacklog,
+  fromBoard,
   listParameters,
   notesOf,
   toBacklog,
+  toBoard,
   withoutEmpty,
 } from './saved-filter-model';
 
@@ -76,5 +79,43 @@ describe('the saved filter in a backlog', () => {
     expect(
       withoutEmpty({ state: [], q: 'crash', blocked: false, parent: undefined, project: ['COW'] }),
     ).toEqual({ q: 'crash', blocked: false, project: ['COW'] });
+  });
+});
+
+describe('the saved filter on a board', () => {
+  it('puts the projects into the swimlanes and keeps the rest, include_terminal aside', () => {
+    expect(
+      toBoard({
+        project: ['OPS', '!DOC'],
+        state: ['!blocked'],
+        horizon: ['now'],
+        assignee: ['me'],
+        q: 'crash',
+        include_terminal: true,
+      }),
+    ).toEqual({
+      projects: ['OPS', '!DOC'],
+      extra: { state: ['!blocked'], horizon: ['now'], assignee: ['me'], q: 'crash' },
+    });
+    expect(toBoard({})).toEqual({ projects: [], extra: {} });
+  });
+
+  it('saves the projects and the rest as one set, without what is empty', () => {
+    expect(fromBoard(['COW', '!OPS'], { severity: ['high'], q: 'crash' })).toEqual({
+      project: ['COW', '!OPS'],
+      severity: ['high'],
+      q: 'crash',
+    });
+    expect(fromBoard([], { type: [] })).toEqual({});
+  });
+
+  it('notes an include_terminal condition a board leaves out, and no project', () => {
+    const filter = (parameters: SavedFilter['parameters']) =>
+      ({ warnings: [], parameters }) as unknown as SavedFilter;
+
+    expect(notesOf(filter({ include_terminal: true, project: ['OPS'] }), boardLeftOut)).toEqual([
+      'include_terminal: a board shows no closed ticket; the tenant’s ticket list applies this condition',
+    ]);
+    expect(notesOf(filter({ project: ['OPS'], horizon: ['now'] }), boardLeftOut)).toEqual([]);
   });
 });
