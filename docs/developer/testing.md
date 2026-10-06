@@ -133,7 +133,9 @@ The rules of the states and the progress stages without a database:
 the stages does, which done is by the stages) and
 [`api/transitions_test.go`](../../backend/internal/api/transitions_test.go) (the transition and
 `PATCH` checks for persons and agents over `store.TicketRow` values built by `in`, the stages and
-the done by hand a ticket shows — rows the release before the stages left included).
+the done by hand a ticket shows — rows the release before the stages left included) and
+[`api/tickets_test.go`](../../backend/internal/api/tickets_test.go) (`mayAssign`: whom an agent may
+assign a confidential ticket to).
 
 ## Backend integration tests
 

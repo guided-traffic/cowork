@@ -188,7 +188,7 @@ func TestLinksLeaveTheHorizon(t *testing.T) {
 
 	agent := caller{Token: e.tk.AgentA, Agent: "claude-code/opus/s1"}
 	del := e.s.do(t, agent, http.MethodDelete, e.linkPath(decision, apigen.LinkTypeBlocks, work), nil)
-	require.Equal(t, http.StatusNoContent, del.StatusCode, "an agent removes an open blocks link: the open gate")
+	require.Equal(t, http.StatusNoContent, del.StatusCode, "an agent removes an open blocks link: the baseline by the owner's decision (docs/adr/0043 D2)")
 	got = e.get(t, member, "ALPHA", work.Number).JSON200
 	assert.Equal(t, apigen.HorizonNow, got.Horizon, "the horizon still holds")
 }

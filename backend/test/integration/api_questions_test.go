@@ -198,7 +198,7 @@ func TestAgentsRecordAnswers(t *testing.T) {
 	reworded, err := e.s.client(t, memberAgent).UpdateQuestionWithResponse(e.ctx, e.SlugA, "ALPHA", tk.Number, byPerson.Number,
 		&apigen.UpdateQuestionParams{IfMatch: &etag}, apigen.QuestionPatch{Question: ptr("Asked by the person, reworded")})
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, reworded.StatusCode(), "an agent rewords its person's open question: the open gate")
+	assert.Equal(t, http.StatusOK, reworded.StatusCode(), "an agent rewords its person's open question: the baseline by the owner's decision (docs/adr/0043 D2)")
 	assert.Equal(t, http.StatusOK, e.withdraw(t, memberAgent, tk, *byAgent.JSON201).StatusCode())
 }
 

@@ -4,8 +4,12 @@
 
 Accepted, amended 2026-10-01 (D1's meaning of `blocks` sharpened to "prerequisite", D6 and
 D7 added: the transitive prerequisite view and the refusal of `done` over open
-prerequisites) and 2026-10-03 (D6: the card counts the open tickets that block it directly and
-that the reader can see, computed per read). Date: 2026-09-29. Decided by the owner as the answer to the catalog question
+prerequisites), 2026-10-03 (D6: the card counts the open tickets that block it directly and
+that the reader can see, computed per read) and 2026-10-06 by the owner (D7: an agent may remove
+an open `blocks` link before `done`, and so step around the override, a risk the owner accepts —
+the answer to the review after experience of the agent acts no record had listed, recorded with
+[ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D2). Date: 2026-09-29. Decided by the owner as the answer to the catalog question
 "links between tickets?": a small typed set, over an untyped relation, over links that drive
 state automatically, and over tenant-defined link types. The additional rules of D4 were put
 to the owner with the question and were not objected to.
@@ -22,9 +26,12 @@ reverse names read from either end, links across projects and never across tenan
 API and by the schema's composite keys), an act on both tickets, no self link, the `blocks`
 cycle refused by a walk over the tenant's graph under a per-tenant lock, and `done` refused
 over open direct prerequisites the closer can see unless a person overrides with a reason
-(an agent cannot). D6's prerequisite view arrives with the ticket detail. Removing a `blocks`
+(an agent cannot). D6's prerequisite view arrives with the ticket detail. ~~Removing a `blocks`
 link is open to agents until the agent gates are reviewed after experience
-([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)).
+([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)).~~
+*(2026-10-06:)* Removing a `blocks` link stays an agent's by the owner's decision (D7 as amended
+that day, ADR 0043 D2); the code did not change
+([`UnlinkTickets`](../../backend/internal/api/links.go)).
 *(2026-10-03.)* Every ticket carries `open_prerequisites`, built as D7 counts: the open tickets
 that block it directly and that the caller can see, computed per read under the visibility
 predicate ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
@@ -103,7 +110,11 @@ shown with its project; the tree never crosses a tenant.
 sources are not `done` or `dropped` is refused with the list of them; a person may repeat the
 transition with an explicit override and a reason, which the activity list records as
 "closed over open prerequisites". An agent cannot override. `dropped` is never refused by a
-prerequisite.
+prerequisite. *(Amended 2026-10-06 by the owner:)* An agent may remove a `blocks` link, an open
+one into a ticket it is about to close included, and the owner accepts that an agent with `close`
+steps around the override that way: it removes the links of the open prerequisites and closes,
+two acts of its own, each recorded on both tickets and marked as the agent's. The refusal holds
+an agent only while the links stand; a person who wants it to hold gives the agent no `close`.
 
 ## Consequences
 
@@ -141,6 +152,10 @@ prerequisite.
   place to look if link creation ever gets slow.
 - D1's table gives `relates-to` no consumer beyond navigation; if it stays that way it is
   still worth having as the honest name for "these belong together".
+- *(Added 2026-10-06, accepted by the owner with D7's amendment.)* D7's override is a person's
+  act, but an agent with `close` can remove the open `blocks` links into its ticket and then close
+  it, so a prerequisite holds an agent only while its link stands. The removal is on the
+  activity of both tickets, marked as the agent's; nothing refuses it.
 
 ## References
 
@@ -148,4 +163,5 @@ prerequisite.
 - [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3, D4 — the derivation and the dissolved `filed-from`
 - [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2 — the parent that is not a link
 - [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3 — no link across tenants
+- [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D2, D3 — removing a link is an agent's baseline; overriding the refusal is hard-off
 - [docs/tickets/README.md](../tickets/README.md) — the filing rule and the frontmatter fields the importer reads

@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/oapi-codegen/nullable"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -474,8 +475,14 @@ func TestConfidentialTickets(t *testing.T) {
 	assert.True(t, sees(viewer), "the new assignee is in")
 
 	agent := caller{Token: e.tk.AgentA, Agent: "claude-code/opus/s1"}
-	res = e.patch(t, agent, *res.JSON200, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.Both)})
-	require.Equal(t, http.StatusOK, res.StatusCode(), "an agent reassigns a confidential ticket: the open gate")
+	refused := e.patch(t, agent, *res.JSON200, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.Both)})
+	body := problemIn(t, http.StatusForbidden, refused.StatusCode(), refused.Body, "agent_forbidden")
+	assert.Equal(t, "hard-off: assigning a confidential ticket to anyone but the agent's person", body["detail"],
+		"an agent admits nobody to a confidential ticket (docs/adr/0043 D3)")
+	assert.False(t, sees(both), "the refused assignment admitted nobody")
+	res = e.patch(t, agent, *res.JSON200, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.MemberA)})
+	require.Equal(t, http.StatusOK, res.StatusCode(), "an agent assigns a confidential ticket to its own person")
+	assert.False(t, sees(viewer), "the former assignee is out")
 
 	res = e.patch(t, member, *res.JSON200, apigen.TicketPatch{Security: ptr(apigen.SecurityClassNone), Threat: nullable.NewNullNullable[string]()})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
@@ -512,6 +519,53 @@ func TestConfidentialTickets(t *testing.T) {
 	res = e.patch(t, member, *lifted.JSON200, apigen.TicketPatch{Title: ptr("Plain again")})
 	require.Equal(t, http.StatusOK, res.StatusCode())
 	assert.False(t, res.JSON200.Confidential, "an unchanged class does not set again what an administrator lifted")
+}
+
+// docs/adr/0043 D3, docs/adr/0065 D9: an agent assigns a confidential ticket
+// only to its own person or to nobody — on a filing, on a change and on the
+// change that makes a ticket confidential; an assignee left as it was admits
+// nobody new, and a ticket that is not confidential takes any assignee.
+func TestAnAgentAssignsAConfidentialTicketOnlyToItsPerson(t *testing.T) {
+	e := newTicketEnv(t)
+	member, both := caller{Token: e.tk.MemberA}, caller{Token: e.tk.Both}
+	agent := caller{Token: e.tk.AgentA, Agent: "claude-code/opus/s1"}
+	hardOff := "hard-off: assigning a confidential ticket to anyone but the agent's person"
+	live := func(title string, assignee *uuid.UUID) apigen.TicketCreate {
+		return task(title, func(b *apigen.TicketCreate) {
+			b.Security, b.Threat, b.Assignee = apigen.SecurityClassLive, ptr("tokens in the log"), assignee
+		})
+	}
+
+	filed := e.create(t, agent, "ALPHA", live("Filed for another", &e.Both))
+	body := problemIn(t, http.StatusForbidden, filed.StatusCode(), filed.Body, "agent_forbidden")
+	assert.Equal(t, hardOff, body["detail"])
+	assert.NotContains(t, e.titles(t, both, e.tenantTickets(), ""), "Filed for another", "nothing was filed")
+	own := e.file(t, agent, "ALPHA", live("Filed for its person", &e.MemberA))
+	assert.Equal(t, e.MemberA, own.Assignee.MustGet().Id)
+	open := e.file(t, agent, "ALPHA", task("Not confidential", func(b *apigen.TicketCreate) { b.Assignee = &e.Both }))
+	assert.Equal(t, e.Both, open.Assignee.MustGet().Id, "a ticket that is not confidential takes any assignee")
+
+	res := e.patch(t, member, own, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.Both)})
+	require.Equal(t, http.StatusOK, res.StatusCode(), "a person admits whom they assign")
+	kept := e.patch(t, agent, *res.JSON200, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.Both)})
+	require.Equal(t, http.StatusOK, kept.StatusCode(), "the assignee as it was admits nobody new")
+	cleared := e.patch(t, agent, *res.JSON200, apigen.TicketPatch{Assignee: nullable.NewNullNullable[uuid.UUID]()})
+	require.Equal(t, http.StatusOK, cleared.StatusCode(), "assigning nobody admits nobody")
+	assert.True(t, cleared.JSON200.Assignee.IsNull())
+	refused := e.patch(t, agent, *cleared.JSON200, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.ViewerA)})
+	body = problemIn(t, http.StatusForbidden, refused.StatusCode(), refused.Body, "agent_forbidden")
+	assert.Equal(t, hardOff, body["detail"])
+
+	made := e.patch(t, agent, open, apigen.TicketPatch{Security: ptr(apigen.SecurityClassBoundary),
+		Threat: nullable.NewNullableWithValue("tenant crossing"), Assignee: nullable.NewNullableWithValue(e.ViewerA)})
+	body = problemIn(t, http.StatusForbidden, made.StatusCode(), made.Body, "agent_forbidden")
+	assert.Equal(t, hardOff, body["detail"], "the change that makes it confidential admits nobody new either")
+	reassigned := e.patch(t, agent, open, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.ViewerA)})
+	require.Equal(t, http.StatusOK, reassigned.StatusCode(), "a ticket that is not confidential takes any assignee")
+
+	n, err := fixtures(t).QueryCount(e.ctx, "SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND action = 'assigned' AND agent IS NOT NULL", own.Id)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, n, "the agent's acts on the ticket: the assignment to nobody, the refused ones never written")
 }
 
 // docs/adr/0034 D3, D4: a restricted project's tickets are visible to the

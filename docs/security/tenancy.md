@@ -598,8 +598,11 @@ predicate (ADR 0065 D1).
 - **An agent sets it indirectly** by filing or classifying a ticket `live` or `boundary`,
   which is intended (ADR 0065 D6).
 - **Assignment admits** (ADR 0065 D9): a person who can see the ticket's project sees a
-  confidential ticket from the moment it is assigned to them. An agent can do that too
-  ([tokens.md](tokens.md) H-6).
+  confidential ticket from the moment it is assigned to them. An agent admits nobody but its own
+  person: it assigns a confidential ticket only to its person or to nobody, at a filing and on a
+  change, and is otherwise refused by the hard-off rule "assigning a confidential ticket to anyone
+  but the agent's person" ([`tickets.go`](../../backend/internal/api/tickets.go) `mayAssign`;
+  [tokens.md](tokens.md#capabilities-the-baseline-and-the-hard-off-list), ADR 0043 D3).
 - **The chat reads it for a person who sees it** and sends what it read to the provider the person
   picked, which for a hosted provider is a copy outside the installation — a risk the owner accepted
   ([chat.md H-37](chat.md#h-37)). The model is told never to copy a confidential ticket's text into

@@ -127,7 +127,12 @@ is automatic) and `confidential_lifted`.
 
 An assignee must be a member who can see the project (`CanSeeProject`, `400` at `/assignee`
 otherwise). Assignment admits a person to a confidential ticket, never to a restricted project
-([ADR 0065] D9). It is an act of its own, `assigned`. A write that takes the ticket out of the
+([ADR 0065] D9). It is an act of its own, `assigned`. An agent assigns a confidential ticket only
+to its own person or to nobody: `mayAssign`, after `CanSeeProject`, refuses a filing or a `PATCH`
+that leaves the ticket confidential — the flag as the write leaves it, so a change to `live` or
+`boundary` in the same write counts — with an assignee who is neither the caller's person nor the
+one it had, `403 agent_forbidden`, `hard-off: assigning a confidential ticket to anyone but the
+agent's person` ([ADR 0043] D3). A write that takes the ticket out of the
 writer's sight — a confidential ticket reassigned away from its writer — still answers with the
 row it wrote (`GetWrittenTicket`).
 

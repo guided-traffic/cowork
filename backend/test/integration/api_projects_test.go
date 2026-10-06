@@ -152,7 +152,7 @@ func TestUpdatingAndArchivingProjects(t *testing.T) {
 	edited, err := assisted.UpdateProjectWithResponse(ctx, w.SlugA, "ALPHA", &apigen.UpdateProjectParams{IfMatch: &etag},
 		apigen.ProjectPatch{Description: ptr("Edited by an agent")})
 	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, edited.StatusCode(), "an agent edits a project without create-project: the open gate")
+	require.Equal(t, http.StatusOK, edited.StatusCode(), "an agent edits a project without create-project: the baseline by the owner's decision (docs/adr/0043 D2)")
 
 	agentArchive := s.do(t, caller{Token: tk.AdminAWrite, Agent: "claude-code/opus/s1"}, http.MethodPut, "/api/v1/tenants/"+w.SlugA+"/projects/ALPHA/archive", nil)
 	assertProblem(t, agentArchive, http.StatusForbidden, "insufficient_scope")

@@ -25,6 +25,12 @@ an agent saves, changes, shares and deletes is its person's own, while a tenant 
 unshare or deletion of another person's shared filter — the owner's answer recorded in
 [ADR 0018](0018-the-views-of-the-first-release.md) D5 that day — is an administration act and
 hard-off by D3 as it stands; no rule changes),
+amended 2026-10-06 by the owner a fourth time, as the answers to the review after experience of
+the six agent acts no record had listed (D2: removing a `blocks` link before `done`, the backward
+moves and reopens, removing its person's stake, editing an open question its person asked and
+editing a project stay an agent's, at the baseline, the owner accepting the risk of each, named
+in the Residual risks; D3: an agent assigns a confidential ticket only to its own person or to
+nobody; the Consequences' count of D3's acts),
 amended 2026-10-03 (D4: `close` covers both ways to `done`
 of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
 that fills the last progress stage and done by hand — an agent's only from `in-progress` or
@@ -54,10 +60,18 @@ and `cowork-mcp` reads it at start into its tool descriptions; `finish_work` mak
 furthest move the token may — `done` with `close` from `in-progress` or `review`, else
 `review` from `in-progress` — and says what remains for a person. The token page (phase 3, 2026-10-03) offers the nine
 switches with the full and assisted shortcuts, and all of them off — the baseline only — which
-the API takes as an empty list; only a list left out is every capability. Acts no record lists are open to agents
+the API takes as an empty list; only a list left out is every capability. ~~Acts no record lists are open to agents
 — reassigning a confidential ticket, removing a `blocks` link, backward moves and reopens
 (since 2026-10-03 the withdrawal of a done by hand and the lower stage that reopens among them),
-removing a stake, editing a question, editing a project — until a review after experience.
+removing a stake, editing a question, editing a project — until a review after experience.~~
+*(2026-10-06:)* The owner reviewed those six acts: five are D2's baseline as amended that day,
+which the handlers already allowed, and assigning a confidential ticket is D3's, built the same
+day — an agent-marked filing or `PATCH` that leaves a ticket confidential with an assignee other
+than the agent's person and other than the one it had is `403 agent_forbidden`, `hard-off:
+assigning a confidential ticket to anyone but the agent's person` (`mayAssign` in
+[`tickets.go`](../../backend/internal/api/tickets.go)), a `PATCH` that makes the ticket
+confidential in the same write included; assigning nobody, the agent's own person or the assignee
+as it was passes.
 Amended 2026-10-04 (D5: a session the agent header marks, and the chat in the UI, which is one —
 provisionally, with [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md))
 and built the same day. Amended again on 2026-10-04 by the owner's answers to the chat's open
@@ -126,6 +140,18 @@ D6) or the token's scope ([ADR 0035](0035-personal-access-tokens.md) D3).
 **D2 — The baseline every agent token has** (with `write` scope): create tickets, replace
 the body, comment, create links, ask questions, set progress, register `watch`, and the
 transitions `filed → analysed`, `decided → in-progress`, into `blocked` and back.
+*(Amended 2026-10-06 by the owner, the review after experience of the acts no record had
+listed:)* the baseline holds five more, each recorded with the agent mark and the capabilities
+the request held — removing a link, an open `blocks` link into a ticket before its `done`
+included ([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D7 as amended that day);
+the backward moves and reopens of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md)
+— `in-progress → decided` or `→ analysed`, `decided → analysed`, `review → in-progress`,
+`dropped → filed`, the withdrawal of a done by hand and the write that lowers a stage of a ticket
+done by its stages, each with its reason; removing its person's stake, or lowering it to `watch`,
+whatever weight the person gave it; editing an open question its person asked — its text,
+options, recommendation and the person asked —, one the person asked without an agent included;
+and editing a project's name, description and WIP limits. The owner kept all five over a
+capability or a hard-off rule for each; the risk each leaves is named in the Residual risks.
 
 **D3 — The hard-off list: acts no agent token can be given.** ~~Answering a question~~
 *(amended 2026-10-01: recording a person's answer is the `record-answer` capability, ADR
@@ -133,7 +159,12 @@ transitions `filed → analysed`, `decided → in-progress`, into `blocked` and 
 time; overriding the prerequisite refusal on `done`; every administration act — members,
 mappings, grants, tokens, ~~projects~~ *(amended 2026-10-01: creating a project and binding a
 repository is the `create-project` capability, ADR 0066 D7; archiving, restricting and
-deleting projects stay here)*, tenants, time-period locks; `admin` scope. Opening any of
+deleting projects stay here)*, tenants, time-period locks; `admin` scope; *(added 2026-10-06
+by the owner)* assigning a confidential ticket to anyone but the agent's own person — the
+assignee is admitted to it ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D9), a disclosure no later act takes back —, at a filing and on a change, the change that makes
+the ticket confidential included; assigning it to nobody, or leaving the assignee as it was,
+admits nobody and stays an agent's. Opening any of
 these is an amendment of the record that closed it, not of this one.
 
 **D4 — The selectable capabilities, each on by default:**
@@ -207,8 +238,8 @@ scope alone.
   of an agent — a filing's place (D2) and the sort by the score (D3).
 - Two persons, two trust levels, same product: a client tenant can hand its agent an
   "assisted" token while the owner runs "full".
-- D3 keeps five acts human for every installation; a request to open one is a conversation
-  about that record, not a switch.
+- D3 keeps ~~five~~ six *(amended 2026-10-06: the confidential assignment)* acts human for
+  every installation; a request to open one is a conversation about that record, not a switch.
 
 ## Alternatives Considered
 
@@ -238,6 +269,26 @@ scope alone.
   stores with the key `urgency` — which 0.5 still takes — loses that condition under this release,
   which reads the filter as if it named no horizon, until the migration of the later release
   rewrites it to `horizon`. Read from the code of 0.5.1, not run.
+- *(Added 2026-10-06, accepted by the owner with D2's amendment.)* Five acts need neither a
+  capability nor a person, so a token's narrower set — the "assisted" one included — does not
+  hold them, and a steered agent can make each of them:
+  - **Removing an open `blocks` link** steps around the prerequisite override that D3 keeps a
+    person's: an agent with `close` removes the open `blocks` links into its ticket and then
+    closes it, two calls of its own. ADR 0012 D7's refusal then holds an agent only as long as
+    the links stand; the removals are on both tickets' activity, marked as the agent's.
+  - **A backward move or a reopen** undoes what its person kept for themselves: a token without
+    `decide` moves a decided ticket back to `analysed`, a token without `close` withdraws its
+    person's done by hand or lowers a stage of a ticket done by its stages, a token without
+    `drop` reopens a dropped ticket — each with a reason on record.
+  - **Removing or lowering its person's stake** withdraws a `need` or `urgent` weight a token
+    without `interest` could not have set, and lowers the ticket's score with it.
+  - **Editing an open question its person asked** can reword it, change its options or its
+    recommendation, or ask it of someone else before the person asked answers it, also when the
+    person asked it in the browser; the act of the edit keeps the earlier values.
+  - **Editing a project** renames it or changes its description and the WIP limits its person
+    set, while creating a project needs `create-project`.
+  A person who wants none of them gives an agent a `read` token; every act is in the tenant's
+  audit view by token.
 - Capabilities multiply the test matrix: each switch has an allowed and a refused test in the
   integration tier, with the fixture identities.
 
@@ -248,3 +299,4 @@ scope alone.
 - [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D2, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D7, [ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md) D6, [ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7 — the hard-off list's sources
 - [ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4, [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D2, D3 — the stakes and the rank, whose agent acts D4's `interest` and `rank` grant
 - [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) — the tools that read the capabilities
+- [ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md) D9 — the admission by assignment that D3 keeps from an agent; [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D3–D5 — the backward moves and reopens D2 holds

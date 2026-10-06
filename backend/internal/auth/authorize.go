@@ -16,6 +16,10 @@ const (
 	HardOffConfidential   = "setting or lifting the confidential flag"
 	HardOffTokens         = "token administration"
 	HardOffDeletion       = "deleting, restoring or purging"
+	// HardOffConfidentialAssignee keeps an agent from admitting a person to
+	// a confidential ticket: it assigns one only to its own person or to
+	// nobody (docs/adr/0065 D9).
+	HardOffConfidentialAssignee = "assigning a confidential ticket to anyone but the agent's person"
 )
 
 // Need is what an act requires: a tenant role, a token scope, and for an

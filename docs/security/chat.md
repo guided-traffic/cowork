@@ -257,7 +257,10 @@ the original do read. Each act is recorded with the chat's mark, shown as a card
 and reaches the open pages through the event stream; most can be undone by a person — a body replaced
 again from the record, a comment withdrawn, a link removed, a horizon set back, a ticket dropped
 with a reason, as tickets cannot be deleted — but an act that told other people something has told
-them. The open agent gates of [tokens.md H-6](tokens.md#h-6) have no tool in the chat. Mitigation:
+them. Of the five acts [tokens.md H-6](tokens.md#h-6) leaves to every agent, the chat makes the backward
+moves, the reopens and the withdrawal of a done (`transition`, and `set_progress` for a lower stage)
+and lowers its person's stake to a watch (`watch`); removing a link or a stake, editing a question and
+editing a project have no tool in the chat, and neither does assigning a ticket. Mitigation:
 the default set, a narrower set in *What the assistant may do*, the cards, the activity's mark, and
 Stop.
 

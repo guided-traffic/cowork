@@ -2,8 +2,12 @@
 
 ## Status
 
-Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog question
-"embargoed tickets?": a per-ticket flag with a narrow circle, over a dedicated restricted
+Accepted, amended 2026-10-06 by the owner (D9: an agent assigns a confidential ticket only to
+its own person or to nobody — the answer to the review after experience of the agent acts no
+record had listed, a hard-off rule of
+[ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D3 — built the same day). Date: 2026-10-01. Decided by the owner as the answer to the catalog
+question "embargoed tickets?": a per-ticket flag with a narrow circle, over a dedicated restricted
 project, over a per-ticket person list, and over encryption of the body. The rules of D6–D9
 were put to the owner with the question and not objected to.
 
@@ -88,8 +92,14 @@ sees it from the moment of assignment, which is the way to bring in a reviewer; 
 person list beyond assignee and reporter is an amendment when a case needs more than one.
 *(Made concrete 2026-10-02: an assignee must be a member who can see the ticket's project; a
 reassignment drops the former assignee from the circle at once — the answer to that write
-still shows its writer the ticket as written. An agent may reassign a confidential ticket
-until the agent gates are reviewed after experience.)*
+still shows its writer the ticket as written. ~~An agent may reassign a confidential ticket
+until the agent gates are reviewed after experience.~~)* *(Amended 2026-10-06 by the owner:)* An
+agent admits nobody but its own person: it assigns a confidential ticket only to its person or to
+nobody, at a filing and on a change — the change that makes the ticket confidential included —,
+and otherwise is refused `403 agent_forbidden` by the hard-off rule "assigning a confidential
+ticket to anyone but the agent's person" (ADR 0043 D3; `mayAssign` in
+[`tickets.go`](../../backend/internal/api/tickets.go)). An assignee the write leaves as it was is
+no admission. Bringing in a reviewer stays a person's act.
 
 ## Consequences
 

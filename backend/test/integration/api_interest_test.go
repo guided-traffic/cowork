@@ -67,7 +67,7 @@ func TestInterest(t *testing.T) {
 	path := fmt.Sprintf("%s/%d/interest", e.projectTickets("ALPHA"), tk.Number)
 	assert.Equal(t, http.StatusNoContent, e.s.do(t, viewer, http.MethodDelete, path, nil).StatusCode)
 	assert.Equal(t, http.StatusNoContent, e.s.do(t, viewer, http.MethodDelete, path, nil).StatusCode, "idempotent")
-	assert.Equal(t, http.StatusNoContent, e.s.do(t, agent, http.MethodDelete, path, nil).StatusCode, "an agent removes its person's stake: the open gate")
+	assert.Equal(t, http.StatusNoContent, e.s.do(t, agent, http.MethodDelete, path, nil).StatusCode, "an agent removes its person's stake: the baseline by the owner's decision (docs/adr/0043 D2)")
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberB}, http.MethodGet, path, nil), http.StatusNotFound, "not_found")
 }
 

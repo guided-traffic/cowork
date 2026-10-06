@@ -469,6 +469,9 @@ func (s *Server) newTicket(ctx context.Context, w *store.Writer, t tenantScope, 
 		if err := checkAssignee(ctx, w.Reader, t, p.ID, *body.Assignee); err != nil {
 			return ins, nil, err
 		}
+		if perr := mayAssign(caller, ins.Confidential, nil, *body.Assignee); perr != nil {
+			return ins, nil, perr
+		}
 		ins.AssigneeID = body.Assignee
 	}
 	number, err := w.NextTicketNumber(ctx, writeq.NextTicketNumberParams{TenantID: t.ID, ProjectID: p.ID})
@@ -527,6 +530,19 @@ func checkAssignee(ctx context.Context, r *store.Reader, t tenantScope, projectI
 		return problem.Field("/assignee", "not a member who can see the project")
 	}
 	return nil
+}
+
+// mayAssign holds an assignment to the hard-off rule of docs/adr/0043 D3:
+// the assignee of a confidential ticket is admitted to it (docs/adr/0065 D9),
+// so an agent assigns one only to its own person — assigning nobody admits
+// nobody and never reaches here. confidential is the flag as the write leaves
+// it; current is the assignee before the write, nil on a filing, and an
+// assignee the write leaves as it was admits nobody new.
+func mayAssign(p auth.Principal, confidential bool, current *uuid.UUID, assignee uuid.UUID) *problem.Error {
+	if !confidential || assignee == p.PersonID || (current != nil && *current == assignee) {
+		return nil
+	}
+	return auth.Authorize(p, "", auth.Need{HardOff: auth.HardOffConfidentialAssignee})
 }
 
 // UpdateTicket changes a ticket's fields with If-Match. A live or boundary
@@ -869,6 +885,9 @@ func applyRelations(ctx context.Context, w *store.Writer, t tenantScope, tc tick
 			person := p.Assignee.MustGet()
 			if err := checkAssignee(ctx, w.Reader, t, tc.project.ID, person); err != nil {
 				return err
+			}
+			if perr := mayAssign(principal(ctx), ch.params.Confidential, tc.row.AssigneeID, person); perr != nil {
+				return perr
 			}
 			ch.params.AssigneeID = &person
 		}
