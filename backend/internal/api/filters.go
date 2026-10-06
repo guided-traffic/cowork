@@ -25,10 +25,15 @@ const (
 	fieldParameters   = "parameters"
 )
 
-// filing a filter is the person's own write: any role of the tenant, with
-// write scope. No record lists it among an agent's acts, so it is open to
-// agents as the other unlisted acts are (docs/adr/0043).
+// filterNeed is what saving, changing, sharing and unsharing the person's own
+// filter need: any role of the tenant, with write scope; to an agent they are
+// the baseline (docs/adr/0043 D2 as amended 2026-10-06).
 var filterNeed = auth.Need{Role: domain.RoleViewer, Scope: domain.ScopeWrite}
+
+// filterDeletion is what deleting a filter needs: filterNeed, and never an
+// agent, since a filter's deletion is among the deletions of docs/adr/0043 D3
+// (as amended 2026-10-06), the tickets' rule.
+var filterDeletion = auth.Need{Role: domain.RoleViewer, Scope: domain.ScopeWrite, HardOff: auth.HardOffDeletion}
 
 func filterURL(t tenantScope, id uuid.UUID) string {
 	return "/api/v1/tenants/" + t.Slug + "/filters/" + id.String()
@@ -258,11 +263,12 @@ func (s *Server) unshareAnothersFilter(ctx context.Context, w *store.Writer, t t
 
 // DeleteSavedFilter removes the caller's filter, or — a tenant
 // administrator's act — another person's shared one (docs/adr/0018 D5 as
-// amended 2026-10-06).
+// amended 2026-10-06). An agent deletes neither: it meets the hard-off rule
+// of deletion before the filter is read (docs/adr/0043 D3).
 func (s *Server) DeleteSavedFilter(ctx context.Context, req apigen.DeleteSavedFilterRequestObject) (apigen.DeleteSavedFilterResponseObject, error) {
 	t := tenantFrom(ctx)
 	p := principal(ctx)
-	if perr := auth.Authorize(p, t.Role, filterNeed); perr != nil {
+	if perr := auth.Authorize(p, t.Role, filterDeletion); perr != nil {
 		return nil, perr
 	}
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {

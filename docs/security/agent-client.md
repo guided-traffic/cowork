@@ -130,7 +130,8 @@ reads can write instructions into it; a model may follow them. Quoting and the i
 that less likely, not impossible. What follows is bounded by the token and nothing else: a
 "full" agent token closes tickets in progress, decides, ranks, overrides urgencies, creates
 projects, binds and unbinds repositories, records answers, and the `api` tool reaches every route the token reaches,
-within the agent rules; the five acts [tokens.md](tokens.md) H-6 leaves to every agent are its too. Every act
+within the agent rules; the acts [tokens.md](tokens.md) H-6 leaves to every agent — the five, and
+saving, changing, sharing and unsharing its person's saved filter — are its too. Every act
 is recorded and shown with the agent mark and the token's name
 ([tokens.md](tokens.md#what-is-recorded)). Mitigation: "assisted" tokens where another person writes
 into the same projects, restricted tokens, and the timeline.

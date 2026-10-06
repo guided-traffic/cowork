@@ -352,7 +352,8 @@ another token and marking notifications read (`write` scope,
 | `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
 | `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets; the tokens that can act in the tenant ([`tenanttokens.go`](../../backend/internal/api/tenanttokens.go)); the tenant's attachment usage ([`attachments.go`](../../backend/internal/api/attachments.go)) |
 | `deletion` | admin, `admin` | hard-off `deleting, restoring or purging` | [`deletion.go`](../../backend/internal/api/deletion.go): deleting a ticket, restoring it, purging it ([ADR 0024] D7) — the tenant role, not a project's; the purge takes a session besides, which the document declares |
-| `filterNeed` | viewer, `write` | — (open to agents, as every act no record lists) | [`filters.go`](../../backend/internal/api/filters.go): saving, changing and deleting the person's own saved filter; another's shared one is `403 forbidden`, but to a tenant administrator, who unshares or deletes it with `administer` (`mayChangeFilter`) |
+| `filterNeed` | viewer, `write` | baseline ([ADR 0043] D2) | [`filters.go`](../../backend/internal/api/filters.go): saving, changing, sharing and unsharing the person's own saved filter; another's shared one is `403 forbidden`, but to a tenant administrator, who unshares it with `administer` (`mayChangeFilter`) |
+| `filterDeletion` | viewer, `write` | hard-off `deleting, restoring or purging` ([ADR 0043] D3) | `filters.go`: deleting the person's own saved filter, or — a tenant administrator, with `administer` besides (`mayChangeFilter`) — another person's shared one; an agent is refused before the filter is read |
 | `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, a horizon set `set-horizon` and of an agent a reason — on `setHorizon` for `later` too —, a filing into a horizon other than `later` `set-horizon` and with a place `rank`, an agent's answer `record-answer`; a confidential ticket's new assignee other than the agent's person is hard-off (`mayAssign`) | [`tickets.go`](../../backend/internal/api/tickets.go) |
 | `edit` | member, `write` | — | [`projects.go`](../../backend/internal/api/projects.go) |
 | `rankNeed` | member, `write` | `rank` | [`rank.go`](../../backend/internal/api/rank.go): a move; the sort by the score in [`score.go`](../../backend/internal/api/score.go) |
@@ -542,7 +543,10 @@ another person's shared one a tenant administrator's to unshare or delete ([ADR 
 `{"shared": false}` and nothing else, else `403 forbidden`; the unshare is a compare-and-set on the
 version that sets `shared` alone, through `Writer.UnshareAnothersFilter`, and answers the filter the
 administrator no longer reads; the deletion takes a shared filter only, one unshared meanwhile is
-`404`. Each is recorded as the owner's acts are, under the administrator's name. The policies of
+`404`. Each is recorded as the owner's acts are, under the administrator's name. An agent saves,
+changes, shares and unshares its person's filter at the baseline and deletes none: `DeleteSavedFilter`
+authorizes `filterDeletion`, the hard-off rule of a ticket's deletion, before it reads the filter
+([ADR 0043] D2, D3 as amended 2026-10-06). The policies of
 migrations 33 and 39 hold the same in the data layer
 ([data-access.md](data-access.md#the-settings-the-policies-read)). Saved filters are not published
 on the event stream; their list answers a weak `ETag` and `304` like the other lists the UI loads

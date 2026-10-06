@@ -5362,12 +5362,14 @@ type ClientInterface interface {
 
 	// DeleteSavedFilter Delete a saved filter
 	//
-	// Its owner's act with `write` scope. A tenant administrator deletes another person's shared
-	// filter — one whose owner left the tenant among them —, an administration act with `admin`
-	// scope that no agent makes (docs/adr/0018 D5, docs/adr/0043 D3): a token with less than
-	// `admin` scope is 403 `insufficient_scope`, an agent 403 `agent_forbidden`. Another person's
-	// shared filter is 403 `forbidden` to everyone else, a filter the caller cannot see — or one
-	// already gone, or no longer shared — 404. Recorded as `deleted`.
+	// Its owner's act with `write` scope, and never an agent's: a deletion is on the hard-off list
+	// (docs/adr/0043 D3), so an agent's request is 403 `agent_forbidden`, `hard-off: deleting,
+	// restoring or purging`, before the filter is looked at. A tenant administrator deletes another
+	// person's shared filter — one whose owner left the tenant among them —, an administration act
+	// with `admin` scope (docs/adr/0018 D5): a token with less than `admin` scope is 403
+	// `insufficient_scope`. Another person's shared filter is 403 `forbidden` to everyone else, a
+	// filter the caller cannot see — or one already gone, or no longer shared — 404. Recorded as
+	// `deleted`.
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
 	DeleteSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7868,12 +7870,14 @@ func (c *Client) CreateSavedFilter(ctx context.Context, tenant TenantSlug, param
 
 // DeleteSavedFilter Delete a saved filter
 //
-// Its owner's act with `write` scope. A tenant administrator deletes another person's shared
-// filter — one whose owner left the tenant among them —, an administration act with `admin`
-// scope that no agent makes (docs/adr/0018 D5, docs/adr/0043 D3): a token with less than
-// `admin` scope is 403 `insufficient_scope`, an agent 403 `agent_forbidden`. Another person's
-// shared filter is 403 `forbidden` to everyone else, a filter the caller cannot see — or one
-// already gone, or no longer shared — 404. Recorded as `deleted`.
+// Its owner's act with `write` scope, and never an agent's: a deletion is on the hard-off list
+// (docs/adr/0043 D3), so an agent's request is 403 `agent_forbidden`, `hard-off: deleting,
+// restoring or purging`, before the filter is looked at. A tenant administrator deletes another
+// person's shared filter — one whose owner left the tenant among them —, an administration act
+// with `admin` scope (docs/adr/0018 D5): a token with less than `admin` scope is 403
+// `insufficient_scope`. Another person's shared filter is 403 `forbidden` to everyone else, a
+// filter the caller cannot see — or one already gone, or no longer shared — 404. Recorded as
+// `deleted`.
 //
 // Corresponds with DELETE /api/v1/tenants/{tenant}/filters/{filter} (the `DeleteSavedFilter` operationId).
 func (c *Client) DeleteSavedFilter(ctx context.Context, tenant TenantSlug, filter SavedFilterID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -19589,12 +19593,14 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteSavedFilterWithResponse Delete a saved filter
 	//
-	// Its owner's act with `write` scope. A tenant administrator deletes another person's shared
-	// filter — one whose owner left the tenant among them —, an administration act with `admin`
-	// scope that no agent makes (docs/adr/0018 D5, docs/adr/0043 D3): a token with less than
-	// `admin` scope is 403 `insufficient_scope`, an agent 403 `agent_forbidden`. Another person's
-	// shared filter is 403 `forbidden` to everyone else, a filter the caller cannot see — or one
-	// already gone, or no longer shared — 404. Recorded as `deleted`.
+	// Its owner's act with `write` scope, and never an agent's: a deletion is on the hard-off list
+	// (docs/adr/0043 D3), so an agent's request is 403 `agent_forbidden`, `hard-off: deleting,
+	// restoring or purging`, before the filter is looked at. A tenant administrator deletes another
+	// person's shared filter — one whose owner left the tenant among them —, an administration act
+	// with `admin` scope (docs/adr/0018 D5): a token with less than `admin` scope is 403
+	// `insufficient_scope`. Another person's shared filter is 403 `forbidden` to everyone else, a
+	// filter the caller cannot see — or one already gone, or no longer shared — 404. Recorded as
+	// `deleted`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -29112,12 +29118,14 @@ func (c *ClientWithResponses) CreateSavedFilterWithResponse(ctx context.Context,
 
 // DeleteSavedFilterWithResponse Delete a saved filter
 //
-// Its owner's act with `write` scope. A tenant administrator deletes another person's shared
-// filter — one whose owner left the tenant among them —, an administration act with `admin`
-// scope that no agent makes (docs/adr/0018 D5, docs/adr/0043 D3): a token with less than
-// `admin` scope is 403 `insufficient_scope`, an agent 403 `agent_forbidden`. Another person's
-// shared filter is 403 `forbidden` to everyone else, a filter the caller cannot see — or one
-// already gone, or no longer shared — 404. Recorded as `deleted`.
+// Its owner's act with `write` scope, and never an agent's: a deletion is on the hard-off list
+// (docs/adr/0043 D3), so an agent's request is 403 `agent_forbidden`, `hard-off: deleting,
+// restoring or purging`, before the filter is looked at. A tenant administrator deletes another
+// person's shared filter — one whose owner left the tenant among them —, an administration act
+// with `admin` scope (docs/adr/0018 D5): a token with less than `admin` scope is 403
+// `insufficient_scope`. Another person's shared filter is 403 `forbidden` to everyone else, a
+// filter the caller cannot see — or one already gone, or no longer shared — 404. Recorded as
+// `deleted`.
 //
 // Returns a wrapper object for the known response body format(s).
 //

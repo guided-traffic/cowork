@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
+	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/test/fixture"
 )
@@ -253,6 +254,90 @@ func TestSavingAFilterIsIdempotent(t *testing.T) {
 		AND agent = 'claude-code/opus/s1' AND tenant_id = $1`, e.A), "an agent's filter is marked as its act")
 	assertProblem(t, e.s.do(t, agent, http.MethodPost, filtersPath(e.SlugA), apigen.SavedFilterCreate{Name: "other",
 		Parameters: apigen.SavedFilterParameters{}}, "Idempotency-Key", key), http.StatusUnprocessableEntity, "idempotency_mismatch")
+}
+
+// docs/adr/0043 D2, D3 as amended 2026-10-06: of an agent's five acts on its
+// person's saved filter, saving, changing, sharing and unsharing are the
+// baseline — a token without any capability makes them, each marked as the
+// agent's act —, and deleting is the hard-off rule "deleting, restoring or
+// purging" that a ticket's deletion meets, for a token's agent and for a
+// session the header marks alike. An administrator's unshare and deletion of
+// another person's shared filter stay out of an agent's reach. Each of the
+// five is asserted as allowed or refused, so that changing one is deliberate.
+func TestAnAgentKeepsItsPersonsSavedFilterAndDeletesNone(t *testing.T) {
+	e, _, session := sessionEnv(t)
+	f := fixtures(t)
+	baseline, _, err := f.Token(e.ctx, fixture.TokenSpec{UserID: e.MemberA, Agent: true, Capabilities: []string{}})
+	require.NoError(t, err)
+	member, viewer := caller{Token: e.tk.MemberA}, caller{Token: e.tk.ViewerA}
+	etag := func(f apigen.SavedFilter) string { return strconv.Quote(strconv.Itoa(f.Version)) }
+	const mark, deleting = "claude-code/opus/s1", "hard-off: deleting, restoring or purging"
+	marked := func(id uuid.UUID, action string) int {
+		return scalar[int](t, `SELECT count(*) FROM audit_events WHERE entity_type = 'saved_filter' AND entity_id = $1
+			AND action = $2 AND agent = $3 AND actor_user_id = $4`, id, action, mark, e.MemberA)
+	}
+
+	for name, token := range map[string]string{"no capability": baseline, "every capability": e.tk.AgentA} {
+		agent := caller{Token: token, Agent: mark}
+		patch := func(f apigen.SavedFilter, p apigen.SavedFilterPatch) apigen.SavedFilter {
+			t.Helper()
+			res := e.s.do(t, agent, http.MethodPatch, filtersPath(e.SlugA, f.Id), p, "If-Match", etag(f))
+			require.Equal(t, http.StatusOK, res.StatusCode, "%s: %v", name, res.Status)
+			return decode[apigen.SavedFilter](t, res)
+		}
+
+		// Saving.
+		res := e.s.do(t, agent, http.MethodPost, filtersPath(e.SlugA), apigen.SavedFilterCreate{Name: "by the agent",
+			Parameters: apigen.SavedFilterParameters{Horizon: strs("now")}}, "Idempotency-Key", uuid.Must(uuid.NewV7()).String())
+		require.Equal(t, http.StatusCreated, res.StatusCode, "%s: saving", name)
+		saved := decode[apigen.SavedFilter](t, res)
+		assert.Equal(t, e.MemberA, saved.Owner.Id, "%s: the filter is its person's", name)
+		// Changing.
+		changed := patch(saved, apigen.SavedFilterPatch{Name: ptr("changed by the agent"),
+			Parameters: &apigen.SavedFilterParameters{Severity: strs("high")}})
+		assert.Equal(t, "changed by the agent", changed.Name, name)
+		// Sharing.
+		shared := patch(changed, apigen.SavedFilterPatch{Shared: ptr(true)})
+		assert.Contains(t, filterNames(e.savedFilters(t, viewer, e.SlugA)), "changed by the agent", "%s: shared", name)
+		// Unsharing.
+		unshared := patch(shared, apigen.SavedFilterPatch{Shared: ptr(false)})
+		assert.NotContains(t, filterNames(e.savedFilters(t, viewer, e.SlugA)), "changed by the agent", "%s: unshared", name)
+		// Deleting is refused, and the filter stays.
+		body := assertProblem(t, e.s.do(t, agent, http.MethodDelete, filtersPath(e.SlugA, unshared.Id), nil),
+			http.StatusForbidden, "agent_forbidden")
+		assert.Equal(t, deleting, body["detail"], name)
+		assert.Equal(t, http.StatusOK, e.s.do(t, member, http.MethodGet, filtersPath(e.SlugA, saved.Id), nil).StatusCode, name)
+
+		assert.Equal(t, 1, marked(saved.Id, "created"), name)
+		assert.Equal(t, 3, marked(saved.Id, "updated"), name)
+		assert.Zero(t, marked(saved.Id, "deleted"), name)
+		// Its person deletes it.
+		e.send(t, member, http.StatusNoContent, http.MethodDelete, filtersPath(e.SlugA, saved.Id), nil)
+	}
+
+	// The administrator's agent neither unshares nor deletes another person's
+	// shared filter; the deletion is refused as a deletion first.
+	team := e.saveFilter(t, member, e.SlugA, apigen.SavedFilterCreate{Name: "team", Shared: ptr(true),
+		Parameters: apigen.SavedFilterParameters{}})
+	adminsAgent := caller{Token: e.tk.AdminA, Agent: mark}
+	body := assertProblem(t, e.s.do(t, adminsAgent, http.MethodPatch, filtersPath(e.SlugA, team.Id),
+		apigen.SavedFilterPatch{Shared: ptr(false)}, "If-Match", etag(team)), http.StatusForbidden, "agent_forbidden")
+	assert.Equal(t, "hard-off: administration", body["detail"])
+	body = assertProblem(t, e.s.do(t, adminsAgent, http.MethodDelete, filtersPath(e.SlugA, team.Id), nil),
+		http.StatusForbidden, "agent_forbidden")
+	assert.Equal(t, deleting, body["detail"])
+	assert.True(t, scalar[bool](t, `SELECT shared FROM saved_filters WHERE id = $1`, team.Id), "the filter stays shared")
+
+	// A session the header marks — the chat — deletes none of its person's
+	// filters either; the person in the same session does.
+	res := session.request(http.MethodPost, filtersPath(e.SlugA), apigen.SavedFilterCreate{Name: "the administrator's",
+		Parameters: apigen.SavedFilterParameters{}})
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	own := decode[apigen.SavedFilter](t, res)
+	body = assertProblem(t, session.request(http.MethodDelete, filtersPath(e.SlugA, own.Id), nil,
+		withHeader(auth.AgentHeader, "chat/stub/c1")), http.StatusForbidden, "agent_forbidden")
+	assert.Equal(t, deleting, body["detail"])
+	require.Equal(t, http.StatusNoContent, session.request(http.MethodDelete, filtersPath(e.SlugA, own.Id), nil).StatusCode)
 }
 
 // docs/adr/0021 D6: inside the tenant's own transaction the policies of

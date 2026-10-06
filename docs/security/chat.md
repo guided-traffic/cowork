@@ -260,7 +260,8 @@ with a reason, as tickets cannot be deleted — but an act that told other peopl
 them. Of the five acts [tokens.md H-6](tokens.md#h-6) leaves to every agent, the chat makes the backward
 moves, the reopens and the withdrawal of a done (`transition`, and `set_progress` for a lower stage)
 and lowers its person's stake to a watch (`watch`); removing a link or a stake, editing a question and
-editing a project have no tool in the chat, and neither does assigning a ticket. Mitigation:
+editing a project have no tool in the chat, and neither does assigning a ticket or any act on a
+saved filter, which H-6 leaves to every agent as well. Mitigation:
 the default set, a narrower set in *What the assistant may do*, the cards, the activity's mark, and
 Stop.
 

@@ -31,6 +31,12 @@ moves and reopens, removing its person's stake, editing an open question its per
 editing a project stay an agent's, at the baseline, the owner accepting the risk of each, named
 in the Residual risks; D3: an agent assigns a confidential ticket only to its own person or to
 nobody; the Consequences' count of D3's acts),
+amended 2026-10-06 by the owner a fifth time, as the answer to which acts on its person's saved
+filters are an agent's (D2: saving, changing, sharing and unsharing its person's saved filter join
+the baseline, the owner accepting the reach of sharing, named in the Residual risks; D3: deleting a
+saved filter is among its deletions, refused to every agent by the rule a ticket's deletion meets)
+— over leaving all five acts open, over making sharing hard-off as well, and over making every
+write on a saved filter hard-off,
 amended 2026-10-03 (D4: `close` covers both ways to `done`
 of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
 that fills the last progress stage and done by hand — an agent's only from `in-progress` or
@@ -82,11 +88,19 @@ and the chat proposes nothing: every call runs at once).
 *(2026-10-05:)* D3's "deleting, restoring or purging anything" is built for tickets as the hard-off rule
 `deleting, restoring or purging` ([`api/deletion.go`](../../backend/internal/api/deletion.go)): an
 agent-marked request — a token's or the chat's — that deletes, restores or purges a ticket is
-`403 agent_forbidden`. Saving, changing, sharing and deleting ~~a saved filter~~ *(2026-10-06:)* its
+`403 agent_forbidden`. ~~Saving, changing, sharing and deleting~~ ~~a saved filter~~ ~~*(2026-10-06:)* its
 person's own saved filter is an act no record lists and is open to agents until the review after
-experience; a tenant administrator's unshare or deletion of another person's shared filter
-(ADR 0018 D5 as amended 2026-10-06) is an administration act, refused to an agent as
-`hard-off: administration`.
+experience;~~ a tenant administrator's unshare or deletion of another person's shared filter
+(ADR 0018 D5 as amended 2026-10-06) is an administration act, refused to an agent ~~as
+`hard-off: administration`~~ *(2026-10-06:)* — the unshare as `hard-off: administration`, the
+deletion as `hard-off: deleting, restoring or purging`, the rule the deletion meets first.
+*(2026-10-06:)* D2 and D3 as amended that day for the saved filters are built the same day: an
+agent-marked request — a token's or the chat's — that deletes a saved filter is `403
+agent_forbidden`, `hard-off: deleting, restoring or purging`, before the filter is read
+(`filterDeletion` in [`api/filters.go`](../../backend/internal/api/filters.go)); saving, changing,
+sharing and unsharing its person's own filter need `filterNeed` and no capability, each recorded
+with the agent mark (`TestAnAgentKeepsItsPersonsSavedFilterAndDeletesNone`, which asserts each of
+the five acts as allowed or refused, a token with no capability included).
 *(2026-10-05:)* D4's amendment of 2026-10-05 is built, its expand half: `set-horizon` is the
 capability's name in `auth.AllCapabilities`, `auth.DefaultChatCapabilities`, the tool descriptions,
 the chat's instructions and the UI's nine switches; `auth.Canonical` reads `override-urgency` as
@@ -152,10 +166,16 @@ whatever weight the person gave it; editing an open question its person asked �
 options, recommendation and the person asked —, one the person asked without an agent included;
 and editing a project's name, description and WIP limits. The owner kept all five over a
 capability or a hard-off rule for each; the risk each leaves is named in the Residual risks.
+*(Amended 2026-10-06 by the owner once more, the answer to which acts on its person's saved filters
+are an agent's:)* the baseline also holds saving, changing, sharing and unsharing its person's saved
+filter ([ADR 0018](0018-the-views-of-the-first-release.md) D5), each recorded with the agent mark
+and the capabilities the request held; the owner accepted the reach of sharing, named in the
+Residual risks. Deleting one is D3's.
 
 **D3 — The hard-off list: acts no agent token can be given.** ~~Answering a question~~
 *(amended 2026-10-01: recording a person's answer is the `record-answer` capability, ADR
-0066 D8; the decision stays the person's)*; deleting, restoring or purging anything; booking
+0066 D8; the decision stays the person's)*; deleting, restoring or purging anything *(amended
+2026-10-06 by the owner: deleting a saved filter is among them, its person's own included)*; booking
 time; overriding the prerequisite refusal on `done`; every administration act — members,
 mappings, grants, tokens, ~~projects~~ *(amended 2026-10-01: creating a project and binding a
 repository is the `create-project` capability, ADR 0066 D7; archiving, restricting and
@@ -252,6 +272,14 @@ scope alone.
   once. Lost.
 - **Opening the hard-off list too.** Would make an agent able to answer its own questions,
   delete, book time; those records exist for reasons unrelated to agent trust. Not offered.
+- *(Added 2026-10-06, the question on its person's saved filters.)* **All five acts on a saved
+  filter left to an agent**, as built until then: a steered agent removes a filter its person
+  relies on, and a deletion is "deleting anything" in D3's own words. Lost. **Sharing hard-off as
+  well**: what an agent shares reaches every member of the tenant, but its person shares or
+  unshares the same filter with one act in the browser, and the agent could still name the filter
+  and its conditions for its person alone. Lost. **Every write on a saved filter hard-off**: an
+  agent could no longer keep its person's filters at all, for a risk that sharing alone carries.
+  Lost.
 
 ## Residual risks
 
@@ -289,6 +317,15 @@ scope alone.
     set, while creating a project needs `create-project`.
   A person who wants none of them gives an agent a `read` token; every act is in the tenant's
   audit view by token.
+- *(Added 2026-10-06, accepted by the owner with D2's amendment for the saved filters.)* **Sharing
+  its person's saved filter** needs no capability, and a shared filter reaches every member of the
+  tenant, whatever projects each of them sees: its name and its conditions are read by each of
+  them, under the person's name as its owner, except that a reader who cannot see a project or a
+  ticket a condition names gets the filter `redacted` — without its conditions, its name and its
+  owner still shown. The name and the `q` condition are free text, so a steered agent can write
+  into them what it read and share it beyond the projects it read it in, where a comment, read only
+  by those who see its ticket, does not reach. Each share is recorded with the agent mark, and its
+  person, or a tenant administrator, unshares it.
 - Capabilities multiply the test matrix: each switch has an allowed and a refused test in the
   integration tier, with the fixture identities.
 
@@ -299,4 +336,5 @@ scope alone.
 - [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D2, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D7, [ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md) D6, [ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7 — the hard-off list's sources
 - [ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4, [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D2, D3 — the stakes and the rank, whose agent acts D4's `interest` and `rank` grant
 - [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) — the tools that read the capabilities
+- [ADR 0018](0018-the-views-of-the-first-release.md) D5 — the saved filters, whose acts D2 and D3 divide between the baseline and the hard-off list
 - [ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md) D9 — the admission by assignment that D3 keeps from an agent; [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D3–D5 — the backward moves and reopens D2 holds
