@@ -153,13 +153,12 @@ v2 has one row, [`domain.UrgencyDefault`](../../backend/internal/domain/ticket.g
 rule `UrgencyRuleDefault` `v2:default`, which every filing writes as `urgency_derived` and
 `urgency_rule`; no state, block or link changes them.
 
-**The API says horizon, the database urgency** ([ADR 0010] D1 as amended 2026-10-05). The enum
-`urgency` and the columns `urgency_derived`, `urgency_rule` and `urgency_override*` stay, and so do
-the Go names sqlc gives them (`domain.Urgency`, `TicketRow.UrgencyOverride`); `ticketView` answers
-`horizon` — the horizon set, else `later` (`horizonOf`) — and `horizon_set` — its value, reason,
-person and time, or `null` (`horizonSetView`). Beside them, until a later release, the deprecated
-`urgency`, `urgency_derived`, `urgency_rule` and `urgency_override` carry the same facts
-(`urgencyFields`, [api.md](api.md#deprecated-names)).
+**The API says horizon, the database urgency** ([ADR 0010] D1 as amended 2026-10-05 and
+2026-10-06). The enum `urgency` and the columns `urgency_derived`, `urgency_rule` and
+`urgency_override*` stay, and so do the Go names sqlc gives them (`domain.Urgency`,
+`TicketRow.UrgencyOverride`); `ticketView` answers `horizon` — the horizon set, else `later`
+(`horizonOf`) — and `horizon_set` — its value, reason, person and time, or `null`
+(`horizonSetView`), and nothing under the old names ([api.md](api.md#deprecated-names)).
 
 What a person or an agent sets is the horizon set: `PUT …/horizon` with a value and `If-Match`
 (`SetHorizon`); `later` clears it, and on a ticket with none set it changes nothing. The act is
@@ -168,11 +167,8 @@ agent `set-horizon`. The reason is optional for a person — a drag between the 
 and required of an agent, for `later` too, whose request without one is `400` at `/reason`
 (`horizonInputs`); it is kept with a horizon set (`horizon_set.reason`, `null` without one) and
 recorded on the act either way, since a cleared horizon keeps none (migration 19). A `412` names
-the current `horizon` and `horizon_set`. The deprecated `PUT …/urgency-override` and `DELETE
-…/urgency-override` behave as they did: the `PUT` stores `later` as a set horizon too, the `DELETE`
-clears it without a reason from anybody, and their `412` names `urgency_override`. A filing names
-its horizon with `horizon` — or `urgency`, the same; both with different values are `400` at
-`/horizon` (`filedHorizon`): another than `later` is written as the horizon set by `InsertTicket`,
+the current `horizon` and `horizon_set`. A filing names its horizon with `horizon` (`filingOf`):
+another than `later` is written as the horizon set by `InsertTicket`,
 set by the filer and without a reason, and an agent needs `set-horizon` for it
 (`filing.capabilities` in [`tickets.go`](../../backend/internal/api/tickets.go)). Migration 29
 turned what rule set v1 had derived — `release` and `icebox` for blocked tickets and those an open

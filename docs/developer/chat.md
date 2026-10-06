@@ -157,8 +157,8 @@ Every other tool runs at once; what bounds it is the agent's capabilities and th
 | Where | What |
 |---|---|
 | `auth.DefaultChatCapabilities` | `rank`, `set-horizon`, `interest`, `upload`, `create-project` — the set of a person who never chose |
-| `chat_capabilities` | one row per person, `capabilities text[]` within the nine — and `override-urgency`, the name `set-horizon` had before, which a set stored before may hold and `auth.Canonical` reads as `set-horizon` (migration 37) —; the policies admit the person's own row only; no delete grant |
-| `PUT /api/v1/me/chat` (`setMyChat`) | session only; the whole set, in any order, unique, `override-urgency` taken as `set-horizon`; stored in the catalogue's order under this release's names; an installation-level `updated` act on the person with `chat_capabilities` before and after; the same set again records nothing |
+| `chat_capabilities` | one row per person, `capabilities text[]` within the nine — and `override-urgency`, the name `set-horizon` had before, which the check still takes because release 0.5 writes it after an image rollback, and `auth.Canonical` drops on read (migration 38 rewrote the rows that held it) —; the policies admit the person's own row only; no delete grant |
+| `PUT /api/v1/me/chat` (`setMyChat`) | session only; the whole set, in any order, unique; stored in the catalogue's order; an installation-level `updated` act on the person with `chat_capabilities` before and after; the same set again records nothing |
 | `GET /api/v1/me/chat` (`getMyChat`) | either credential; `{capabilities, chosen}` |
 | `authenticateSession` | a request with `X-Cowork-Agent` on a session holds the set (`chatCapabilities`) — the chat's, and any person's who sends the header themselves |
 | `auth.Authorize` | refuses an act whose capability the request lacks: `403 agent_forbidden`, `missing capability: …` |

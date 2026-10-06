@@ -149,7 +149,6 @@ func TestFileTicketIntoAHorizon(t *testing.T) {
 	require.Len(t, posted, 1)
 	body := decodeBody(t, posted[0])
 	assert.Equal(t, "next", body["horizon"])
-	assert.NotContains(t, body, "urgency", "the filing names the horizon by its name")
 	assert.Equal(t, float64(3), body["after"])
 	assert.NotContains(t, body, "before")
 

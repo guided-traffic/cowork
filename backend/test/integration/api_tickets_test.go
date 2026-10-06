@@ -19,7 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
-	"github.com/guided-traffic/cowork/backend/test/fixture"
 )
 
 // ticketEnv is a world with its tokens and a running API.
@@ -546,81 +545,6 @@ func TestRestrictedProjectTickets(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, res.StatusCode(), "a member off the list cannot be assigned")
 	res = e.patch(t, caller{Token: e.tk.Both}, tk, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.Both)})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
-}
-
-// docs/adr/0010 D1 as amended 2026-10-05, docs/adr/0046 D7: the routes and
-// fields under the names before keep working as they did for the clients of
-// the release before — the override set, later stored as a set horizon too,
-// and withdrawn; urgency, urgency_derived, urgency_rule and urgency_override
-// answered beside horizon and horizon_set with the same values; an agent
-// needs set-horizon, whichever name its token stores, and a reason.
-//
-//nolint:staticcheck // SA1019: the deprecated routes and fields under test
-func TestTheRoutesAndFieldsUnderTheNamesBeforeKeepWorking(t *testing.T) {
-	e := newTicketEnv(t)
-	f := fixtures(t)
-	member := caller{Token: e.tk.MemberA}
-	tk := e.file(t, member, "ALPHA", task("Escalated"))
-	assert.Equal(t, apigen.UrgencyLater, tk.Urgency)
-	assert.Equal(t, apigen.UrgencyLater, tk.UrgencyDerived)
-	assert.Equal(t, "v2:default", tk.UrgencyRule)
-	assert.True(t, tk.UrgencyOverride.IsNull())
-	override := func(c caller, version int, value apigen.Urgency) *apigen.OverrideUrgencyResponse {
-		etag := strconv.Quote(strconv.Itoa(version))
-		res, err := e.s.client(t, c).OverrideUrgencyWithResponse(e.ctx, e.SlugA, "ALPHA", tk.Number,
-			&apigen.OverrideUrgencyParams{IfMatch: &etag}, apigen.UrgencyOverrideSet{Value: value, Reason: ptr("a customer is down")})
-		require.NoError(t, err)
-		return res
-	}
-
-	narrow, _, err := f.Token(e.ctx, fixture.TokenSpec{UserID: e.MemberA, Agent: true, Capabilities: []string{"interest"}})
-	require.NoError(t, err)
-	refused := override(caller{Token: narrow, Agent: "claude-code/opus/s1"}, tk.Version, apigen.UrgencyNow)
-	require.Equal(t, http.StatusForbidden, refused.StatusCode())
-	assert.Equal(t, "missing capability: set-horizon", *refused.ApplicationproblemJSONDefault.Detail)
-
-	old, _, err := f.Token(e.ctx, fixture.TokenSpec{UserID: e.MemberA, Agent: true, Capabilities: []string{"override-urgency"}})
-	require.NoError(t, err)
-	res := override(caller{Token: old, Agent: "claude-code/opus/s1"}, tk.Version, apigen.UrgencyNow)
-	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
-	assert.Equal(t, apigen.UrgencyNow, res.JSON200.Urgency)
-	assert.Equal(t, apigen.UrgencyLater, res.JSON200.UrgencyDerived)
-	o := res.JSON200.UrgencyOverride.MustGet()
-	assert.Equal(t, "a customer is down", o.Reason.MustGet())
-	assert.Equal(t, e.MemberA, o.By.MustGet().Id)
-	assert.Equal(t, tk.Version+1, res.JSON200.Version)
-	assert.Equal(t, apigen.HorizonNow, res.JSON200.Horizon, "the horizon follows")
-	set := res.JSON200.HorizonSet.MustGet()
-	assert.Equal(t, apigen.HorizonNow, set.Value)
-	assert.Equal(t, o.Reason, set.Reason)
-	assert.Equal(t, o.At, set.At)
-
-	res = override(member, res.JSON200.Version, apigen.UrgencyLater)
-	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
-	assert.Equal(t, apigen.UrgencyLater, res.JSON200.UrgencyOverride.MustGet().Value, "later is stored as set, as it was")
-	assert.Equal(t, apigen.HorizonLater, res.JSON200.HorizonSet.MustGet().Value)
-
-	etag := strconv.Quote(strconv.Itoa(res.JSON200.Version))
-	back, err := e.s.client(t, member).WithdrawUrgencyOverrideWithResponse(e.ctx, e.SlugA, "ALPHA", tk.Number, &apigen.WithdrawUrgencyOverrideParams{IfMatch: &etag})
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, back.StatusCode(), string(back.Body))
-	assert.Equal(t, apigen.UrgencyLater, back.JSON200.Urgency)
-	assert.True(t, back.JSON200.UrgencyOverride.IsNull())
-	assert.True(t, back.JSON200.HorizonSet.IsNull())
-
-	n, err := f.QueryCount(e.ctx, "SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND action = 'overridden'", tk.Id)
-	require.NoError(t, err)
-	assert.EqualValues(t, 3, n)
-
-	etag = strconv.Quote(strconv.Itoa(back.JSON200.Version - 1))
-	stale, err := e.s.client(t, member).WithdrawUrgencyOverrideWithResponse(e.ctx, e.SlugA, "ALPHA", tk.Number, &apigen.WithdrawUrgencyOverrideParams{IfMatch: &etag})
-	require.NoError(t, err)
-	body := problemIn(t, http.StatusPreconditionFailed, stale.StatusCode(), stale.Body, "precondition_failed")
-	_, named := errorAt(body, "/urgency_override")
-	assert.True(t, named, "a 412 of a route of the names before names its fields: %v", body)
-
-	titles := e.titles(t, member, e.projectTickets("ALPHA"), "urgency=later")
-	assert.Equal(t, []string{"Escalated"}, titles, "the list filter under the name before")
 }
 
 // docs/adr/0050: an overwriting write needs If-Match, a stale one answers the

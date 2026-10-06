@@ -245,21 +245,6 @@
         },
         "style": "form"
       },
-      "FilterUrgency": {
-        "deprecated": true,
-        "description": "`horizon` under the name it had before (docs/adr/0010 D1); with `horizon` in the same request it\nis 400 at `query:urgency`; removed in a later release (docs/adr/0046 D7)\n",
-        "explode": true,
-        "in": "query",
-        "name": "urgency",
-        "schema": {
-          "items": {
-            "maxLength": 32,
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "style": "form"
-      },
       "FromDay": {
         "description": "The first day of the period, inclusive",
         "in": "query",
@@ -1370,7 +1355,7 @@
         "type": "object"
       },
       "Capability": {
-        "description": "An agent capability (docs/adr/0043 D4). `override-urgency` is the deprecated name of\n`set-horizon`: taken as `set-horizon` wherever a set is sent, and answered nowhere but beside it in\n`request.capabilities` of `GET /api/v1/me/token`, which a cowork-mcp of the release before reads;\na later release removes the name (docs/adr/0046 D7).\n",
+        "description": "An agent capability (docs/adr/0043 D4)",
         "enum": [
           "decide",
           "close",
@@ -1380,8 +1365,7 @@
           "interest",
           "upload",
           "create-project",
-          "record-answer",
-          "override-urgency"
+          "record-answer"
         ],
         "type": "string"
       },
@@ -4412,7 +4396,7 @@
             ]
           },
           "capabilities": {
-            "description": "What an agent's request may do beyond the baseline: the token's set for a flagged token,\nevery capability for a plain token the header marks (docs/adr/0043 D4), the person's chat\ncapabilities for a session the header marks (D5); empty for a person's request, which the\ncapabilities do not bound. Where it holds `set-horizon`, the deprecated `override-urgency`\nfollows it, for the cowork-mcp of the release before, until a later release removes it\n(docs/adr/0046 D7)\n",
+            "description": "What an agent's request may do beyond the baseline: the token's set for a flagged token,\nevery capability for a plain token the header marks (docs/adr/0043 D4), the person's chat\ncapabilities for a session the header marks (D5); empty for a person's request, which the\ncapabilities do not bound\n",
             "items": {
               "$ref": "#/components/schemas/Capability"
             },
@@ -4668,16 +4652,6 @@
           "updated_before": {
             "format": "date-time",
             "type": "string"
-          },
-          "urgency": {
-            "deprecated": true,
-            "description": "`horizon` under the name it had before (docs/adr/0010 D1): a filter stored with it is read back\nas `horizon`; with `horizon` it is 400 at `/parameters/urgency`; removed in a later release\n(docs/adr/0046 D7)\n",
-            "items": {
-              "maxLength": 32,
-              "type": "string"
-            },
-            "maxItems": 50,
-            "type": "array"
           }
         },
         "type": "object"
@@ -5199,41 +5173,6 @@
             "format": "date-time",
             "type": "string"
           },
-          "urgency": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Urgency"
-              }
-            ],
-            "deprecated": true,
-            "description": "The horizon under the name it had before (docs/adr/0010 D1): the same value as `horizon`, which\nreplaces it; removed in a later release (docs/adr/0046 D7)\n"
-          },
-          "urgency_derived": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Urgency"
-              }
-            ],
-            "deprecated": true,
-            "description": "What rule set v2 derives, `later` for every ticket since nothing derives a horizon any more\n(docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)\n"
-          },
-          "urgency_override": {
-            "deprecated": true,
-            "description": "The set horizon under the name it had before (docs/adr/0010 D1): what `horizon_set` holds, which\nreplaces it; removed in a later release (docs/adr/0046 D7)\n",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/UrgencyOverride"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "urgency_rule": {
-            "deprecated": true,
-            "description": "The rule that derived `urgency_derived`: v2:default for every ticket since 2026-10-04\n(docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)\n",
-            "type": "string"
-          },
           "version": {
             "type": "integer"
           }
@@ -5253,10 +5192,6 @@
           "threat",
           "horizon",
           "horizon_set",
-          "urgency",
-          "urgency_derived",
-          "urgency_rule",
-          "urgency_override",
           "effort",
           "progress",
           "progress_refinement",
@@ -5380,15 +5315,6 @@
           },
           "type": {
             "$ref": "#/components/schemas/TicketType"
-          },
-          "urgency": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Urgency"
-              }
-            ],
-            "deprecated": true,
-            "description": "The horizon under the name it had before (docs/adr/0010 D1); replaced by `horizon`, and with it\nanother value is 400 at `/horizon`; removed in a later release (docs/adr/0046 D7)\n"
           }
         },
         "required": [
@@ -6099,74 +6025,6 @@
         "required": [
           "from",
           "to"
-        ],
-        "type": "object"
-      },
-      "Urgency": {
-        "deprecated": true,
-        "description": "The horizon under the name it had before (docs/adr/0010 D1), the same five values. Replaced by\n`Horizon`; kept in `/api/v1` for the clients that read it, and removed in a later release\n(docs/adr/0046 D7).\n",
-        "enum": [
-          "now",
-          "release",
-          "next",
-          "later",
-          "icebox"
-        ],
-        "type": "string"
-      },
-      "UrgencyOverride": {
-        "deprecated": true,
-        "description": "The set horizon under the name it had before (docs/adr/0010 D1). Replaced by `HorizonSet`; kept in\n`/api/v1` for the clients that read it, and removed in a later release (docs/adr/0046 D7).\n",
-        "properties": {
-          "at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "by": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/Person"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "reason": {
-            "description": "Null when a person set the override without one (docs/adr/0010 D3)",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "value": {
-            "$ref": "#/components/schemas/Urgency"
-          }
-        },
-        "required": [
-          "value",
-          "reason",
-          "at"
-        ],
-        "type": "object"
-      },
-      "UrgencyOverrideSet": {
-        "additionalProperties": false,
-        "deprecated": true,
-        "description": "The body of the deprecated `overrideUrgency`; replaced by `HorizonUpdate` and `setHorizon`, and\nremoved in a later release (docs/adr/0046 D7)\n",
-        "properties": {
-          "reason": {
-            "description": "Optional for a person, required of an agent (docs/adr/0010 D3)",
-            "maxLength": 2000,
-            "minLength": 1,
-            "type": "string"
-          },
-          "value": {
-            "$ref": "#/components/schemas/Urgency"
-          }
-        },
-        "required": [
-          "value"
         ],
         "type": "object"
       },
@@ -9030,7 +8888,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets": {
       "get": {
-        "description": "The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones\na release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key\nand the number sealed, since a key is computed over tickets the caller may not see, and is\nbound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,\nD5). `state=done\u0026done_after=\u003ctime\u003e` counts what the board shows for done\n(docs/adr/0018 D1). `urgency` is the deprecated name of `horizon`, and a request that\nnames both is 400 at `query:urgency`.\n",
+        "description": "The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones\na release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key\nand the number sealed, since a key is computed over tickets the caller may not see, and is\nbound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,\nD5). `state=done\u0026done_after=\u003ctime\u003e` counts what the board shows for done\n(docs/adr/0018 D1).\n",
         "operationId": "listProjectTickets",
         "parameters": [
           {
@@ -9047,9 +8905,6 @@
           },
           {
             "$ref": "#/components/parameters/FilterHorizon"
-          },
-          {
-            "$ref": "#/components/parameters/FilterUrgency"
           },
           {
             "$ref": "#/components/parameters/FilterEffort"
@@ -9163,7 +9018,7 @@
         }
       ],
       "post": {
-        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is\nthe project's next. `horizon` is the ticket's horizon, a planning category independent of\nthe state, `later` when left out; another horizon is the ticket's set horizon, set by the\ncaller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken\nas `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank\nat the bottom, the end of its horizon, or directly `after` or `before` the open ticket of\nthe project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs\n`set-horizon` for a horizon other than `later` and `rank` for a place, else 403\n`agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket\nconfidential (docs/adr/0065 D2). An archived project refuses.\n",
+        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is\nthe project's next. `horizon` is the ticket's horizon, a planning category independent of\nthe state, `later` when left out; another horizon is the ticket's set horizon, set by the\ncaller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,\nthe end of its horizon, or directly `after` or `before` the open ticket of the project\nnamed, which must stand in the same horizon (docs/adr/0014 D2). An agent needs\n`set-horizon` for a horizon other than `later` and `rank` for a place, else 403\n`agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket\nconfidential (docs/adr/0065 D2). An archived project refuses.\n",
         "operationId": "createTicket",
         "parameters": [
           {
@@ -11193,97 +11048,6 @@
         ]
       }
     },
-    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override": {
-      "delete": {
-        "deprecated": true,
-        "description": "Replaced by `setHorizon` with `later`; kept in `/api/v1` for the clients that call it, and\nremoved in a later release (docs/adr/0046 D7). Withdraws the horizon set on the ticket; the\nderived one, `later`, holds again (docs/adr/0010 D3). An agent needs the set-horizon\ncapability, which its deprecated name override-urgency names as well (docs/adr/0043 D4).\n",
-        "operationId": "withdrawUrgencyOverride",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/IfMatch"
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Ticket"
-                }
-              }
-            },
-            "description": "The ticket",
-            "headers": {
-              "ETag": {
-                "$ref": "#/components/headers/ETag"
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Problem"
-          }
-        },
-        "summary": "Return the ticket to the horizon later, under the name it had before",
-        "tags": [
-          "tickets"
-        ]
-      },
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/TenantSlug"
-        },
-        {
-          "$ref": "#/components/parameters/ProjectKey"
-        },
-        {
-          "$ref": "#/components/parameters/TicketNumber"
-        }
-      ],
-      "put": {
-        "deprecated": true,
-        "description": "Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,\nand removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,\n`release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which\nholds until a person or an agent withdraws it or sets another; nothing derives it, the\nderived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a\nperson and required of an agent, whose request without one is 400 at `/reason`. An agent\nneeds the set-horizon capability, which its deprecated name override-urgency names as well\n(docs/adr/0043 D4).\n",
-        "operationId": "overrideUrgency",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/IfMatch"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UrgencyOverrideSet"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Ticket"
-                }
-              }
-            },
-            "description": "The ticket",
-            "headers": {
-              "ETag": {
-                "$ref": "#/components/headers/ETag"
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Problem"
-          }
-        },
-        "summary": "Set the horizon, under the name it had before",
-        "tags": [
-          "tickets"
-        ]
-      }
-    },
     "/api/v1/tenants/{tenant}/search": {
       "get": {
         "description": "Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —\nover a ticket's title and body, its comments but a withdrawn one, its questions (the question,\nthe options, the recommendation and the answer) and its attachments' file names; a text\nmatches when it holds every word of `q`. A ticket's key matches by its beginning as well —\n`COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram\nsimilarity, so a word half typed or misspelt still finds it (D3).\n\nOne hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the\ntitle above the body above comments, questions and file names, a title found by trigram\nbelow them (D4). A hit names the ticket — its key, title, type and state —, where it matched\n(`found_in`: the key, the ticket's own text, a comment by its id, a question by its number, an\nattachment's name) and a snippet of that text with the matched words marked (`ts_headline`,\nD5). The snippet is text in parts, never HTML: a client shows every part as text.\n\nOnly what the caller can see is searched, snippets included: a restricted project they are\nnot on, a confidential ticket of which they are neither a tenant administrator, the assignee\nnor the reporter, and a project-restricted token's other projects find nothing\n(docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a\ncursor belongs to its query.\n\nThe `q` filter of the ticket lists is not this search: it narrows a list to the tickets whose\ntitle and body hold every word, in the list's own order, with no rank and no snippet.\n",
@@ -11359,7 +11123,7 @@
     },
     "/api/v1/tenants/{tenant}/tickets": {
       "get": {
-        "description": "The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a\nvalue prefixed with ! is negated, me is the caller's person. Done and dropped tickets\nshow only with include_terminal or when state names them; done_after keeps those done\nafter a time. `urgency` is the deprecated name of `horizon`, and a request that names\nboth is 400 at `query:urgency`.\n",
+        "description": "The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a\nvalue prefixed with ! is negated, me is the caller's person. Done and dropped tickets\nshow only with include_terminal or when state names them; done_after keeps those done\nafter a time.\n",
         "operationId": "listTenantTickets",
         "parameters": [
           {
@@ -11379,9 +11143,6 @@
           },
           {
             "$ref": "#/components/parameters/FilterHorizon"
-          },
-          {
-            "$ref": "#/components/parameters/FilterUrgency"
           },
           {
             "$ref": "#/components/parameters/FilterEffort"

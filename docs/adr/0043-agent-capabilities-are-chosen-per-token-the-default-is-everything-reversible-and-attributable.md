@@ -10,7 +10,11 @@ project and recording a person's answer leave the hard-off list), amended 2026-1
 D9 instead of the `admin` role), amended 2026-10-04 (D4: `rank` and `override-urgency` cover a filing's place and
 horizon, with the horizon of ADR 0010 D3 as amended that day), amended 2026-10-05 (D4: `override-urgency` is
 named `set-horizon`, the API following the word horizon as ADR 0010 D1 records it; the old name is taken
-until a later release rewrites the stored sets), amended 2026-10-03 (D4: `close` covers both ways to `done`
+until a later release rewrites the stored sets), amended 2026-10-06 (D4: that release's contract — the
+stored sets rewritten to `set-horizon`, the old name refused on input and dropped on read, as ADR 0010 D1
+records it; the checks of the stored sets keep the old name until a release after it, so that an image
+rollback to the release before stays safe, [ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3),
+amended 2026-10-03 (D4: `close` covers both ways to `done`
 of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
 that fills the last progress stage and done by hand — an agent's only from `in-progress` or
 `review`; the owner's answer when the progress stages were made to close a ticket, since an
@@ -67,10 +71,21 @@ owner reviewing the result), and every answer names `set-horizon`
 [`token.go`](../../backend/internal/api/token.go)); `GET /api/v1/me/token` answers
 `override-urgency` after `set-horizon` in the request's set, which a `cowork-mcp` of the release
 before reads to describe its tools (`requestCapabilities`); migration 37 lets the checks of
-`tokens.capabilities` and `chat_capabilities` take both names and rewrites no row. Not built: the
+`tokens.capabilities` and `chat_capabilities` take both names and rewrites no row. ~~Not built: the
 contract, a later release's — a migration that rewrites every stored set to `set-horizon` and
 drops `override-urgency` from both checks, and the old name gone from the API's `Capability` and
-from `/me/token`.
+from `/me/token`.~~
+*(2026-10-06:)* D4's amendment of 2026-10-06 is built, the contract:
+[migration 38](../../backend/internal/store/migrations/000038_horizon_names_only.up.sql) rewrites every
+`override-urgency` of `tokens.capabilities` and `chat_capabilities` to `set-horizon`, each name once in
+the order it was first named; the API's `Capability` has nine values, a set sent with
+`override-urgency` is `400`, `GET /api/v1/me/token` answers the request's set as it is, and the code
+that wrote the old name is gone (`auth.Stored`, `requestCapabilities`). Both checks still take
+`override-urgency`, which release 0.5 writes beside `set-horizon` in every set it stores after an image
+rollback; `auth.Canonical` drops it wherever a set is read — a token's, the chat's, every answer —,
+which loses nothing, since 0.5 writes it only beside `set-horizon`. Not built: the narrowing, a release
+after the one that ships migration 38 — a migration that rewrites the stored sets again, for what a
+rollback wrote in between, and then drops `override-urgency` from both checks.
 
 ## Context
 
@@ -115,7 +130,7 @@ these is an amendment of the record that closed it, not of this one.
 | `close` | the transition `→ done` (the verification note stays mandatory; open prerequisites still refuse, and the agent cannot override); *(amended 2026-10-03)* both ways to `done` of ADR 0009 D5 — the write that fills the last progress stage and done by hand — and only from `in-progress` or `review`, so that `close` never stands in for `decide`; without it, that write is refused and the stage keeps its value; *(decided 2026-10-04 by the owner)* an open question of the ticket does not hold `close` back — the question stays open on the done ticket |
 | `drop` | the transition `→ dropped` with a reason |
 | `rank` | moving the rank and adopting the score ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)); *(amended 2026-10-04)* naming a filing's place in its horizon (ADR 0014 D2) |
-| ~~`override-urgency`~~ `set-horizon` *(renamed 2026-10-05, [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1: the API takes the old name as the new until a later release drops it; a set stored with it keeps it, which the release before reads, until that release rewrites it — [ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3)* | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3); *(amended 2026-10-04)* the ticket's horizon, which the override now is — set on a ticket with a reason, or named at its filing when it is not `later` |
+| ~~`override-urgency`~~ `set-horizon` *(renamed 2026-10-05, [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1: ~~the API takes the old name as the new until a later release drops it; a set stored with it keeps it, which the release before reads, until that release rewrites it — [ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3~~; amended 2026-10-06: the old name is refused on input and dropped on read; the checks take it until a later release, for an image rollback to the release before)* | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3); *(amended 2026-10-04)* the ticket's horizon, which the override now is — set on a ticket with a reason, or named at its filing when it is not `later` |
 | `interest` | `need` and `urgent` interest, not only `watch` ([ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4 amended by this) |
 | `upload` | uploading attachments ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)) |
 | `create-project` *(added 2026-10-01, ADR 0066 D7)* | creating a project and binding a repository, where the person ~~is tenant `admin`~~ *(amended 2026-10-02)* may create projects (ADR 0034 D9), with `write` scope |
@@ -199,7 +214,14 @@ scope alone.
   `override-urgency` beside `set-horizon`, which the release before reads, so that an image rollback
   ([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D4) keeps
   the act for an agent made after the upgrade; the cost is the redundant name in those rows, which
-  the contract's rewrite removes.
+  the contract's rewrite removes. *(Amended 2026-10-06:)* An image rollback to 0.5 over migration 38 is
+  safe: the checks still take `override-urgency`, which 0.5 writes beside `set-horizon` into every
+  agent token it makes and every chat set it stores, and 0.5 reads everything the migration leaves.
+  Once the image goes forward again, this release reads such a set without the old name
+  (`auth.Canonical`) and holds `set-horizon` from it. What the window costs: a saved filter 0.5
+  stores with the key `urgency` — which 0.5 still takes — loses that condition under this release,
+  which reads the filter as if it named no horizon, until the migration of the later release
+  rewrites it to `horizon`. Read from the code of 0.5.1, not run.
 - Capabilities multiply the test matrix: each switch has an allowed and a refused test in the
   integration tier, with the fixture identities.
 

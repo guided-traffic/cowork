@@ -869,11 +869,27 @@ before keeps working against it. Two things to know:
 - **Upgrade the installation before the people's `cowork-mcp`.** A `cowork-mcp` of this release
   calls `setHorizon`, which the release before does not serve, and refuses every tool against it,
   naming the operation.
-- **A rollback over it** keeps every ticket, list and saved filter working, and every token made
-  before the upgrade. An agent token made, or a chat's capabilities chosen, under this release
-  names the capability `set-horizon`, which the release before does not know: after the rollback
-  that agent is refused setting a horizon (`403 agent_forbidden`, `missing capability:
-  override-urgency`) until its person makes a new token or chooses the chat's capabilities again.
+- **A rollback to 0.4** is unsupported since 0.5.0 ([SECURITY.md](../../SECURITY.md)); a migration
+  keeps only the release directly before it working
+  ([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3).
+
+**The release that drops the horizon's names before**
+([ADR 0010](../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1 and
+[ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D4, amended 2026-10-06) is the contract of the one above. Its migration rewrites every stored
+`override-urgency` to `set-horizon` and a saved filter's `urgency` to `horizon`, and its API knows the
+new names only. Two things to know:
+
+- **A `cowork-mcp` of 0.4 does not work against it**, and is unsupported
+  ([SECURITY.md](../../SECURITY.md)): its token reads without the capability it looks for, and its
+  routes for the horizon are gone. Every person's `cowork-mcp` of 0.5 keeps working.
+- **A rollback to 0.5 over it is safe.** 0.5 reads everything the migration leaves, and the
+  migration's checks still take the `override-urgency` that 0.5 writes beside `set-horizon` into
+  every agent token it makes and every chat capability set it stores; once the image goes forward
+  again, this release reads such a set without the old name. One thing is lost in that window: a
+  saved filter 0.5 stores with the key `urgency` — which 0.5 still takes — loses that condition
+  under this release, which reads it as a filter without a horizon, until a later release's
+  migration rewrites it to `horizon`. Read from the code of 0.5.1, not run.
 
 ## Uninstall
 

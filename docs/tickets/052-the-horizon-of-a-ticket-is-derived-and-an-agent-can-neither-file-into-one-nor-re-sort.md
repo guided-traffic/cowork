@@ -5,13 +5,14 @@ state: in-progress
 severity: low
 security: none
 threat:
-urgency: release      # rule 2: gated on the release — the contract waits for a release after the one that ships the expand
+urgency: release      # rule 2: gated on the release — the narrowing waits for the release after the one that ships migration 38
 effort: S
 blocked-by: release
 filed-from: the owner's report of 2026-10-04
 opened: 2026-10-04
 decided: 2026-10-04
 done:
+shipped:
 ---
 
 ## Current state
@@ -26,61 +27,48 @@ UI says horizon, and a project opens on its board
 [ADR 0042](../adr/0042-twelve-workflow-tools-and-one-escape-hatch.md) D1, all as amended
 2026-10-04).
 
-The identifiers follow the word: the owner chose on 2026-10-05 to rename the API and keep the
-database, recorded in ADR 0010 D1 as amended that day. Its expand half is built: a ticket answers
-`horizon` and `horizon_set`, `PUT …/horizon` sets it, a filing, both ticket lists and the saved
-filters take `horizon`, the capability is `set-horizon`
+The API names it by the word alone and the database keeps `urgency`
+([ADR 0010](../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1 as amended
+2026-10-06): a ticket answers `horizon` and `horizon_set`, `PUT …/horizon` is the one route, a
+filing, both lists and the saved filters take `horizon` and refuse `urgency`, and the capability is
+`set-horizon`, `override-urgency` refused with `400`
 ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
-D4), the export and the context write `horizon:`
-([ADR 0044](../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
-D1), and the tools, the chat and the UI use the new names. The database keeps the enum `urgency`
-and its columns, and migration 37 lets the stored capability sets take both names. The names before
-stay in `/api/v1`, deprecated, behaving as they did:
+D4 as amended 2026-10-06).
+[Migration 38](../../backend/internal/store/migrations/000038_horizon_names_only.up.sql) rewrites
+every `override-urgency` of `tokens.capabilities` and `chat_capabilities` to `set-horizon` and a saved
+filter's `urgency` to `horizon`
+([ADR 0049](../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md) D1 as
+amended 2026-10-06).
 
-| Deprecated | Replaced by |
-|---|---|
-| `Ticket.urgency`, `urgency_derived`, `urgency_rule`, `urgency_override`; the schemas `Urgency`, `UrgencyOverride`, `UrgencyOverrideSet` | `horizon`, `horizon_set`; `Horizon`, `HorizonSet`, `HorizonUpdate` |
-| `PUT` and `DELETE …/urgency-override` (`overrideUrgency`, `withdrawUrgencyOverride`) | `PUT …/horizon` (`setHorizon`) |
-| `TicketCreate.urgency`, the lists' filter `urgency`, `SavedFilterParameters.urgency` | `horizon` |
-| the capability `override-urgency`, stored in `tokens.capabilities` and `chat_capabilities` and answered after `set-horizon` in `request.capabilities` of `GET /api/v1/me/token` | `set-horizon` |
-
-The `cowork-mcp` of 0.4.x reads `urgency`, `urgency_derived`, the two urgency-override routes and
-`override-urgency` from `/me/token`. `TicketCreate.urgency` and `SavedFilterParameters` were never
-in a release.
+Both checks still take `override-urgency`: release 0.5 writes it beside `set-horizon`
+(`auth.Stored`) into every set it stores, so an image rolled back to it over migration 38 keeps
+writing ([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)
+D3, D4). This release drops the old name wherever a set is read
+([`auth.Canonical`](../../backend/internal/auth/principal.go)), which loses nothing. A saved filter
+0.5 stores with the key `urgency` in such a window loses that condition under this release until a
+later migration rewrites it.
 
 ## Required changes
 
-The contract, in a release after the one that ships the expand, once no supported `cowork-mcp`
-reads the names before ([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)
-D3):
-
-1. **A migration** that rewrites every `override-urgency` in `tokens.capabilities` and
-   `chat_capabilities` to `set-horizon`, each name once, drops `override-urgency` from both checks,
-   and rewrites the key `urgency` of `saved_filters.parameters` to `horizon` — a filter stored with
-   `urgency` would otherwise lose that condition without a word, since the API decodes the stored
-   object into a type that no longer has the field. Its integration test starts from the version
-   before and proves the three rewrites and the refusal of the old capability name.
-2. **The document:** the deprecated properties, schemas, operations, the `urgency` parameter and
-   the enum value `override-urgency` out of [`backend/api/`](../../backend/api/); `make generate`
-   and `make frontend-generate`.
-3. **The code:** `urgencyFields`, the old name in `filedHorizon` and `ticketQuery.horizons`,
-   `horizonNamed`, `horizonOfStored`, `auth.CapOverrideUrgency` and its mapping in `auth.Canonical`,
-   the alias of `requestCapabilities`, the deprecated handlers; the tenant list's `urgency` kind in
-   `parameterKinds` and the exclusion in `SelectableCapability`; the tests of the old surface
-   (`TestTheRoutesAndFieldsUnderTheNamesBeforeKeepWorking`, the old names in
-   `TestAFilingTakesTheHorizonUnderEitherName`, `TestAFilterSavedWithTheNameBeforeReadsAsHorizon`,
-   `TestTheCapabilityIsSetHorizonUnderEitherName`, `TestCanonical`, the unit tests of
-   `horizon_test.go`).
-4. **Docs in the same change:** the deprecated rows of the README reference,
-   [api.md](../developer/api.md#deprecated-names), the Status and the amended rows of ADR 0010
-   D1, ADR 0043 D4 and [ADR 0049](../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md)
-   D1; ADR 0044 D3 keeps the importer reading `urgency`, which the ticket files of a repository
-   carry.
+1. **The narrowing**, in a release after the one that ships migration 38, once no supported
+   release writes `override-urgency`: a migration that rewrites the three again — every
+   `override-urgency` of `tokens.capabilities` and `chat_capabilities` to `set-horizon`, each name
+   once, and the key `urgency` of `saved_filters.parameters` to `horizon`, for what a rollback to
+   0.5 wrote in between — and then drops `override-urgency` from both checks; with its integration
+   test from the version before, which proves the three rewrites and that both checks refuse the
+   old name. The drop in `auth.Canonical` goes with it, and so does its unit test. Docs in the same
+   change: the Status of
+   [ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+   D4 and its residual risk, [ADR 0010](../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md)
+   D1's build note and residual risk, the
+   [operations page](../operations/installation.md#upgrade), [api.md](../developer/api.md#deprecated-names),
+   [chat.md](../developer/chat.md), [testing.md](../developer/testing.md) and
+   [docs/security/tokens.md](../security/tokens.md), each of which names the checks that still
+   take the old name; the README reference names no stored name.
 
 ## Not verified
 
-- The end-to-end tier with its seeds and reads renamed did not run: it needs both images built.
-  Its TypeScript was checked against the generated client without Node's types.
-- An image rollback to 0.4.x over migration 37 was not run; that the release before grants the act
-  through the `override-urgency` every new set also stores is read from its code (`Principal.Can`
-  compares names), not observed.
+- An image rollback to 0.5 over migration 38 was not run; that it is safe is read from the code of
+  0.5.1 (`auth.Stored`, `auth.Canonical`) and from the checks migration 38 leaves.
+- The end-to-end tier did not run against this change; it needs both images built. Its TypeScript
+  was checked against the generated client without Node's types.
