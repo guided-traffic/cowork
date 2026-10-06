@@ -33,9 +33,6 @@ export const parameterKinds = {
   updated_after: 'text',
   updated_before: 'text',
   done_after: 'text',
-  // The name horizon had before (docs/adr/0010 D1): an address that still names it is passed on as
-  // it is, and the API takes it as horizon until a later release removes it.
-  urgency: 'repeated',
 } as const satisfies Record<keyof SavedFilterParameters, Kind>;
 
 /** The parameters the bar has a select for, in its order; the text is `q`, a field of its own. */

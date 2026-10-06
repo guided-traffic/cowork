@@ -214,16 +214,15 @@ func (e BlockKind) Valid() bool {
 
 // Defines values for Capability.
 const (
-	CapabilityClose           Capability = "close"
-	CapabilityCreateProject   Capability = "create-project"
-	CapabilityDecide          Capability = "decide"
-	CapabilityDrop            Capability = "drop"
-	CapabilityInterest        Capability = "interest"
-	CapabilityOverrideUrgency Capability = "override-urgency"
-	CapabilityRank            Capability = "rank"
-	CapabilityRecordAnswer    Capability = "record-answer"
-	CapabilitySetHorizon      Capability = "set-horizon"
-	CapabilityUpload          Capability = "upload"
+	CapabilityClose         Capability = "close"
+	CapabilityCreateProject Capability = "create-project"
+	CapabilityDecide        Capability = "decide"
+	CapabilityDrop          Capability = "drop"
+	CapabilityInterest      Capability = "interest"
+	CapabilityRank          Capability = "rank"
+	CapabilityRecordAnswer  Capability = "record-answer"
+	CapabilitySetHorizon    Capability = "set-horizon"
+	CapabilityUpload        Capability = "upload"
 )
 
 // Valid indicates whether the value is a known member of the Capability enum.
@@ -238,8 +237,6 @@ func (e Capability) Valid() bool {
 	case CapabilityDrop:
 		return true
 	case CapabilityInterest:
-		return true
-	case CapabilityOverrideUrgency:
 		return true
 	case CapabilityRank:
 		return true
@@ -995,33 +992,6 @@ func (e TokenState) Valid() bool {
 	}
 }
 
-// Defines values for Urgency.
-const (
-	UrgencyIcebox  Urgency = "icebox"
-	UrgencyLater   Urgency = "later"
-	UrgencyNext    Urgency = "next"
-	UrgencyNow     Urgency = "now"
-	UrgencyRelease Urgency = "release"
-)
-
-// Valid indicates whether the value is a known member of the Urgency enum.
-func (e Urgency) Valid() bool {
-	switch e {
-	case UrgencyIcebox:
-		return true
-	case UrgencyLater:
-		return true
-	case UrgencyNext:
-		return true
-	case UrgencyNow:
-		return true
-	case UrgencyRelease:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for GroupBy.
 const (
 	GroupByPerson  GroupBy = "person"
@@ -1563,10 +1533,7 @@ type BlockSet struct {
 	Ticket *string `json:"ticket,omitempty"`
 }
 
-// Capability An agent capability (docs/adr/0043 D4). `override-urgency` is the deprecated name of
-// `set-horizon`: taken as `set-horizon` wherever a set is sent, and answered nowhere but beside it in
-// `request.capabilities` of `GET /api/v1/me/token`, which a cowork-mcp of the release before reads;
-// a later release removes the name (docs/adr/0046 D7).
+// Capability An agent capability (docs/adr/0043 D4)
 type Capability string
 
 // ChatAvailability defines model for ChatAvailability.
@@ -2877,9 +2844,7 @@ type RequestMark struct {
 	// Capabilities What an agent's request may do beyond the baseline: the token's set for a flagged token,
 	// every capability for a plain token the header marks (docs/adr/0043 D4), the person's chat
 	// capabilities for a session the header marks (D5); empty for a person's request, which the
-	// capabilities do not bound. Where it holds `set-horizon`, the deprecated `override-urgency`
-	// follows it, for the cowork-mcp of the release before, until a later release removes it
-	// (docs/adr/0046 D7)
+	// capabilities do not bound
 	Capabilities []Capability `json:"capabilities"`
 }
 
@@ -2952,12 +2917,6 @@ type SavedFilterParameters struct {
 	Type             *[]string  `json:"type,omitempty"`
 	UpdatedAfter     *time.Time `json:"updated_after,omitempty"`
 	UpdatedBefore    *time.Time `json:"updated_before,omitempty"`
-
-	// Urgency `horizon` under the name it had before (docs/adr/0010 D1): a filter stored with it is read back
-	// as `horizon`; with `horizon` it is 400 at `/parameters/urgency`; removed in a later release
-	// (docs/adr/0046 D7)
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Urgency *[]string `json:"urgency,omitempty"`
 }
 
 // SavedFilterPatch defines model for SavedFilterPatch.
@@ -3177,27 +3136,7 @@ type Ticket struct {
 	// Type docs/adr/0008 D1
 	Type      TicketType `json:"type"`
 	UpdatedAt time.Time  `json:"updated_at"`
-
-	// Urgency The horizon under the name it had before (docs/adr/0010 D1): the same value as `horizon`, which
-	// replaces it; removed in a later release (docs/adr/0046 D7)
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Urgency Urgency `json:"urgency"`
-
-	// UrgencyDerived What rule set v2 derives, `later` for every ticket since nothing derives a horizon any more
-	// (docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	UrgencyDerived Urgency `json:"urgency_derived"`
-
-	// UrgencyOverride The set horizon under the name it had before (docs/adr/0010 D1): what `horizon_set` holds, which
-	// replaces it; removed in a later release (docs/adr/0046 D7)
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	UrgencyOverride nullable.Nullable[UrgencyOverride] `json:"urgency_override"`
-
-	// UrgencyRule The rule that derived `urgency_derived`: v2:default for every ticket since 2026-10-04
-	// (docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	UrgencyRule string `json:"urgency_rule"`
-	Version     int    `json:"version"`
+	Version   int        `json:"version"`
 }
 
 // TicketBody defines model for TicketBody.
@@ -3245,11 +3184,6 @@ type TicketCreate struct {
 
 	// Type docs/adr/0008 D1
 	Type TicketType `json:"type"`
-
-	// Urgency The horizon under the name it had before (docs/adr/0010 D1); replaced by `horizon`, and with it
-	// another value is 400 at `/horizon`; removed in a later release (docs/adr/0046 D7)
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Urgency *Urgency `json:"urgency,omitempty"`
 }
 
 // TicketList defines model for TicketList.
@@ -3558,46 +3492,6 @@ type Transition struct {
 	To TicketState `json:"to"`
 }
 
-// Urgency The horizon under the name it had before (docs/adr/0010 D1), the same five values. Replaced by
-// `Horizon`; kept in `/api/v1` for the clients that read it, and removed in a later release
-// (docs/adr/0046 D7).
-//
-// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-type Urgency string
-
-// UrgencyOverride The set horizon under the name it had before (docs/adr/0010 D1). Replaced by `HorizonSet`; kept in
-// `/api/v1` for the clients that read it, and removed in a later release (docs/adr/0046 D7).
-//
-// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-type UrgencyOverride struct {
-	At time.Time                 `json:"at"`
-	By nullable.Nullable[Person] `json:"by,omitempty"`
-
-	// Reason Null when a person set the override without one (docs/adr/0010 D3)
-	Reason nullable.Nullable[string] `json:"reason"`
-
-	// Value The horizon under the name it had before (docs/adr/0010 D1), the same five values. Replaced by
-	// `Horizon`; kept in `/api/v1` for the clients that read it, and removed in a later release
-	// (docs/adr/0046 D7).
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Value Urgency `json:"value"`
-}
-
-// UrgencyOverrideSet The body of the deprecated `overrideUrgency`; replaced by `HorizonUpdate` and `setHorizon`, and
-// removed in a later release (docs/adr/0046 D7)
-//
-// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-type UrgencyOverrideSet struct {
-	// Reason Optional for a person, required of an agent (docs/adr/0010 D3)
-	Reason *string `json:"reason,omitempty"`
-
-	// Value The horizon under the name it had before (docs/adr/0010 D1), the same five values. Replaced by
-	// `Horizon`; kept in `/api/v1` for the clients that read it, and removed in a later release
-	// (docs/adr/0046 D7).
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Value Urgency `json:"value"`
-}
-
 // Version defines model for Version.
 type Version struct {
 	BuildTime string `json:"build_time"`
@@ -3665,9 +3559,6 @@ type FilterState = []string
 
 // FilterType defines model for FilterType.
 type FilterType = []string
-
-// FilterUrgency defines model for FilterUrgency.
-type FilterUrgency = []string
 
 // FromDay defines model for FromDay.
 type FromDay = openapi_types.Date
@@ -4168,11 +4059,6 @@ type ListProjectTicketsParams struct {
 
 	// Horizon A horizon, or !horizon; repeated values combine with OR (docs/adr/0010 D3, docs/adr/0049)
 	Horizon *FilterHorizon `form:"horizon,omitempty" json:"horizon,omitempty"`
-
-	// Urgency `horizon` under the name it had before (docs/adr/0010 D1); with `horizon` in the same request it
-	// is 400 at `query:urgency`; removed in a later release (docs/adr/0046 D7)
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Urgency *FilterUrgency `form:"urgency,omitempty" json:"urgency,omitempty"`
 	Effort  *FilterEffort  `form:"effort,omitempty" json:"effort,omitempty"`
 
 	// Assignee A person id, me or none, each negatable with !
@@ -4479,20 +4365,6 @@ type TransitionTicketParams struct {
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
-// WithdrawUrgencyOverrideParams defines parameters for WithdrawUrgencyOverride.
-type WithdrawUrgencyOverrideParams struct {
-	// IfMatch The `ETag` of the version the client read. Required on overwriting writes:
-	// without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
-	IfMatch *IfMatch `json:"If-Match,omitempty"`
-}
-
-// OverrideUrgencyParams defines parameters for OverrideUrgency.
-type OverrideUrgencyParams struct {
-	// IfMatch The `ETag` of the version the client read. Required on overwriting writes:
-	// without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
-	IfMatch *IfMatch `json:"If-Match,omitempty"`
-}
-
 // SearchTenantParams defines parameters for SearchTenant.
 type SearchTenantParams struct {
 	// Q The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length
@@ -4519,11 +4391,6 @@ type ListTenantTicketsParams struct {
 
 	// Horizon A horizon, or !horizon; repeated values combine with OR (docs/adr/0010 D3, docs/adr/0049)
 	Horizon *FilterHorizon `form:"horizon,omitempty" json:"horizon,omitempty"`
-
-	// Urgency `horizon` under the name it had before (docs/adr/0010 D1); with `horizon` in the same request it
-	// is 400 at `query:urgency`; removed in a later release (docs/adr/0046 D7)
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	Urgency *FilterUrgency `form:"urgency,omitempty" json:"urgency,omitempty"`
 	Effort  *FilterEffort  `form:"effort,omitempty" json:"effort,omitempty"`
 
 	// Assignee A person id, me or none, each negatable with !
@@ -4775,11 +4642,6 @@ type EditTimeEntryJSONRequestBody = TimeEntryPatch
 
 // TransitionTicketJSONRequestBody defines body for TransitionTicket for application/json ContentType.
 type TransitionTicketJSONRequestBody = Transition
-
-// OverrideUrgencyJSONRequestBody defines body for OverrideUrgency for application/json ContentType.
-//
-// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-type OverrideUrgencyJSONRequestBody = UrgencyOverrideSet
 
 // LoginLocalJSONRequestBody defines body for LoginLocal for application/json ContentType.
 type LoginLocalJSONRequestBody = LocalLoginRequest
@@ -5968,8 +5830,7 @@ type ClientInterface interface {
 	// and the number sealed, since a key is computed over tickets the caller may not see, and is
 	// bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
 	// D5). `state=done&done_after=<time>` counts what the board shows for done
-	// (docs/adr/0018 D1). `urgency` is the deprecated name of `horizon`, and a request that
-	// names both is 400 at `query:urgency`.
+	// (docs/adr/0018 D1).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets (the `ListProjectTickets` operationId).
 	ListProjectTickets(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListProjectTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -5979,10 +5840,9 @@ type ClientInterface interface {
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
 	// the project's next. `horizon` is the ticket's horizon, a planning category independent of
 	// the state, `later` when left out; another horizon is the ticket's set horizon, set by the
-	// caller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken
-	// as `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank
-	// at the bottom, the end of its horizon, or directly `after` or `before` the open ticket of
-	// the project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+	// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+	// the end of its horizon, or directly `after` or `before` the open ticket of the project
+	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2). An archived project refuses.
@@ -5997,10 +5857,9 @@ type ClientInterface interface {
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
 	// the project's next. `horizon` is the ticket's horizon, a planning category independent of
 	// the state, `later` when left out; another horizon is the ticket's set horizon, set by the
-	// caller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken
-	// as `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank
-	// at the bottom, the end of its horizon, or directly `after` or `before` the open ticket of
-	// the project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+	// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+	// the end of its horizon, or directly `after` or `before` the open ticket of the project
+	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2). An archived project refuses.
@@ -6620,54 +6479,6 @@ type ClientInterface interface {
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions (the `TransitionTicket` operationId).
 	TransitionTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *TransitionTicketParams, body TransitionTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// WithdrawUrgencyOverride Return the ticket to the horizon later, under the name it had before
-	//
-	// Replaced by `setHorizon` with `later`; kept in `/api/v1` for the clients that call it, and
-	// removed in a later release (docs/adr/0046 D7). Withdraws the horizon set on the ticket; the
-	// derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the set-horizon
-	// capability, which its deprecated name override-urgency names as well (docs/adr/0043 D4).
-	//
-	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `WithdrawUrgencyOverride` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	WithdrawUrgencyOverride(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *WithdrawUrgencyOverrideParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// OverrideUrgencyWithBody Set the horizon, under the name it had before
-	//
-	// Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,
-	// and removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,
-	// `release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which
-	// holds until a person or an agent withdraws it or sets another; nothing derives it, the
-	// derived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a
-	// person and required of an agent, whose request without one is 400 at `/reason`. An agent
-	// needs the set-horizon capability, which its deprecated name override-urgency names as well
-	// (docs/adr/0043 D4).
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	OverrideUrgencyWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// OverrideUrgency Set the horizon, under the name it had before
-	//
-	// Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,
-	// and removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,
-	// `release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which
-	// holds until a person or an agent withdraws it or sets another; nothing derives it, the
-	// derived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a
-	// person and required of an agent, whose request without one is 400 at `/reason`. An agent
-	// needs the set-horizon capability, which its deprecated name override-urgency names as well
-	// (docs/adr/0043 D4).
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	OverrideUrgency(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, body OverrideUrgencyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
 	// SearchTenant Search the tenant's tickets
 	//
 	// Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
@@ -6701,8 +6512,7 @@ type ClientInterface interface {
 	// The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
 	// value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
 	// show only with include_terminal or when state names them; done_after keeps those done
-	// after a time. `urgency` is the deprecated name of `horizon`, and a request that names
-	// both is 400 at `query:urgency`.
+	// after a time.
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/tickets (the `ListTenantTickets` operationId).
 	ListTenantTickets(ctx context.Context, tenant TenantSlug, params *ListTenantTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -8854,8 +8664,7 @@ func (c *Client) SetProjectRestriction(ctx context.Context, tenant TenantSlug, p
 // and the number sealed, since a key is computed over tickets the caller may not see, and is
 // bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
 // D5). `state=done&done_after=<time>` counts what the board shows for done
-// (docs/adr/0018 D1). `urgency` is the deprecated name of `horizon`, and a request that
-// names both is 400 at `query:urgency`.
+// (docs/adr/0018 D1).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets (the `ListProjectTickets` operationId).
 func (c *Client) ListProjectTickets(ctx context.Context, tenant TenantSlug, project ProjectKey, params *ListProjectTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -8875,10 +8684,9 @@ func (c *Client) ListProjectTickets(ctx context.Context, tenant TenantSlug, proj
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
 // the project's next. `horizon` is the ticket's horizon, a planning category independent of
 // the state, `later` when left out; another horizon is the ticket's set horizon, set by the
-// caller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken
-// as `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank
-// at the bottom, the end of its horizon, or directly `after` or `before` the open ticket of
-// the project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+// the end of its horizon, or directly `after` or `before` the open ticket of the project
+// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2). An archived project refuses.
@@ -8903,10 +8711,9 @@ func (c *Client) CreateTicketWithBody(ctx context.Context, tenant TenantSlug, pr
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
 // the project's next. `horizon` is the ticket's horizon, a planning category independent of
 // the state, `later` when left out; another horizon is the ticket's set horizon, set by the
-// caller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken
-// as `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank
-// at the bottom, the end of its horizon, or directly `after` or `before` the open ticket of
-// the project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+// the end of its horizon, or directly `after` or `before` the open ticket of the project
+// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2). An archived project refuses.
@@ -10086,81 +9893,6 @@ func (c *Client) TransitionTicket(ctx context.Context, tenant TenantSlug, projec
 	return c.Client.Do(req)
 }
 
-// WithdrawUrgencyOverride Return the ticket to the horizon later, under the name it had before
-//
-// Replaced by `setHorizon` with `later`; kept in `/api/v1` for the clients that call it, and
-// removed in a later release (docs/adr/0046 D7). Withdraws the horizon set on the ticket; the
-// derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the set-horizon
-// capability, which its deprecated name override-urgency names as well (docs/adr/0043 D4).
-//
-// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `WithdrawUrgencyOverride` operationId).
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-func (c *Client) WithdrawUrgencyOverride(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *WithdrawUrgencyOverrideParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewWithdrawUrgencyOverrideRequest(c.Server, tenant, project, number, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// OverrideUrgencyWithBody Set the horizon, under the name it had before
-//
-// Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,
-// and removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,
-// `release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which
-// holds until a person or an agent withdraws it or sets another; nothing derives it, the
-// derived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a
-// person and required of an agent, whose request without one is 400 at `/reason`. An agent
-// needs the set-horizon capability, which its deprecated name override-urgency names as well
-// (docs/adr/0043 D4).
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-func (c *Client) OverrideUrgencyWithBody(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewOverrideUrgencyRequestWithBody(c.Server, tenant, project, number, params, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// OverrideUrgency Set the horizon, under the name it had before
-//
-// Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,
-// and removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,
-// `release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which
-// holds until a person or an agent withdraws it or sets another; nothing derives it, the
-// derived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a
-// person and required of an agent, whose request without one is 400 at `/reason`. An agent
-// needs the set-horizon capability, which its deprecated name override-urgency names as well
-// (docs/adr/0043 D4).
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-func (c *Client) OverrideUrgency(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, body OverrideUrgencyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewOverrideUrgencyRequest(c.Server, tenant, project, number, params, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
 // SearchTenant Search the tenant's tickets
 //
 // Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
@@ -10204,8 +9936,7 @@ func (c *Client) SearchTenant(ctx context.Context, tenant TenantSlug, params *Se
 // The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
 // value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
 // show only with include_terminal or when state names them; done_after keeps those done
-// after a time. `urgency` is the deprecated name of `horizon`, and a request that names
-// both is 400 at `query:urgency`.
+// after a time.
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/tickets (the `ListTenantTickets` operationId).
 func (c *Client) ListTenantTickets(ctx context.Context, tenant TenantSlug, params *ListTenantTicketsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -14465,18 +14196,6 @@ func NewListProjectTicketsRequest(server string, tenant TenantSlug, project Proj
 
 		}
 
-		if params.Urgency != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "urgency", *params.Urgency, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
 		if params.Effort != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "effort", *params.Effort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
@@ -17888,145 +17607,6 @@ func NewTransitionTicketRequestWithBody(server string, tenant TenantSlug, projec
 	return req, nil
 }
 
-// NewWithdrawUrgencyOverrideRequest constructs an http.Request for the WithdrawUrgencyOverride method
-func NewWithdrawUrgencyOverrideRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *WithdrawUrgencyOverrideParams) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam2 string
-
-	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s/urgency-override", pathParam0, pathParam1, pathParam2)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	if params != nil {
-
-		if params.IfMatch != nil {
-			var headerParam0 string
-
-			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
-			if err != nil {
-				return nil, err
-			}
-
-			req.Header.Set("If-Match", headerParam0)
-		}
-
-	}
-
-	return req, nil
-}
-
-// NewOverrideUrgencyRequest calls the generic OverrideUrgency builder with application/json body
-func NewOverrideUrgencyRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, body OverrideUrgencyJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewOverrideUrgencyRequestWithBody(server, tenant, project, number, params, "application/json", bodyReader)
-}
-
-// NewOverrideUrgencyRequestWithBody constructs an http.Request for the OverrideUrgency method, with any body, and a specified content type
-func NewOverrideUrgencyRequestWithBody(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam1 string
-
-	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	var pathParam2 string
-
-	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s/urgency-override", pathParam0, pathParam1, pathParam2)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	if params != nil {
-
-		if params.IfMatch != nil {
-			var headerParam0 string
-
-			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-Match", *params.IfMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
-			if err != nil {
-				return nil, err
-			}
-
-			req.Header.Set("If-Match", headerParam0)
-		}
-
-	}
-
-	return req, nil
-}
-
 // NewSearchTenantRequest constructs an http.Request for the SearchTenant method
 func NewSearchTenantRequest(server string, tenant TenantSlug, params *SearchTenantParams) (*http.Request, error) {
 	var err error
@@ -18206,18 +17786,6 @@ func NewListTenantTicketsRequest(server string, tenant TenantSlug, params *ListT
 		if params.Horizon != nil {
 
 			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "horizon", *params.Horizon, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
-				return nil, err
-			} else {
-				for _, qp := range strings.Split(queryFrag, "&") {
-					rawQueryFragments = append(rawQueryFragments, qp)
-				}
-			}
-
-		}
-
-		if params.Urgency != nil {
-
-			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "urgency", *params.Urgency, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
 				return nil, err
 			} else {
 				for _, qp := range strings.Split(queryFrag, "&") {
@@ -20471,8 +20039,7 @@ type ClientWithResponsesInterface interface {
 	// and the number sealed, since a key is computed over tickets the caller may not see, and is
 	// bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
 	// D5). `state=done&done_after=<time>` counts what the board shows for done
-	// (docs/adr/0018 D1). `urgency` is the deprecated name of `horizon`, and a request that
-	// names both is 400 at `query:urgency`.
+	// (docs/adr/0018 D1).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -20484,10 +20051,9 @@ type ClientWithResponsesInterface interface {
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
 	// the project's next. `horizon` is the ticket's horizon, a planning category independent of
 	// the state, `later` when left out; another horizon is the ticket's set horizon, set by the
-	// caller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken
-	// as `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank
-	// at the bottom, the end of its horizon, or directly `after` or `before` the open ticket of
-	// the project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+	// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+	// the end of its horizon, or directly `after` or `before` the open ticket of the project
+	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2). An archived project refuses.
@@ -20502,10 +20068,9 @@ type ClientWithResponsesInterface interface {
 	// A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
 	// the project's next. `horizon` is the ticket's horizon, a planning category independent of
 	// the state, `later` when left out; another horizon is the ticket's set horizon, set by the
-	// caller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken
-	// as `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank
-	// at the bottom, the end of its horizon, or directly `after` or `before` the open ticket of
-	// the project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+	// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+	// the end of its horizon, or directly `after` or `before` the open ticket of the project
+	// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2). An archived project refuses.
@@ -21177,56 +20742,6 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with POST /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions (the `TransitionTicket` operationId).
 	TransitionTicketWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *TransitionTicketParams, body TransitionTicketJSONRequestBody, reqEditors ...RequestEditorFn) (*TransitionTicketResponse, error)
 
-	// WithdrawUrgencyOverrideWithResponse Return the ticket to the horizon later, under the name it had before
-	//
-	// Replaced by `setHorizon` with `later`; kept in `/api/v1` for the clients that call it, and
-	// removed in a later release (docs/adr/0046 D7). Withdraws the horizon set on the ticket; the
-	// derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the set-horizon
-	// capability, which its deprecated name override-urgency names as well (docs/adr/0043 D4).
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `WithdrawUrgencyOverride` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	WithdrawUrgencyOverrideWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *WithdrawUrgencyOverrideParams, reqEditors ...RequestEditorFn) (*WithdrawUrgencyOverrideResponse, error)
-
-	// OverrideUrgencyWithBodyWithResponse Set the horizon, under the name it had before
-	//
-	// Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,
-	// and removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,
-	// `release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which
-	// holds until a person or an agent withdraws it or sets another; nothing derives it, the
-	// derived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a
-	// person and required of an agent, whose request without one is 400 at `/reason`. An agent
-	// needs the set-horizon capability, which its deprecated name override-urgency names as well
-	// (docs/adr/0043 D4).
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	OverrideUrgencyWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OverrideUrgencyResponse, error)
-
-	// OverrideUrgencyWithResponse Set the horizon, under the name it had before
-	//
-	// Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,
-	// and removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,
-	// `release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which
-	// holds until a person or an agent withdraws it or sets another; nothing derives it, the
-	// derived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a
-	// person and required of an agent, whose request without one is 400 at `/reason`. An agent
-	// needs the set-horizon capability, which its deprecated name override-urgency names as well
-	// (docs/adr/0043 D4).
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	OverrideUrgencyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, body OverrideUrgencyJSONRequestBody, reqEditors ...RequestEditorFn) (*OverrideUrgencyResponse, error)
-
 	// SearchTenantWithResponse Search the tenant's tickets
 	//
 	// Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
@@ -21262,8 +20777,7 @@ type ClientWithResponsesInterface interface {
 	// The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
 	// value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
 	// show only with include_terminal or when state names them; done_after keeps those done
-	// after a time. `urgency` is the deprecated name of `horizon`, and a request that names
-	// both is 400 at `query:urgency`.
+	// after a time.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -27777,130 +27291,6 @@ func (r TransitionTicketResponse) ContentType() string {
 	return ""
 }
 
-// WithdrawUrgencyOverrideResponse200Headers the declared response headers of an HTTP 200 response for WithdrawUrgencyOverride
-type WithdrawUrgencyOverrideResponse200Headers struct {
-	ETag *string
-}
-
-// WithdrawUrgencyOverrideResponseDefaultHeaders the declared response headers of an HTTP default response for WithdrawUrgencyOverride
-type WithdrawUrgencyOverrideResponseDefaultHeaders struct {
-	XRequestId *string
-}
-
-type WithdrawUrgencyOverrideResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *Ticket
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *Problem
-	// Headers200 the parsed response headers for an HTTP 200 response
-	Headers200 *WithdrawUrgencyOverrideResponse200Headers
-	// HeadersDefault the parsed response headers for an HTTP default response
-	HeadersDefault *WithdrawUrgencyOverrideResponseDefaultHeaders
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r WithdrawUrgencyOverrideResponse) GetJSON200() *Ticket {
-	return r.JSON200
-}
-
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r WithdrawUrgencyOverrideResponse) GetApplicationproblemJSONDefault() *Problem {
-	return r.ApplicationproblemJSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r WithdrawUrgencyOverrideResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r WithdrawUrgencyOverrideResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r WithdrawUrgencyOverrideResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r WithdrawUrgencyOverrideResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-// OverrideUrgencyResponse200Headers the declared response headers of an HTTP 200 response for OverrideUrgency
-type OverrideUrgencyResponse200Headers struct {
-	ETag *string
-}
-
-// OverrideUrgencyResponseDefaultHeaders the declared response headers of an HTTP default response for OverrideUrgency
-type OverrideUrgencyResponseDefaultHeaders struct {
-	XRequestId *string
-}
-
-type OverrideUrgencyResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON200 the response for an HTTP 200 `application/json` response
-	JSON200 *Ticket
-	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
-	ApplicationproblemJSONDefault *Problem
-	// Headers200 the parsed response headers for an HTTP 200 response
-	Headers200 *OverrideUrgencyResponse200Headers
-	// HeadersDefault the parsed response headers for an HTTP default response
-	HeadersDefault *OverrideUrgencyResponseDefaultHeaders
-}
-
-// GetJSON200 returns the response for an HTTP 200 `application/json` response
-func (r OverrideUrgencyResponse) GetJSON200() *Ticket {
-	return r.JSON200
-}
-
-// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
-func (r OverrideUrgencyResponse) GetApplicationproblemJSONDefault() *Problem {
-	return r.ApplicationproblemJSONDefault
-}
-
-// GetBody returns the raw response body bytes
-func (r OverrideUrgencyResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r OverrideUrgencyResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r OverrideUrgencyResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r OverrideUrgencyResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
 // SearchTenantResponseDefaultHeaders the declared response headers of an HTTP default response for SearchTenant
 type SearchTenantResponseDefaultHeaders struct {
 	XRequestId *string
@@ -30360,8 +29750,7 @@ func (c *ClientWithResponses) SetProjectRestrictionWithResponse(ctx context.Cont
 // and the number sealed, since a key is computed over tickets the caller may not see, and is
 // bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
 // D5). `state=done&done_after=<time>` counts what the board shows for done
-// (docs/adr/0018 D1). `urgency` is the deprecated name of `horizon`, and a request that
-// names both is 400 at `query:urgency`.
+// (docs/adr/0018 D1).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -30379,10 +29768,9 @@ func (c *ClientWithResponses) ListProjectTicketsWithResponse(ctx context.Context
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
 // the project's next. `horizon` is the ticket's horizon, a planning category independent of
 // the state, `later` when left out; another horizon is the ticket's set horizon, set by the
-// caller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken
-// as `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank
-// at the bottom, the end of its horizon, or directly `after` or `before` the open ticket of
-// the project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+// the end of its horizon, or directly `after` or `before` the open ticket of the project
+// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2). An archived project refuses.
@@ -30403,10 +29791,9 @@ func (c *ClientWithResponses) CreateTicketWithBodyWithResponse(ctx context.Conte
 // A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
 // the project's next. `horizon` is the ticket's horizon, a planning category independent of
 // the state, `later` when left out; another horizon is the ticket's set horizon, set by the
-// caller and without a reason (docs/adr/0010 D3). `urgency`, its deprecated name, is taken
-// as `horizon`; both with different values are 400 at `/horizon`. The ticket joins the rank
-// at the bottom, the end of its horizon, or directly `after` or `before` the open ticket of
-// the project named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+// caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+// the end of its horizon, or directly `after` or `before` the open ticket of the project
+// named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2). An archived project refuses.
@@ -31414,73 +30801,6 @@ func (c *ClientWithResponses) TransitionTicketWithResponse(ctx context.Context, 
 	return ParseTransitionTicketResponse(rsp)
 }
 
-// WithdrawUrgencyOverrideWithResponse Return the ticket to the horizon later, under the name it had before
-//
-// Replaced by `setHorizon` with `later`; kept in `/api/v1` for the clients that call it, and
-// removed in a later release (docs/adr/0046 D7). Withdraws the horizon set on the ticket; the
-// derived one, `later`, holds again (docs/adr/0010 D3). An agent needs the set-horizon
-// capability, which its deprecated name override-urgency names as well (docs/adr/0043 D4).
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `WithdrawUrgencyOverride` operationId).
-//
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-func (c *ClientWithResponses) WithdrawUrgencyOverrideWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *WithdrawUrgencyOverrideParams, reqEditors ...RequestEditorFn) (*WithdrawUrgencyOverrideResponse, error) {
-	rsp, err := c.WithdrawUrgencyOverride(ctx, tenant, project, number, params, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseWithdrawUrgencyOverrideResponse(rsp)
-}
-
-// OverrideUrgencyWithBodyWithResponse Set the horizon, under the name it had before
-//
-// Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,
-// and removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,
-// `release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which
-// holds until a person or an agent withdraws it or sets another; nothing derives it, the
-// derived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a
-// person and required of an agent, whose request without one is 400 at `/reason`. An agent
-// needs the set-horizon capability, which its deprecated name override-urgency names as well
-// (docs/adr/0043 D4).
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
-//
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-func (c *ClientWithResponses) OverrideUrgencyWithBodyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*OverrideUrgencyResponse, error) {
-	rsp, err := c.OverrideUrgencyWithBody(ctx, tenant, project, number, params, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseOverrideUrgencyResponse(rsp)
-}
-
-// OverrideUrgencyWithResponse Set the horizon, under the name it had before
-//
-// Replaced by `setHorizon`, `PUT …/horizon`; kept in `/api/v1` for the clients that call it,
-// and removed in a later release (docs/adr/0046 D7). Sets the ticket's horizon — `now`,
-// `release`, `next`, `later` or `icebox`, `later` stored as a set horizon as well — which
-// holds until a person or an agent withdraws it or sets another; nothing derives it, the
-// derived value is `later` for every ticket (docs/adr/0010 D3). The reason is optional for a
-// person and required of an agent, whose request without one is 400 at `/reason`. An agent
-// needs the set-horizon capability, which its deprecated name override-urgency names as well
-// (docs/adr/0043 D4).
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override (the `OverrideUrgency` operationId).
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-func (c *ClientWithResponses) OverrideUrgencyWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *OverrideUrgencyParams, body OverrideUrgencyJSONRequestBody, reqEditors ...RequestEditorFn) (*OverrideUrgencyResponse, error) {
-	rsp, err := c.OverrideUrgency(ctx, tenant, project, number, params, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseOverrideUrgencyResponse(rsp)
-}
-
 // SearchTenantWithResponse Search the tenant's tickets
 //
 // Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
@@ -31522,8 +30842,7 @@ func (c *ClientWithResponses) SearchTenantWithResponse(ctx context.Context, tena
 // The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
 // value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
 // show only with include_terminal or when state names them; done_after keeps those done
-// after a time. `urgency` is the deprecated name of `horizon`, and a request that names
-// both is 400 at `query:urgency`.
+// after a time.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -37610,118 +36929,6 @@ func ParseTransitionTicketResponse(rsp *http.Response) (*TransitionTicketRespons
 	return response, nil
 }
 
-// ParseWithdrawUrgencyOverrideResponse parses an HTTP response from a WithdrawUrgencyOverrideWithResponse call
-func ParseWithdrawUrgencyOverrideResponse(rsp *http.Response) (*WithdrawUrgencyOverrideResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &WithdrawUrgencyOverrideResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Ticket
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Problem
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSONDefault = &dest
-
-	}
-
-	switch {
-	case rsp.StatusCode == 200:
-		var headers WithdrawUrgencyOverrideResponse200Headers
-		if values := rsp.Header.Values("ETag"); len(values) > 0 {
-			var value string
-			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			}
-			headers.ETag = &value
-		}
-		response.Headers200 = &headers
-	case true:
-		var headers WithdrawUrgencyOverrideResponseDefaultHeaders
-		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
-			var value string
-			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			}
-			headers.XRequestId = &value
-		}
-		response.HeadersDefault = &headers
-	}
-
-	return response, nil
-}
-
-// ParseOverrideUrgencyResponse parses an HTTP response from a OverrideUrgencyWithResponse call
-func ParseOverrideUrgencyResponse(rsp *http.Response) (*OverrideUrgencyResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &OverrideUrgencyResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest Ticket
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
-		var dest Problem
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.ApplicationproblemJSONDefault = &dest
-
-	}
-
-	switch {
-	case rsp.StatusCode == 200:
-		var headers OverrideUrgencyResponse200Headers
-		if values := rsp.Header.Values("ETag"); len(values) > 0 {
-			var value string
-			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			}
-			headers.ETag = &value
-		}
-		response.Headers200 = &headers
-	case true:
-		var headers OverrideUrgencyResponseDefaultHeaders
-		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
-			var value string
-			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
-				return nil, err
-			}
-			headers.XRequestId = &value
-		}
-		response.HeadersDefault = &headers
-	}
-
-	return response, nil
-}
-
 // ParseSearchTenantResponse parses an HTTP response from a SearchTenantWithResponse call
 func ParseSearchTenantResponse(rsp *http.Response) (*SearchTenantResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -38767,16 +37974,6 @@ type ServerInterface interface {
 	// TransitionTicket Move the ticket to another state
 	// (POST /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions)
 	TransitionTicket(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params TransitionTicketParams)
-	// WithdrawUrgencyOverride Return the ticket to the horizon later, under the name it had before
-	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	WithdrawUrgencyOverride(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params WithdrawUrgencyOverrideParams)
-	// OverrideUrgency Set the horizon, under the name it had before
-	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	OverrideUrgency(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params OverrideUrgencyParams)
 	// SearchTenant Search the tenant's tickets
 	// (GET /api/v1/tenants/{tenant}/search)
 	SearchTenant(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params SearchTenantParams)
@@ -41995,19 +41192,6 @@ func (siw *ServerInterfaceWrapper) ListProjectTickets(w http.ResponseWriter, r *
 		return
 	}
 
-	// ------------- Optional query parameter "urgency" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "urgency", r.URL.Query(), &params.Urgency, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "urgency"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "urgency", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "effort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "effort", r.URL.Query(), &params.Effort, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
@@ -45187,142 +44371,6 @@ func (siw *ServerInterfaceWrapper) TransitionTicket(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
-// WithdrawUrgencyOverride operation middleware
-func (siw *ServerInterfaceWrapper) WithdrawUrgencyOverride(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "tenant" -------------
-	var tenant TenantSlug
-
-	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "project" -------------
-	var project ProjectKey
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "number" -------------
-	var number TicketNumber
-
-	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params WithdrawUrgencyOverrideParams
-
-	headers := r.Header
-
-	// ------------- Optional header parameter "If-Match" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
-		var IfMatch IfMatch
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
-			return
-		}
-
-		params.IfMatch = &IfMatch
-
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.WithdrawUrgencyOverride(w, r, tenant, project, number, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// OverrideUrgency operation middleware
-func (siw *ServerInterfaceWrapper) OverrideUrgency(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "tenant" -------------
-	var tenant TenantSlug
-
-	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "project" -------------
-	var project ProjectKey
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "number" -------------
-	var number TicketNumber
-
-	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params OverrideUrgencyParams
-
-	headers := r.Header
-
-	// ------------- Optional header parameter "If-Match" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
-		var IfMatch IfMatch
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-Match", Count: n})
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-Match", Err: err})
-			return
-		}
-
-		params.IfMatch = &IfMatch
-
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.OverrideUrgency(w, r, tenant, project, number, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // SearchTenant operation middleware
 func (siw *ServerInterfaceWrapper) SearchTenant(w http.ResponseWriter, r *http.Request) {
 
@@ -45483,19 +44531,6 @@ func (siw *ServerInterfaceWrapper) ListTenantTickets(w http.ResponseWriter, r *h
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "horizon"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "horizon", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "urgency" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "urgency", r.URL.Query(), &params.Urgency, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "urgency"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "urgency", Err: err})
 		}
 		return
 	}
@@ -46603,8 +45638,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}/revisions", wrapper.ListTimeEntryRevisions)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}/void", wrapper.VoidTimeEntry)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions", wrapper.TransitionTicket)
-	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override", wrapper.WithdrawUrgencyOverride)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override", wrapper.OverrideUrgency)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/search", wrapper.SearchTenant)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/tickets", wrapper.ListTenantTickets)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/time-entries", wrapper.ListTenantTime)
@@ -52255,119 +51288,6 @@ func (response TransitionTicketdefaultApplicationProblemPlusJSONResponse) VisitT
 	return err
 }
 
-type WithdrawUrgencyOverrideRequestObject struct {
-	Tenant  TenantSlug   `json:"tenant"`
-	Project ProjectKey   `json:"project"`
-	Number  TicketNumber `json:"number"`
-	Params  WithdrawUrgencyOverrideParams
-}
-
-type WithdrawUrgencyOverrideResponseObject interface {
-	VisitWithdrawUrgencyOverrideResponse(w http.ResponseWriter) error
-}
-
-type WithdrawUrgencyOverride200ResponseHeaders struct {
-	ETag *string
-}
-
-type WithdrawUrgencyOverride200JSONResponse struct {
-	Body    Ticket
-	Headers WithdrawUrgencyOverride200ResponseHeaders
-}
-
-func (response WithdrawUrgencyOverride200JSONResponse) VisitWithdrawUrgencyOverrideResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if response.Headers.ETag != nil {
-		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
-	}
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type WithdrawUrgencyOverridedefaultApplicationProblemPlusJSONResponse struct {
-	Body       Problem
-	Headers    ProblemResponseHeaders
-	StatusCode int
-}
-
-func (response WithdrawUrgencyOverridedefaultApplicationProblemPlusJSONResponse) VisitWithdrawUrgencyOverrideResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	if response.Headers.XRequestId != nil {
-		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
-	}
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type OverrideUrgencyRequestObject struct {
-	Tenant  TenantSlug   `json:"tenant"`
-	Project ProjectKey   `json:"project"`
-	Number  TicketNumber `json:"number"`
-	Params  OverrideUrgencyParams
-	Body    *OverrideUrgencyJSONRequestBody
-}
-
-type OverrideUrgencyResponseObject interface {
-	VisitOverrideUrgencyResponse(w http.ResponseWriter) error
-}
-
-type OverrideUrgency200ResponseHeaders struct {
-	ETag *string
-}
-
-type OverrideUrgency200JSONResponse struct {
-	Body    Ticket
-	Headers OverrideUrgency200ResponseHeaders
-}
-
-func (response OverrideUrgency200JSONResponse) VisitOverrideUrgencyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	if response.Headers.ETag != nil {
-		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
-	}
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type OverrideUrgencydefaultApplicationProblemPlusJSONResponse struct {
-	Body       Problem
-	Headers    ProblemResponseHeaders
-	StatusCode int
-}
-
-func (response OverrideUrgencydefaultApplicationProblemPlusJSONResponse) VisitOverrideUrgencyResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	if response.Headers.XRequestId != nil {
-		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
-	}
-	w.WriteHeader(response.StatusCode)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
 type SearchTenantRequestObject struct {
 	Tenant TenantSlug `json:"tenant"`
 	Params SearchTenantParams
@@ -53396,16 +52316,6 @@ type StrictServerInterface interface {
 	// TransitionTicket Move the ticket to another state
 	// (POST /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions)
 	TransitionTicket(ctx context.Context, request TransitionTicketRequestObject) (TransitionTicketResponseObject, error)
-	// WithdrawUrgencyOverride Return the ticket to the horizon later, under the name it had before
-	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	WithdrawUrgencyOverride(ctx context.Context, request WithdrawUrgencyOverrideRequestObject) (WithdrawUrgencyOverrideResponseObject, error)
-	// OverrideUrgency Set the horizon, under the name it had before
-	// (PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/urgency-override)
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	OverrideUrgency(ctx context.Context, request OverrideUrgencyRequestObject) (OverrideUrgencyResponseObject, error)
 	// SearchTenant Search the tenant's tickets
 	// (GET /api/v1/tenants/{tenant}/search)
 	SearchTenant(ctx context.Context, request SearchTenantRequestObject) (SearchTenantResponseObject, error)
@@ -56625,71 +55535,6 @@ func (sh *strictHandler) TransitionTicket(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(TransitionTicketResponseObject); ok {
 		if err := validResponse.VisitTransitionTicketResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// WithdrawUrgencyOverride operation middleware
-func (sh *strictHandler) WithdrawUrgencyOverride(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params WithdrawUrgencyOverrideParams) {
-	var request WithdrawUrgencyOverrideRequestObject
-
-	request.Tenant = tenant
-	request.Project = project
-	request.Number = number
-	request.Params = params
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.WithdrawUrgencyOverride(ctx, request.(WithdrawUrgencyOverrideRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "WithdrawUrgencyOverride")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(WithdrawUrgencyOverrideResponseObject); ok {
-		if err := validResponse.VisitWithdrawUrgencyOverrideResponse(w); err != nil {
-			sh.options.ResponseErrorHandlerFunc(w, r, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// OverrideUrgency operation middleware
-func (sh *strictHandler) OverrideUrgency(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params OverrideUrgencyParams) {
-	var request OverrideUrgencyRequestObject
-
-	request.Tenant = tenant
-	request.Project = project
-	request.Number = number
-	request.Params = params
-
-	var body OverrideUrgencyJSONRequestBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
-		return sh.ssi.OverrideUrgency(ctx, request.(OverrideUrgencyRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "OverrideUrgency")
-	}
-
-	response, err := handler(r.Context(), w, r, request)
-
-	if err != nil {
-		sh.options.ResponseErrorHandlerFunc(w, r, err)
-	} else if validResponse, ok := response.(OverrideUrgencyResponseObject); ok {
-		if err := validResponse.VisitOverrideUrgencyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

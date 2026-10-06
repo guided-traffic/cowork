@@ -157,10 +157,6 @@ export type { MoveTicketRank$Params as MoveTicketRank$Params } from './fn/ticket
 export { moveTicketRank as moveTicketRank } from './fn/tickets/move-ticket-rank';
 export type { TransitionTicket$Params as TransitionTicket$Params } from './fn/tickets/transition-ticket';
 export { transitionTicket as transitionTicket } from './fn/tickets/transition-ticket';
-export type { OverrideUrgency$Params as OverrideUrgency$Params } from './fn/tickets/override-urgency';
-export { overrideUrgency as overrideUrgency } from './fn/tickets/override-urgency';
-export type { WithdrawUrgencyOverride$Params as WithdrawUrgencyOverride$Params } from './fn/tickets/withdraw-urgency-override';
-export { withdrawUrgencyOverride as withdrawUrgencyOverride } from './fn/tickets/withdraw-urgency-override';
 export type { ListTenantTickets$Params as ListTenantTickets$Params } from './fn/tickets/list-tenant-tickets';
 export { listTenantTickets as listTenantTickets } from './fn/tickets/list-tenant-tickets';
 export type { ResolveTicket$Params as ResolveTicket$Params } from './fn/tickets/resolve-ticket';

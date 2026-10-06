@@ -177,8 +177,5 @@ export type { TokenList } from './models/token-list';
 export type { TokenMark } from './models/token-mark';
 export type { TokenState } from './models/token-state';
 export type { Transition } from './models/transition';
-export type { Urgency } from './models/urgency';
-export type { UrgencyOverride } from './models/urgency-override';
-export type { UrgencyOverrideSet } from './models/urgency-override-set';
 export type { Version } from './models/version';
 export type { WipLimits } from './models/wip-limits';

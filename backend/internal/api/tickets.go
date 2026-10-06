@@ -58,7 +58,6 @@ func ticketView(t tenantScope, r store.TicketRow, now time.Time) apigen.Ticket {
 		ReporterToken: tokenMarkView(r.ReporterTokenID, r.ReporterTokenName), Block: nullableOf[apigen.Block](nil),
 		Assignee: nullableOf[apigen.Person](nil), Parent: nullableOf[string](nil),
 	}
-	urgencyFields(&v, r)
 	if r.State == domain.StateDone {
 		from := apigen.TicketState(origin(r))
 		v.DoneFrom = nullableOf(&from)
@@ -100,42 +99,6 @@ func horizonSetView(r store.TicketRow) nullable.Nullable[apigen.HorizonSet] {
 		set.By = nullableOf(&p)
 	}
 	return nullableOf(&set)
-}
-
-// urgencyFields fills the deprecated fields of a ticket as the columns hold
-// them: urgency is the horizon, urgency_derived and urgency_rule what the
-// derivation wrote — later and v2:default since rule set v2 —,
-// urgency_override the set horizon. The release before reads them, so /api/v1
-// keeps them until a later release removes them (docs/adr/0010 D1,
-// docs/adr/0046 D7).
-//
-//nolint:staticcheck // SA1019: deprecated in the document, kept in /api/v1 for the clients that read them
-func urgencyFields(v *apigen.Ticket, r store.TicketRow) {
-	v.Urgency = apigen.Urgency(v.Horizon)
-	v.UrgencyDerived = apigen.Urgency(r.UrgencyDerived)
-	v.UrgencyRule = r.UrgencyRule
-	v.UrgencyOverride = nullableOf[apigen.UrgencyOverride](nil)
-	if set, err := v.HorizonSet.Get(); err == nil {
-		o := apigen.UrgencyOverride{Value: apigen.Urgency(set.Value), Reason: set.Reason, By: set.By, At: set.At}
-		v.UrgencyOverride = nullableOf(&o)
-	}
-}
-
-// horizonOfStored fills the horizon and the set horizon of a ticket that a
-// release before the name horizon stored — a filing replayed for its
-// Idempotency-Key — from the fields that carried them then: left unset, the
-// horizon would be answered empty and the set horizon null, which the
-// ticket's own row does not hold (docs/adr/0045 D4, docs/adr/0046 D7).
-//
-//nolint:staticcheck // SA1019: urgency and urgency_override are deprecated in the document, read here only from an answer stored before horizon
-func horizonOfStored(v *apigen.Ticket) {
-	if v.Horizon != "" {
-		return
-	}
-	v.Horizon = apigen.Horizon(v.Urgency)
-	if o, err := v.UrgencyOverride.Get(); err == nil {
-		v.HorizonSet = nullableOf(&apigen.HorizonSet{Value: apigen.Horizon(o.Value), Reason: o.Reason, By: o.By, At: o.At})
-	}
 }
 
 // hasChildren reports whether a ticket's stages are derived from children:
@@ -384,7 +347,6 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 		if err != nil {
 			return nil, err
 		}
-		horizonOfStored(&body)
 		return apigen.CreateTicket201JSONResponse{Body: body, Headers: apigen.CreateTicket201ResponseHeaders{
 			ETag: header(replay, headerETag), Location: header(replay, headerLocation)}}, nil
 	}
@@ -417,12 +379,8 @@ type filing struct {
 // and its place, at most one neighbour (docs/adr/0014 D2).
 func filingOf(b apigen.TicketCreate) (filing, *problem.Error) {
 	f := filing{horizon: domain.UrgencyDefault}
-	horizon, perr := filedHorizon(b)
-	if perr != nil {
-		return f, perr
-	}
-	if horizon != nil {
-		f.horizon = *horizon
+	if b.Horizon != nil {
+		f.horizon = domain.Urgency(*b.Horizon)
 	}
 	switch {
 	case b.After != nil && b.Before != nil:
@@ -433,26 +391,6 @@ func filingOf(b apigen.TicketCreate) (filing, *problem.Error) {
 		f.place = &rankTarget{number: *b.Before}
 	}
 	return f, nil
-}
-
-// filedHorizon is the horizon a filing names: horizon, or urgency, the name
-// it had before (docs/adr/0010 D1), which a client of the release before may
-// still send; both with different values are refused at /horizon. Nil when
-// the filing names none.
-//
-//nolint:staticcheck // SA1019: urgency is deprecated in the document, taken as horizon until a later release removes it
-func filedHorizon(b apigen.TicketCreate) (*domain.Urgency, *problem.Error) {
-	switch {
-	case b.Horizon != nil && b.Urgency != nil && string(*b.Horizon) != string(*b.Urgency):
-		return nil, problem.Field("/horizon", "horizon and urgency, its deprecated name, name different horizons: send horizon alone")
-	case b.Horizon != nil:
-		h := domain.Urgency(*b.Horizon)
-		return &h, nil
-	case b.Urgency != nil:
-		h := domain.Urgency(*b.Urgency)
-		return &h, nil
-	}
-	return nil, nil
 }
 
 // capabilities are what an agent's filing needs beyond the baseline:
@@ -1042,7 +980,7 @@ func (s *Server) ReplaceTicketBody(ctx context.Context, req apigen.ReplaceTicket
 // person and required of an agent, which needs set-horizon (docs/adr/0043 D4).
 func (s *Server) SetHorizon(ctx context.Context, req apigen.SetHorizonRequestObject) (apigen.SetHorizonResponseObject, error) {
 	t := tenantFrom(ctx)
-	hw := horizonWrite{reason: req.Body.Reason, named: true}
+	hw := horizonWrite{reason: req.Body.Reason}
 	if value := domain.Urgency(req.Body.Value); value != domain.UrgencyDefault {
 		hw.value = &value
 	}
@@ -1053,46 +991,15 @@ func (s *Server) SetHorizon(ctx context.Context, req apigen.SetHorizonRequestObj
 	return apigen.SetHorizon200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.SetHorizon200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
-// OverrideUrgency is setHorizon under the name it had before, kept in
-// /api/v1 for the clients that call it (docs/adr/0046 D7) and behaving as it
-// did: later is stored as a set horizon too.
-func (s *Server) OverrideUrgency(ctx context.Context, req apigen.OverrideUrgencyRequestObject) (apigen.OverrideUrgencyResponseObject, error) {
-	t := tenantFrom(ctx)
-	value := domain.Urgency(req.Body.Value)
-	out, err := s.setOverride(ctx, t, req.Project, req.Number, req.Params.IfMatch, horizonWrite{value: &value, reason: req.Body.Reason})
-	if err != nil {
-		return nil, err
-	}
-	return apigen.OverrideUrgency200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.OverrideUrgency200ResponseHeaders{ETag: etag(out.Version)}}, nil
-}
-
-// WithdrawUrgencyOverride clears the horizon set, which returns the ticket to
-// later: setHorizon with later under the name it had before (docs/adr/0046 D7).
-func (s *Server) WithdrawUrgencyOverride(ctx context.Context, req apigen.WithdrawUrgencyOverrideRequestObject) (apigen.WithdrawUrgencyOverrideResponseObject, error) {
-	t := tenantFrom(ctx)
-	out, err := s.setOverride(ctx, t, req.Project, req.Number, req.Params.IfMatch, horizonWrite{})
-	if err != nil {
-		return nil, err
-	}
-	return apigen.WithdrawUrgencyOverride200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.WithdrawUrgencyOverride200ResponseHeaders{ETag: etag(out.Version)}}, nil
-}
-
 // horizonWrite is a write of a ticket's set horizon, which the columns keep
 // under the name urgency override (docs/adr/0010 D1): value nil clears it.
 type horizonWrite struct {
 	value  *domain.Urgency
 	reason *string
-	// named is setHorizon's write, which speaks this release's names: its
-	// agent gives a reason with every horizon, later included, and its 412
-	// names horizon and horizon_set. The deprecated routes keep theirs.
-	named bool
 }
 
-// current is what a 412 names of the ticket, in the names of the route.
+// current is what a 412 names of the ticket: its horizon and its set horizon.
 func (hw horizonWrite) current(r store.TicketRow) map[string]any {
-	if !hw.named {
-		return map[string]any{fieldUrgencyOverride: r.UrgencyOverride, "urgency_override_reason": r.UrgencyOverrideReason}
-	}
 	cur := map[string]any{fieldHorizon: horizonOf(r), fieldHorizonSet: nil}
 	if set, err := horizonSetView(r).Get(); err == nil {
 		cur[fieldHorizonSet] = set
@@ -1157,16 +1064,15 @@ func (s *Server) setOverride(ctx context.Context, t tenantScope, projectKey stri
 }
 
 // horizonInputs holds a write of the set horizon to its rules: a member's act
-// with write scope; an agent needs set-horizon, and a reason for a horizon it
-// sets — on setHorizon for every horizon, later included (docs/adr/0010 D3,
-// docs/adr/0043 D4).
+// with write scope; an agent needs set-horizon, and a reason for every
+// horizon it sets, later included (docs/adr/0010 D3, docs/adr/0043 D4).
 func horizonInputs(p auth.Principal, role domain.Role, hw horizonWrite) *problem.Error {
 	need := work
 	need.Capability = auth.CapSetHorizon
 	if perr := auth.Authorize(p, role, need); perr != nil {
 		return perr
 	}
-	if (hw.value != nil || hw.named) && p.IsAgent() && blank(hw.reason) {
+	if p.IsAgent() && blank(hw.reason) {
 		return problem.Field("/reason", "an agent sets a horizon with a reason")
 	}
 	return nil

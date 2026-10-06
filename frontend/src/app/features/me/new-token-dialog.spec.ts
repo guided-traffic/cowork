@@ -86,10 +86,8 @@ describe('the vocabulary of a token', () => {
     expect(Object.keys(capabilityMeanings).sort()).toEqual([...selectableCapabilities].sort());
   });
 
-  it('offers no switch for override-urgency, the name set-horizon had before (docs/adr/0043 D4)', () => {
-    expect(CAPABILITY).toContain('override-urgency');
-    expect(selectableCapabilities).not.toContain('override-urgency');
-    expect(selectableCapabilities).toEqual(CAPABILITY.filter((each) => each !== 'override-urgency'));
+  it('offers a switch for every capability of the catalogue, in its order (docs/adr/0043 D4)', () => {
+    expect(selectableCapabilities).toEqual(CAPABILITY);
   });
 
   it('has the assisted set of docs/adr/0043 D4: decide, close, rank, create-project and record-answer are off', () => {

@@ -23,7 +23,7 @@ into the file of its path family.
 | [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents —, `/me/chat`, and the person-level lists: `/me/next`, `/me/inbox` with `/me/inbox/read` and `/me/inbox/{notification}/read`, `/me/assigned`, `/me/decisions` ([the person-level routes](#the-person-level-routes)) |
 | [`search.yaml`](../../backend/api/search.yaml) | `/tenants/{tenant}/search` and `/me/search` ([search.md](search.md)) |
 | [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
-| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the sort of a project's rank by the score (`…/projects/{project}/rank`), the ticket lists, a ticket, its deletion, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, its horizon (`…/horizon`, and the deprecated `…/urgency-override` beside it, [deprecated names](#deprecated-names)) and confidential flag, and the bin of deleted tickets with its restoration and purge |
+| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the sort of a project's rank by the score (`…/projects/{project}/rank`), the ticket lists, a ticket, its deletion, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, its horizon (`…/horizon`) and confidential flag, and the bin of deleted tickets with its restoration and purge |
 | [`filters.yaml`](../../backend/api/filters.yaml) | the saved filters of a tenant: list, create, read, edit, delete ([filters](#filters)) |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
 | [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list, and the tokens that can act in the tenant (`/tenants/{tenant}/tokens`) |
@@ -438,7 +438,7 @@ and records no act. A `PATCH` whose progress stages close or reopen the ticket r
 once: the state is written with `bump` false after the fields.
 
 `If-Match` is required by `updateTenant`, `updateProject`, `updateTicket`,
-`replaceTicketBody`, `setHorizon` (and the deprecated `overrideUrgency` and `withdrawUrgencyOverride`), `setConfidential`,
+`replaceTicketBody`, `setHorizon`, `setConfidential`,
 `updateQuestion`, `answerQuestion` (changing an answer given), `editComment`,
 `editTimeEntry`, `updateGroupMapping`, `updateSavedFilter` and `setProjectRestriction` (the project's version). A deletion, a restoration and a purge of a ticket take none: they overwrite no field, and the deletion and the restoration raise the version. A grant
 and an access entry are addressed by their person and written without it, like a link. Links, interest and attachments are written without it and carry no version
@@ -523,17 +523,14 @@ a key the caller cannot see matches nothing; `interest` takes `me` or `any`; `bl
 `COWORK_MAX_QUERY_LENGTH` characters. Every refused value is named in `errors[]`. `q` is a filter —
 the title and body hold every word, the list keeps its order —; the ranked search with snippets over
 comments, questions, file names and keys as well is the search routes' ([search.md](search.md#the-q-filter-and-the-mcp-tool)).
-The checks of the filters themselves are `parseFilters`, which the saved filters share. `horizon`
-and its deprecated name `urgency` are one filter (`ticketQuery.horizons`): either is taken, and a
-request that names both is `400` at `query:urgency` — an AND of one field under two names would only
-narrow the list to what nobody meant.
+The checks of the filters themselves are `parseFilters`, which the saved filters share.
 
 **Saved filters** ([`filters.go`](../../backend/internal/api/filters.go), [ADR 0018] D5, [ADR 0049]
 D6, D7) store a filter's parameters as the JSON object `SavedFilterParameters` — the query's names,
 each repeatable one an array —, whose schema refuses an unknown name (`additionalProperties:
 false`, D4). Written, the parameters go through `parseFilters` and every refused value is `400` at
 `/parameters/<name>` (`checkFilter`); `me` is stored as `me`. Read, they go through it again
-(`filterView`), a filter stored with `urgency` answered under `horizon` (`horizonNamed`): a value that no longer validates is a `warnings` entry, not an error (D7), and a
+(`filterView`): a value that no longer validates is a `warnings` entry, not an error (D7), and a
 project or a parent ticket the reader cannot see — or that is gone — is one more for the owner;
 another reader gets the filter `redacted`, its parameters and warnings withheld, as the activity
 withholds an act that names a hidden ticket ([ADR 0065] D5). A filter is the owner's to change
@@ -545,31 +542,36 @@ again on a poll ([above](#versions-etag-if-match)).
 ## Deprecated names
 
 `/api/v1` keeps what the clients of the release before read ([ADR 0046] D7), so a rename is an
-expand and a later contract ([ADR 0028] D3). The horizon is the case today ([ADR 0010] D1 as
-amended 2026-10-05):
+expand and a later contract ([ADR 0028] D3):
 
-- **In the document** the old names stay with `deprecated: true` and a description that names what
-  replaces them: the `Urgency`, `UrgencyOverride` and `UrgencyOverrideSet` schemas, the ticket's
-  `urgency`, `urgency_derived`, `urgency_rule` and `urgency_override`, a filing's `urgency`, the
-  lists' and a saved filter's `urgency`, and `overrideUrgency` and `withdrawUrgencyOverride`. A
-  property that is a `$ref` carries `deprecated` through an `allOf` of one: the bundler writes a
-  `$ref` alone and would drop the keyword beside it.
-- **In the generated Go** they carry `Deprecated:`, which staticcheck reports wherever the code uses
-  them; each use is a function or a line with `//nolint:staticcheck` and why — `urgencyFields`,
-  which answers them from the columns, `filedHorizon`, `horizonNamed`, `horizonOfStored`, the
-  lists' query — and a test that proves the old surface still works says so the same way.
-- **On the way in** an old name is the new one: a filing's `urgency` is its `horizon`, a list's or a
-  saved filter's `urgency` its `horizon` (both together refused, [filters](#filters)), and a
-  capability set's `override-urgency` is `set-horizon` (`auth.Canonical`, wherever a set comes in).
-  **On the way out** every answer names the new one beside the deprecated fields, with one
-  exception: `GET /me/token` answers `override-urgency` after `set-horizon` in `request.capabilities`,
-  the list the `cowork-mcp` of the release before reads to describe its tools
-  (`requestCapabilities` in [`token.go`](../../backend/internal/api/token.go)).
-- **A replayed answer** a release before stored lacks the new fields; `horizonOfStored` fills them
-  from the old ones ([idempotency](#idempotency)).
+- **The expand** keeps the old names in the document with `deprecated: true` and a description that
+  names what replaces them. A property that is a `$ref` carries `deprecated` through an `allOf` of
+  one: the bundler writes a `$ref` alone and would drop the keyword beside it. The generated Go
+  carries `Deprecated:`, which staticcheck reports wherever the code uses them; each use is a
+  function or a line with `//nolint:staticcheck` and why, and a test that proves the old surface
+  still works says so the same way. On the way in an old name is taken as the new one; on the way
+  out an answer names both.
+- **The contract**, in a release after the expand and once no supported client reads the old names,
+  takes them out of the document, the code and the tests, and a migration of its own rewrites what
+  the database stored under them.
 
-The contract — the old names out of the document, the code and the stored capability sets — is a
-later release's, once no supported client reads them.
+The horizon went through both ([ADR 0010] D1 as amended 2026-10-05 and 2026-10-06). Release 0.5
+answered `urgency`, `urgency_derived`, `urgency_rule` and `urgency_override` beside `horizon` and
+`horizon_set`, served `…/urgency-override` beside `…/horizon`, took a filing's, a list's and a saved
+filter's `urgency` and the capability `override-urgency`, and stored `override-urgency` beside
+`set-horizon`. The release after it knows the new names only — an old one sent is `400`, a field or
+a parameter the operation does not have —, and
+[migration 38](../../backend/internal/store/migrations/000038_horizon_names_only.up.sql) rewrote
+the stored capability sets and a saved filter's `urgency`. The checks of the capability sets still
+take `override-urgency` until a later release, since 0.5 writes it beside `set-horizon` after an
+image rollback; `auth.Canonical` drops it wherever a set is read, so no answer carries it. What keeps the old word is what no
+client reads as API: the enum `urgency` and its columns (`TicketRow.UrgencyOverride` …, mapped in
+`ticketView` and `setOverride`), and the audit record's act `overridden` with its payload
+`urgency_override`, which the activity, the context and the session start read as setting the
+horizon.
+
+What stays deprecated in `/api/v1` today is a token's `restricted_project_id` beside
+`restricted_project` ([ADR 0035] D2, `projectKeys` in [`me.go`](../../backend/internal/api/me.go)).
 
 ## Media types beside JSON
 

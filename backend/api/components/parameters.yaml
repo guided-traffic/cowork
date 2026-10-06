@@ -131,16 +131,6 @@ FilterHorizon:
   style: form
   explode: true
   schema: {type: array, items: {type: string, maxLength: 32}}
-FilterUrgency:
-  name: urgency
-  in: query
-  deprecated: true
-  description: |
-    `horizon` under the name it had before (docs/adr/0010 D1); with `horizon` in the same request it
-    is 400 at `query:urgency`; removed in a later release (docs/adr/0046 D7)
-  style: form
-  explode: true
-  schema: {type: array, items: {type: string, maxLength: 32}}
 FilterEffort:
   name: effort
   in: query

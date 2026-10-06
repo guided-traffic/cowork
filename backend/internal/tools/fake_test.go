@@ -149,7 +149,6 @@ func ticket(key, state string, edit ...func(map[string]any)) map[string]any {
 		"id": uuid.NewString(), "key": key, "project": project, "number": n, "type": "task", "title": "Ship it",
 		"body": "", "state": state, "block": nil, "severity": "medium", "security": "none", "threat": nil,
 		"horizon": "later", "horizon_set": nil, "effort": "S", "progress": 40, "progress_refinement": 100,
-		"urgency": "later", "urgency_derived": "later", "urgency_rule": "v2:default", "urgency_override": nil,
 		"progress_review": 0, "progress_derived": false,
 		"parent": nil, "reporter": map[string]any{"id": uuid.NewString(), "display_name": "Ada"}, "assignee": nil,
 		"confidential": false, "opened_at": "2026-10-01T00:00:00Z", "decided_at": nil, "done_at": nil, "done_from": nil,

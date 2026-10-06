@@ -6,7 +6,6 @@ import { Horizon } from '../models/horizon';
 import { SecurityClass } from '../models/security-class';
 import { Severity } from '../models/severity';
 import { TicketType } from '../models/ticket-type';
-import { Urgency } from '../models/urgency';
 export interface TicketCreate {
 
   /**
@@ -40,12 +39,4 @@ export interface TicketCreate {
   threat?: string;
   title: string;
   type: TicketType;
-
-  /**
-   * The horizon under the name it had before (docs/adr/0010 D1); replaced by `horizon`, and with it
-   * another value is 400 at `/horizon`; removed in a later release (docs/adr/0046 D7)
-   *
-   * @deprecated
-   */
-  urgency?: Urgency;
 }

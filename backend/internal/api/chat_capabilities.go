@@ -48,11 +48,9 @@ func (s *Server) SetMyChat(ctx context.Context, req apigen.SetMyChatRequestObjec
 		case err != nil:
 			return err
 		case slices.Equal(auth.Canonical(before), want):
-			// A set stored under the names before is the same set
-			// (docs/adr/0043 D4 as amended 2026-10-05).
 			return store.ErrNoChange
 		}
-		if err := w.SetChatCapabilities(ctx, writeq.SetChatCapabilitiesParams{UserID: p.PersonID, Capabilities: auth.Stored(want)}); err != nil {
+		if err := w.SetChatCapabilities(ctx, writeq.SetChatCapabilitiesParams{UserID: p.PersonID, Capabilities: want}); err != nil {
 			return err
 		}
 		w.Record(store.Event{EntityType: entityUser, EntityID: p.PersonID, Action: actionUpdated,
@@ -65,9 +63,7 @@ func (s *Server) SetMyChat(ctx context.Context, req apigen.SetMyChatRequestObjec
 	return apigen.SetMyChat200JSONResponse(chatCapabilitiesView(want, true)), nil
 }
 
-// ordered is a set of capabilities in the order of the catalogue, each once,
-// under this release's names: override-urgency is set-horizon
-// (docs/adr/0043 D4 as amended 2026-10-05).
+// ordered is a set of capabilities in the order of the catalogue, each once.
 func ordered(in []apigen.Capability) []string {
 	named := make([]string, 0, len(in))
 	for _, c := range in {

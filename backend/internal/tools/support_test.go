@@ -101,16 +101,13 @@ func TestRetrying(t *testing.T) {
 	assert.Equal(t, 3, sent, "at most Attempts")
 }
 
-// The token is read under this release's names: the API answers
-// override-urgency beside set-horizon for the clients of the release before,
-// and this client holds set-horizon once (docs/adr/0043 D4 as amended
-// 2026-10-05).
-func TestReadTokenTakesTheNamesOfThisRelease(t *testing.T) {
+// The token's request set is what the agent holds (docs/adr/0043 D6).
+func TestReadTokenHoldsTheRequestSet(t *testing.T) {
 	f := newFake(t)
 	f.on("GET /api/v1/me/token", http.StatusOK, map[string]any{"id": "0199a3c2-1d2e-7f00-8000-000000000001", "name": "laptop",
 		"scope": "write", "agent": true, "capabilities": []any{"rank", "set-horizon"}, "created_at": "2026-10-01T00:00:00Z",
 		"expires_at": "2026-12-01T00:00:00Z", "state": "active", "restricted_project": nil,
-		"request": map[string]any{"agent": true, "agent_mark": fakeAgent, "capabilities": []any{"rank", "set-horizon", "override-urgency"}}})
+		"request": map[string]any{"agent": true, "agent_mark": fakeAgent, "capabilities": []any{"rank", "set-horizon"}}})
 	tok, err := f.session(false).ReadToken(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, []string{"rank", "set-horizon"}, tok.Capabilities)

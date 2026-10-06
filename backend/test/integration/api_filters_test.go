@@ -213,31 +213,23 @@ func TestSavedFilterParametersAreTheListsParameters(t *testing.T) {
 	assert.Equal(t, "parent", owners["deleted"].Warnings[0].Parameter)
 }
 
-// docs/adr/0010 D1 as amended 2026-10-05, docs/adr/0049 D6, D7: a filter
-// saved with urgency, the name horizon had before, keeps working and reads
-// back as horizon, the stored row as it was; a filter that names both is
-// refused at /parameters/urgency.
-//
-//nolint:staticcheck // SA1019: SavedFilterParameters.Urgency is the deprecated field under test
-func TestAFilterSavedWithTheNameBeforeReadsAsHorizon(t *testing.T) {
+// docs/adr/0010 D1 as amended 2026-10-06, docs/adr/0049 D1, D6: a filter
+// names the horizon as horizon; urgency, the name it had before, is a
+// parameter the filters no longer have, and a value outside the vocabulary is
+// refused at /parameters/horizon.
+func TestAFilterNamesTheHorizon(t *testing.T) {
 	e := newTicketEnv(t)
 	member := caller{Token: e.tk.MemberA}
-	old := e.saveFilter(t, member, e.SlugA, apigen.SavedFilterCreate{Name: "old form",
-		Parameters: apigen.SavedFilterParameters{Urgency: strs("now", "!icebox")}})
-	assert.Equal(t, strs("now", "!icebox"), old.Parameters.Horizon)
-	assert.Nil(t, old.Parameters.Urgency)
-	assert.Empty(t, old.Warnings)
-	assert.Equal(t, 1, scalar[int](t, `SELECT count(*) FROM saved_filters WHERE id = $1 AND parameters ? 'urgency'`, old.Id),
-		"the stored row keeps what was sent")
-	assert.Equal(t, strs("now", "!icebox"), e.savedFilters(t, member, e.SlugA)["old form"].Parameters.Horizon)
-
 	current := e.saveFilter(t, member, e.SlugA, apigen.SavedFilterCreate{Name: "new form",
-		Parameters: apigen.SavedFilterParameters{Horizon: strs("next")}})
-	assert.Equal(t, strs("next"), current.Parameters.Horizon)
+		Parameters: apigen.SavedFilterParameters{Horizon: strs("now", "!icebox")}})
+	assert.Equal(t, strs("now", "!icebox"), current.Parameters.Horizon)
+	assert.Empty(t, current.Warnings)
+	assert.Equal(t, strs("now", "!icebox"), e.savedFilters(t, member, e.SlugA)["new form"].Parameters.Horizon)
 
-	body := assertProblem(t, e.s.do(t, member, http.MethodPost, filtersPath(e.SlugA), apigen.SavedFilterCreate{Name: "both",
-		Parameters: apigen.SavedFilterParameters{Horizon: strs("now"), Urgency: strs("now")}}), http.StatusBadRequest, "validation_failed")
-	assert.Equal(t, "/parameters/urgency", pointerOf(body))
+	body := assertProblem(t, e.s.do(t, member, http.MethodPost, filtersPath(e.SlugA), map[string]any{"name": "old form",
+		"parameters": map[string]any{"urgency": []string{"now"}}}), http.StatusBadRequest, "validation_failed")
+	assert.Equal(t, "/parameters", pointerOf(body))
+	assert.Equal(t, `property "urgency" is unsupported`, body["errors"].([]any)[0].(map[string]any)["message"])
 	body = assertProblem(t, e.s.do(t, member, http.MethodPost, filtersPath(e.SlugA), apigen.SavedFilterCreate{Name: "unknown",
 		Parameters: apigen.SavedFilterParameters{Horizon: strs("soon")}}), http.StatusBadRequest, "validation_failed")
 	assert.Equal(t, "/parameters/horizon", pointerOf(body))

@@ -100,10 +100,8 @@ func watchTool() Tool {
 - **`limits`** — `limitsOf(text, capabilities…)` — is the part of the description that names
   the agent rules the tool can run into; `Describe(token)` appends which of the capabilities the
   agent holds — "This agent holds …; lacks …" —, the token's, read once at start (ADR 0043 D6), or
-  in the chat the ones the person gave it, read at each turn (D5). `ReadToken` reads the set under
-  this release's names (`auth.Canonical`): `/me/token` answers `override-urgency`, the name
-  `set-horizon` had before, beside it for the `cowork-mcp` of the release before, whose `set_urgency`
-  looks for it ([api.md](api.md#deprecated-names)).
+  in the chat the ones the person gave it, read at each turn (D5). `ReadToken` holds the set as
+  `/me/token` answers it in `request.capabilities`.
 - **`Surface`**: `Anywhere` for a tool that takes everything as arguments, `Terminal` for one
   that reads the working directory — today `session_start` alone. A host without a working
   directory takes `Catalogue(tools.Anywhere)`.

@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,42 +55,6 @@ func TestAReplayAnswersARequiredFieldTheStoredAnswerLacksAsNull(t *testing.T) {
 		"created_at":"2026-10-04T10:00:00Z","updated_at":"2026-10-04T10:00:00Z"}`)
 	assert.Equal(t, map[string]any{"id": "0199a3c2-1d2e-7f00-8000-000000000005", "name": "ci-script"}, stored["token"],
 		"a token the stored answer carries stays")
-}
-
-// A filing an older release stored for its Idempotency-Key carries the
-// horizon under the name it had then (docs/adr/0010 D1): its replay answers
-// the horizon and the horizon set from those fields, never an empty horizon or
-// a null that the ticket's row does not hold.
-func TestAReplayOfAFilingStoredBeforeTheHorizonAnswersIt(t *testing.T) {
-	filing := func(urgency, override string) apigen.Ticket {
-		body := `{"id":"0199a3c2-1d2e-7f00-8000-000000000001","key":"acme/COW-1","project":"COW","number":1,"type":"task",
-			"title":"t","body":"","state":"filed","block":null,"severity":"low","security":"none","threat":null,
-			"urgency":"` + urgency + `","urgency_derived":"later","urgency_rule":"v2:default","urgency_override":` + override + `,
-			"effort":"S","progress":0,"progress_refinement":0,"progress_review":0,"progress_derived":false,"parent":null,
-			"reporter":{"id":"0199a3c2-1d2e-7f00-8000-000000000002","username":null,"display_name":"Ada"},"reporter_agent":null,
-			"reporter_token":null,"assignee":null,"confidential":false,"opened_at":"2026-10-04T10:00:00Z","decided_at":null,
-			"done_at":null,"done_from":null,"done_by_hand":false,"open_prerequisites":0,"score":null,"score_version":null,
-			"version":1,"created_at":"2026-10-04T10:00:00Z","updated_at":"2026-10-04T10:00:00Z"}`
-		v, err := replayed[apigen.Ticket](&store.Result{Body: []byte(body)})
-		require.NoError(t, err)
-		horizonOfStored(&v)
-		return v
-	}
-	v := filing("next", `{"value":"next","reason":null,"at":"2026-10-04T10:00:00Z",
-		"by":{"id":"0199a3c2-1d2e-7f00-8000-000000000002","username":null,"display_name":"Ada"}}`)
-	assert.Equal(t, apigen.Horizon("next"), v.Horizon)
-	set := v.HorizonSet.MustGet()
-	assert.Equal(t, apigen.Horizon("next"), set.Value)
-	assert.Equal(t, "0199a3c2-1d2e-7f00-8000-000000000002", set.By.MustGet().Id.String())
-
-	v = filing("later", "null")
-	assert.Equal(t, apigen.Horizon("later"), v.Horizon)
-	assert.True(t, v.HorizonSet.IsNull(), "nothing set, nothing answered")
-
-	current := ticketView(tenantScope{Slug: "acme"}, store.TicketRow{UrgencyDerived: "later", Number: 2}, time.Time{})
-	current.Horizon = "now"
-	horizonOfStored(&current)
-	assert.Equal(t, apigen.Horizon("now"), current.Horizon, "an answer this release stored keeps its horizon")
 }
 
 // A field the document leaves optional is left out of a replay as the stored

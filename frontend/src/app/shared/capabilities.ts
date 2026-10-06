@@ -1,17 +1,11 @@
 import { Capability } from '../api/models';
 import { CAPABILITY } from '../api/models/capability-array';
 
-/**
- * A capability a person chooses (docs/adr/0043 D4): every value of the API's `Capability` but
- * `override-urgency`, the name `set-horizon` had before, which the API takes as `set-horizon` and
- * never answers on a token's or the chat's set.
- */
-export type SelectableCapability = Exclude<Capability, 'override-urgency'>;
+/** A capability a person chooses (docs/adr/0043 D4): every value of the API's `Capability`. */
+export type SelectableCapability = Capability;
 
 /** The nine selectable capabilities, in the catalogue's order. */
-export const selectableCapabilities: SelectableCapability[] = CAPABILITY.filter(
-  (capability): capability is SelectableCapability => capability !== 'override-urgency',
-);
+export const selectableCapabilities: SelectableCapability[] = [...CAPABILITY];
 
 /** What each capability lets an agent do beyond the baseline (docs/adr/0043 D4). */
 export const capabilityMeanings: Record<SelectableCapability, string> = {

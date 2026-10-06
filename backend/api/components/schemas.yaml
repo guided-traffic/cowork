@@ -43,12 +43,8 @@ Scope:
   description: A token's scope (docs/adr/0035 D3)
 Capability:
   type: string
-  enum: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer, override-urgency]
-  description: |
-    An agent capability (docs/adr/0043 D4). `override-urgency` is the deprecated name of
-    `set-horizon`: taken as `set-horizon` wherever a set is sent, and answered nowhere but beside it in
-    `request.capabilities` of `GET /api/v1/me/token`, which a cowork-mcp of the release before reads;
-    a later release removes the name (docs/adr/0046 D7).
+  enum: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+  description: An agent capability (docs/adr/0043 D4)
 Person:
   type: object
   required: [id, display_name]
@@ -349,9 +345,7 @@ RequestMark:
         What an agent's request may do beyond the baseline: the token's set for a flagged token,
         every capability for a plain token the header marks (docs/adr/0043 D4), the person's chat
         capabilities for a session the header marks (D5); empty for a person's request, which the
-        capabilities do not bound. Where it holds `set-horizon`, the deprecated `override-urgency`
-        follows it, for the cowork-mcp of the release before, until a later release removes it
-        (docs/adr/0046 D7)
+        capabilities do not bound
       items:
         $ref: '#/Capability'
 Tenant:
@@ -839,14 +833,6 @@ Horizon:
     next release; next, taken up when now is empty; later, maybe some day; icebox, frozen until what
     it waits for changes
   enum: [now, release, next, later, icebox]
-Urgency:
-  type: string
-  deprecated: true
-  description: |
-    The horizon under the name it had before (docs/adr/0010 D1), the same five values. Replaced by
-    `Horizon`; kept in `/api/v1` for the clients that read it, and removed in a later release
-    (docs/adr/0046 D7).
-  enum: [now, release, next, later, icebox]
 Effort:
   type: string
   enum: [XS, S, M, L]
@@ -879,31 +865,12 @@ HorizonSet:
         - $ref: '#/Person'
         - type: 'null'
     at: {type: string, format: date-time}
-UrgencyOverride:
-  type: object
-  deprecated: true
-  description: |
-    The set horizon under the name it had before (docs/adr/0010 D1). Replaced by `HorizonSet`; kept in
-    `/api/v1` for the clients that read it, and removed in a later release (docs/adr/0046 D7).
-  required: [value, reason, at]
-  properties:
-    value:
-      $ref: '#/Urgency'
-    reason:
-      type: [string, 'null']
-      description: Null when a person set the override without one (docs/adr/0010 D3)
-    by:
-      oneOf:
-        - $ref: '#/Person'
-        - type: 'null'
-    at: {type: string, format: date-time}
 Ticket:
   type: object
   required: [id, key, project, number, type, title, body, state, block, severity, security, threat,
-    horizon, horizon_set, urgency, urgency_derived, urgency_rule, urgency_override, effort, progress,
-    progress_refinement, progress_review, progress_derived, parent, reporter, reporter_agent, reporter_token,
-    assignee, confidential, opened_at, decided_at, done_at, done_from, done_by_hand, open_prerequisites, score,
-    score_version, version, created_at, updated_at]
+    horizon, horizon_set, effort, progress, progress_refinement, progress_review, progress_derived, parent,
+    reporter, reporter_agent, reporter_token, assignee, confidential, opened_at, decided_at, done_at, done_from,
+    done_by_hand, open_prerequisites, score, score_version, version, created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     key:
@@ -932,34 +899,6 @@ Ticket:
       description: The horizon a person or an agent set; null for a ticket nobody placed, which stands in later
       oneOf:
         - $ref: '#/HorizonSet'
-        - type: 'null'
-    urgency:
-      deprecated: true
-      description: |
-        The horizon under the name it had before (docs/adr/0010 D1): the same value as `horizon`, which
-        replaces it; removed in a later release (docs/adr/0046 D7)
-      allOf:
-        - $ref: '#/Urgency'
-    urgency_derived:
-      deprecated: true
-      description: |
-        What rule set v2 derives, `later` for every ticket since nothing derives a horizon any more
-        (docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)
-      allOf:
-        - $ref: '#/Urgency'
-    urgency_rule:
-      type: string
-      deprecated: true
-      description: |
-        The rule that derived `urgency_derived`: v2:default for every ticket since 2026-10-04
-        (docs/adr/0010 D3); removed in a later release (docs/adr/0046 D7)
-    urgency_override:
-      deprecated: true
-      description: |
-        The set horizon under the name it had before (docs/adr/0010 D1): what `horizon_set` holds, which
-        replaces it; removed in a later release (docs/adr/0046 D7)
-      oneOf:
-        - $ref: '#/UrgencyOverride'
         - type: 'null'
     effort:
       $ref: '#/Effort'
@@ -1057,13 +996,6 @@ TicketCreate:
       description: The horizon the ticket is filed into; later when left out (docs/adr/0010 D3)
       allOf:
         - $ref: '#/Horizon'
-    urgency:
-      deprecated: true
-      description: |
-        The horizon under the name it had before (docs/adr/0010 D1); replaced by `horizon`, and with it
-        another value is 400 at `/horizon`; removed in a later release (docs/adr/0046 D7)
-      allOf:
-        - $ref: '#/Urgency'
     after: {type: integer, minimum: 1, maximum: 2147483647, description: 'The open ticket of the same horizon this one is filed directly after; not with before'}
     before: {type: integer, minimum: 1, maximum: 2147483647, description: 'The open ticket of the same horizon this one is filed directly before; not with after'}
 TicketPatch:
@@ -1145,22 +1077,6 @@ HorizonUpdate:
   properties:
     value:
       $ref: '#/Horizon'
-    reason:
-      type: string
-      minLength: 1
-      maxLength: 2000
-      description: Optional for a person, required of an agent (docs/adr/0010 D3)
-UrgencyOverrideSet:
-  type: object
-  deprecated: true
-  description: |
-    The body of the deprecated `overrideUrgency`; replaced by `HorizonUpdate` and `setHorizon`, and
-    removed in a later release (docs/adr/0046 D7)
-  additionalProperties: false
-  required: [value]
-  properties:
-    value:
-      $ref: '#/Urgency'
     reason:
       type: string
       minLength: 1
@@ -1803,15 +1719,6 @@ SavedFilterParameters:
     severity: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
     security: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
     horizon: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
-    urgency:
-      type: array
-      maxItems: 50
-      items: {type: string, maxLength: 32}
-      deprecated: true
-      description: |
-        `horizon` under the name it had before (docs/adr/0010 D1): a filter stored with it is read back
-        as `horizon`; with `horizon` it is 400 at `/parameters/urgency`; removed in a later release
-        (docs/adr/0046 D7)
     effort: {type: array, maxItems: 50, items: {type: string, maxLength: 32}}
     assignee: {type: array, maxItems: 50, items: {type: string, maxLength: 64}}
     reporter: {type: array, maxItems: 50, items: {type: string, maxLength: 64}}

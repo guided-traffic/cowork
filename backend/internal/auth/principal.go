@@ -32,12 +32,6 @@ const (
 	CapRecordAnswer  = "record-answer"
 )
 
-// CapOverrideUrgency is the name set-horizon had before (docs/adr/0043 D4 as
-// amended 2026-10-05). A set sent with it means set-horizon, and a set stored
-// before keeps it, which the release before reads; a later release rewrites
-// the stored sets and drops the name (docs/adr/0028 D3).
-const CapOverrideUrgency = "override-urgency"
-
 // AllCapabilities is the "full" set, every selectable capability on: the
 // default of an agent token, and the set of a request a plain token marks as
 // an agent's with the header (docs/adr/0043 D4).
@@ -50,31 +44,23 @@ var AllCapabilities = []string{CapDecide, CapClose, CapDrop, CapRank, CapSetHori
 // confirmation an injected text could record an answer in the person's name.
 var DefaultChatCapabilities = []string{CapRank, CapSetHorizon, CapInterest, CapUpload, CapCreateProject}
 
-// Canonical is a capability set under the names of this release, in the order
-// given and each once: override-urgency, the name set-horizon had before, is
-// set-horizon (docs/adr/0043 D4 as amended 2026-10-05).
+// oldSetHorizon is the name set-horizon had before (docs/adr/0043 D4 as
+// amended 2026-10-06). The API refuses it, but the checks of the stored sets
+// still take it until a later release, because release 0.5, after an image
+// rollback, stores it beside set-horizon in every set it writes.
+const oldSetHorizon = "override-urgency"
+
+// Canonical is a capability set as this release reads it: in the order
+// given, each name once, and without override-urgency, which a set release
+// 0.5 wrote carries only beside set-horizon — so dropping it loses nothing,
+// and no answer names a capability the API no longer has (docs/adr/0043 D4
+// as amended 2026-10-06).
 func Canonical(capabilities []string) []string {
 	out := make([]string, 0, len(capabilities))
 	for _, c := range capabilities {
-		if c == CapOverrideUrgency {
-			c = CapSetHorizon
-		}
-		if !slices.Contains(out, c) {
+		if c != oldSetHorizon && !slices.Contains(out, c) {
 			out = append(out, c)
 		}
-	}
-	return out
-}
-
-// Stored is a capability set as this release writes it until a later release
-// rewrites the stored sets (docs/adr/0043 D4 as amended 2026-10-05):
-// set-horizon is followed by override-urgency, its name before, so that the
-// release before, which knows only that name, still grants the act after a
-// rollback. Reads take it back to this release's names (Canonical).
-func Stored(capabilities []string) []string {
-	out := slices.Clone(capabilities)
-	if slices.Contains(out, CapSetHorizon) && !slices.Contains(out, CapOverrideUrgency) {
-		out = append(out, CapOverrideUrgency)
 	}
 	return out
 }
@@ -169,8 +155,8 @@ func checkAgentPart(part string) error {
 // so, and then holds every capability (docs/adr/0036 D2–D4, docs/adr/0043 D4).
 // header is the validated header value or empty. A session the header marks
 // holds the person's chat capabilities instead (docs/adr/0043 D5), which the
-// session's resolver reads. The token's set is read under this release's
-// names (Canonical).
+// session's resolver reads. The token's set is read each name once
+// (Canonical).
 func Mark(flagged bool, tokenCapabilities []string, header string) (agent string, capabilities []string) {
 	switch {
 	case flagged && header != "":
