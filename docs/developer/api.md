@@ -220,7 +220,10 @@ design is [docs/security/local-accounts.md](../security/local-accounts.md),
 [`oidc.go`](../../backend/internal/api/oidc.go): `LoginOidc` and `OidcCallback` are browser
 navigations — the login page sets `window.location` — that answer redirects, never JSON: the start
 `302` to the issuer, the callback `303` to the path the login began with or to
-`/login?error=<code>`. The callback's answer sets two cookies, the session's and the cleared state
+`/login?error=<code>`. The start's `silent=true` — the login page's own attempt after a session
+ended ([ADR 0029] D6) — adds `prompt=none` to the authorization request (`oidc.Provider.AuthCodeURL`)
+and `Silent` to the sealed `loginState`; `callbackRefusal` turns the issuer's `error` to such a login
+into `login_required` when the cookie opens, and every other refusal into `oidc_failed`. The callback's answer sets two cookies, the session's and the cleared state
 cookie, which the generated response type, with one `Set-Cookie`, cannot carry: `redirect`
 implements the generated `VisitOidcCallbackResponse` itself. Its failures are redirects too, so
 `OidcCallback` returns no `problem.Error` for them; the reason goes to the log. The relying party

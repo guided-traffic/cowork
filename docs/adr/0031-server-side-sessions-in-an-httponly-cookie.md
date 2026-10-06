@@ -23,7 +23,12 @@ chat capabilities; built the same day), and on 2026-10-04 by the owner's decisio
 D3; nothing of the decision changes), and on 2026-10-05 by the decision on the purge, built on the
 recommendation
 ([ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
-D7; D6: seventeen routes). Date: 2026-10-01. Decided by the owner as the answer to the
+D7; D6: seventeen routes), and on 2026-10-06 on the owner's request that cowork keep his session
+while he works and not ask for a click where the identity provider's session runs anyway (D3: the
+browser's input keeps the idle clock moving through a keep-alive, the stream still moves none, and
+its polling fallback is named; the sign-in that follows an ended provider session is
+[ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
+D6). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "browser session mechanism?": server-side sessions, over the identity
 provider's JWT in the browser and over a stateless signed cookie. The rules of D5–D7 were put
 to the owner with the question and explicitly confirmed.
@@ -153,7 +158,24 @@ D5.)* *(Amended after the security review, 2026-10-04: the refresh happens once 
 claims it by a thirty-second lease on the row, in a short transaction; the issuer is asked with no
 connection and no lock held, and a second short transaction applies the answer under the row's lock
 while the lease is the claimant's. Concurrent requests and replicas find the lease taken and are
-served on the session's groups without waiting.)*
+served on the session's groups without waiting.)* *(Amended 2026-10-06, on the owner's request of
+that day: **the browser's input keeps the idle clock moving.** Reading a ticket, scrolling a board or
+writing a long comment makes no request, so the idle limit ended sessions under the person's hands.
+While a page of the shell is open, the browser notes the time of the person's last pointer press,
+key, wheel or touch, and every five minutes, while the document is visible and there was such input
+since it last asked, it makes one request of the session — `GET /api/v1/me`
+([`keep-alive.service.ts`](../../frontend/src/app/core/keep-alive.service.ts)) — which moves the clock
+as any request does. A tab nobody works in makes none, and an open event stream still does not
+extend the idle limit, so a tab that is only open reaches it — while its stream stays open: the
+stream's polling fallback of
+[ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md) D7
+reloads what the page shows every fifteen seconds and tries the stream again every minute, each a
+request that moves the clock, so a tab in that fallback keeps its session up to the absolute limit
+without a person, read from the code ([sessions.md](../security/sessions.md) H-63). Where a limit
+ends a session of the identity provider, the login page signs the person in again at their first
+input while the provider's own session lives
+([ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
+D6); a local session gets only the keep-alive, which needs the person's input.)*
 
 **D4 — Revocation is a delete, and it is immediate.** Logout deletes the row ~~(and calls the
 issuer's `end_session_endpoint` when discovery names one)~~ *(amended 2026-10-04: and, for a

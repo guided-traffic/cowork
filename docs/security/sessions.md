@@ -1,9 +1,10 @@
 # Browser sessions
 
 What a browser session is, how a request is resolved to one, how a session of the identity
-provider keeps up with the person's groups, what a session may do, how it ends and what is
-recorded, as built on 2026-10-04. How a password becomes a session — the login, the lockout, the
-accounts — is [local-accounts.md](local-accounts.md); how a login through the identity provider
+provider keeps up with the person's groups, what a session may do, how it ends, what keeps it and
+what brings a person back after it ended, and what is recorded, as built on 2026-10-06. How a
+password becomes a session — the login, the lockout, the accounts — is
+[local-accounts.md](local-accounts.md); how a login through the identity provider
 does, and what its groups decide, is [identity-provider.md](identity-provider.md); what keeps
 another site from writing with a session is [csrf.md](csrf.md); what a personal access token may do
 is [tokens.md](tokens.md).
@@ -65,7 +66,9 @@ predicates — is the code a token's request runs.
   `COWORK_SESSION_IDLE` (2 hours) from the last use. A request moves the idle clock — at most
   once a minute, `store.SessionTouchInterval`, so the idle limit is exact to the minute and a
   busy page costs one write a minute — and never past the absolute limit. The backend's clock
-  decides both (`sessionLive`; `TestSessionLifetimes` moves a fake clock past each).
+  decides both (`sessionLive`; `TestSessionLifetimes` moves a fake clock past each). A person who
+  works in a page without a request of their own keeps the clock moving through the browser's
+  keep-alive ([below](#what-keeps-a-session-and-what-brings-a-person-back)).
 - **The job** `session-expiry` removes the rows past a limit, at start and hourly under its
   own advisory lock, and records one `expired` act by `system:session-expiry` when it removed
   any. It keeps the table small; it enforces nothing, because a session past a limit is refused
@@ -154,7 +157,8 @@ person's.
   neither limit has passed, the person is not deactivated — and ends when one fails
   ([`api/events.go`](../../backend/internal/api/events.go) `stillAdmitted`;
   `TestEventStreamEndsWithItsSession`). An open stream does not extend the idle limit: a tab
-  that is only open logs out.
+  that is only open logs out — while its stream stays open; the stream's polling fallback is
+  requests, which do ([H-63](#h-63)).
 
 ## How a session ends
 
@@ -175,6 +179,30 @@ a tenant's accounts, cached tickets — stays in memory for the next person in t
 | a request of a session whose person is not the configured issuer's — another issuer's, or a provider no longer configured | every session of the person, at once | `EndProviderSessions` |
 | the issuer refuses the session's refresh token, a refreshed ID token does not verify, or the token no longer opens because the server key changed | that session, at its refresh | `ApplySessionRefresh` |
 | the idle or the absolute limit | the one past it, refused at its next request; the job removes the row | `sessionLive`, `ExpireSessions` |
+
+## What keeps a session, and what brings a person back
+
+**The keep-alive** ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D3 as
+amended 2026-10-06; [`keep-alive.service.ts`](../../frontend/src/app/core/keep-alive.service.ts)).
+Reading a ticket, scrolling a board or writing a long comment makes no request, and only a request
+moves the idle clock. While a page of the shell is open, the browser notes the time of the person's
+last pointer press, key, wheel or touch, and every five minutes — while the document is visible and
+there was such input since it last asked — makes one request of the session, `GET /api/v1/me`. A
+tab nobody works in makes none. So the idle limit now ends a session about two hours after the
+person's last input in a page — the keep-alive asks up to five minutes after it —, not two hours
+after their last request; anyone's input counts, the person's or not, as any request in their tab
+always did. The absolute limit is untouched.
+
+**Coming back after a limit ended the session**
+([ADR 0029](../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
+D6; [identity-provider.md](identity-provider.md#signing-in-again-without-a-click)). Per case:
+
+| Case | What happens | What ends access |
+|---|---|---|
+| A session of the identity provider reaches the idle or the absolute limit | cowork's session ends as before — refused at its next request, the row gone with the job. The login page that follows, in a browser that remembers the provider, waits for a sign of a person and then signs them in again with `prompt=none`, without a click, while the provider's own session lives | **The provider's session policy.** An unattended, unlocked browser is one input away from cowork's content, where it was one click away — the click passed without a password too ([H-62](identity-provider.md#h-62)). An open tab nobody touches does not sign itself in |
+| A person signs out | the session ends, and the browser forgets that the person signs in through the provider — before the backend is asked — so the login page never signs them in again by itself | the sign-out, as before; the provider's own session ends only where its end-session endpoint is followed ([H-28](identity-provider.md#h-28)) |
+| A local session reaches a limit | it ends; the login page waits for the form: a local sign-in forgets the provider, and the page signs in by itself only for the provider | the limits, as before; the keep-alive needs the person's input |
+| Another end of the table above — a revocation, a password change, the gate | the session ends; for a session of the provider, the login page's own sign-in meets the issuer and the gate again like any login | what ended it, as before, and the issuer and the gate at the next sign-in |
 
 ## What is recorded
 
@@ -225,9 +253,26 @@ when the issuer refuses the refresh token or the gate no longer admits them — 
 disabling the person or taking them out of the allowed groups is the way. Shorter limits (`COWORK_SESSION_LIFETIME`, `COWORK_SESSION_IDLE`) shrink the
 window; a TLS-terminating proxy that does not log headers keeps the cookie off its disk.
 
+<a id="h-63"></a>
+### H-63 — A tab whose event stream fell back to polling keeps its session without a person
+
+Live whenever the event stream falls back to polling — three failures in a row or the server's
+`unavailable`, an Ingress or a proxy that does not hold a stream open among the causes
+([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D7). The open stream itself moves no idle clock, and the keep-alive asks only after a person's
+input. But the fallback emits a `poll` every fifteen seconds, on which the services load again what
+the page shows — `GET /api/v1/me` among it — and tries the stream again every minute: each is a
+request of the session and moves the idle clock, so a tab in that fallback keeps its session up to
+the absolute limit, twelve hours by default, with nobody at it. Read from the code
+([`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts) `fallBack`, the
+services' reloads on `poll`), not run in a browser. It was so before the keep-alive and is not its
+doing. Mitigation: a shorter `COWORK_SESSION_LIFETIME`; an Ingress that holds the stream open, so
+that the fallback stays the exception.
+
 The gaps of the identity provider's sessions — stale groups while the issuer cannot be reached, a
-session that never learns the groups anew without a refresh token, the stored refresh tokens and the
-issuer's own session after a logout — are [identity-provider.md](identity-provider.md) H-24, H-25,
-H-27 and H-28. Not a gap of its own: the lifetimes are the installation's, not a tenant's. Not
-verified: that Safari stores a `Secure` cookie from `http://localhost` — Chromium and Firefox do;
-the integration tier tests the rule and sets the cookie by hand, it runs no browser.
+session that never learns the groups anew without a refresh token, the stored refresh tokens, the
+issuer's own session after a logout, and the sign-in without a click while that session lives — are
+[identity-provider.md](identity-provider.md) H-24, H-25, H-27, H-28 and H-62. Not a gap of its own:
+the lifetimes are the installation's, not a tenant's. Not verified: that Safari stores a `Secure`
+cookie from `http://localhost` — Chromium and Firefox do; the integration tier tests the rule and
+sets the cookie by hand, it runs no browser.

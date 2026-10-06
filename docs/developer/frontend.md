@@ -71,7 +71,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 
 | Service | Holds |
 |---|---|
-| `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current tenant from the route (`enter(slug)`), the membership's role; for a global administrator every tenant of the installation (`installation`, `GET /api/v1/tenants`, every page), and `tenants` — the memberships, and every other tenant without a role — with `shown`, the current one by name; `oversight` while the current tenant is one a global administrator holds no role in, `mayGrantSelf` while they do not hold `admin` there, and `workTenant`, the current tenant unless so, which the services of the tenant's work follow (*a global administrator without a role*, below); `me` loads again on a `membership.changed` of the current tenant or one that names the person in any of their tenants — a tenant joined appears in the tenant switch —, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below) |
+| `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current tenant from the route (`enter(slug)`), the membership's role; for a global administrator every tenant of the installation (`installation`, `GET /api/v1/tenants`, every page), and `tenants` — the memberships, and every other tenant without a role — with `shown`, the current one by name; `oversight` while the current tenant is one a global administrator holds no role in, `mayGrantSelf` while they do not hold `admin` there, and `workTenant`, the current tenant unless so, which the services of the tenant's work follow (*a global administrator without a role*, below); `me` loads again on a `membership.changed` of the current tenant or one that names the person in any of their tenants — a tenant joined appears in the tenant switch —, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below); once it knows the person, the tab may let its login page sign in by itself once more (`SignInMemory.clearTried`, [the login page](#the-login-page)) |
 | `ProjectsService` | The current tenant's projects, every page of them — of `workTenant`, none under `oversight`; the restriction (`restrict`, with `If-Match`); the list loads again when an event of the current tenant may have changed which projects the person sees (`ofTenant`, `changesVisibility`), on a `resync` and on a `poll` |
 | `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets` (the tenant's front page and [its ticket list](#the-tenants-ticket-list), a numbered page each), and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view; `openTickets(tenant, project)`, every page of a project's open tickets read once into the cache for the parent's choice — no open list, nothing reloads it; `reloadLists`, every open list once per burst. It reacts to the events of the tenant the pages show only (`ofTenant`): the person-level stream carries the events of every tenant of the person |
 | `EventStreamService` | The one `EventSource`, opened as the person-level stream (`?me=true`) on the tenant the pages show — `connect` — or, where they show none, on the person's first tenant — `personal`, which the shell sets —; its status, and the events as an Observable: the ticket events, `membership.changed` and `project.changed` of every tenant of the person, and `inbox.changed`. `ofTenant(event, tenant)` says whether an event concerns a page of the tenant, `changesMemberships(event, tenant)` whether it may have changed who belongs to it, `changesExistence(event)` whether a ticket was deleted, restored or purged — what changes lists no other event tells of, the inbox and its count among them |
@@ -85,7 +85,9 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`, to the ticket or to one of its comments) and time entries: booking, the correction with the entry's version as `If-Match`, voiding, an entry's earlier values |
 | `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (`setHorizon`, `PUT …/horizon` — `later` included, which clears the horizon set), the confidential flag, the sort of a project's rank by the score (`sortByScore`), after which the open lists load again, and a tenant administrator's deletion (`delete`, which drops the ticket from the cache) with the open tickets that wait on it first (`dependents`, the first step of `direction=up`). A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
 | `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links, the person's stake |
-| `AuthService` | `/auth/options`, `/auth/local`, `/auth/logout` — which hands back the identity provider's logout where the backend names one —, the password change; the session cookie is `HttpOnly`, no script sees it |
+| `AuthService` | `/auth/options`, `/auth/local` — whose success forgets the identity provider (`SignInMemory`) —, `/auth/logout` — which forgets it first, before the backend is asked, and hands back the identity provider's logout where the backend names one —, `hasSession` (`GET /api/v1/me` asked anew: an answer is yes, a `401` no, anything else thrown), the password change; the session cookie is `HttpOnly`, no script sees it |
+| `SignInMemory` | What the browser remembers of the sign-in, for [the login page](#the-login-page)'s own sign-in: `cowork.sign-in` in `localStorage`, `oidc` once the button started the provider's sign-in, forgotten by a local sign-in and a sign-out; `cowork.sign-in.attempt` in `sessionStorage`, noted when the page leaves for its own attempt, cleared once the tab has a session again. Every access in `try`/`catch`; storage that throws remembers nothing, says the tab tried, and notes no attempt ([`sign-in-memory.ts`](../../frontend/src/app/core/sign-in-memory.ts)) |
+| `KeepAliveService` | The session's idle clock while a person works without a request: the time of the last pointer press, key, wheel or touch, through passive listeners, and every five minutes — while the document is visible and there was input since it last asked — one `GET /api/v1/me`; the shell starts it and stops it with itself ([*the idle clock*](#the-idle-clock), below) |
 | `TokensService` | The person's own tokens in numbered pages (`table`, [`tablePages`](../../frontend/src/app/core/table-pages.ts)), each naming the project it is restricted to by its key (`restricted_project`); `create` hands the plaintext to its caller once and keeps nothing; the projects of a tenant for the new token's restriction |
 | `AccountsService` | The local accounts the current tenant manages, loaded only while the person is its administrator (anybody else would get a `403`); create, reset, unlock, deactivate, end sessions |
 | `TenantTokensService` | A numbered page of the tokens that can act in the tenant, for its administrators, through a `ConditionalPages` of its own, and an administrator's revocation of one ([`tenant-tokens.service.ts`](../../frontend/src/app/core/tenant-tokens.service.ts)) |
@@ -118,7 +120,8 @@ generator makes `max(24, password_min_length)` characters from `/auth/options`.
 the services are root singletons that keep the last person's tokens, accounts and cached tickets,
 and a router navigation would leave them for whoever signs in next in the same tab. The target is
 `/login`, a path `safeReturn` has checked, the start of the identity provider's login
-(`/auth/oidc/login?return_to=` with such a path), or the provider's logout that `POST /auth/logout`
+(`/auth/oidc/login?return_to=` with such a path, and `&silent=true` when the login page starts it by
+itself), or the provider's logout that `POST /auth/logout`
 names (`end_session_url`), which `webAddress` in
 [`auth.service.ts`](../../frontend/src/app/core/auth.service.ts) follows only as an `https:` or
 `http:` URL: a `javascript:` URL from a provider's discovery would run in the page. **The other
@@ -918,7 +921,44 @@ checks it again and keeps it in its state cookie. A failed way back from the pro
 `/login?error=<code>`: the `error` input turns `not_allowed`, `not_initialised`, `oidc_failed` and
 `oidc_unavailable` into a sentence of [`providerRefusals`](../../frontend/src/app/features/auth/login.ts)
 and any other value into one generic sentence, never the value itself; it goes once the person
-tries the local form.
+tries the local form. `login_required` is none of them: the page's own sign-in found no session at
+the provider, and a calm note above the button says that the session at the provider has ended
+(`login-provider-ended`, `role="status"`); the button signs in as ever, without `silent`.
+
+**The page signs in again by itself** after a session ended
+([ADR 0029] D6): the button remembers the provider first (`SignInMemory.rememberProvider`), and a
+later page that comes with the provider offered, no `error` input at all — any value, `''`
+included, so the page never tries twice in a row —, the provider remembered and this tab not having
+tried since its last session (`SignInMemory.tried`, both read once as the page comes) shows
+*Your session ended. Signing you in again through* `oidc_name`… (`login-resuming`) above the button
+and the form, which stay usable, and waits on
+[`whenPresent`](../../frontend/src/app/features/auth/presence.ts): `pointerdown`, `keydown`,
+`wheel`, `touchstart` and `pointermove` on the document, captured and passive — a `pointermove`
+only once the pointer stands somewhere else than at the move before, since a browser may send moves
+of its own under a resting pointer —, the window's `focus`, and `visibilitychange` to `visible`; one
+sign, then the listeners go, and they go with the page as well (the effect's cleanup). At the sign
+`resume` asks `AuthService.hasSession`: yes — another tab signed in — is a hard navigation to the
+way back, the start page where the way back is the login page itself; no reads the remembered
+provider again, so a sign-out in another tab meanwhile holds, notes the tab's attempt
+(`markTried`, which must succeed) and leaves for `/auth/oidc/login?return_to=…&silent=true`; a
+failure that says neither gives up and hides the note. A click on the button sets `leaving` before
+it navigates, so the page's own navigation, whose `hasSession` was still on its way, does not
+replace it; a local sign-in on its way makes the page give up. The tab's attempt is cleared by
+`SessionService` once `me` names a person.
+
+## The idle clock
+
+The backend moves a session's idle clock only on a request ([ADR 0031] D3), and reading or writing in
+a page makes none. [`KeepAliveService`](../../frontend/src/app/core/keep-alive.service.ts) notes
+`Date.now()` on `pointerdown`, `keydown`, `wheel` and `touchstart` — captured, passive, nothing else
+—, and an interval of five minutes (`keepAliveEvery`) asks `GET /api/v1/me` through the generated
+client when `document.visibilityState` is `visible` and the last input is no older than the last ask;
+the answer is dropped, a failure too, and a `401` reaches `signInOnUnauthorised` like any. A pointer
+that only moves is no work, and the event stream is untouched, so a tab nobody works in still
+reaches the idle limit — while its stream is open: the polling fallback's reloads are requests
+([sessions.md](../security/sessions.md#h-63), H-63). The shell starts it in its constructor and
+stops it on its `DestroyRef`, so it runs exactly while a page of the shell is shown; `start` twice
+runs one interval, and the root injector's end stops it too.
 
 ## The tenant's administration
 
@@ -1149,6 +1189,7 @@ accessible names an element, are part of a page's contract, and `ng lint` covers
 [ADR 0023]: ../adr/0023-the-tenant-is-in-the-path.md
 [ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
+[ADR 0029]: ../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md
 [ADR 0030]: ../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md
 [ADR 0031]: ../adr/0031-server-side-sessions-in-an-httponly-cookie.md
 [ADR 0034]: ../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md
