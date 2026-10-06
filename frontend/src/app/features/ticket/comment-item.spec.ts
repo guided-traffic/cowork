@@ -4,7 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
-import { Attachment, Comment, Member, Problem } from '../../api/models';
+import { Attachment, Comment, CommentRevision, Member, Problem } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { MembersService } from '../../core/members.service';
 import { TicketRecords } from '../../core/ticket-records.service';
@@ -321,6 +321,65 @@ describe('CommentItem', () => {
       const fixture = await render();
 
       expect(el(fixture, 'comment-revisions-c-1')).toBeNull();
+    });
+
+    it('close when the comment is withdrawn meanwhile: its history is hidden as its text is', async () => {
+      conversation.commentRevisions.mockResolvedValueOnce([
+        {
+          body: 'First words',
+          edited_by: ada,
+          agent: null,
+          token: null,
+          at: '2026-10-03T11:00:00Z',
+        },
+      ]);
+      const fixture = await render(comment({ edited: true }));
+      el(fixture, 'comment-revisions-c-1')?.click();
+      await settle(fixture);
+      expect(el(fixture, 'comment-revision-list-c-1')?.textContent).toContain('First words');
+
+      // The withdrawal reaches the page through the event stream: a newer version of the comment.
+      fixture.componentRef.setInput(
+        'comment',
+        comment({
+          edited: true,
+          withdrawn: true,
+          withdrawn_at: '2026-10-03T11:30:00Z',
+          body: null,
+          version: 3,
+        }),
+      );
+      await settle(fixture);
+
+      expect(el(fixture, 'comment-revision-list-c-1')).toBeNull();
+      expect(page(fixture).textContent).not.toContain('First words');
+    });
+
+    it('that come for a version the comment has left are not shown', async () => {
+      let answer: (revisions: CommentRevision[]) => void = () => undefined;
+      conversation.commentRevisions.mockReturnValueOnce(
+        new Promise((resolve) => (answer = resolve)),
+      );
+      const fixture = await render(comment({ edited: true }));
+      el(fixture, 'comment-revisions-c-1')?.click();
+      fixture.componentRef.setInput(
+        'comment',
+        comment({ edited: true, body: 'Newer words', version: 3 }),
+      );
+      await settle(fixture);
+
+      answer([
+        {
+          body: 'First words',
+          edited_by: ada,
+          agent: null,
+          token: null,
+          at: '2026-10-03T11:00:00Z',
+        },
+      ]);
+      await settle(fixture);
+
+      expect(el(fixture, 'comment-revision-list-c-1')).toBeNull();
     });
   });
 
