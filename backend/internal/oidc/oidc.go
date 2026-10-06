@@ -148,9 +148,17 @@ func (d *discovery) check(cfg Config) error {
 func (p *Provider) Issuer() string { return p.cfg.Issuer }
 
 // AuthCodeURL is where a login sends the browser: the authorization code flow
-// with the state, the nonce and the PKCE challenge of the verifier (D1).
-func (p *Provider) AuthCodeURL(state, nonce, verifier string) string {
-	return p.oauth.AuthCodeURL(state, gooidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier))
+// with the state, the nonce and the PKCE challenge of the verifier (D1). A
+// silent login adds prompt=none (OIDC Core 1.0 3.1.2.1, D6): the issuer is to
+// answer without a page of its own — with a code while it holds a session of
+// the person, else with an error such as login_required. An issuer that
+// ignores the parameter, as Dex does, shows its form instead.
+func (p *Provider) AuthCodeURL(state, nonce, verifier string, silent bool) string {
+	opts := []oauth2.AuthCodeOption{gooidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)}
+	if silent {
+		opts = append(opts, oauth2.SetAuthURLParam("prompt", "none"))
+	}
+	return p.oauth.AuthCodeURL(state, opts...)
 }
 
 // EndSessionURL is the issuer's logout for the browser to go to, with the

@@ -4533,6 +4533,9 @@ type OidcCallbackParams struct {
 type LoginOidcParams struct {
 	// ReturnTo The path to land on after the login, and the `return` of a refusal's redirect to the login page; anything that is not a path of this installation is `/`
 	ReturnTo *string `form:"return_to,omitempty" json:"return_to,omitempty"`
+
+	// Silent The login page's own attempt after a session ended — `prompt=none` at the issuer, and its error a `login_required` on the login page instead of `oidc_failed` (docs/adr/0029 D6)
+	Silent *bool `form:"silent,omitempty" json:"silent,omitempty"`
 }
 
 // SetMyChatJSONRequestBody defines body for SetMyChat for application/json ContentType.
@@ -6627,12 +6630,19 @@ type ClientInterface interface {
 	// cookie still opens, stale or not, and the path is not `/`, the page's
 	// default. The codes: `oidc_failed` — the state cookie is missing, stale
 	// or does not match, the exchange or the verification failed, or the
-	// issuer answered with `error`; `not_allowed` — the person is outside the
+	// issuer answered a login that was not silent with `error`;
+	// `login_required` — the issuer answered a silent login
+	// (`silent=true`) with `error` — `login_required`,
+	// `interaction_required`, `consent_required`,
+	// `account_selection_required` or any other, since the person did not ask
+	// for that attempt — when the state cookie still opens, stale or not
+	// (docs/adr/0029 D6); `not_allowed` — the person is outside the
 	// gate, or deactivated (docs/adr/0024 D5); `not_initialised` — no tenant
 	// exists and the person is not in `COWORK_ADMIN_GROUP` (docs/adr/0032 D5);
 	// `oidc_unavailable` — no identity provider is configured. A refused
 	// login is recorded (docs/adr/0026); the reason reaches the log, never the
-	// page, and neither ever holds a code or a token.
+	// page, and neither ever holds a code or a token. A silent login that
+	// comes back with a code is a login like any, refused by the same codes.
 	//
 	// The issuer may add parameters this document does not name, such as `iss`
 	// (RFC 9207) or `session_state`: the route takes them and reads none of
@@ -6725,7 +6735,8 @@ type ClientInterface interface {
 	// (docs/adr/0029 D1). With an identity provider configured it is `302` to
 	// the issuer's authorization endpoint, for the authorization code flow
 	// with PKCE (`S256`), a `state` and a `nonce`, and it sets the cookie
-	// `__Host-cowork-oidc` that holds them with `return_to` for the callback.
+	// `__Host-cowork-oidc` that holds them with `return_to` and whether the
+	// login is silent for the callback.
 	// Without one, or while its gate admits nobody — the cases in which
 	// `GET /auth/options` answers `oidc: false` — it is `303` to
 	// `/login?error=oidc_unavailable&return=<return_to>`.
@@ -6735,6 +6746,16 @@ type ClientInterface interface {
 	// control character and is at most 2048 characters long. Anything else,
 	// or none, is `/`; it is never refused, so a bad link still leads to a
 	// login.
+	//
+	// `silent=true` is the login page signing the person in again by itself,
+	// after their session ended (docs/adr/0029 D6): the authorization request
+	// carries `prompt=none` (OIDC Core 1.0 3.1.2.1), so an issuer that still
+	// holds a session of the person answers with a code at once — the login
+	// then completes like any — and one that would have to show a page
+	// answers with an error, which the callback turns into
+	// `/login?error=login_required`. An issuer that ignores `prompt=none`
+	// shows its own form, as for any login. The page's button never sends
+	// it.
 	//
 	// No credential: whoever comes here has none yet. Nothing is decided here
 	// that a forged link could abuse — the session is made by the callback,
@@ -10145,12 +10166,19 @@ func (c *Client) GetVersion(ctx context.Context, reqEditors ...RequestEditorFn) 
 // cookie still opens, stale or not, and the path is not `/`, the page's
 // default. The codes: `oidc_failed` — the state cookie is missing, stale
 // or does not match, the exchange or the verification failed, or the
-// issuer answered with `error`; `not_allowed` — the person is outside the
+// issuer answered a login that was not silent with `error`;
+// `login_required` — the issuer answered a silent login
+// (`silent=true`) with `error` — `login_required`,
+// `interaction_required`, `consent_required`,
+// `account_selection_required` or any other, since the person did not ask
+// for that attempt — when the state cookie still opens, stale or not
+// (docs/adr/0029 D6); `not_allowed` — the person is outside the
 // gate, or deactivated (docs/adr/0024 D5); `not_initialised` — no tenant
 // exists and the person is not in `COWORK_ADMIN_GROUP` (docs/adr/0032 D5);
 // `oidc_unavailable` — no identity provider is configured. A refused
 // login is recorded (docs/adr/0026); the reason reaches the log, never the
-// page, and neither ever holds a code or a token.
+// page, and neither ever holds a code or a token. A silent login that
+// comes back with a code is a login like any, refused by the same codes.
 //
 // The issuer may add parameters this document does not name, such as `iss`
 // (RFC 9207) or `session_state`: the route takes them and reads none of
@@ -10283,7 +10311,8 @@ func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*ht
 // (docs/adr/0029 D1). With an identity provider configured it is `302` to
 // the issuer's authorization endpoint, for the authorization code flow
 // with PKCE (`S256`), a `state` and a `nonce`, and it sets the cookie
-// `__Host-cowork-oidc` that holds them with `return_to` for the callback.
+// `__Host-cowork-oidc` that holds them with `return_to` and whether the
+// login is silent for the callback.
 // Without one, or while its gate admits nobody — the cases in which
 // `GET /auth/options` answers `oidc: false` — it is `303` to
 // `/login?error=oidc_unavailable&return=<return_to>`.
@@ -10293,6 +10322,16 @@ func (c *Client) Logout(ctx context.Context, reqEditors ...RequestEditorFn) (*ht
 // control character and is at most 2048 characters long. Anything else,
 // or none, is `/`; it is never refused, so a bad link still leads to a
 // login.
+//
+// `silent=true` is the login page signing the person in again by itself,
+// after their session ended (docs/adr/0029 D6): the authorization request
+// carries `prompt=none` (OIDC Core 1.0 3.1.2.1), so an issuer that still
+// holds a session of the person answers with a code at once — the login
+// then completes like any — and one that would have to show a page
+// answers with an error, which the callback turns into
+// `/login?error=login_required`. An issuer that ignores `prompt=none`
+// shows its own form, as for any login. The page's button never sends
+// it.
 //
 // No credential: whoever comes here has none yet. Nothing is decided here
 // that a forged link could abuse — the session is made by the callback,
@@ -18808,6 +18847,18 @@ func NewLoginOidcRequest(server string, params *LoginOidcParams) (*http.Request,
 
 		}
 
+		if params.Silent != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "silent", *params.Silent, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
 		if encoded := queryValues.Encode(); encoded != "" {
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
@@ -20954,12 +21005,19 @@ type ClientWithResponsesInterface interface {
 	// cookie still opens, stale or not, and the path is not `/`, the page's
 	// default. The codes: `oidc_failed` — the state cookie is missing, stale
 	// or does not match, the exchange or the verification failed, or the
-	// issuer answered with `error`; `not_allowed` — the person is outside the
+	// issuer answered a login that was not silent with `error`;
+	// `login_required` — the issuer answered a silent login
+	// (`silent=true`) with `error` — `login_required`,
+	// `interaction_required`, `consent_required`,
+	// `account_selection_required` or any other, since the person did not ask
+	// for that attempt — when the state cookie still opens, stale or not
+	// (docs/adr/0029 D6); `not_allowed` — the person is outside the
 	// gate, or deactivated (docs/adr/0024 D5); `not_initialised` — no tenant
 	// exists and the person is not in `COWORK_ADMIN_GROUP` (docs/adr/0032 D5);
 	// `oidc_unavailable` — no identity provider is configured. A refused
 	// login is recorded (docs/adr/0026); the reason reaches the log, never the
-	// page, and neither ever holds a code or a token.
+	// page, and neither ever holds a code or a token. A silent login that
+	// comes back with a code is a login like any, refused by the same codes.
 	//
 	// The issuer may add parameters this document does not name, such as `iss`
 	// (RFC 9207) or `session_state`: the route takes them and reads none of
@@ -21056,7 +21114,8 @@ type ClientWithResponsesInterface interface {
 	// (docs/adr/0029 D1). With an identity provider configured it is `302` to
 	// the issuer's authorization endpoint, for the authorization code flow
 	// with PKCE (`S256`), a `state` and a `nonce`, and it sets the cookie
-	// `__Host-cowork-oidc` that holds them with `return_to` for the callback.
+	// `__Host-cowork-oidc` that holds them with `return_to` and whether the
+	// login is silent for the callback.
 	// Without one, or while its gate admits nobody — the cases in which
 	// `GET /auth/options` answers `oidc: false` — it is `303` to
 	// `/login?error=oidc_unavailable&return=<return_to>`.
@@ -21066,6 +21125,16 @@ type ClientWithResponsesInterface interface {
 	// control character and is at most 2048 characters long. Anything else,
 	// or none, is `/`; it is never refused, so a bad link still leads to a
 	// login.
+	//
+	// `silent=true` is the login page signing the person in again by itself,
+	// after their session ended (docs/adr/0029 D6): the authorization request
+	// carries `prompt=none` (OIDC Core 1.0 3.1.2.1), so an issuer that still
+	// holds a session of the person answers with a code at once — the login
+	// then completes like any — and one that would have to show a page
+	// answers with an error, which the callback turns into
+	// `/login?error=login_required`. An issuer that ignores `prompt=none`
+	// shows its own form, as for any login. The page's button never sends
+	// it.
 	//
 	// No credential: whoever comes here has none yet. Nothing is decided here
 	// that a forged link could abuse — the session is made by the callback,
@@ -31085,12 +31154,19 @@ func (c *ClientWithResponses) GetVersionWithResponse(ctx context.Context, reqEdi
 // cookie still opens, stale or not, and the path is not `/`, the page's
 // default. The codes: `oidc_failed` — the state cookie is missing, stale
 // or does not match, the exchange or the verification failed, or the
-// issuer answered with `error`; `not_allowed` — the person is outside the
+// issuer answered a login that was not silent with `error`;
+// `login_required` — the issuer answered a silent login
+// (`silent=true`) with `error` — `login_required`,
+// `interaction_required`, `consent_required`,
+// `account_selection_required` or any other, since the person did not ask
+// for that attempt — when the state cookie still opens, stale or not
+// (docs/adr/0029 D6); `not_allowed` — the person is outside the
 // gate, or deactivated (docs/adr/0024 D5); `not_initialised` — no tenant
 // exists and the person is not in `COWORK_ADMIN_GROUP` (docs/adr/0032 D5);
 // `oidc_unavailable` — no identity provider is configured. A refused
 // login is recorded (docs/adr/0026); the reason reaches the log, never the
-// page, and neither ever holds a code or a token.
+// page, and neither ever holds a code or a token. A silent login that
+// comes back with a code is a login like any, refused by the same codes.
 //
 // The issuer may add parameters this document does not name, such as `iss`
 // (RFC 9207) or `session_state`: the route takes them and reads none of
@@ -31211,7 +31287,8 @@ func (c *ClientWithResponses) LogoutWithResponse(ctx context.Context, reqEditors
 // (docs/adr/0029 D1). With an identity provider configured it is `302` to
 // the issuer's authorization endpoint, for the authorization code flow
 // with PKCE (`S256`), a `state` and a `nonce`, and it sets the cookie
-// `__Host-cowork-oidc` that holds them with `return_to` for the callback.
+// `__Host-cowork-oidc` that holds them with `return_to` and whether the
+// login is silent for the callback.
 // Without one, or while its gate admits nobody — the cases in which
 // `GET /auth/options` answers `oidc: false` — it is `303` to
 // `/login?error=oidc_unavailable&return=<return_to>`.
@@ -31221,6 +31298,16 @@ func (c *ClientWithResponses) LogoutWithResponse(ctx context.Context, reqEditors
 // control character and is at most 2048 characters long. Anything else,
 // or none, is `/`; it is never refused, so a bad link still leads to a
 // login.
+//
+// `silent=true` is the login page signing the person in again by itself,
+// after their session ended (docs/adr/0029 D6): the authorization request
+// carries `prompt=none` (OIDC Core 1.0 3.1.2.1), so an issuer that still
+// holds a session of the person answers with a code at once — the login
+// then completes like any — and one that would have to show a page
+// answers with an error, which the callback turns into
+// `/login?error=login_required`. An issuer that ignores `prompt=none`
+// shows its own form, as for any login. The page's button never sends
+// it.
 //
 // No credential: whoever comes here has none yet. Nothing is decided here
 // that a forged link could abuse — the session is made by the callback,
@@ -45480,6 +45567,19 @@ func (siw *ServerInterfaceWrapper) LoginOidc(w http.ResponseWriter, r *http.Requ
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "return_to"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "return_to", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "silent" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "silent", r.URL.Query(), &params.Silent, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "silent"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "silent", Err: err})
 		}
 		return
 	}

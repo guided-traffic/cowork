@@ -32,7 +32,9 @@ func TestOIDCRoutesWithoutAProvider(t *testing.T) {
 		location string
 	}{
 		"the start":                                   {"/auth/oidc/login?return_to=%2Ft%2Facme%2Fbacklog", http.StatusSeeOther, unavailable + "&return=%2Ft%2Facme%2Fbacklog"},
+		"the silent start":                            {"/auth/oidc/login?silent=true&return_to=%2Ft%2Facme", http.StatusSeeOther, unavailable + "&return=%2Ft%2Facme"},
 		"the start without return_to":                 {"/auth/oidc/login", http.StatusSeeOther, unavailable},
+		"the start refuses a silent that is no flag":  {"/auth/oidc/login?silent=maybe", http.StatusBadRequest, ""},
 		"the start with a return_to off the site":     {"/auth/oidc/login?return_to=https%3A%2F%2Fevil.example.com", http.StatusSeeOther, unavailable},
 		"the callback with the issuer's parameters":   {"/auth/callback?code=c&state=s&iss=https%3A%2F%2Fissuer.example.com&session_state=x", http.StatusSeeOther, unavailable},
 		"the callback with the issuer's error":        {"/auth/callback?error=access_denied&error_description=denied", http.StatusSeeOther, unavailable},
@@ -92,6 +94,7 @@ func TestTheLoginStart(t *testing.T) {
 	assert.NotEmpty(t, q.Get("code_challenge"))
 	assert.Len(t, q.Get("state"), 43, "256 bits")
 	assert.Len(t, q.Get("nonce"), 43)
+	assert.False(t, q.Has("prompt"), "the button's login may show the issuer's pages")
 	cookies := (&http.Response{Header: rec.Header()}).Cookies()
 	require.Len(t, cookies, 1)
 	c := cookies[0]
@@ -164,6 +167,59 @@ func TestAFailedCallbackKeepsThePathThePersonWanted(t *testing.T) {
 	assert.Equal(t, "/login?error=oidc_failed", rec.Header().Get("Location"), "without the cookie there is no path to keep")
 	assert.Equal(t, "/login?error=not_allowed&return=%2Fx%2Fy", loginPage("not_allowed", "/x/y"))
 	assert.Equal(t, "/login?error=not_allowed", loginPage("not_allowed", "/"))
+	assert.Equal(t, "/login?error=login_required&return=%2Ft%2Facme%2Fboard%3Fq%3Da%26b", loginPage(loginRequired, "/t/acme/board?q=a&b"))
+	assert.Equal(t, "/login?error=login_required", loginPage(loginRequired, "/"))
+}
+
+// docs/adr/0029 D6: the login page's own attempt asks the issuer with
+// prompt=none, and the issuer's error to it — whatever the error — sends the
+// browser back with login_required and the path the person wanted, the state
+// cookie cleared and no session made. The same error to a login the person
+// started is oidc_failed, and so is the error without the cookie that says the
+// login was silent: only the server's own sealed word makes a login silent.
+func TestASilentLoginTheIssuerCannotCompleteAsksForASignIn(t *testing.T) {
+	is := fakeissuer.Start(t)
+	is.Add(fakeissuer.User{Subject: "s", Groups: []string{"cowork-users"}})
+	h := fakeServer(t, is, []string{"cowork-users"})
+	start := func(path string) (*http.Cookie, string) {
+		rec := serve(h, path)
+		require.Equal(t, http.StatusFound, rec.Code, rec.Body.String())
+		to, err := url.Parse(rec.Header().Get("Location"))
+		require.NoError(t, err)
+		return (&http.Response{Header: rec.Header()}).Cookies()[0], to.Query().Get("state")
+	}
+
+	silent := serve(h, "/auth/oidc/login?silent=true&return_to=%2Ft%2Facme%2Fboard")
+	require.Equal(t, http.StatusFound, silent.Code)
+	to, err := url.Parse(silent.Header().Get("Location"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"none"}, to.Query()["prompt"], "the issuer is asked to show no page")
+	assert.Equal(t, "S256", to.Query().Get("code_challenge_method"), "and the flow is the code flow with PKCE as ever")
+
+	for _, issuerError := range []string{"login_required", "interaction_required", "consent_required", "account_selection_required", "access_denied"} {
+		t.Run(issuerError, func(t *testing.T) {
+			cookie, state := start("/auth/oidc/login?silent=true&return_to=%2Ft%2Facme%2Fboard")
+			rec := serve(h, "/auth/callback?error="+issuerError+"&state="+state, cookie)
+			require.Equal(t, http.StatusSeeOther, rec.Code, rec.Body.String())
+			assert.Equal(t, "/login?error=login_required&return=%2Ft%2Facme%2Fboard", rec.Header().Get("Location"))
+			set := (&http.Response{Header: rec.Header()}).Cookies()
+			require.Len(t, set, 1, "the state cookie is cleared, no session is set")
+			assert.Equal(t, "__Host-cowork-oidc", set[0].Name)
+			assert.Less(t, set[0].MaxAge, 0)
+		})
+	}
+
+	cookie, state := start("/auth/oidc/login?return_to=%2Ft%2Facme%2Fboard")
+	rec := serve(h, "/auth/callback?error=login_required&state="+state, cookie)
+	assert.Equal(t, "/login?error=oidc_failed&return=%2Ft%2Facme%2Fboard", rec.Header().Get("Location"), "a login the person started")
+
+	_, state = start("/auth/oidc/login?silent=true")
+	rec = serve(h, "/auth/callback?error=login_required&state="+state)
+	assert.Equal(t, "/login?error=oidc_failed", rec.Header().Get("Location"), "no cookie: nothing says the login was silent")
+
+	cookie, _ = start("/auth/oidc/login?silent=true")
+	rec = serve(h, "/auth/callback?code=c&state=another", cookie)
+	assert.Equal(t, "/login?error=oidc_failed", rec.Header().Get("Location"), "a silent login is held to its state like any")
 }
 
 func TestReturnTo(t *testing.T) {
