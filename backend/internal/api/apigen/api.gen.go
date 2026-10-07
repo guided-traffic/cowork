@@ -1521,7 +1521,7 @@ type AttachmentConsistency struct {
 	// OrphanedObjects The orphans in key order, at most 1000; empty once their removal was confirmed
 	OrphanedObjects []OrphanedObject `json:"orphaned_objects"`
 
-	// Orphans The objects no metadata names; 0 once their removal was confirmed
+	// Orphans The objects no metadata names; after a confirmed removal, those its list did not show
 	Orphans int `json:"orphans"`
 }
 

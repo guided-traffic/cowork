@@ -161,8 +161,9 @@ then one installation-level act `checked`, counts per tenant id
   (`RemoveOrphanedObjects` in [`api/consistency.go`](../../backend/internal/api/consistency.go)): in
   the confirming transaction each listed orphan is asked again whether a row names it now
   (`ListAttachmentsAmong`) — one that does is kept —, a key outside the tenant's prefix is never
-  touched, the act `purged` is recorded with the counts, and the objects go after the commit, as an
-  administrator's purge removes its ticket's. The acceptance of the missing files
+  touched, the act `purged` is recorded with the counts, the result keeps counting the orphans its
+  list did not show (`unlistedOrphans`), and the objects go after the commit, as an administrator's
+  purge removes its ticket's. The acceptance of the missing files
   (`AcceptDanglingAttachments`) inserts `consistency_acceptances` rows and moves the counts; it
   removes nothing either.
 - **Immediately.** `cowork check-consistency` ([`main.go`](../../backend/cmd/cowork/main.go)

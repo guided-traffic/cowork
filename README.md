@@ -1136,7 +1136,7 @@ target's `namespace`, `pod`, `container` and `job`.
 | `cowork_migrations_schema_version` | gauge | — | The schema version the database records, read at a scrape at most every ten seconds; absent after a read that failed |
 | `cowork_migrations_schema_dirty` | gauge | — | `1` while the recorded version is dirty: a migration failed halfway, or one is running |
 | `cowork_consistency_dangling_attachments` | gauge | `tenant`: the tenant's id | Files of the tenant whose metadata is there and whose bytes the bucket lacks, and whose loss nobody accepted, at its latest consistency check; read from the stored results at a scrape at most once a minute, the same on every replica; no series for a tenant without a result |
-| `cowork_consistency_orphaned_objects` | gauge | `tenant`: the tenant's id | Objects under the tenant's prefix that no file names, at its latest check; `0` once an administrator's removal of them was confirmed |
+| `cowork_consistency_orphaned_objects` | gauge | `tenant`: the tenant's id | Objects under the tenant's prefix that no file names, at its latest check; after an administrator's confirmed removal, those its list of a thousand did not show |
 | `go_*`, `process_*` | | | The Go runtime's and the process's, `client_golang`'s defaults |
 
 The consistency family's third instrument of

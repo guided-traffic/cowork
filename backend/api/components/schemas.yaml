@@ -1349,7 +1349,7 @@ AttachmentConsistency:
     checked_at: {type: [string, 'null'], format: date-time}
     dangling: {type: integer, description: The files whose bytes are missing and whose loss nobody accepted}
     accepted: {type: integer, description: The files whose bytes are missing and whose loss an administrator accepted}
-    orphans: {type: integer, description: 'The objects no metadata names; 0 once their removal was confirmed'}
+    orphans: {type: integer, description: 'The objects no metadata names; after a confirmed removal, those its list did not show'}
     orphan_bytes: {type: integer, format: int64, description: "The orphans' sizes, summed"}
     dangling_attachments:
       type: array

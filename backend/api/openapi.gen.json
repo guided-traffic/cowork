@@ -1059,7 +1059,7 @@
             "type": "array"
           },
           "orphans": {
-            "description": "The objects no metadata names; 0 once their removal was confirmed",
+            "description": "The objects no metadata names; after a confirmed removal, those its list did not show",
             "type": "integer"
           }
         },

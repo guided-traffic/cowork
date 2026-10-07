@@ -51,7 +51,7 @@ export interface AttachmentConsistency {
   orphaned_objects: Array<OrphanedObject>;
 
   /**
-   * The objects no metadata names; 0 once their removal was confirmed
+   * The objects no metadata names; after a confirmed removal, those its list did not show
    */
   orphans: number;
 }
