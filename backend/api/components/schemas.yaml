@@ -1551,6 +1551,18 @@ Attachment:
         - type: 'null'
     created_at: {type: string, format: date-time}
     content_url: {type: string, description: 'The download, through the backend only (docs/adr/0016 D4)'}
+  example: &example-attachment
+    id: 01a10c89-3100-77d9-8eb9-8c1723d7d64c
+    file_name: safari-sign-in.png
+    size: 186779
+    sha256: 178dc8d5850d206cfc74209ad760d7e77ef20652ebf109f04e3efdb59f6b4122
+    content_type: image/png
+    comment: null
+    uploaded_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    agent: null
+    token: null
+    created_at: '2026-10-05T14:48:00Z'
+    content_url: /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content
 AttachmentUsage:
   type: object
   description: What the tenant's attachments hold against its quota (docs/adr/0016 D6)
@@ -1562,6 +1574,10 @@ AttachmentUsage:
       type: [integer, 'null']
       format: int64
       description: COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota
+  example:
+    used_bytes: 73400320
+    attachments: 41
+    quota_bytes: 10737418240
 AttachmentConsistency:
   type: object
   description: |
@@ -1597,6 +1613,31 @@ AttachmentConsistency:
       oneOf:
         - $ref: '#/OrphanRemovalRecord'
         - type: 'null'
+  # The night after a restore that brought the database back from an earlier point than the bucket.
+  example:
+    check_id: 01a10f27-5b80-71db-8b7c-37825a4703a9
+    checked_at: '2026-10-06T03:00:00Z'
+    dangling: 1
+    accepted: 0
+    orphans: 2
+    orphan_bytes: 3145728
+    dangling_attachments:
+      - id: 019d8b83-2140-7968-843e-7c8e68771ec8
+        file_name: invoice-2026-03.pdf
+        size: 48213
+        content_type: application/pdf
+        ticket: acme/WEB-12
+        ticket_deleted: false
+        uploaded_at: '2026-04-14T10:22:00Z'
+        accepted: false
+    orphaned_objects:
+      - key: 019cadb8-dee0-79ac-8a4f-eca5731cb386/01a108f7-7ec0-75ec-850e-015e6ae32ec8
+        size: 2097152
+        last_modified: '2026-10-04T22:10:00Z'
+      - key: 019cadb8-dee0-79ac-8a4f-eca5731cb386/01a108f8-de50-7530-855f-d311b7302475
+        size: 1048576
+        last_modified: '2026-10-04T22:11:30Z'
+    orphan_removal: null
 DanglingAttachment:
   type: object
   description: A file whose metadata is there and whose bytes the bucket lacks; its download answers 404 saying so
@@ -1642,12 +1683,18 @@ OrphanRemoval:
     removed: {type: integer, description: 'Objects removed, or gone already'}
     kept: {type: integer, description: 'Objects that had gained metadata since the check: no orphans any more, kept'}
     failed: {type: integer, description: 'Objects whose removal failed; the log names each, and the next check lists them again'}
+  example:
+    removed: 2
+    kept: 0
+    failed: 0
 DanglingAcceptance:
   type: object
   description: What an acceptance of the missing files did
   required: [accepted]
   properties:
     accepted: {type: integer, description: The files whose loss was accepted now}
+  example:
+    accepted: 1
 AttachmentList:
   type: object
   required: [items, next_cursor]
@@ -1658,6 +1705,10 @@ AttachmentList:
         $ref: '#/Attachment'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-attachment
+    next_cursor: null
 TimeEntry:
   type: object
   required: [id, ticket, person, author, token, minutes, day, note, voided, voided_at, edited, version, created_at,

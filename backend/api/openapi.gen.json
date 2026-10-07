@@ -1083,6 +1083,23 @@
         "type": "object"
       },
       "Attachment": {
+        "example": {
+          "agent": null,
+          "comment": null,
+          "content_type": "image/png",
+          "content_url": "/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content",
+          "created_at": "2026-10-05T14:48:00Z",
+          "file_name": "safari-sign-in.png",
+          "id": "01a10c89-3100-77d9-8eb9-8c1723d7d64c",
+          "sha256": "178dc8d5850d206cfc74209ad760d7e77ef20652ebf109f04e3efdb59f6b4122",
+          "size": 186779,
+          "token": null,
+          "uploaded_by": {
+            "display_name": "Grace Hopper",
+            "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+            "username": null
+          }
+        },
         "properties": {
           "agent": {
             "type": [
@@ -1167,6 +1184,39 @@
       },
       "AttachmentConsistency": {
         "description": "The tenant's latest consistency check of its attachments (docs/adr/0059 D4): the files whose\nmetadata is there and whose bytes the bucket lacks — dangling — and the objects under the\ntenant's prefix that no metadata names — orphans —, with the counts exact and each list at most\n1000 entries long. `check_id` is null, and everything else empty, while no check has run in the\ntenant.\n",
+        "example": {
+          "accepted": 0,
+          "check_id": "01a10f27-5b80-71db-8b7c-37825a4703a9",
+          "checked_at": "2026-10-06T03:00:00Z",
+          "dangling": 1,
+          "dangling_attachments": [
+            {
+              "accepted": false,
+              "content_type": "application/pdf",
+              "file_name": "invoice-2026-03.pdf",
+              "id": "019d8b83-2140-7968-843e-7c8e68771ec8",
+              "size": 48213,
+              "ticket": "acme/WEB-12",
+              "ticket_deleted": false,
+              "uploaded_at": "2026-04-14T10:22:00Z"
+            }
+          ],
+          "orphan_bytes": 3145728,
+          "orphan_removal": null,
+          "orphaned_objects": [
+            {
+              "key": "019cadb8-dee0-79ac-8a4f-eca5731cb386/01a108f7-7ec0-75ec-850e-015e6ae32ec8",
+              "last_modified": "2026-10-04T22:10:00Z",
+              "size": 2097152
+            },
+            {
+              "key": "019cadb8-dee0-79ac-8a4f-eca5731cb386/01a108f8-de50-7530-855f-d311b7302475",
+              "last_modified": "2026-10-04T22:11:30Z",
+              "size": 1048576
+            }
+          ],
+          "orphans": 2
+        },
         "properties": {
           "accepted": {
             "description": "The files whose bytes are missing and whose loss an administrator accepted",
@@ -1240,6 +1290,28 @@
         "type": "object"
       },
       "AttachmentList": {
+        "example": {
+          "items": [
+            {
+              "agent": null,
+              "comment": null,
+              "content_type": "image/png",
+              "content_url": "/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content",
+              "created_at": "2026-10-05T14:48:00Z",
+              "file_name": "safari-sign-in.png",
+              "id": "01a10c89-3100-77d9-8eb9-8c1723d7d64c",
+              "sha256": "178dc8d5850d206cfc74209ad760d7e77ef20652ebf109f04e3efdb59f6b4122",
+              "size": 186779,
+              "token": null,
+              "uploaded_by": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              }
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -1262,6 +1334,11 @@
       },
       "AttachmentUsage": {
         "description": "What the tenant's attachments hold against its quota (docs/adr/0016 D6)",
+        "example": {
+          "attachments": 41,
+          "quota_bytes": 10737418240,
+          "used_bytes": 73400320
+        },
         "properties": {
           "attachments": {
             "description": "How many attachments the tenant holds",
@@ -2350,6 +2427,9 @@
       },
       "DanglingAcceptance": {
         "description": "What an acceptance of the missing files did",
+        "example": {
+          "accepted": 1
+        },
         "properties": {
           "accepted": {
             "description": "The files whose loss was accepted now",
@@ -4867,6 +4947,11 @@
       },
       "OrphanRemoval": {
         "description": "What a confirmed removal of the orphans did, object by object",
+        "example": {
+          "failed": 0,
+          "kept": 0,
+          "removed": 2
+        },
         "properties": {
           "failed": {
             "description": "Objects whose removal failed; the log names each, and the next check lists them again",
@@ -9463,6 +9548,9 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "check_id": "01a10f27-5b80-71db-8b7c-37825a4703a9"
+              },
               "schema": {
                 "$ref": "#/components/schemas/ConsistencyCheckRef"
               }
@@ -9474,9 +9562,6 @@
           "200": {
             "content": {
               "application/json": {
-                "example": {
-                  "accepted": 3
-                },
                 "schema": {
                   "$ref": "#/components/schemas/DanglingAcceptance"
                 }
@@ -9506,6 +9591,9 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "check_id": "01a10f27-5b80-71db-8b7c-37825a4703a9"
+              },
               "schema": {
                 "$ref": "#/components/schemas/ConsistencyCheckRef"
               }
@@ -9517,11 +9605,6 @@
           "200": {
             "content": {
               "application/json": {
-                "example": {
-                  "failed": 0,
-                  "kept": 1,
-                  "removed": 2
-                },
                 "schema": {
                   "$ref": "#/components/schemas/OrphanRemoval"
                 }
@@ -9557,11 +9640,6 @@
           "200": {
             "content": {
               "application/json": {
-                "example": {
-                  "attachments": 41,
-                  "quota_bytes": 10737418240,
-                  "used_bytes": 73400320
-                },
                 "schema": {
                   "$ref": "#/components/schemas/AttachmentUsage"
                 }
@@ -12099,6 +12177,7 @@
               }
             }
           },
+          "description": "Two parts and no other: `file`, the one file, whose `filename` in its `Content-Disposition`\nbecomes the attachment's `file_name`, sanitised (docs/adr/0016 D1); and `comment_id`,\noptional, the id of a comment of the ticket the file belongs to. A file's bytes have no\nexample here.\n",
           "required": true
         },
         "responses": {
