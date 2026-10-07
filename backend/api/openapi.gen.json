@@ -3454,6 +3454,13 @@
       },
       "ExportAttachment": {
         "description": "One attachment of `attachments.json` — its metadata and URL, never its bytes (docs/adr/0016 D5)",
+        "example": {
+          "name": "safari-sign-in.png",
+          "size": 186779,
+          "ticket": "acme/WEB-42",
+          "type": "image/png",
+          "url": "/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content"
+        },
         "properties": {
           "name": {
             "type": "string"
@@ -3486,6 +3493,11 @@
       },
       "ExportLink": {
         "description": "One link of `links.json`, once (docs/adr/0051 D4, docs/adr/0012 D1)",
+        "example": {
+          "source": "acme/WEB-39",
+          "target": "acme/WEB-42",
+          "type": "blocks"
+        },
         "properties": {
           "source": {
             "description": "The source's key, \u003ctenant\u003e/\u003cPROJECT\u003e-\u003cn\u003e",
@@ -3508,6 +3520,23 @@
       },
       "ExportManifest": {
         "description": "`manifest.json` of an export archive (docs/adr/0051 D4)",
+        "example": {
+          "confidential_not_included": 2,
+          "exported_at": "2026-10-07T09:00:00Z",
+          "exported_by": "Sam Rivera \u003clocal:sam\u003e",
+          "format": "cowork export v1",
+          "projects": [
+            {
+              "archived": false,
+              "confidential_not_included": 2,
+              "key": "WEB",
+              "name": "Website",
+              "tickets": 43
+            }
+          ],
+          "tenant": "acme",
+          "tickets": 43
+        },
         "properties": {
           "confidential_not_included": {
             "description": "The confidential tickets of these projects the exporter cannot see, which the archive leaves out\n— \"n confidential tickets not included\" (docs/adr/0065 D5)\n",
@@ -4358,6 +4387,275 @@
       },
       "ImportJob": {
         "description": "An import job on a project (docs/adr/0051 D1): a dry run's report until it is executed or\ntwenty-four hours pass, then the report of the execution\n",
+        "example": {
+          "created_at": "2026-10-07T08:15:00Z",
+          "created_by": {
+            "display_name": "Ada Lovelace",
+            "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+            "username": "ada"
+          },
+          "executed_at": null,
+          "executed_by": null,
+          "expires_at": "2026-10-08T08:15:00Z",
+          "files": [
+            {
+              "assignee": null,
+              "attachments": [],
+              "block": null,
+              "block_candidate": null,
+              "columns": null,
+              "confidential": false,
+              "confidential_reason": null,
+              "conflict": null,
+              "correction": null,
+              "errors": [],
+              "format": null,
+              "key": null,
+              "links": [],
+              "note": null,
+              "number": null,
+              "outcome": "skip",
+              "parent": null,
+              "path": "docs/tickets/README.md",
+              "questions": [],
+              "reason": "not a ticket file: its name is neither NNN-\u003cslug\u003e.md, local_NNN-\u003cslug\u003e.md nor \u003cPROJECT\u003e-\u003cn\u003e.md (docs/adr/0063 D5)",
+              "state": null,
+              "title": null,
+              "type": null,
+              "type_reason": null,
+              "warnings": []
+            },
+            {
+              "assignee": null,
+              "attachments": [],
+              "block": null,
+              "block_candidate": null,
+              "columns": {
+                "decided": "2026-09-25",
+                "done": null,
+                "effort": "XS",
+                "horizon": "next",
+                "opened": "2026-09-22",
+                "progress": 0,
+                "progress_refinement": 0,
+                "progress_review": 0,
+                "security": "hardening",
+                "severity": "medium",
+                "threat": "a cross-site request could carry the session cookie"
+              },
+              "confidential": false,
+              "confidential_reason": null,
+              "conflict": "acme/WEB-41",
+              "correction": null,
+              "errors": [],
+              "format": "repository",
+              "key": "acme/WEB-41",
+              "links": [],
+              "note": null,
+              "number": 41,
+              "outcome": "conflict",
+              "parent": null,
+              "path": "docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md",
+              "questions": [],
+              "reason": null,
+              "state": "decided",
+              "title": "pick the SameSite mode of the session cookie",
+              "type": "task",
+              "type_reason": "detected: the title names no question, defect, decision or missing capability",
+              "warnings": []
+            },
+            {
+              "assignee": {
+                "person": {
+                  "display_name": "Grace Hopper",
+                  "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                  "username": null
+                },
+                "source": "Grace Hopper \u003coidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw\u003e"
+              },
+              "attachments": [],
+              "block": null,
+              "block_candidate": null,
+              "columns": {
+                "decided": null,
+                "done": null,
+                "effort": "XS",
+                "horizon": "later",
+                "opened": "2026-10-03",
+                "progress": 0,
+                "progress_refinement": 0,
+                "progress_review": 0,
+                "security": "none",
+                "severity": "low",
+                "threat": null
+              },
+              "confidential": false,
+              "confidential_reason": null,
+              "conflict": null,
+              "correction": null,
+              "errors": [],
+              "format": "repository",
+              "key": "acme/WEB-44",
+              "links": [],
+              "note": null,
+              "number": 44,
+              "outcome": "create",
+              "parent": null,
+              "path": "docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md",
+              "questions": [],
+              "reason": null,
+              "state": "filed",
+              "title": "the newsletter form accepts an empty address",
+              "type": "task",
+              "type_reason": "detected: the title names no question, defect, decision or missing capability",
+              "warnings": []
+            },
+            {
+              "assignee": null,
+              "attachments": [],
+              "block": null,
+              "block_candidate": null,
+              "columns": {
+                "decided": null,
+                "done": null,
+                "effort": "S",
+                "horizon": "now",
+                "opened": "2026-10-04",
+                "progress": 0,
+                "progress_refinement": 0,
+                "progress_review": 0,
+                "security": "none",
+                "severity": null,
+                "threat": null
+              },
+              "confidential": false,
+              "confidential_reason": null,
+              "conflict": null,
+              "correction": null,
+              "errors": [
+                {
+                  "field": "severity",
+                  "line": 5,
+                  "message": "severity: \"urgent\" is outside the vocabulary (docs/adr/0010 D5)"
+                }
+              ],
+              "format": "repository",
+              "key": "acme/WEB-45",
+              "links": [],
+              "note": null,
+              "number": 45,
+              "outcome": "error",
+              "parent": null,
+              "path": "docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md",
+              "questions": [],
+              "reason": null,
+              "state": "analysed",
+              "title": "the price table is unreadable on a phone",
+              "type": "task",
+              "type_reason": "detected: the title names no question, defect, decision or missing capability",
+              "warnings": []
+            },
+            {
+              "assignee": null,
+              "attachments": [],
+              "block": null,
+              "block_candidate": null,
+              "columns": {
+                "decided": "2026-09-02",
+                "done": "2026-09-15",
+                "effort": "S",
+                "horizon": "later",
+                "opened": "2026-09-01",
+                "progress": 0,
+                "progress_refinement": 0,
+                "progress_review": 0,
+                "security": "none",
+                "severity": "low",
+                "threat": null
+              },
+              "confidential": false,
+              "confidential_reason": null,
+              "conflict": null,
+              "correction": null,
+              "errors": [],
+              "format": "repository",
+              "key": "acme/WEB-46",
+              "links": [],
+              "note": "the images load from cdn.acme.example since release 2.3; the home page fell from 2.1 MB to 0.6 MB",
+              "number": 46,
+              "outcome": "create",
+              "parent": null,
+              "path": "docs/tickets/archive/046-move-the-images-to-the-cdn.md",
+              "questions": [],
+              "reason": null,
+              "state": "done",
+              "title": "move the images to the CDN",
+              "type": "task",
+              "type_reason": "detected: the title names no question, defect, decision or missing capability",
+              "warnings": []
+            },
+            {
+              "assignee": null,
+              "attachments": [],
+              "block": null,
+              "block_candidate": null,
+              "columns": {
+                "decided": null,
+                "done": null,
+                "effort": "M",
+                "horizon": "now",
+                "opened": "2026-10-05",
+                "progress": 0,
+                "progress_refinement": 0,
+                "progress_review": 0,
+                "security": "boundary",
+                "severity": "high",
+                "threat": "a visitor's message reaches the form provider's analytics, which the privacy notice does not name"
+              },
+              "confidential": true,
+              "confidential_reason": "the file name carries the local_ prefix of an open finding's embargo (docs/adr/0065 D7)",
+              "conflict": null,
+              "correction": null,
+              "errors": [],
+              "format": "repository",
+              "key": "acme/WEB-47",
+              "links": [],
+              "note": null,
+              "number": 47,
+              "outcome": "create",
+              "parent": null,
+              "path": "docs/tickets/local_047-the-contact-form-sends-its-fields-to-a-third-party.md",
+              "questions": [
+                {
+                  "number": 1,
+                  "question": "Do we host the form ourselves?",
+                  "status": "open"
+                }
+              ],
+              "reason": null,
+              "state": "analysed",
+              "title": "the contact form sends its fields to a third party",
+              "type": "bug",
+              "type_reason": "detected: a security finding, security boundary",
+              "warnings": []
+            }
+          ],
+          "id": "01a1156e-1ba0-7aa7-b9fb-d1b5399ba6fa",
+          "project": "WEB",
+          "status": "dry_run",
+          "summary": {
+            "confidential": 1,
+            "conflict": 1,
+            "create": 3,
+            "created": 0,
+            "error": 1,
+            "exclude": 0,
+            "files": 6,
+            "highest_number": 47,
+            "open": 2,
+            "skip": 1
+          }
+        },
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -12343,6 +12641,7 @@
               }
             }
           },
+          "description": "One part or more, each named `file`: one archive — a `tar.gz` or a `zip`, known by its bytes,\nsuch as an export of cowork or a repository's `docs/tickets/` packed — or Markdown files, one\nper part, each named by its part's file name.\n",
           "required": true
         },
         "responses": {
@@ -12428,20 +12727,20 @@
               "example": {
                 "corrections": [
                   {
-                    "path": "docs/tickets/archive/011-projects-cannot-be-created.md",
-                    "type": "feature"
+                    "exclude": true,
+                    "path": "docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md"
+                  },
+                  {
+                    "path": "docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md",
+                    "type": "bug"
                   },
                   {
                     "exclude": true,
-                    "path": "docs/tickets/README.md"
+                    "path": "docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md"
                   },
                   {
-                    "block": {
-                      "kind": "human",
-                      "reason": "waits on the owner's review"
-                    },
-                    "path": "docs/tickets/026-phase-3.md",
-                    "state": "blocked"
+                    "assignee": "019e165f-39c0-7937-931a-d0fa7735df32",
+                    "path": "docs/tickets/archive/046-move-the-images-to-the-cdn.md"
                   }
                 ]
               },
@@ -12456,6 +12755,274 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "created_at": "2026-10-07T08:15:00Z",
+                  "created_by": {
+                    "display_name": "Ada Lovelace",
+                    "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                    "username": "ada"
+                  },
+                  "executed_at": "2026-10-07T08:24:00Z",
+                  "executed_by": {
+                    "display_name": "Ada Lovelace",
+                    "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                    "username": "ada"
+                  },
+                  "expires_at": null,
+                  "files": [
+                    {
+                      "assignee": null,
+                      "attachments": [],
+                      "block": null,
+                      "block_candidate": null,
+                      "columns": null,
+                      "confidential": false,
+                      "confidential_reason": null,
+                      "conflict": null,
+                      "correction": null,
+                      "errors": [],
+                      "format": null,
+                      "key": null,
+                      "links": [],
+                      "note": null,
+                      "number": null,
+                      "outcome": "skip",
+                      "parent": null,
+                      "path": "docs/tickets/README.md",
+                      "questions": [],
+                      "reason": "not a ticket file: its name is neither NNN-\u003cslug\u003e.md, local_NNN-\u003cslug\u003e.md nor \u003cPROJECT\u003e-\u003cn\u003e.md (docs/adr/0063 D5)",
+                      "state": null,
+                      "title": null,
+                      "type": null,
+                      "type_reason": null,
+                      "warnings": []
+                    },
+                    {
+                      "assignee": null,
+                      "attachments": [],
+                      "block": null,
+                      "block_candidate": null,
+                      "columns": null,
+                      "confidential": false,
+                      "confidential_reason": null,
+                      "conflict": null,
+                      "correction": {
+                        "exclude": true,
+                        "path": "docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md"
+                      },
+                      "errors": [],
+                      "format": "repository",
+                      "key": "acme/WEB-41",
+                      "links": [],
+                      "note": null,
+                      "number": 41,
+                      "outcome": "exclude",
+                      "parent": null,
+                      "path": "docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md",
+                      "questions": [],
+                      "reason": "excluded by the correction",
+                      "state": null,
+                      "title": "pick the SameSite mode of the session cookie",
+                      "type": null,
+                      "type_reason": null,
+                      "warnings": []
+                    },
+                    {
+                      "assignee": {
+                        "person": {
+                          "display_name": "Grace Hopper",
+                          "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                          "username": null
+                        },
+                        "source": "Grace Hopper \u003coidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw\u003e"
+                      },
+                      "attachments": [],
+                      "block": null,
+                      "block_candidate": null,
+                      "columns": {
+                        "decided": null,
+                        "done": null,
+                        "effort": "XS",
+                        "horizon": "later",
+                        "opened": "2026-10-03",
+                        "progress": 0,
+                        "progress_refinement": 0,
+                        "progress_review": 0,
+                        "security": "none",
+                        "severity": "low",
+                        "threat": null
+                      },
+                      "confidential": false,
+                      "confidential_reason": null,
+                      "conflict": null,
+                      "correction": {
+                        "path": "docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md",
+                        "type": "bug"
+                      },
+                      "errors": [],
+                      "format": "repository",
+                      "key": "acme/WEB-44",
+                      "links": [],
+                      "note": null,
+                      "number": 44,
+                      "outcome": "created",
+                      "parent": null,
+                      "path": "docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md",
+                      "questions": [],
+                      "reason": null,
+                      "state": "filed",
+                      "title": "the newsletter form accepts an empty address",
+                      "type": "bug",
+                      "type_reason": "corrected",
+                      "warnings": []
+                    },
+                    {
+                      "assignee": null,
+                      "attachments": [],
+                      "block": null,
+                      "block_candidate": null,
+                      "columns": null,
+                      "confidential": false,
+                      "confidential_reason": null,
+                      "conflict": null,
+                      "correction": {
+                        "exclude": true,
+                        "path": "docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md"
+                      },
+                      "errors": [
+                        {
+                          "field": "severity",
+                          "line": 5,
+                          "message": "severity: \"urgent\" is outside the vocabulary (docs/adr/0010 D5)"
+                        }
+                      ],
+                      "format": "repository",
+                      "key": "acme/WEB-45",
+                      "links": [],
+                      "note": null,
+                      "number": 45,
+                      "outcome": "exclude",
+                      "parent": null,
+                      "path": "docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md",
+                      "questions": [],
+                      "reason": "excluded by the correction",
+                      "state": null,
+                      "title": "the price table is unreadable on a phone",
+                      "type": null,
+                      "type_reason": null,
+                      "warnings": []
+                    },
+                    {
+                      "assignee": {
+                        "person": {
+                          "display_name": "Sam Rivera",
+                          "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+                          "username": "sam"
+                        },
+                        "source": ""
+                      },
+                      "attachments": [],
+                      "block": null,
+                      "block_candidate": null,
+                      "columns": {
+                        "decided": "2026-09-02",
+                        "done": "2026-09-15",
+                        "effort": "S",
+                        "horizon": "later",
+                        "opened": "2026-09-01",
+                        "progress": 0,
+                        "progress_refinement": 0,
+                        "progress_review": 0,
+                        "security": "none",
+                        "severity": "low",
+                        "threat": null
+                      },
+                      "confidential": false,
+                      "confidential_reason": null,
+                      "conflict": null,
+                      "correction": {
+                        "assignee": "019e165f-39c0-7937-931a-d0fa7735df32",
+                        "path": "docs/tickets/archive/046-move-the-images-to-the-cdn.md"
+                      },
+                      "errors": [],
+                      "format": "repository",
+                      "key": "acme/WEB-46",
+                      "links": [],
+                      "note": "the images load from cdn.acme.example since release 2.3; the home page fell from 2.1 MB to 0.6 MB",
+                      "number": 46,
+                      "outcome": "created",
+                      "parent": null,
+                      "path": "docs/tickets/archive/046-move-the-images-to-the-cdn.md",
+                      "questions": [],
+                      "reason": null,
+                      "state": "done",
+                      "title": "move the images to the CDN",
+                      "type": "task",
+                      "type_reason": "detected: the title names no question, defect, decision or missing capability",
+                      "warnings": []
+                    },
+                    {
+                      "assignee": null,
+                      "attachments": [],
+                      "block": null,
+                      "block_candidate": null,
+                      "columns": {
+                        "decided": null,
+                        "done": null,
+                        "effort": "M",
+                        "horizon": "now",
+                        "opened": "2026-10-05",
+                        "progress": 0,
+                        "progress_refinement": 0,
+                        "progress_review": 0,
+                        "security": "boundary",
+                        "severity": "high",
+                        "threat": "a visitor's message reaches the form provider's analytics, which the privacy notice does not name"
+                      },
+                      "confidential": true,
+                      "confidential_reason": "the file name carries the local_ prefix of an open finding's embargo (docs/adr/0065 D7)",
+                      "conflict": null,
+                      "correction": null,
+                      "errors": [],
+                      "format": "repository",
+                      "key": "acme/WEB-47",
+                      "links": [],
+                      "note": null,
+                      "number": 47,
+                      "outcome": "created",
+                      "parent": null,
+                      "path": "docs/tickets/local_047-the-contact-form-sends-its-fields-to-a-third-party.md",
+                      "questions": [
+                        {
+                          "number": 1,
+                          "question": "Do we host the form ourselves?",
+                          "status": "open"
+                        }
+                      ],
+                      "reason": null,
+                      "state": "analysed",
+                      "title": "the contact form sends its fields to a third party",
+                      "type": "bug",
+                      "type_reason": "detected: a security finding, security boundary",
+                      "warnings": []
+                    }
+                  ],
+                  "id": "01a1156e-1ba0-7aa7-b9fb-d1b5399ba6fa",
+                  "project": "WEB",
+                  "status": "executed",
+                  "summary": {
+                    "confidential": 1,
+                    "conflict": 0,
+                    "create": 0,
+                    "created": 3,
+                    "error": 0,
+                    "exclude": 2,
+                    "files": 6,
+                    "highest_number": 47,
+                    "open": 2,
+                    "skip": 1
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/ImportJob"
                 }

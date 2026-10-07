@@ -37,6 +37,10 @@ imports:
       dry run is kept for twenty-four hours, after which its read and its execution answer `404`.
     requestBody:
       required: true
+      description: |
+        One part or more, each named `file`: one archive — a `tar.gz` or a `zip`, known by its bytes,
+        such as an export of cowork or a repository's `docs/tickets/` packed — or Markdown files, one
+        per part, each named by its part's file name.
       content:
         multipart/form-data:
           schema:
@@ -120,15 +124,18 @@ importExecution:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/ImportExecution'
+          # The corrections of the dry run of ImportJob's example: the conflict and the error
+          # left out, a type the content did not show, an assignee the file did not name.
           example:
             corrections:
-              - path: docs/tickets/archive/011-projects-cannot-be-created.md
-                type: feature
-              - path: docs/tickets/README.md
+              - path: docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md
                 exclude: true
-              - path: docs/tickets/026-phase-3.md
-                state: blocked
-                block: {kind: human, reason: waits on the owner's review}
+              - path: docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md
+                type: bug
+              - path: docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md
+                exclude: true
+              - path: docs/tickets/archive/046-move-the-images-to-the-cdn.md
+                assignee: 019e165f-39c0-7937-931a-d0fa7735df32
     responses:
       '200':
         description: The executed job, its report naming the key of every ticket created
@@ -136,6 +143,229 @@ importExecution:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/ImportJob'
+            # The dry run of the schema's example executed with the request's corrections.
+            example:
+              id: 01a1156e-1ba0-7aa7-b9fb-d1b5399ba6fa
+              project: WEB
+              status: executed
+              created_by: &id001 {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+              created_at: '2026-10-07T08:15:00Z'
+              expires_at: null
+              executed_by: *id001
+              executed_at: '2026-10-07T08:24:00Z'
+              summary:
+                files: 6
+                create: 0
+                conflict: 0
+                error: 0
+                skip: 1
+                exclude: 2
+                created: 3
+                open: 2
+                confidential: 1
+                highest_number: 47
+              files:
+                - path: docs/tickets/README.md
+                  outcome: skip
+                  reason: 'not a ticket file: its name is neither NNN-<slug>.md, local_NNN-<slug>.md nor <PROJECT>-<n>.md (docs/adr/0063 D5)'
+                  format: null
+                  number: null
+                  key: null
+                  conflict: null
+                  title: null
+                  type: null
+                  type_reason: null
+                  state: null
+                  block_candidate: null
+                  block: null
+                  columns: null
+                  assignee: null
+                  parent: null
+                  note: null
+                  questions: []
+                  links: []
+                  attachments: []
+                  confidential: false
+                  confidential_reason: null
+                  warnings: []
+                  errors: []
+                  correction: null
+                - path: docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md
+                  outcome: exclude
+                  reason: excluded by the correction
+                  format: repository
+                  number: 41
+                  key: acme/WEB-41
+                  conflict: null
+                  title: pick the SameSite mode of the session cookie
+                  type: null
+                  type_reason: null
+                  state: null
+                  block_candidate: null
+                  block: null
+                  columns: null
+                  assignee: null
+                  parent: null
+                  note: null
+                  questions: []
+                  links: []
+                  attachments: []
+                  confidential: false
+                  confidential_reason: null
+                  warnings: []
+                  errors: []
+                  correction:
+                    exclude: true
+                    path: docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md
+                - path: docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md
+                  outcome: created
+                  reason: null
+                  format: repository
+                  number: 44
+                  key: acme/WEB-44
+                  conflict: null
+                  title: the newsletter form accepts an empty address
+                  type: bug
+                  type_reason: corrected
+                  state: filed
+                  block_candidate: null
+                  block: null
+                  columns:
+                    severity: low
+                    security: none
+                    threat: null
+                    horizon: later
+                    effort: XS
+                    progress_refinement: 0
+                    progress: 0
+                    progress_review: 0
+                    opened: '2026-10-03'
+                    decided: null
+                    done: null
+                  assignee:
+                    source: Grace Hopper <oidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw>
+                    person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+                  parent: null
+                  note: null
+                  questions: []
+                  links: []
+                  attachments: []
+                  confidential: false
+                  confidential_reason: null
+                  warnings: []
+                  errors: []
+                  correction:
+                    path: docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md
+                    type: bug
+                - path: docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md
+                  outcome: exclude
+                  reason: excluded by the correction
+                  format: repository
+                  number: 45
+                  key: acme/WEB-45
+                  conflict: null
+                  title: the price table is unreadable on a phone
+                  type: null
+                  type_reason: null
+                  state: null
+                  block_candidate: null
+                  block: null
+                  columns: null
+                  assignee: null
+                  parent: null
+                  note: null
+                  questions: []
+                  links: []
+                  attachments: []
+                  confidential: false
+                  confidential_reason: null
+                  warnings: []
+                  errors:
+                    - field: severity
+                      line: 5
+                      message: 'severity: "urgent" is outside the vocabulary (docs/adr/0010 D5)'
+                  correction:
+                    exclude: true
+                    path: docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md
+                - path: docs/tickets/archive/046-move-the-images-to-the-cdn.md
+                  outcome: created
+                  reason: null
+                  format: repository
+                  number: 46
+                  key: acme/WEB-46
+                  conflict: null
+                  title: move the images to the CDN
+                  type: task
+                  type_reason: 'detected: the title names no question, defect, decision or missing capability'
+                  state: done
+                  block_candidate: null
+                  block: null
+                  columns:
+                    severity: low
+                    security: none
+                    threat: null
+                    horizon: later
+                    effort: S
+                    progress_refinement: 0
+                    progress: 0
+                    progress_review: 0
+                    opened: '2026-09-01'
+                    decided: '2026-09-02'
+                    done: '2026-09-15'
+                  assignee:
+                    source: ''
+                    person: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+                  parent: null
+                  note: the images load from cdn.acme.example since release 2.3; the home page fell from 2.1 MB to 0.6 MB
+                  questions: []
+                  links: []
+                  attachments: []
+                  confidential: false
+                  confidential_reason: null
+                  warnings: []
+                  errors: []
+                  correction:
+                    assignee: 019e165f-39c0-7937-931a-d0fa7735df32
+                    path: docs/tickets/archive/046-move-the-images-to-the-cdn.md
+                - path: docs/tickets/local_047-the-contact-form-sends-its-fields-to-a-third-party.md
+                  outcome: created
+                  reason: null
+                  format: repository
+                  number: 47
+                  key: acme/WEB-47
+                  conflict: null
+                  title: the contact form sends its fields to a third party
+                  type: bug
+                  type_reason: 'detected: a security finding, security boundary'
+                  state: analysed
+                  block_candidate: null
+                  block: null
+                  columns:
+                    severity: high
+                    security: boundary
+                    threat: a visitor's message reaches the form provider's analytics, which the privacy notice does not name
+                    horizon: now
+                    effort: M
+                    progress_refinement: 0
+                    progress: 0
+                    progress_review: 0
+                    opened: '2026-10-05'
+                    decided: null
+                    done: null
+                  assignee: null
+                  parent: null
+                  note: null
+                  questions:
+                    - number: 1
+                      question: Do we host the form ourselves?
+                      status: open
+                  links: []
+                  attachments: []
+                  confidential: true
+                  confidential_reason: the file name carries the local_ prefix of an open finding's embargo (docs/adr/0065 D7)
+                  warnings: []
+                  errors: []
+                  correction: null
       default:
         $ref: './components/responses.yaml#/Problem'
 projectExport:

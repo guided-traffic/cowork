@@ -20,7 +20,13 @@ export interface CreateImport$Params {
  * The project's key (docs/adr/0007 D1)
  */
   project: string;
-      body: {
+  
+    /**
+     * One part or more, each named `file`: one archive — a `tar.gz` or a `zip`, known by its bytes,
+     * such as an export of cowork or a repository's `docs/tickets/` packed — or Markdown files, one
+     * per part, each named by its part's file name.
+     */
+    body: {
 'file': Array<Blob>;
 }
 }

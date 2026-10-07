@@ -3895,6 +3895,242 @@ ImportJob:
         (docs/adr/0024 D2)
       items:
         $ref: '#/ImportFile'
+  # The dry run of an upload of a repository's docs/tickets/ into WEB, read by the importer itself:
+  # a file to skip, one whose number acme/WEB-41 holds, one with an error, three to create.
+  example:
+    id: 01a1156e-1ba0-7aa7-b9fb-d1b5399ba6fa
+    project: WEB
+    status: dry_run
+    created_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+    created_at: '2026-10-07T08:15:00Z'
+    expires_at: '2026-10-08T08:15:00Z'
+    executed_by: null
+    executed_at: null
+    summary:
+      files: 6
+      create: 3
+      conflict: 1
+      error: 1
+      skip: 1
+      exclude: 0
+      created: 0
+      open: 2
+      confidential: 1
+      highest_number: 47
+    files:
+      - path: docs/tickets/README.md
+        outcome: skip
+        reason: 'not a ticket file: its name is neither NNN-<slug>.md, local_NNN-<slug>.md nor <PROJECT>-<n>.md (docs/adr/0063 D5)'
+        format: null
+        number: null
+        key: null
+        conflict: null
+        title: null
+        type: null
+        type_reason: null
+        state: null
+        block_candidate: null
+        block: null
+        columns: null
+        assignee: null
+        parent: null
+        note: null
+        questions: []
+        links: []
+        attachments: []
+        confidential: false
+        confidential_reason: null
+        warnings: []
+        errors: []
+        correction: null
+      - path: docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md
+        outcome: conflict
+        reason: null
+        format: repository
+        number: 41
+        key: acme/WEB-41
+        conflict: acme/WEB-41
+        title: pick the SameSite mode of the session cookie
+        type: task
+        type_reason: 'detected: the title names no question, defect, decision or missing capability'
+        state: decided
+        block_candidate: null
+        block: null
+        columns:
+          severity: medium
+          security: hardening
+          threat: a cross-site request could carry the session cookie
+          horizon: next
+          effort: XS
+          progress_refinement: 0
+          progress: 0
+          progress_review: 0
+          opened: '2026-09-22'
+          decided: '2026-09-25'
+          done: null
+        assignee: null
+        parent: null
+        note: null
+        questions: []
+        links: []
+        attachments: []
+        confidential: false
+        confidential_reason: null
+        warnings: []
+        errors: []
+        correction: null
+      - path: docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md
+        outcome: create
+        reason: null
+        format: repository
+        number: 44
+        key: acme/WEB-44
+        conflict: null
+        title: the newsletter form accepts an empty address
+        type: task
+        type_reason: 'detected: the title names no question, defect, decision or missing capability'
+        state: filed
+        block_candidate: null
+        block: null
+        columns:
+          severity: low
+          security: none
+          threat: null
+          horizon: later
+          effort: XS
+          progress_refinement: 0
+          progress: 0
+          progress_review: 0
+          opened: '2026-10-03'
+          decided: null
+          done: null
+        assignee:
+          source: Grace Hopper <oidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw>
+          person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+        parent: null
+        note: null
+        questions: []
+        links: []
+        attachments: []
+        confidential: false
+        confidential_reason: null
+        warnings: []
+        errors: []
+        correction: null
+      - path: docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md
+        outcome: error
+        reason: null
+        format: repository
+        number: 45
+        key: acme/WEB-45
+        conflict: null
+        title: the price table is unreadable on a phone
+        type: task
+        type_reason: 'detected: the title names no question, defect, decision or missing capability'
+        state: analysed
+        block_candidate: null
+        block: null
+        columns:
+          severity: null
+          security: none
+          threat: null
+          horizon: now
+          effort: S
+          progress_refinement: 0
+          progress: 0
+          progress_review: 0
+          opened: '2026-10-04'
+          decided: null
+          done: null
+        assignee: null
+        parent: null
+        note: null
+        questions: []
+        links: []
+        attachments: []
+        confidential: false
+        confidential_reason: null
+        warnings: []
+        errors:
+          - field: severity
+            line: 5
+            message: 'severity: "urgent" is outside the vocabulary (docs/adr/0010 D5)'
+        correction: null
+      - path: docs/tickets/archive/046-move-the-images-to-the-cdn.md
+        outcome: create
+        reason: null
+        format: repository
+        number: 46
+        key: acme/WEB-46
+        conflict: null
+        title: move the images to the CDN
+        type: task
+        type_reason: 'detected: the title names no question, defect, decision or missing capability'
+        state: done
+        block_candidate: null
+        block: null
+        columns:
+          severity: low
+          security: none
+          threat: null
+          horizon: later
+          effort: S
+          progress_refinement: 0
+          progress: 0
+          progress_review: 0
+          opened: '2026-09-01'
+          decided: '2026-09-02'
+          done: '2026-09-15'
+        assignee: null
+        parent: null
+        note: the images load from cdn.acme.example since release 2.3; the home page fell from 2.1 MB to 0.6 MB
+        questions: []
+        links: []
+        attachments: []
+        confidential: false
+        confidential_reason: null
+        warnings: []
+        errors: []
+        correction: null
+      - path: docs/tickets/local_047-the-contact-form-sends-its-fields-to-a-third-party.md
+        outcome: create
+        reason: null
+        format: repository
+        number: 47
+        key: acme/WEB-47
+        conflict: null
+        title: the contact form sends its fields to a third party
+        type: bug
+        type_reason: 'detected: a security finding, security boundary'
+        state: analysed
+        block_candidate: null
+        block: null
+        columns:
+          severity: high
+          security: boundary
+          threat: a visitor's message reaches the form provider's analytics, which the privacy notice does not name
+          horizon: now
+          effort: M
+          progress_refinement: 0
+          progress: 0
+          progress_review: 0
+          opened: '2026-10-05'
+          decided: null
+          done: null
+        assignee: null
+        parent: null
+        note: null
+        questions:
+          - number: 1
+            question: Do we host the form ourselves?
+            status: open
+        links: []
+        attachments: []
+        confidential: true
+        confidential_reason: the file name carries the local_ prefix of an open finding's embargo (docs/adr/0065 D7)
+        warnings: []
+        errors: []
+        correction: null
 ImportExecution:
   type: object
   additionalProperties: false
@@ -3928,6 +4164,20 @@ ExportManifest:
       description: |
         The confidential tickets of these projects the exporter cannot see, which the archive leaves out
         — "n confidential tickets not included" (docs/adr/0065 D5)
+  # A member's export of WEB after the import: two confidential tickets are not theirs to read.
+  example:
+    format: cowork export v1
+    tenant: acme
+    projects:
+      - key: WEB
+        name: Website
+        archived: false
+        tickets: 43
+        confidential_not_included: 2
+    exported_at: '2026-10-07T09:00:00Z'
+    exported_by: 'Sam Rivera <local:sam>'
+    tickets: 43
+    confidential_not_included: 2
 ExportManifestProject:
   type: object
   required: [key, name, archived, tickets, confidential_not_included]
@@ -3946,6 +4196,10 @@ ExportLink:
     type:
       $ref: '#/LinkType'
     target: {type: string, description: 'The target''s key; relates-to is stored and written once'}
+  example:
+    source: acme/WEB-39
+    type: blocks
+    target: acme/WEB-42
 ExportAttachment:
   type: object
   description: One attachment of `attachments.json` — its metadata and URL, never its bytes (docs/adr/0016 D5)
@@ -3956,3 +4210,9 @@ ExportAttachment:
     type: {type: string, description: The stored content type}
     size: {type: integer, format: int64}
     url: {type: string, description: 'The path of its bytes, `…/attachments/{attachment}/content`'}
+  example:
+    ticket: acme/WEB-42
+    name: safari-sign-in.png
+    type: image/png
+    size: 186779
+    url: /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content
