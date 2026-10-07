@@ -153,6 +153,10 @@ export type { ExportTicket$Params as ExportTicket$Params } from './fn/tickets/ex
 export { exportTicket as exportTicket } from './fn/tickets/export-ticket';
 export type { ListPrerequisites$Params as ListPrerequisites$Params } from './fn/tickets/list-prerequisites';
 export { listPrerequisites as listPrerequisites } from './fn/tickets/list-prerequisites';
+export type { ListTicketPullRequests$Params as ListTicketPullRequests$Params } from './fn/tickets/list-ticket-pull-requests';
+export { listTicketPullRequests as listTicketPullRequests } from './fn/tickets/list-ticket-pull-requests';
+export type { RemoveTicketPullRequest$Params as RemoveTicketPullRequest$Params } from './fn/tickets/remove-ticket-pull-request';
+export { removeTicketPullRequest as removeTicketPullRequest } from './fn/tickets/remove-ticket-pull-request';
 export type { MoveTicketRank$Params as MoveTicketRank$Params } from './fn/tickets/move-ticket-rank';
 export { moveTicketRank as moveTicketRank } from './fn/tickets/move-ticket-rank';
 export type { TransitionTicket$Params as TransitionTicket$Params } from './fn/tickets/transition-ticket';
@@ -173,6 +177,14 @@ export type { DeleteSavedFilter$Params as DeleteSavedFilter$Params } from './fn/
 export { deleteSavedFilter as deleteSavedFilter } from './fn/filters/delete-saved-filter';
 export type { UpdateSavedFilter$Params as UpdateSavedFilter$Params } from './fn/filters/update-saved-filter';
 export { updateSavedFilter as updateSavedFilter } from './fn/filters/update-saved-filter';
+export type { GetGitHubIntegration$Params as GetGitHubIntegration$Params } from './fn/integrations/get-git-hub-integration';
+export { getGitHubIntegration as getGitHubIntegration } from './fn/integrations/get-git-hub-integration';
+export type { CreateGitHubSecret$Params as CreateGitHubSecret$Params } from './fn/integrations/create-git-hub-secret';
+export { createGitHubSecret as createGitHubSecret } from './fn/integrations/create-git-hub-secret';
+export type { RevokeGitHubSecret$Params as RevokeGitHubSecret$Params } from './fn/integrations/revoke-git-hub-secret';
+export { revokeGitHubSecret as revokeGitHubSecret } from './fn/integrations/revoke-git-hub-secret';
+export type { ReceiveGitHubWebhook$Params as ReceiveGitHubWebhook$Params } from './fn/integrations/receive-git-hub-webhook';
+export { receiveGitHubWebhook as receiveGitHubWebhook } from './fn/integrations/receive-git-hub-webhook';
 export type { ListProjects$Params as ListProjects$Params } from './fn/projects/list-projects';
 export { listProjects as listProjects } from './fn/projects/list-projects';
 export type { CreateProject$Params as CreateProject$Params } from './fn/projects/create-project';

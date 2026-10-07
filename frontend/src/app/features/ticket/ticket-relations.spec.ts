@@ -59,6 +59,7 @@ describe('TicketRelations', () => {
     interest: `${base}/interest?limit=200`,
     attachments: `${base}/attachments?limit=200`,
     time: `${base}/time-entries?limit=200`,
+    pullRequests: `${base}/pull-requests?limit=200`,
     tree: `${base}/prerequisites?direction=down&limit=200`,
   };
   const empty = { items: [], next_cursor: null };
@@ -96,6 +97,7 @@ describe('TicketRelations', () => {
       interest: vi.spyOn(relations.interest, 'reload').mockReturnValue(true),
       attachments: vi.spyOn(relations.attachments, 'reload').mockReturnValue(true),
       time: vi.spyOn(relations.time, 'reload').mockReturnValue(true),
+      pullRequests: vi.spyOn(relations.pullRequests, 'reload').mockReturnValue(true),
       tree: vi.spyOn(relations.tree, 'reload').mockReturnValue(true),
     };
   }
@@ -114,7 +116,7 @@ describe('TicketRelations', () => {
       expect(relations.comments.status()).toBe('idle');
     });
 
-    it('loads the comments, the activity, the questions, the links, the interest, the files, the time and the prerequisite tree of the ticket that is set', async () => {
+    it('loads the comments, the activity, the questions, the links, the interest, the files, the time, the pull requests and the prerequisite tree of the ticket that is set', async () => {
       relations.at.set(cow12);
       TestBed.tick();
 
@@ -126,6 +128,7 @@ describe('TicketRelations', () => {
         interest: { items: [], next_cursor: null },
         attachments: { items: [], next_cursor: null },
         time: { items: [], next_cursor: null, total_minutes: 0 },
+        pullRequests: { items: [], next_cursor: null },
         tree: { items: [], next_cursor: null, open: 0 },
       };
       for (const [part, body] of Object.entries(bodies)) {
@@ -155,6 +158,7 @@ describe('TicketRelations', () => {
         '/api/v1/tenants/acme/projects/OPS/tickets/3/interest',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/attachments',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/time-entries',
+        '/api/v1/tenants/acme/projects/OPS/tickets/3/pull-requests',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/prerequisites',
       ]);
     });
@@ -231,6 +235,7 @@ describe('TicketRelations', () => {
       ['question.changed', ['questions', 'activity']],
       ['link.changed', ['links', 'tree', 'activity']],
       ['interest.changed', ['interest', 'activity']],
+      ['pull_request.changed', ['pullRequests', 'activity']],
       ['ticket.changed', ['attachments', 'activity']],
     ] as const)('reload only the parts %s changes: %j', (name, parts) => {
       const spies = spyOnReloads();
@@ -256,6 +261,7 @@ describe('TicketRelations', () => {
         'question.changed',
         'link.changed',
         'interest.changed',
+        'pull_request.changed',
       ] as const) {
         events.next(ticketEvent(name, key));
       }
@@ -282,6 +288,7 @@ describe('TicketRelations', () => {
         'comments',
         'interest',
         'links',
+        'pullRequests',
         'questions',
         'time',
         'tree',
@@ -328,17 +335,19 @@ describe('TicketRelations', () => {
         },
       );
 
-      it.each(['comment.changed', 'question.changed', 'interest.changed'] as const)(
-        'leave the tree alone on %s, which changes nothing it shows',
-        async (name) => {
-          await loaded();
-          const spies = spyOnReloads();
+      it.each([
+        'comment.changed',
+        'question.changed',
+        'interest.changed',
+        'pull_request.changed',
+      ] as const)('leave the tree alone on %s, which changes nothing it shows', async (name) => {
+        await loaded();
+        const spies = spyOnReloads();
 
-          events.next(ticketEvent(name, 'acme/COW-7'));
+        events.next(ticketEvent(name, 'acme/COW-7'));
 
-          expect(reloaded(spies)).toEqual([]);
-        },
-      );
+        expect(reloaded(spies)).toEqual([]);
+      });
     });
 
     it('follow the ticket that is shown when it changes', () => {
@@ -357,6 +366,7 @@ describe('TicketRelations', () => {
       ['question.changed', 'questions'],
       ['link.changed', 'links'],
       ['interest.changed', 'interest'],
+      ['pull_request.changed', 'pullRequests'],
       ['ticket.changed', 'attachments'],
     ] as const)(
       'fetch only the part %s changes and the activity again, from the API',
@@ -497,6 +507,7 @@ describe('TicketRelations', () => {
       'interest',
       'attachments',
       'time',
+      'pullRequests',
       'tree',
     ] as const;
 

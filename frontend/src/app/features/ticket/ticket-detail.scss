@@ -40,13 +40,19 @@
 }
 
 .block,
-.threat {
+.threat,
+.merged {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
   padding: 0.625rem 0.875rem;
   border-radius: var(--p-border-radius-lg);
   font-size: 0.8125rem;
+}
+
+.merged {
+  color: var(--p-state-done);
+  background: color-mix(in srgb, var(--p-state-done) 10%, transparent);
 }
 
 .block {
