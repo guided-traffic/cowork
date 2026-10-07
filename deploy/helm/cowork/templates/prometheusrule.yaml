@@ -1,10 +1,11 @@
+{{- $metrics := include "cowork.metrics" . | fromYaml }}
 {{- /*
 The alerts of docs/adr/0060 D6, but for the two of the consistency family,
 which come with the consistency check. Each is narrowed to this release's
 backend pods and links its section of docs/operations/metrics.md at the
 version the chart installs. Needs the Prometheus Operator's CRDs.
 */}}
-{{- if .Values.metrics.prometheusRule.enabled }}
+{{- if $metrics.prometheusRule.enabled }}
 {{- if not (include "cowork.metricsEnabled" .) }}
 {{- fail "metrics.prometheusRule.enabled needs metrics.enabled: the alerts read the backend's metrics" }}
 {{- end }}
@@ -16,7 +17,7 @@ metadata:
   name: {{ include "cowork.fullname" . }}
   labels:
     {{- include "cowork.labels" . | nindent 4 }}
-    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- with $metrics.prometheusRule.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:

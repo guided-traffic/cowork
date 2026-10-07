@@ -1,3 +1,4 @@
+{{- $metrics := include "cowork.metrics" . | fromYaml }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -75,7 +76,7 @@ spec:
             # The metrics listener (docs/adr/0060 D1), on the pod and never on
             # the Service; an empty value switches it off.
             - name: COWORK_METRICS_ADDR
-              value: {{ if include "cowork.metricsEnabled" . }}{{ printf ":%d" (int .Values.metrics.port) | quote }}{{ else }}""{{ end }}
+              value: {{ if include "cowork.metricsEnabled" . }}{{ printf ":%d" (int $metrics.port) | quote }}{{ else }}""{{ end }}
             {{- include "cowork.databaseEnv" (dict "root" . "owner" false) | nindent 12 }}
             # The serving container never migrates: it holds no owner
             # credential and refuses to start on pending migrations.
@@ -293,7 +294,7 @@ spec:
             # Prometheus text at /metrics, without authentication; the
             # backend Service does not list it (docs/adr/0060 D2).
             - name: metrics
-              containerPort: {{ .Values.metrics.port }}
+              containerPort: {{ $metrics.port }}
               protocol: TCP
             {{- end }}
           startupProbe:

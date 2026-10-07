@@ -1,3 +1,4 @@
+{{- $frontendMetrics := include "cowork.frontendMetrics" . | fromYaml }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -64,7 +65,7 @@ spec:
             # would hide it.
             - name: tmp
               mountPath: /tmp
-        {{- with .Values.frontend.metrics.exporter }}
+        {{- with $frontendMetrics.exporter }}
         {{- if .enabled }}
         # nginx's counts for Prometheus (docs/adr/0060 D7): the exporter reads
         # stub_status on the pod's loopback address, which the configuration in

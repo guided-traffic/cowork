@@ -545,7 +545,10 @@ manifests of `deploy/examples/` against the operators' CRD schemas
 ([build-test-lint.md](build-test-lint.md#targets)). `ci/metrics-values.yaml` switches every monitoring resource on — the
 `PodMonitor` with the nginx exporter's entry, the `ServiceMonitor` with its headless Service, the
 `PrometheusRule`, the dashboard's ConfigMap — and renders them with the Prometheus Operator's CRDs
-assumed present; nothing applies them to a cluster.
+assumed present; nothing applies them to a cluster. `ci/reuse-values-values.yaml` sets `metrics` and
+`frontend.metrics` to null — the values of a release upgraded with `--reuse-values` from one before
+the metrics have neither — and renders through the defaults the helpers `cowork.metrics` and
+`cowork.frontendMetrics` repeat; its manifests equal those of the defaults (compared by hand).
 
 ## Environment variables the suites read
 

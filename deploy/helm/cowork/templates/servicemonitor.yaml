@@ -1,10 +1,11 @@
+{{- $metrics := include "cowork.metrics" . | fromYaml }}
 {{- /*
 The ServiceMonitor variant of docs/adr/0060 D3, for a Prometheus that
 discovers Services only: a headless Service with the backend's metrics port
 alone — the backend Service never carries it (D2) — and the ServiceMonitor
 that selects it. Needs the Prometheus Operator's CRDs.
 */}}
-{{- if .Values.metrics.serviceMonitor.enabled }}
+{{- if $metrics.serviceMonitor.enabled }}
 {{- if not (include "cowork.metricsEnabled" .) }}
 {{- fail "metrics.serviceMonitor.enabled needs metrics.enabled: its Service carries the backend's metrics port" }}
 {{- end }}
@@ -21,7 +22,7 @@ spec:
   clusterIP: None
   ports:
     - name: metrics
-      port: {{ .Values.metrics.port }}
+      port: {{ $metrics.port }}
       targetPort: metrics
       protocol: TCP
   selector:
@@ -33,7 +34,7 @@ metadata:
   name: {{ include "cowork.fullname" . }}
   labels:
     {{- include "cowork.labels" . | nindent 4 }}
-    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- with $metrics.serviceMonitor.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
@@ -43,6 +44,6 @@ spec:
   endpoints:
     - port: metrics
       path: /metrics
-      interval: {{ .Values.metrics.serviceMonitor.interval }}
-      scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout }}
+      interval: {{ $metrics.serviceMonitor.interval }}
+      scrapeTimeout: {{ $metrics.serviceMonitor.scrapeTimeout }}
 {{- end }}

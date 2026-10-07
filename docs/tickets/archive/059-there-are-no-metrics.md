@@ -24,7 +24,7 @@ lifecycle beside the API's ([`main.go`](../../../backend/cmd/cowork/main.go) `se
 instruments of D4 in [`internal/metrics`](../../../backend/internal/metrics/metrics.go), the only
 importer of `client_golang`; the chart's `metrics.*` and `frontend.metrics.exporter.*`; the four
 alerts of D6 with their runbooks in [docs/operations/metrics.md](../../operations/metrics.md); what
-the unauthenticated port tells in [docs/security/metrics.md](../../security/metrics.md), H-62; how to
+the unauthenticated port tells in [docs/security/metrics.md](../../security/metrics.md), H-63; how to
 add an instrument in [docs/developer/metrics.md](../../developer/metrics.md).
 
 What remains of ADR 0060 is the consistency family of D4 and its two alerts of D6, which come with
@@ -50,9 +50,11 @@ Verified on 2026-10-06:
   own address and from another container; `nginx/nginx-prometheus-exporter:1.5.3` in the container's
   network namespace, as user 101 with a read-only root filesystem and the chart's arguments,
   answering `nginx_up 1`.
-- An upgrade with `--reuse-values` into this release fails to render — the previous chart's values
-  have no `metrics` block, as they had no `chat` block before 0.3 —, so the documented upgrade is
-  `--reset-then-reuse-values` now.
+- An upgrade with `--reuse-values` from a release before the metrics renders as with the chart's
+  defaults: the previous release's values have no `metrics` and no `frontend.metrics` block, and the
+  helpers `cowork.metrics` and `cowork.frontendMetrics` read the defaults then;
+  `ci/reuse-values-values.yaml` renders the chart without both blocks, and its manifests equal those
+  of the defaults. The documented upgrade is `--reset-then-reuse-values`.
 
 ## Required changes
 

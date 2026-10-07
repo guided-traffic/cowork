@@ -40,13 +40,77 @@ The headless Service of the backend's metrics port: <fullname>-backend-metrics.
 {{- end }}
 
 {{/*
+The metrics values (docs/adr/0060 D2, D3): .Values.metrics, or — where the
+release's values carry no metrics block, as after `helm upgrade --reuse-values`
+from a release before the metrics (docs/operations/installation.md#upgrade) —
+the defaults of values.yaml, repeated here because a template cannot read them
+then. A block that is there is taken as it is: Helm has merged the chart's
+defaults under it already. Keep the literal equal to values.yaml's block;
+ci/reuse-values-values.yaml renders the chart without the block. Use as
+  {{- $metrics := include "cowork.metrics" . | fromYaml }}
+*/}}
+{{- define "cowork.metrics" -}}
+{{- if .Values.metrics -}}
+{{- toYaml .Values.metrics -}}
+{{- else -}}
+enabled: true
+port: 8081
+podMonitor:
+  enabled: false
+  labels: {}
+  interval: 30s
+  scrapeTimeout: 10s
+serviceMonitor:
+  enabled: false
+  labels: {}
+  interval: 30s
+  scrapeTimeout: 10s
+prometheusRule:
+  enabled: false
+  labels: {}
+  alertLabels: {}
+grafanaDashboard:
+  enabled: false
+  labels:
+    grafana_dashboard: "1"
+  annotations: {}
+{{- end -}}
+{{- end }}
+
+{{/*
+The frontend's metrics values (docs/adr/0060 D7), with the defaults of
+values.yaml where the release's values carry no frontend.metrics block, as
+above.
+*/}}
+{{- define "cowork.frontendMetrics" -}}
+{{- if (.Values.frontend | default dict).metrics -}}
+{{- toYaml .Values.frontend.metrics -}}
+{{- else -}}
+exporter:
+  enabled: false
+  image:
+    repository: nginx/nginx-prometheus-exporter
+    tag: "1.5.3"
+    pullPolicy: IfNotPresent
+  port: 9113
+  resources:
+    limits:
+      memory: 32Mi
+    requests:
+      cpu: 5m
+      memory: 16Mi
+{{- end -}}
+{{- end }}
+
+{{/*
 Whether the backend's metrics listener is on (docs/adr/0060 D1): metrics.enabled,
 on a port of its own. A monitoring resource that needs the listener fails
 rendering without it.
 */}}
 {{- define "cowork.metricsEnabled" -}}
-{{- if .Values.metrics.enabled -}}
-{{- if eq (int .Values.metrics.port) (int .Values.backend.containerPort) -}}
+{{- $metrics := include "cowork.metrics" . | fromYaml -}}
+{{- if $metrics.enabled -}}
+{{- if eq (int $metrics.port) (int .Values.backend.containerPort) -}}
 {{- fail "metrics.port must differ from backend.containerPort: the metrics are never served on the API's listener (docs/adr/0060 D1)" -}}
 {{- end -}}
 true
@@ -58,7 +122,7 @@ The labels of one alert: its severity, under metrics.prometheusRule.alertLabels,
 which win. Call with (dict "root" . "severity" "warning").
 */}}
 {{- define "cowork.alertLabels" -}}
-{{- toYaml (merge (dict) (deepCopy (.root.Values.metrics.prometheusRule.alertLabels | default dict)) (dict "severity" .severity)) }}
+{{- toYaml (merge (dict) (deepCopy ((include "cowork.metrics" .root | fromYaml).prometheusRule.alertLabels | default dict)) (dict "severity" .severity)) }}
 {{- end }}
 
 {{/*
