@@ -99,7 +99,10 @@ member's addition, which sets `app.person_lookup`), `CheckRuntimeRole`, `SchemaS
 `Listen`.
 
 `Open` registers `timestamptz` to scan in UTC and a tracer that logs a query slower than
-`DefaultSlowQuery` (500 ms) by its sqlc name, never its arguments. A missing or invisible row
+`DefaultSlowQuery` (500 ms) by its sqlc name, never its arguments, and counts a statement that
+failed by its kind — a closed set of SQLSTATE meanings and client causes, `queryErrorKind` —; with
+a registry in `Options.Metrics` it lets a scrape read the pool's statistics and the schema state
+([metrics.md](metrics.md)). A missing or invisible row
 is sqlc's `pgx.ErrNoRows`, passed through the wrappers: the handler maps it to its own `404`
 (or, for a conditional write, to the answer of the later request — see
 [conventions.md](conventions.md)), and one it does not map is a `500`. `store.ErrNotFound`
@@ -221,7 +224,9 @@ name `shared` as the policies do, and the unshare runs only through `Writer.Unsh
    (`StoreIdempotencyKey`). That insert takes over an expired row and returns nothing when a
    concurrent request holds the same unexpired key: the attempt rolls back and the next round
    replays the winner's response; losing twice is an error.
-6. It commits. The returned `*Result` is non-nil only for a replay.
+6. It commits, and only then counts the acts in the metrics, by action and actor (`countActs`), as
+   `RunJob`, `RecordLoginAttempt` and the identity provider's transactions do after theirs. The
+   returned `*Result` is non-nil only for a replay.
 
 | `Event` field | Holds |
 |---|---|
@@ -473,6 +478,9 @@ persons — `oidc_issuer` set, no username — never a local account
 `(cowk, lockKey)`. `ran` is false when another replica holds the lock. The job acts as
 `system:<name>`, and the transaction sets `app.job = <name>`, which the policies of the job's
 tables admit. A job that records no act commits nothing and is no error; so is `ErrNoChange`.
+Every run that took the lock, or failed before it could, is recorded in the metrics by the job's
+name — its duration, whether it failed, and its failures in a row —; one another replica ran is
+not, nor one the end of the context cut short ([metrics.md](metrics.md)).
 
 The jobs are the idempotency expiry, lock key `1` (`ExpireIdempotencyKeys` deletes the stored
 responses past their twenty-four hours and records one `expired` act on `idempotency_keys` when
@@ -486,7 +494,9 @@ an unread one stays) and the ticket purge, key `6` (`PurgeDeletedTickets`,
 acts there through `Writer.inTenant`, which binds the job's transaction to the tenant for the work
 and its acts and unbinds it after; `RunJob` commits when acts were written that way, too.
 `runJobs` in [`main.go`](../../backend/cmd/cowork/main.go)
-runs them at start and then every hour, on every replica; each lock lets one of them work. The
+runs them at start and then every hour, on every replica; each lock lets one of them work. Its log
+lines name a job as the metrics do, by its system actor's name: `idempotency-expiry`,
+`session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge`. The
 bootstrap of [`internal/bootstrap`](../../backend/internal/bootstrap/bootstrap.go) is a `RunJob`
 too — key `4`, `system:bootstrap` — run once at start, and retried until the lock is free
 (`bootstrap.Sync`).

@@ -66,8 +66,11 @@ logs. The variables named here are explained one by one in
    the log says `the chat talks to a model` once per provider with its id, kind and model, and
    `the chat's limits`; it does not contact a provider, so a wrong URL or key shows at the first turn
    that picks it ([the chat's stream](#the-chats-stream), [chat.md](chat.md)).
-10. **The listener** opens on `COWORK_LISTEN_ADDR` and the log says `listening` with the
-    address, the version and the commit.
+10. **The listeners** open: `COWORK_LISTEN_ADDR`, and `COWORK_METRICS_ADDR` unless its empty value
+    switches it off — both before either serves, so a port that is taken ends the process with
+    `server stopped with error` and exit code 1. The log says `listening` with the address, the
+    version and the commit, and `metrics listening` with the metrics address — or `the metrics
+    listener is off` ([metrics.md](metrics.md)).
 
 From then on each replica, at start and once an hour, removes the idempotency records older
 than a day, the sessions past their absolute or their idle limit, the login's failed
@@ -79,7 +82,9 @@ attachments' objects once the purge committed
 D2); each job holds a transaction-level
 advisory lock of its own that lets one replica at a time do it, and the log says
 `job removed expired rows` with the job and the count when there were any — the purge says
-`ticket purged` with each key first. A session past a
+`ticket purged` with each key first. A job is named in the log as in the metrics, by its system
+actor's name: `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`,
+`ticket-purge`. A session past a
 limit is refused at its next request whether or not the job has run; the job only keeps the
 table small. A purge is irreversible; an installation that must keep a deleted ticket longer has
 no setting for it yet.
@@ -154,11 +159,15 @@ probe.
 
 ### Shutdown
 
-On `SIGTERM` the server stops accepting connections and, at the same moment, ends every open
+On `SIGTERM` the server stops accepting connections — on the API's port and the metrics port
+alike — and, at the same moment, ends every open
 event stream with `event: unavailable`, so the clients reconnect elsewhere instead of holding
 the drain open; it finishes in-flight requests for up to `COWORK_SHUTDOWN_TIMEOUT` (default
 15s), closes the pool and exits 0 — or 1, logging `server stopped with error`, when the drain
-does not finish in time. With a stream open, the process stopped in well under a second in
+does not finish in time. A drain waits up to five seconds, the Go HTTP server's own rule, for a
+connection a client opened and never sent a request on — a keep-alive client's spare dial is one —,
+so a timeout of five seconds or less can end a clean shutdown with exit 1 (seen in the integration
+tier on 2026-10-06). With a stream open, the process stopped in well under a second in
 the run of both images; no test measures it. Keep the timeout below the pod's `terminationGracePeriodSeconds` (chart
 default 30s); otherwise the kubelet kills what the server was still draining.
 
@@ -184,15 +193,17 @@ an alert or a look:
 | `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something — or the migration Job's in job mode; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
 | `the bootstrap ran after the migration` | info | in the migration Job's log: `COWORK_MIGRATE_BOOTSTRAP` was `true` and the bootstrap succeeded after the schema step |
 | `a stored password hash cannot be verified` | error | an account's hash is damaged or foreign; the login answers its person like a wrong password, and the line carries the request id |
-| `job removed expired rows`, `job failed` | info, error | the hourly jobs ([above](#the-backend)) |
+| `job removed expired rows`, `job failed` | info, error | the hourly jobs ([above](#the-backend)); `job failed` twice in a row is the alert `CoworkJobFailing` ([metrics.md](metrics.md#coworkjobfailing)) |
+| `metrics listening`, `the metrics listener is off` | info | at start: the metrics listener's address, or `COWORK_METRICS_ADDR` empty ([metrics.md](metrics.md)) |
+| `the schema version could not be read for the metrics` | warn | a scrape's read of the version table failed; the line carries the error, the scrape goes without the schema's two series until the next read |
 | `ticket purged` | info | the purge job removed a ticket deleted thirty days ago; the line names its key and how many attachments it had |
 | `an attachment object of a purged ticket could not be removed`, `a purged ticket had attachments, and no object storage is configured to remove them from` | error, warn | a purge — the job's or an administrator's — committed and an object stays in the bucket that no row names; the line names the ticket and the object key, which the operator may remove by hand |
 | `the chat's provider failed`, `a turn of the chat failed` | warn, error | a turn of the chat ended on its provider — the kind, the status and a clip of the provider's message without the key — or on anything else ([the chat's stream](#the-chats-stream)) |
 | `no object storage configured; attachments cannot be uploaded` | warn | at start, without `COWORK_S3_*` |
 | `database schema is ahead of this binary; …` | warn | an image rollback over a newer schema |
 
-There is no metrics endpoint yet; [ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
-decides one, and it is not built.
+The numbers — requests, the database pool, the jobs, the event streams, the acts, the logins, the
+schema — are Prometheus text on the metrics listener, not lines of this log: [metrics.md](metrics.md).
 
 ## The login
 

@@ -120,6 +120,10 @@ A stream without `me` hears its tenant alone, and no inbox.
   unknown, so an id from before the loss is no replay point and a reconnect with it gets
   `resync` (`TestRecoveryDropsTheBuffer`).
 - **Close.** `Close` ends every stream with `unavailable` and refuses new ones.
+- **Metrics.** The hub records the streams it holds, every notification it receives, each stream it
+  ends — `behind` when its channel was full, `limit` beyond the person's limit, `resync` at the
+  listener's recovery, never at `Close` — and a `Last-Event-ID` as a replay's hit or miss, in the
+  registry `New` was given, nil for none ([metrics.md](metrics.md)).
 
 ## Filter
 

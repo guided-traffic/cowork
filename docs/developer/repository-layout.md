@@ -28,10 +28,11 @@ cowork/
 │   │   ├── config/             # COWORK_* environment variables → Config
 │   │   ├── domain/             # vocabularies, keys, the horizon's default, transitions, attachment types
 │   │   ├── events/             # the event hub of one replica
-│   │   ├── httpserver/         # health, request id, request log, recovery, server lifecycle
+│   │   ├── httpserver/         # health, request id, HTTP instruments, request log, recovery, the metrics listener, server lifecycle
 │   │   ├── llm/                # the chat's gateway: OpenAI Chat Completions and Anthropic Messages, streaming
 │   │   ├── markdown/           # the Markdown export, grammar v1, and the context document
 │   │   │   └── testdata/       # golden files
+│   │   ├── metrics/            # the Prometheus registry and instruments, the Grafana dashboard as data
 │   │   ├── mcpcli/             # cowork-mcp's command line: serve, the hooks, token check, lookup
 │   │   ├── mcpserver/          # the tool catalogue over the MCP Go SDK
 │   │   ├── oidc/               # the OpenID Connect relying party: discovery, the code, the ID token, the refresh
@@ -53,6 +54,7 @@ cowork/
 │   │   └── integration/        # build tag `integration`; needs PostgreSQL 18, an S3 server and Dex
 │   ├── tools/
 │   │   ├── crdschema/          # turns the operators' CRDs into the schemas make examples-lint checks against
+│   │   ├── dashboard/          # writes the chart's Grafana dashboard from internal/metrics
 │   │   ├── problemdoc/         # writes the problem-code enum and the README table
 │   │   └── specbundle/         # bundles api/ into openapi.gen.json
 │   ├── sqlc.yaml               # readq/writeq from the migrations and queries/
@@ -64,13 +66,14 @@ cowork/
 │   ├── public/                 # favicon.svg, favicon.ico, apple-touch-icon.png
 │   ├── scripts/primeui-define.mjs   # the PrimeUI license key → ng build/serve --define
 │   ├── ng-openapi-gen.json     # the client generator's configuration
-│   ├── nginx/default.conf      # the container's nginx configuration, a plain file: the UI only, the shell's CSP
+│   ├── nginx/default.conf      # the container's nginx configuration, a plain file: the UI only, the shell's CSP; stub_status on the loopback address
 │   ├── proxy.conf.mjs          # ng serve → backend :8080 for /api, /auth, /healthz, /readyz: the dev stand-in for the Ingress
 │   ├── Containerfile           # node:26-alpine build → nginxinc/nginx-unprivileged
 │   └── eslint.config.js
 ├── claude/cowork/              # the Claude Code plugin: MCP server entry, hooks, skills /next /ticket /question /done
 ├── .claude-plugin/             # marketplace.json: the repository as a Claude Code plugin marketplace
 ├── deploy/helm/cowork/         # the chart: backend (with the migrate init container, or the migration Job) + frontend; ci/*-values.yaml
+│   └── files/grafana-dashboard.json  # the dashboard of metrics.grafanaDashboard (generated)
 ├── deploy/examples/            # example manifests: a CloudNativePG cluster, a MinIO Tenant, the mc commands; syntax-checked only
 ├── hack/                       # dev.sh + dev_demo.py (make dev); e2e.sh (make e2e); verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
 │   ├── dex/config.yaml         # the development and test issuer: one client, four users; credentials development-only
@@ -78,7 +81,7 @@ cowork/
 ├── docs/
 │   ├── adr/                    # decisions
 │   ├── developer/              # contributor entry point: layout, package map, architecture, subsystems, build, testing, CI, checklists, conventions
-│   ├── operations/             # installation, runtime, the chat, Claude Code
+│   ├── operations/             # installation, runtime, the chat, Claude Code, metrics
 │   ├── security/               # one page per perspective
 │   ├── tickets/                # work lists (+ archive/); rules in its README
 │   └── planning/               # the project plan and the consumed question catalog — transitional
@@ -89,6 +92,7 @@ cowork/
 ```
 
 What is generated — `api/openapi.gen.json`, `api/components/problem-codes.yaml`,
-`internal/api/apigen/`, `internal/store/readq/`, `internal/store/writeq/` and the problem-code
-table in the root `README.md` — is committed, written only by `make generate`, and checked by
-`make generate-check` ([build-test-lint.md](build-test-lint.md#generated-code)).
+`internal/api/apigen/`, `internal/store/readq/`, `internal/store/writeq/`, the problem-code
+table in the root `README.md` and the chart's `files/grafana-dashboard.json` — is committed, written
+only by `make generate`, and checked by `make generate-check`
+([build-test-lint.md](build-test-lint.md#generated-code)).

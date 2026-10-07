@@ -98,6 +98,7 @@ change.
 | [domain.md](domain.md) | You change a rule of tickets, links, transitions, questions, comments, interest, progress or time |
 | [storage.md](storage.md) | You touch attachments or the object storage |
 | [events.md](events.md) | You touch the event stream, from `NOTIFY` to the Ingress |
+| [metrics.md](metrics.md) | You touch the Prometheus metrics: the registry and who records what, the metrics listener, the generated Grafana dashboard; or you add an instrument |
 | [frontend.md](frontend.md) | You touch the UI: the folders, the theme and the logo, the services, how an event reaches the screen, the generated client, `make dev` |
 | [markdown-grammar.md](markdown-grammar.md) | You touch the Markdown export or the context document, or need their exact form |
 | [rendered-markdown.md](rendered-markdown.md) | You touch how a body, a comment, a question's options or its answer becomes HTML: the renderer, the sanitiser's allow-list, the fields and the route that answer it, the component that shows it |
@@ -108,7 +109,7 @@ change.
 | [development-credentials.md](development-credentials.md) | You need a username, password, key or token of `make dev`, its containers or the test tiers |
 | [testing.md](testing.md) | You are adding a test, choosing a tier, or a suite is failing and you need to know what it is for and what it needs |
 | [ci-and-release.md](ci-and-release.md) | You touch a workflow, Renovate or the release |
-| [adding-things.md](adding-things.md) | You add an API operation, a table, a migration, a problem code, a configuration variable, a frontend feature, an nginx path, a chart value or a CI job |
+| [adding-things.md](adding-things.md) | You add an API operation, a table, a migration, a problem code, a configuration variable, an instrument, a frontend feature, an nginx path, a chart value or a CI job |
 | [conventions.md](conventions.md) | You write a commit, Go, SQL, an act, Angular, documentation or anything security-relevant |
 
 ## Core flows, one fact each
@@ -116,7 +117,7 @@ change.
 | Flow | The fact | Where |
 |---|---|---|
 | Backend start | Configuration is validated completely before anything else runs; the migration runs as the owner role before the pool opens; `serve` refuses a role that could bypass row-level security and a dirty or pending schema; a configured identity provider must be discoverable; then the local administrator and the bootstrap tenant are synchronised under an advisory lock | [architecture.md](architecture.md#backend-startup-sequence-cowork-serve) |
-| Backend request | Request id, log and recovery wrap a mux; `/api/` and `/auth/` run the pipeline: route in the document, authenticate (token or cookie — a provider's session refreshed when due, a provider person's token held to the gate), the session rules (CSRF, an agent-marked session refused what only a session does, temporary password), tenant boundary, limits, validation, then the generated handler — or, for the event stream and a turn of the chat, a handler of their own that streams | [architecture.md](architecture.md#backend-request-path), [api.md](api.md#the-pipeline) |
+| Backend request | Request id, the HTTP instruments, log and recovery wrap a mux; `/api/` and `/auth/` run the pipeline: route in the document, authenticate (token or cookie — a provider's session refreshed when due, a provider person's token held to the gate), the session rules (CSRF, an agent-marked session refused what only a session does, temporary password), tenant boundary, limits, validation, then the generated handler — or, for the event stream and a turn of the chat, a handler of their own that streams | [architecture.md](architecture.md#backend-request-path), [api.md](api.md#the-pipeline) |
 | A local login | The password is verified — against the account's hash or a dummy, one computation either way — before the attempt is recorded under the username's advisory lock; every refusal is the same `401`; a success commits a session whose cookie value is never stored | [api.md](api.md#the-login-flows), [local-accounts](../security/local-accounts.md) |
 | A login through the identity provider | The start seals the state, the nonce and the PKCE verifier into a cookie and redirects; the callback checks them, redeems the code, verifies the ID token, and one transaction under the person's advisory lock applies the gate, keeps the person, derives the memberships and makes the session | [architecture.md](architecture.md#the-two-logins), [identity provider](../security/identity-provider.md) |
 | A read | A read-only transaction bound to the tenant and the caller; the predicates in SQL decide what exists for the caller | [data-access.md](data-access.md#the-wrappers) |
@@ -130,11 +131,12 @@ change.
 | A change on screen | An event names a key and a version; the tickets service refetches what it holds and reloads the open lists once per burst; every view reads the one cache | [frontend.md](frontend.md#how-a-change-reaches-the-screen) |
 | Migration | golang-migrate over embedded files as the owner role, granting the runtime role named in `cowork.runtime_role`; advisory lock across replicas; a dirty version refuses to start; in the chart the `migrate` init container runs it, or the migration Job, which runs the bootstrap after it | [data-access.md](data-access.md#two-database-roles), [runtime.md](../operations/runtime.md#the-migration-run) |
 | A Claude Code session | The SessionStart hook runs `cowork-mcp session-context`, which finds the binding by the git remotes and prints the active ticket's context; the tools of `internal/tools` call the API through the generated client with the token and the agent header; the Stop hook reminds of a ticket left standing | [mcp.md](mcp.md) |
+| A scrape | The metrics listener, a second port that shares the API listener's lifecycle, answers `/metrics` from one registry that `main.go` makes and hands to every package that records; the pool and the schema state are read at the scrape, every label value comes from a closed set, the API document's route patterns or the code | [metrics.md](metrics.md) |
 | A turn of the chat | The browser posts the whole conversation and the provider the person picked; the backend streams the turn: it calls that provider's model through `internal/llm`, runs every tool the model calls at once through the server's own handler as the person's agent — the person's chosen capabilities — in the turn's tenant, and ends with `done`, the messages to append — it keeps nothing; Stop aborts the request and `DELETE …/chat/turns` ends the person's turns on the replica | [chat.md](chat.md) |
 
 ## What has no page here
 
-The deletion of a project, import and metrics are not built ([architecture.md](architecture.md#what-is-not-built)); the
+The deletion of a project and import are not built ([architecture.md](architecture.md#what-is-not-built)); the
 deletion of a ticket has sections in [data-access.md](data-access.md#deletion-and-the-purge),
 [domain.md](domain.md#deletion-the-bin-and-the-purge) and [frontend.md](frontend.md#the-tenants-administration),
 the saved filters in [api.md](api.md#filters) and [frontend.md](frontend.md#the-backlog), the tenant's

@@ -25,8 +25,8 @@ module so the same toolchain builds them.
 | Area | Target | Needs | Output |
 |---|---|---|---|
 | Help | `make help` | — | every target with its one-line description |
-| Generate | `make generate` | — | the problem-code enum and README table, `api/openapi.gen.json`, `internal/api/apigen/`, `internal/store/readq/` and `writeq/` (below) |
-| | `make generate-check` | git | runs `generate`, then fails on a diff under `backend/` or in `README.md`, or on an untracked file under `backend/` |
+| Generate | `make generate` | — | the problem-code enum and README table, `api/openapi.gen.json`, the chart's Grafana dashboard `deploy/helm/cowork/files/grafana-dashboard.json`, `internal/api/apigen/`, `internal/store/readq/` and `writeq/` (below) |
+| | `make generate-check` | git | runs `generate`, then fails on a diff under `backend/`, in `README.md` or under `deploy/helm/cowork/files/`, or on an untracked file under `backend/` or `deploy/helm/cowork/files/` |
 | Format | `make fmt` | — | rewrites `backend/{api,cmd,internal,test,tools}` |
 | Static analysis | `make lint` | — | vet, gofmt check, golangci-lint (plus the `integration` tag), `sqlc compile`, all inside `backend/` |
 | | `make vet` | — | `go vet`, the integration tests included |
@@ -80,9 +80,12 @@ D4). A container made before the rule keeps its binding until it is removed and 
 
 `make generate` runs, from `backend/`: `tools/problemdoc` (the `ProblemCode` enum in
 `api/components/problem-codes.yaml` and the code table in the root `README.md`),
-`tools/specbundle` (`api/openapi.gen.json`), oapi-codegen (`internal/api/apigen/api.gen.go`) and
+`tools/specbundle` (`api/openapi.gen.json`), `tools/dashboard` (the chart's
+`files/grafana-dashboard.json` from `internal/metrics/dashboard.go`, [metrics.md](metrics.md#the-dashboard)),
+oapi-codegen (`internal/api/apigen/api.gen.go`) and
 `sqlc generate` (`internal/store/readq/`, `writeq/`). Run it after changing the API document, a
-query file, a migration that a query reads, or the problem catalogue, and commit what it writes.
+query file, a migration that a query reads, the problem catalogue or the dashboard, and commit what
+it writes.
 Never edit a generated file: the next run overwrites it, and `make generate-check` — a step of the
 Code Linting job — fails on the difference. The pipeline is [api.md](api.md#the-document) and
 [data-access.md](data-access.md#the-wrappers).
@@ -224,6 +227,7 @@ also ran the chart behind ingress-nginx in a kind cluster.
 | MinIO test image | `MINIO_IMAGE` in the `Makefile`, pinned as `tag@digest`, with a `# renovate:` comment | Renovate, through the regex manager for `tag@digest` lines |
 | Dex test image | `DEX_IMAGE` in the `Makefile`, `ghcr.io/dexidp/dex:v2.45.1` pinned as `tag@digest`, with a `# renovate:` comment | Renovate, through the same regex manager — its pattern matches the line; no Renovate run has confirmed it |
 | Playwright and its browsers | `@playwright/test` in `frontend/package.json`; the browsers are the ones that version names (`make e2e-browsers`); the image that makes the screenshots' pictures, `mcr.microsoft.com/playwright:v<version>-noble`, is named in [testing.md](testing.md#the-screenshots) only | Renovate (npm); the image's tag follows by hand |
+| The nginx exporter | `frontend.metrics.exporter.image` in the chart's `values.yaml`, `nginx/nginx-prometheus-exporter` `1.5.3` | Renovate's `helm-values` manager, on by default — `renovate.json` names no `enabledManagers` — and made for a `repository` and `tag` pair in a `values.yaml`; no Renovate run has confirmed it |
 
 The two Makefile managers in `renovate.json` were matched against the `Makefile` locally; no
 Renovate run has confirmed them yet.

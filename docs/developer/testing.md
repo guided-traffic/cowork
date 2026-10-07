@@ -23,11 +23,13 @@ test 30 seconds and an assertion 10, and its CI job has ten minutes; the others 
 
 ## Backend unit tests
 
-They sit next to the code under `backend/`. Two `httpserver` tests listen on `127.0.0.1:0`
-(`TestServeShutsDownOnContextCancel`, `TestListenAndServeReportsBindError`), the identity
+They sit next to the code under `backend/`. Three `httpserver` tests listen on `127.0.0.1:0`
+(`TestServeShutsDownOnContextCancel`, `TestListenAndServeReportsBindError`,
+`TestServeAllSharesOneLifecycle`), the identity
 provider's tests start the fake issuer and the gateway's tests the stub provider on `httptest`'s
-loopback listener (below), and `TestTheBinaryContainsNoTestPackage` and `TestTheBinaryIsAClientOnly`
-run `go list -deps`; nothing else opens a socket or needs a tool — the tools and the chat's loop reach
+loopback listener (below), `TestTheBinaryContainsNoTestPackage` and `TestTheBinaryIsAClientOnly`
+run `go list -deps`, and `TestOnlyThisPackageImportsTheClientLibrary` runs `go list` over the module;
+nothing else opens a socket or needs a tool — the tools and the chat's loop reach
 their fake API in process and read no git.
 
 | Fixture | Where | What it gives you |
@@ -37,6 +39,7 @@ their fake API in process and read no git.
 | `newRecordingLogger(&lines)` | [`logger_test.go`](../../backend/internal/httpserver/logger_test.go) | A `slog.Logger` that collects records as maps, for asserting on the request log |
 | `Options.Ready`, `Options.API` | [`server.go`](../../backend/internal/httpserver/server.go) | Inject a readiness check, or a stand-in for the API handler |
 | `newFixtures()`, `note`, `filter`, `Hub.now` | [`hub_test.go`](../../backend/internal/events/hub_test.go) | Notifications and filters without a database; a fixed clock for the replay window |
+| `metrics.New()`, `Samples`, `Sum`, `Has`; `exercise` | [`metrics/samples.go`](../../backend/internal/metrics/samples.go), [`metrics_test.go`](../../backend/internal/metrics/metrics_test.go) | A registry of the test's own — the instruments are never global — and what a scrape would answer of it, summed over the labels a test names; `exercise` records through every method once ([metrics.md](metrics.md#tests)) |
 | `Options.Now` | [`api.go`](../../backend/internal/api/api.go) | The clock every session and login window reads; a test that moves it ages a session or a lock without waiting ([`session_test.go`](../../backend/internal/api/session_test.go) `sessionLive`, the integration tier's `clock`) |
 | `auth.Computations()` | [`password.go`](../../backend/internal/auth/password.go) | A counter of the Argon2id computations this process made, to assert that a refusal costs what a success costs and that a throttled attempt computes nothing — exported for the integration tier and read by nothing else |
 | the golden files, `-update` | [`markdown_test.go`](../../backend/internal/markdown/markdown_test.go), [`context_test.go`](../../backend/internal/markdown/context_test.go) | `TestRender` compares `Render` with `testdata/*.md`, `TestRenderContext` `RenderContext` with `testdata/context-*.md`; `cd backend && go test ./internal/markdown -update` rewrites them after a deliberate change ([markdown-grammar.md](markdown-grammar.md#changing-the-grammar)) |
@@ -58,6 +61,8 @@ The lints run in this tier, without a database:
 | `TestLiftedForceIsRestoredInTheSameMigration` | a migration that lifts the force of row-level security on a table restores it later in the same file |
 | `TestEveryReadOfProjectsAndTicketsCarriesTheVisibilityPredicate` ([`queries_test.go`](../../backend/internal/store/queries_test.go)) | the visibility lint ([data-access.md](data-access.md#visibility-in-sql)) |
 | `TestEveryReadOfTicketsCarriesTheDeletionFilter`, `TestTicketListLeavesTheDeletedOut` (`queries_test.go`) | the deletion lint: every query that reads a ticket leaves the deleted ones out once per ticket it reads, or names its exemption; the list builder does too ([data-access.md](data-access.md#visibility-in-sql)) |
+| `TestNoInstrumentCarriesAForbiddenLabel` ([`metrics_test.go`](../../backend/internal/metrics/metrics_test.go)) | no instrument carries a label for a person, a ticket, a key, a token or a request id, nor `tenant` outside the consistency family, and every family of the backend's is exercised ([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md) D5) |
+| `TestOnlyThisPackageImportsTheClientLibrary`, `TestTheDashboardNamesOnlyInstrumentsThatExist` (`metrics_test.go`) | no package but `internal/metrics` imports `github.com/prometheus/…`, the integration tier included; every metric the Grafana dashboard names exists |
 | `TestEverySecurityDefinerFunctionIsFencedIn` (`policy_test.go`) | a function that runs with its owner's rights fixes its `search_path`, `pg_temp` last, and is revoked from `PUBLIC` |
 | `TestTicketListSelectsWhatTheQueriesSelect` | the list builder's columns and joins equal `GetTicketByNumber`'s |
 | `TestTheBinaryContainsNoTestPackage` ([`main_test.go`](../../backend/cmd/cowork/main_test.go)) | `cmd/cowork` depends on nothing under `backend/test/` |
@@ -174,7 +179,8 @@ assign a confidential ticket to).
    `env.Migrated`.
 
 `mcp_test.go` runs `git` to make the repository a session starts in, and `go build` for the
-binary; without either on the `PATH` those tests fail and say so.
+binary, and `metrics_test.go` runs `go build` for `cmd/cowork`; without either on the `PATH` those
+tests fail and say so.
 
 Every store and API test then connects as the runtime role, as `cowork serve` does; the
 administrative connection only creates and seeds. The tests share the run's database and keep
@@ -324,6 +330,7 @@ generated types the server encodes, and `TestATurnIsHeldToTheDocument` in
 | [`api_chat_test.go`](../../backend/test/integration/api_chat_test.go) | The chat in the UI against the stub provider ([chat.md](chat.md#tests)): the availability with two providers; the person's pick and the default; a turn that files a ticket and ranks it to `now` with the chat's mark, the default set and a key on its acts; the person's capabilities over the Anthropic format — a close refused, chosen in a session only and recorded, then run at once; a token, a CSRF failure and an agent-marked session refused; a turn kept in its tenant; the turn's time, its comments and a failing provider; the agent header on a session; the turn limit and the shutdown; the stop that ends a slowly streaming turn within a second, its provider request cancelled, others untouched; a question asked of the person; the policies of `chat_capabilities` |
 | [`api_token_marks_test.go`](../../backend/test/integration/api_token_marks_test.go) | Every act through a token marked with it ([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6): a plain token, an agent token with its header and a browser session each file a ticket, comment and edit the comment, upload, ask and answer, set a stake, book and correct time (not the agent) and change a field; every answer, revision and act of the activity, the filing and the stake, and every row in the database, carries the token's id and name and the agent mark exactly as the credential was — none for the session; the context document names the token where it names an agent; the tenant's audit view names the token in JSON and CSV; after the plain token's revocation another member reads its name on its acts, and no answer holds a part of a token (`TestEveryActThroughATokenIsMarkedWithIt`) |
 | [`mcp_test.go`](../../backend/test/integration/mcp_test.go) | `cowork-mcp` against the real API ([ADR 0042](../adr/0042-twelve-workflow-tools-and-one-escape-hatch.md) D6): the working day from the proposal through `create_project`, filing, deciding, working, asking, answering and `finish_work`, every act the agent's with the client's name and every creating `POST` keyed; an assisted token's limits in the descriptions and `finish_work` stopping at `review`; the subcommands — `session-context` unbound and bound, `lookup`, `session-end` with and without changed files, `token check` and a revoked token —; and the binary itself, built with `go build` and run by its command line with its environment, the memory file under a temporary `HOME` and the model file `model-switch` writes there ([ADR 0070](../adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md) D6); an administrator's token refused the deletion, the restoration and the purge through the escape hatch, and a deleted ticket missing to `get_ticket` and `search` (`TestTheToolsNeverDeleteAndMissADeletedTicket`); the context `get_ticket` answers naming the horizon by its word — the key `horizon:`, the act as `set the horizon to now`, neither urgency nor overridden |
+| [`metrics_test.go`](../../backend/test/integration/metrics_test.go) | `cowork serve` as the image runs it — the binary built with `go build`, an isolated database migrated beforehand, its own free ports — with the metrics listener: a scrape after a few requests answers the routes by their pattern, the acts by their actor, a refused token, the pool, the schema version, every job's run, the Go runtime, and no forbidden label; the API's port has no `/metrics` and the metrics port nothing else; a dirty flag set in the database shows within ten seconds while it serves; `SIGTERM` ends both listeners cleanly; an empty `COWORK_METRICS_ADDR` opens none (`TestServeAnswersAScrapeOnItsMetricsListener`, [metrics.md](metrics.md#tests)) |
 | [`api_inbox_test.go`](../../backend/test/integration/api_inbox_test.go) | The inbox of [ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md): every event of D2 telling its recipient and the actor and the actor's agent nothing; the inbox across two tenants, newest first, narrowed, paged and not another person's, a tenant-restricted token's tenant only; a ticket made confidential, a project restricted away and a tenant left taking theirs out of the list and the count; marking one and every one read, as acts, refused to a read-scope token and to another person, and by a browser with and without the CSRF header; the ninety days of the job; the restrictive policy (`TestTheInboxPolicyHoldsAPersonToTheirOwn`); the person-level stream's count, a question of another tenant without an id, and what it never carries — another person's question, a hidden project's, a confidential ticket's, a left tenant's, and anything of another tenant on a tenant-restricted token |
 | [`api_me_lists_test.go`](../../backend/test/integration/api_me_lists_test.go) | "Assigned to me" and "open decisions" across two tenants and a restricted project: the score's order with the place in the rank beside it, done tickets and other people's questions absent, the cursor walking the same order, the narrowing and its `404`, the restricted tokens |
 | [`api_score_test.go`](../../backend/test/integration/api_score_test.go) | The score following its inputs — a filing, the severity, the horizon, the stakes, the age —, none while done; the sort by the score around a hidden ticket, its one act in the activity of the tickets it moved, its event, its refusals; 800 moves into one gap through the rebalancing; "next for me" across two tenants, a restricted project and confidential tickets, its narrowing, its cursor and its restricted tokens; migration 34's scores held to the function |
@@ -534,7 +541,10 @@ each `ci/` file with the chart before and after and compare, once with the new `
 once with the previous release's in its place, as `helm upgrade --reuse-values` has it
 ([installation.md](../operations/installation.md#upgrade)). `make examples-lint` checks the example
 manifests of `deploy/examples/` against the operators' CRD schemas
-([build-test-lint.md](build-test-lint.md#targets)).
+([build-test-lint.md](build-test-lint.md#targets)). `ci/metrics-values.yaml` switches every monitoring resource on — the
+`PodMonitor` with the nginx exporter's entry, the `ServiceMonitor` with its headless Service, the
+`PrometheusRule`, the dashboard's ConfigMap — and renders them with the Prometheus Operator's CRDs
+assumed present; nothing applies them to a cluster.
 
 ## Environment variables the suites read
 
