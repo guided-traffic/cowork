@@ -30,6 +30,10 @@ questions in the planning catalog.~~ *(Amended 2026-10-03: verified for this rep
 [ADR 0061](0061-images-are-published-to-docker-hub-the-runners-secrets-and-pages-are-verified.md)
 D2–D4 — the runners serve it, the release App secrets work; `DOCKERHUB_PAT` is the one secret
 still to be created, D1 there.)*
+Amended 2026-10-06 (D11 added: a phase closes with its tests and its pages — the project plan's
+working agreement since 2026-09-29, made concrete when the plan was consumed,
+[ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D4; no rule changes).
 
 ## Context
 
@@ -94,6 +98,13 @@ and patch after CI, major by hand except GitHub Actions.
 **D10 — A fix comes with the test that failed without it.** Where a defect could not be
 reproduced in a tier, the ticket says so and the ADR or page that describes the behaviour
 names the gap.
+
+**D11 — A phase closes with its tests and its pages.** *(Made concrete 2026-10-06 when the
+project plan was consumed, whose working agreement it was from 2026-09-29; no rule changes.)* A
+phase — the family ticket it became, with its children — closes only when what it built is tested
+in the tiers of D2 that can prove it and described in the pages under `docs/` that its extraction
+writes ([ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md)
+D3).
 
 ## Consequences
 

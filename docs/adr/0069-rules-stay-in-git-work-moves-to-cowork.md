@@ -12,6 +12,14 @@ question and not objected to.
 [docs/operations/claude-code.md](../operations/claude-code.md), and `finish_work`'s answer
 carries the extraction question. D6, this repository's own cut-over, is phase 6.
 
+Made concrete 2026-10-06 when the project plan was consumed (D1: cowork replaces neither the pull
+requests nor the CI of a repository — the plan had listed both, beside git for the rules, as
+deliberately not planned; no rule changes). **D6's deletion of `docs/planning` fulfilled
+2026-10-06** ([ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D4): its last question has long been a record, and phase 6, the plan's cut-over phase, started that
+day as tickets with phase 7. The rest of D6 — the tickets page replaced by one line — waits for the
+import of this repository's tickets.
+
 ## Context
 
 [ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md)
@@ -30,6 +38,9 @@ would be the board beside the tickets again.
 **D1 — Rules stay in the repository:** `docs/adr/`, `docs/developer/`, `docs/operations/`,
 `docs/security/`, `README.md`, `SECURITY.md`, `CLAUDE.md`. They are
 versioned, reviewed and changed in the same pull request as the code they describe.
+*(Made concrete 2026-10-06 when the project plan was consumed; no rule changes:)* cowork replaces
+neither that pull request nor the repository's CI — a change is reviewed and checked where its code
+is, outside cowork.
 
 **D2 — Work moves to cowork:** tickets, their open questions, findings, plans and phases
 (phases become parent tickets, [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md)
@@ -55,9 +66,9 @@ field.
 **D6 — This repository's own cut-over** (phase 6, first of all): `docs/tickets/README.md` is
 replaced by one line — "tickets live in cowork since <date>; `archive/` is history" — the
 archive stays unless the owner imports it ([ADR 0063](0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md)
-D1), and `docs/planning/` is deleted when its last question is an ADR and its plan is
+D1), and `docs/planning` is deleted when its last question is an ADR and its plan is
 tickets ([ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md)
-D10).
+D10) *(deleted 2026-10-06 — Status)*.
 
 ## Consequences
 
@@ -92,4 +103,4 @@ D10).
 - [ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md) D1, D3, D8, D10 — the homes, the extraction, the citation rule, the transitional plans
 - [ADR 0064](0064-one-direction-import-and-export-no-synchronisation.md) — cowork as the source after import
 - [ADR 0068](0068-commits-carry-a-component-scope-the-short-key-in-the-subject-and-the-full-key-in-a-trailer.md), [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) — the convention and the tool that reminds
-- [docs/planning/project-plan.md](../planning/project-plan.md) — phase 6
+- [ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md) D2, D4 — phase 6, which holds D6's cut-over, became tickets when it started; the project plan is consumed

@@ -11,9 +11,11 @@ the analysis, the open decisions and the verification, and an LLM such as Claude
 it through the same API people use in the browser — with a personal access token that says who
 is accountable.
 
-> **Status: phase 4 — the login through an identity provider — and phase 5 — the LLM interface and
-> the chat in the UI — released as `0.3.0`; phase 3 — the UI on the core domain — in progress, its
-> parts released with `0.2.0` and `0.3.0`.** Tenants,
+> **Status: phase 6 — import and cut-over — and phase 7 — hardening and 1.0 — started on
+> 2026-10-06; phase 3 — the UI on the core domain — awaits the owner's reviews, its parts released
+> from `0.2.0` to `0.7.0`; phase 4 — the login through an identity provider — and phase 5 — the LLM
+> interface and the chat in the UI — released as `0.3.0`; the sign-in without a click as `0.8.0`;
+> metrics, the chart's references with the migration Job and GitHub's webhook as `0.9.0`.** Tenants,
 > projects and tickets — with links, state transitions, open questions, comments, interest,
 > progress, time entries and attachments — the audit record and the event stream exist behind a
 > JSON API, tested against PostgreSQL 18, MinIO and Dex. A person logs in through any OpenID Connect
@@ -26,8 +28,9 @@ is accountable.
 > tools as the person's agent, with a model of the providers the operator lists — LM Studio on the
 > operator's machine, a server of the OpenAI format or Anthropic — and the capabilities the person
 > chooses for it; its acts run at once, and Stop ends a turn at once
-> ([the chat](docs/operations/chat.md)). What comes next is
-> [the project plan](docs/planning/project-plan.md).
+> ([the chat](docs/operations/chat.md)). What comes next is in the work lists of
+> [docs/tickets/](docs/tickets/README.md), a family ticket for each open phase; 1.0 waits until
+> every open question there is answered.
 
 ```mermaid
 flowchart LR
@@ -238,8 +241,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
 | [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [Dex](https://dexidp.io/docs/) | The standard the login through an identity provider follows, and the issuer it is developed and tested against |
-| [docs/tickets/](docs/tickets/README.md) | The interim work lists and their rules |
-| [docs/planning/](docs/planning/) | The project plan — consumed into ADRs and tickets as work proceeds; the question catalog and the VS Code workflow plan are consumed already |
+| [docs/tickets/](docs/tickets/README.md) | The interim work lists and their rules — the plan among them, a family ticket for each open phase, since the project plan was consumed into them |
 | [CLAUDE.md](CLAUDE.md) | The working rules for an LLM session in this repository |
 
 ## 🚀 Fast start

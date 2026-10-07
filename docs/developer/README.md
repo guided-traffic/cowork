@@ -158,5 +158,5 @@ itself, its rebalancing and the score are sections of
 the identity provider's login a section of [architecture.md](architecture.md#the-two-logins) and
 its own security page, [identity-provider.md](../security/identity-provider.md), and the
 end-to-end tier a section of [testing.md](testing.md#end-to-end-tests).
-The order in which they come is [docs/planning/project-plan.md](../planning/project-plan.md);
+The work lists in [docs/tickets/](../tickets/README.md) say in which order they come;
 each gets its page here when it exists.

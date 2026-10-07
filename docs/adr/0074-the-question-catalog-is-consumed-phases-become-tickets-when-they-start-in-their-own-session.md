@@ -9,7 +9,7 @@ stay until they start or are built. The owner set the session boundary; the rest
 [ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md)
 D10.
 
-**Implemented** in the change that wrote this record: `docs/planning/questions.md` is a
+**Implemented** in the change that wrote this record: `questions.md` is a
 tombstone that says where its content went; `project-plan.md` marks phase 1 as done and
 phase 2 as the next, to be ticketed in a dedicated session; ~~`vscode-workflow.md` stays~~.
 
@@ -22,11 +22,37 @@ there ([ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can
 [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)–[ADR 0069](0069-rules-stay-in-git-work-moves-to-cowork.md));
 the person-level views of its morning are [ADR 0018](0018-the-views-of-the-first-release.md) D3,
 not built; its cut-over of the other repositories moved into phase 6 of
-[the project plan](../planning/project-plan.md); its evening report across all tenants was never
+the project plan; its evening report across all tenants was never
 decided — [ADR 0018](0018-the-views-of-the-first-release.md) D8 leaves a view across tenants
 beyond D3 out of the first release — and its optional VS Code tasks file was never built. The file
-is deleted. **D4 not yet:** phases 6 and 7 have not started, so `docs/planning/` stays with the
-plan and the tombstone.
+is deleted. ~~**D4 not yet:** phases 6 and 7 have not started, so `docs/planning` stays with the
+plan and the tombstone.~~
+
+**D4 fulfilled 2026-10-06.** Phases 6 and 7, the plan's last, started on 2026-10-06, on the
+owner's word to build every remaining phase in one night, and each became a family ticket with its
+children (D2), as phase 3 had on 2026-10-03. Every statement of `project-plan.md` and of the
+tombstone was then checked against the records, the pages and the tickets, and each has its home:
+the goal, the deliverables and the verification of phases 3, 6 and 7 are their family tickets;
+what phases 0 to 2, 4 and 5 built is in the records' `Status` and the index; of the working
+agreements, deciding one question at a time is the [index's](README.md#how-a-decision-gets-here)
+rule and not building on an unanswered one [CLAUDE.md](../../CLAUDE.md)'s, the API as the one
+interface every client uses is
+[ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)
+D1, the pages a piece of work leaves are the extraction of ADR 0002 D3, the verification note is
+[ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5, and the tests are
+[ADR 0003](0003-test-and-ci-policy.md) D11, made concrete the same day; of what the plan
+deliberately left out, git for the rules is
+[ADR 0069](0069-rules-stay-in-git-work-moves-to-cowork.md) D1, which names pull requests and CI
+since the same day, the model cowork calls but never hosts is
+[ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)'s
+Context, e-mail is [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D5, a calendar
+— and, made concrete the same day, a mobile client — is
+[ADR 0018](0018-the-views-of-the-first-release.md) D8, and invoicing is
+[ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
+D10. The plan's "time sheets" predated ADR 0017, which books time and sums it per person over a
+period; the record holds. The rest — the plan's method, its dates, the catalog's labels of the
+questions each phase needed — went with the plan. `project-plan.md`, the tombstone and the
+directory are deleted.
 
 ## Context
 
@@ -41,31 +67,36 @@ forbids.
 
 ## Decision
 
-**D1 — `docs/planning/questions.md` is a tombstone, not a document.** It states that every
+**D1 — `questions.md` is a tombstone, not a document.** It states that every
 question became a record, points at the ADR index, and says it is deleted with the directory.
 No question is added to it; a new open decision is a ticket's `## Open questions` section
-(the tickets page) and, when a backlog exists, a question entity in cowork.
+(the tickets page) and, when a backlog exists, a question entity in cowork. *(The tombstone is
+deleted with the directory since 2026-10-06, D4; where a new open decision lives stands.)*
 
 **D2 — A phase of the plan becomes tickets when it starts, in a session dedicated to that
 conversion.** Phase 2, "Core domain and API", is next; its conversion into a family ticket
 with children per aggregate, in the order the records imply, is the first thing the next
 session does — after the pipeline ticket of [ADR 0061](0061-images-are-published-to-docker-hub-the-runners-secrets-and-pages-are-verified.md)
-D5, which is ticket one. Phases 3 to 7 stay in `project-plan.md` until each starts.
+D5, which is ticket one. Phases 3 to 7 stay in `project-plan.md` until each starts. *(Every
+phase has started: the last two became tickets on 2026-10-06 — Status above.)*
 
 **D3 — `vscode-workflow.md` stays until phase 5 writes its steps into operations and
 developer pages;** every mechanism it describes is now decided (ADR 0040–0043, 0066–0071),
 and the page is the plan of record for building them. *(Fulfilled 2026-10-04: the steps are
 in the operations and developer pages, and the file is deleted — Status above.)*
 
-**D4 — `docs/planning/` is deleted when the plan's last phase has started and the workflow
-document has been written into its pages,** as ADR 0002 D10 says.
+**D4 — `docs/planning` is deleted when the plan's last phase has started and the workflow
+document has been written into its pages,** as ADR 0002 D10 says. *(Fulfilled 2026-10-06 —
+Status above.)*
 
 **D5 — The decisions of this round are committed as one change** on a branch, with a
 conventional commit (`docs:` scope), on the owner's word; this record does not commit.
 
 ## Consequences
 
-- The catalog's seventy-odd cross-references keep a target that explains itself.
+- The catalog's seventy-odd cross-references keep a target that explains itself *(amended
+  2026-10-06: until the tombstone went with the directory; since then this record and the index's
+  account of how a decision gets here explain them — Residual risks)*.
 - The next session starts with two concrete deliverables and no decision to take: the
   pipeline ticket and the phase-2 family ticket.
 - The plan shrinks phase by phase instead of being rewritten; the workflow document is
@@ -73,7 +104,7 @@ conventional commit (`docs:` scope), on the owner's word; this record does not c
 
 ## Alternatives Considered
 
-- **Convert the whole plan into tickets now and delete `docs/planning/`.** A clean cut;
+- **Convert the whole plan into tickets now and delete `docs/planning`.** A clean cut;
   tickets for phases whose content will change before they start, which the ticket rules
   ("a ticket shows the current state") do not fit. Lost.
 - **Convert phase 2 in this session.** The owner drew the session boundary. Lost.
@@ -81,13 +112,18 @@ conventional commit (`docs:` scope), on the owner's word; this record does not c
 
 ## Residual risks
 
-- A tombstone is a file in a directory that D10 wants gone; D4 names the moment it goes.
+- ~~A tombstone is a file in a directory that D10 wants gone; D4 names the moment it goes.~~
+  *(Closed 2026-10-06: the tombstone went with the directory, D4.)*
+- *(2026-10-06.)* With the tombstone gone, "the catalog" in a record's `Status` points at no
+  file: this record and the index's account of how a decision gets here say what it was, and its
+  questions — with their options, recommendations and answer lines — are in git history only, in
+  the commits before it became a tombstone.
 
 ## References
 
 - [ADR 0002](0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md) D10 — planning documents are transitional
 - [docs/adr/README.md](README.md) — the index every question became part of
-- [docs/planning/project-plan.md](../planning/project-plan.md) — what stays, and until when;
-  the workflow document it named is consumed into
-  [docs/operations/claude-code.md](../operations/claude-code.md) and [docs/developer/mcp.md](../developer/mcp.md)
+- [docs/operations/claude-code.md](../operations/claude-code.md), [docs/developer/mcp.md](../developer/mcp.md)
+  — what the workflow document was consumed into (D3); the project plan was consumed into the
+  phase tickets and the records the `Status` names (D4)
 - [docs/tickets/README.md](../tickets/README.md) — where a new open question lives

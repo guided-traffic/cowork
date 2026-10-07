@@ -8,7 +8,7 @@ threat: the phase would additionally cover an installation whose failures nobody
 urgency: release      # rule 2: gates the release of 1.0
 effort: M
 blocked-by:
-filed-from: docs/planning/project-plan.md phase 7, converted by ADR 0074 D2
+filed-from: phase 7 of the project plan, converted by ADR 0074 D2
 opened: 2026-10-06
 decided: 2026-10-06
 done:

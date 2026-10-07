@@ -85,8 +85,7 @@ cowork/
 │   ├── developer/              # contributor entry point: layout, package map, architecture, subsystems, build, testing, CI, checklists, conventions
 │   ├── operations/             # installation, runtime, the chat, Claude Code, metrics
 │   ├── security/               # one page per perspective
-│   ├── tickets/                # work lists (+ archive/); rules in its README
-│   └── planning/               # the project plan and the consumed question catalog — transitional
+│   └── tickets/                # work lists (+ archive/), each open phase a family ticket; rules in its README
 ├── .github/workflows/          # release.yml (Test and Release), build.yml (Release Docker & Helm), renovate.yml
 ├── Makefile                    # every target; bin/ and coverage/ land here
 ├── renovate.json, .releaserc.json, package.json (semantic-release)

@@ -8,6 +8,11 @@ over the importer as a client of the ordinary routes, over a generic batch API, 
 import job without the export. The rules of D6–D9 were put to the owner with the question
 and not objected to.
 
+Amended 2026-10-06 (the References: the project plan whose phase 6 held the cut-over is consumed
+into the phase tickets and deleted,
+[ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D4; the cut-over is this record's Consequences; no rule changes).
+
 Amended 2026-10-06 by the owner (D4: the links manifest), answering whether the links enter the
 export: into the project export only, as a links manifest beside the tickets, each link once,
 over `/markdown`'s frontmatter, which would write a link at both its ends and change what one
@@ -244,4 +249,3 @@ omitted; the person adds it after the import if it belongs.
 - [ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D6, [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D5, [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md), [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D5, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) — what the import must do
 - [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D3, [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) — who may import
 - [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md) D2 — the backup's second line, whose links within a project the links manifest keeps
-- [docs/planning/project-plan.md](../planning/project-plan.md) — phase 6, the cut-over

@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog question
+Accepted, amended 2026-10-06 (the References: the project plan whose phase 6 held the cut-over
+stages is consumed into the phase tickets and deleted,
+[ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D4; the stages are this record's Consequences; no rule changes). Date: 2026-10-01. Decided by the owner as the answer to the catalog question
 "direction after the import?": one direction, over two-way synchronisation, over a one-way
 mirror written by cowork, and over an MCP convenience tool for the export. The rules of D4–D5
 were put to the owner with the question and not objected to.
@@ -105,4 +108,3 @@ rule of D5 stands.)*
 - [ADR 0063](0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md) — what the importer handles
 - [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md) D2 — the scheduled export outside cowork
 - [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D5 — nothing leaves cowork on its own
-- [docs/planning/project-plan.md](../planning/project-plan.md) — phase 6, which holds the cut-over stages the workflow plan had
