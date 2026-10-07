@@ -230,7 +230,8 @@ kind `imported`, whose acts on the tickets it creates are `Quiet` and publish no
 ([import-and-export.md](import-and-export.md#the-execution)) — is `project.changed` with the
 project's key and the kind and no version, since it is no ticket's; the filter admits it as it
 admits the project's tickets, and the client loads the project's open lists and the person's lists
-of tickets again:
+of tickets again — and, for an import, the dashboard and the open decisions, whose questions publish
+nothing either:
 
 ```
 id: 0199a3c2-1d2e-7f00-8000-0000000000ac

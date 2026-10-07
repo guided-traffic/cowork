@@ -7,8 +7,10 @@ second line of a backup. The routes, their fields and the variable are in the
 [docs/security/import-and-export.md](../security/import-and-export.md); why it works this way is
 [ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md),
 [ADR 0063](../adr/0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md)
-and [ADR 0064](../adr/0064-one-direction-import-and-export-no-synchronisation.md). The UI has no
-import page and no export button yet: the steps below use the API with a token.
+and [ADR 0064](../adr/0064-one-direction-import-and-export-no-synchronisation.md). In the browser, a
+tenant's administrator imports on the project's import page and anyone who reads a project exports
+it from the project's header ([below](#in-the-browser)); the steps after that are the same through
+the API, with a token.
 
 **After the import, cowork is the source.** The files in the repository are history or are
 removed — the repository decides. cowork reads them once, never watches them, and never writes
@@ -31,7 +33,39 @@ to a repository; importing the same files again is a conflict, never an update (
   the backend's memory limit well above the variable. A large repository is imported directory by
   directory.
 
+## In the browser
+
+**Import.** On the project's board or backlog, the upload icon of its header, *Import tickets*, opens
+`/t/<tenant>/p/<KEY>/imports` — a tenant's administrator sees it, for a project that is not
+archived. Drop the files onto the page or choose them — a `tar.gz` or a `zip` of the directory, or
+the Markdown files themselves —, and *Start the dry run*. Its report opens at an address of its own,
+`/t/<tenant>/p/<KEY>/imports/<id>`, which a reload or a bookmark keeps for the dry run's twenty-four
+hours:
+
+- the summary counts the files by outcome, and says how many tickets would be open and confidential
+  and the highest number;
+- a panel names every file that blocks the execution — a conflict, or a file with an error — with
+  what blocks it, and *Leave them out*;
+- the table lists every file with its outcome, title, detected type and why, state, assignee,
+  confidential flag, questions, and a line for each warning, error with its line, link, note or
+  reason; *Leave out* takes a file out, and on a file to create, or one with an error, the type,
+  the state — `blocked` with its kind, reason and origin — and the assignee are corrected in
+  place.
+
+*Import N tickets* asks first, then executes with the corrections. What the execution refuses shows
+on the files it names, and the report stays as it was, so a file is left out and the execution
+started again. Done, the page counts what it created and leads to the backlog and the board. A dry
+run past its day says so and offers a new one.
+
+**Export.** The download icon of a project's header, *Export the tickets*, saves the project's archive
+under the name the server gives it, for anybody who reads the project; a tenant's settings have
+*Export the tenant* for its administrators. Beside each the page says how many tickets the archive
+holds and how many confidential tickets it leaves out because its reader cannot read them. The
+archive is the one the API answers ([Exporting](#exporting)).
+
 ## The steps
+
+The same through the API, with a token.
 
 **1. Pack the files.** A `tar.gz` or a `zip`, or the Markdown files themselves as several parts of
 one upload. Whatever it holds is listed; only ticket files are read — `NNN-<slug>.md`,
@@ -230,6 +264,9 @@ integration tier's proof of the grammar: a project exported, imported into an em
 exported again is the same archive up to the keys and the times.
 
 ## When something is refused
+
+The import page shows each of these where it belongs: an upload's refusal under the files, an
+execution's on the files it names, a `404` as a dry run that is gone.
 
 | Answer | Cause | What to do |
 |---|---|---|

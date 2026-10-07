@@ -343,9 +343,13 @@ The reactivation of a person, the deactivation of a person of the identity provi
 of one's own sessions; a global administrator's reading of the installation-level audit rows and
 the deletion of a tenant ([ADR 0034] D2); the
 revocation of a refresh token at the issuer when a session ends; the saved filters of the
+<<<<<<< HEAD
 tenant board; the deletion of a project; the age of the last export among the metrics of
 [ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D4 ([metrics.md](metrics.md#the-consistency-family)). The order in which they come is
+=======
+tenant board; the deletion of a project; metrics. The order in which they come is
+>>>>>>> 4a85e4e (docs: the import page and the exports in the browser, beside the API)
 [docs/planning/project-plan.md](../planning/project-plan.md); each gets its section here, or a
 page of its own, when it exists.
 

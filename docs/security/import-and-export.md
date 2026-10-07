@@ -26,7 +26,9 @@ A token restricted to a project exports its project; the tenant export is outsid
 and answers it `404`, as every tenant route outside the project does (`tenantWideForProjectTokens`
 in [`tenant.go`](../../backend/internal/api/tenant.go)). A session's dry run and execution are
 writes and pass the CSRF check ([csrf.md](csrf.md)); an export is a read, which the check leaves
-alone ([csrf.md, H-22](csrf.md#h-22)).
+alone ([csrf.md, H-22](csrf.md#h-22)). The browser offers the import page to a tenant's
+administrators only and the tenant's export in its settings to them alone; that is what the pages
+offer, not a check — the routes above are the check.
 
 Below the handlers, the rows of `import_jobs` are the tenant's administrators' alone: the
 restrictive policies of [migration 41](../../backend/internal/store/migrations/000041_import_jobs.up.sql)
@@ -117,7 +119,8 @@ D2; `TestThePurgeTakesAnImportedTicketOutOfItsReport`).
   resolves to nothing and is reported. A `blocks` link that would close a cycle is omitted.
 - **Text as text.** A body, a question and an answer are stored as written and rendered through
   the sanitiser like any other ([rendered-markdown.md](rendered-markdown.md)). The paths and titles
-  in the report are the upload's, shown as text; unlike an attachment's name
+  in the report are the upload's, shown as text — the import page shows every text of a report by
+  interpolation, never as markup; unlike an attachment's name
   ([attachments.md](attachments.md#the-file-name-is-sanitised-not-trusted)), nothing strips a
   bidirectional control from them.
 

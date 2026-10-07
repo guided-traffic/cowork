@@ -7,8 +7,9 @@ the phases, the export, the round trip, who, the sizes), [ADR 0063] (what the im
 how it maps it), [ADR 0064] D3 (a repeated import is a conflict), [ADR 0065] D5 and D7 (what the
 export leaves out, the confidential flag on import) and [ADR 0044] D1 and D3 (the grammar it reads
 back); what an administrator does with it is [docs/operations/import-and-export.md](../operations/import-and-export.md),
-what it lets in and out [docs/security/import-and-export.md](../security/import-and-export.md).
-Read against the tree on 2026-10-06.
+what it lets in and out [docs/security/import-and-export.md](../security/import-and-export.md);
+the browser's import page and export buttons are [frontend.md](frontend.md#the-import-and-the-export).
+Read against the tree on 2026-10-06, the browser's part on 2026-10-07.
 
 ## Where it lives
 
@@ -19,6 +20,7 @@ Read against the tree on 2026-10-06.
 | The handlers | [`api/imports.go`](../../backend/internal/api/imports.go) (the dry run, the read, the execution's checks), [`api/importwrite.go`](../../backend/internal/api/importwrite.go) (the execution's writes), [`api/exports.go`](../../backend/internal/api/exports.go) (the project and the tenant export) |
 | The data | [migration 41](../../backend/internal/store/migrations/000041_import_jobs.up.sql) (`import_jobs`, `tickets.imported_from_file` and `imported_from_job`, the action `imported`); [`queries/read/imports.sql`](../../backend/internal/store/queries/read/imports.sql), [`queries/write/imports.sql`](../../backend/internal/store/queries/write/imports.sql), the export's reads in [`queries/read/export.sql`](../../backend/internal/store/queries/read/export.sql); the expiry job in [`store/imports.go`](../../backend/internal/store/imports.go) |
 | The command line | `cowork-mcp export` in [`mcpcli/export.go`](../../backend/internal/mcpcli/export.go) |
+| The browser | the import page, [`features/project/project-import.ts`](../../frontend/src/app/features/project/project-import.ts) with [`import-model.ts`](../../frontend/src/app/features/project/import-model.ts); the requests and the archive in [`core/imports.service.ts`](../../frontend/src/app/core/imports.service.ts) and [`core/export-archive.ts`](../../frontend/src/app/core/export-archive.ts) ([frontend.md](frontend.md#the-import-and-the-export)) |
 
 ## The dry run
 
@@ -108,7 +110,8 @@ Read against the tree on 2026-10-06.
 **Publication.** `store.Event.Quiet` writes an act and never publishes it
 ([`tx.go`](../../backend/internal/store/tx.go) `writeEvents`): the acts on the tickets an import
 creates are many, and the job's one act announces them as `project.changed` with the kind
-`imported` — the browser reloads the project's lists once ([events.md](events.md)). No act of an
+`imported` — the browser reloads the project's lists once, and the dashboard and the open decisions
+with them ([events.md](events.md), [frontend.md](frontend.md#how-a-change-reaches-the-screen)). No act of an
 import tells anybody's inbox: none carries a notice.
 
 **The read.** `GetImport`, `importRead` — the tenant's administrators, a token's `read` scope,
