@@ -1,9 +1,9 @@
 // Package mcpcli is the command line of cowork-mcp (docs/adr/0041,
 // docs/adr/0067, docs/adr/0070): serve, the MCP server over stdio; the hook
-// modes session-context and session-end; and the workflow subcommands token
-// check and lookup. One configuration, one generated client and one tool
-// catalogue for all of them. cmd/cowork-mcp is its main; a test runs it with
-// its own environment and streams.
+// modes session-context, session-end and model-switch; and the workflow
+// subcommands token check and lookup. One configuration, one generated client
+// and one tool catalogue for all of them. cmd/cowork-mcp is its main; a test
+// runs it with its own environment and streams.
 package mcpcli
 
 import (
@@ -74,6 +74,7 @@ Commands:
   serve             Serve the cowork tools to an MCP host over stdio.
   session-context   Print the session block for Claude Code's SessionStart hook.
   session-end       Print the reminder for Claude Code's Stop hook, when one is due.
+  model-switch      Record the model of Claude Code's PostModelSwitch hook for the agent mark.
   token check       Report whether COWORK_TOKEN works against COWORK_URL, and what it may do.
   lookup            Print the binding of the working directory's repository, or the proposal.
   version           Print the version, the commit and the API it was built against.
@@ -116,6 +117,7 @@ func commandTable() map[string]command {
 		"serve":           {run: func(ctx context.Context, e Env, _ bool) int { return serve(ctx, e) }},
 		"session-context": {run: func(ctx context.Context, e Env, _ bool) int { return sessionContext(ctx, e) }},
 		"session-end":     {run: func(ctx context.Context, e Env, _ bool) int { return sessionEnd(ctx, e) }},
+		"model-switch":    {run: func(_ context.Context, e Env, _ bool) int { return modelSwitch(e) }},
 		"token check":     {run: tokenCheck, json: true},
 		"lookup":          {run: lookupBinding, json: true},
 		"version":         {run: printVersion},
@@ -146,9 +148,10 @@ type client struct {
 	id      string
 	// project, set for the server, is the project directory whose recorded
 	// model the mark names while the client knows none of its own: MCP does
-	// not tell a server its model, and Claude Code tells the SessionStart
-	// hook (docs/adr/0067 D5). It is read at each request, so a session
-	// started after the server, or started again, is named.
+	// not tell a server its model, and Claude Code tells the SessionStart and
+	// PostModelSwitch hooks (docs/adr/0067 D5). It is read at each request,
+	// so a session started after the server, started again or switched to
+	// another model is named.
 	project string
 }
 
@@ -197,13 +200,23 @@ func connect(e Env, cfg config, name, model, sessionID string) *client {
 	if c.session.Workspace == nil {
 		c.session.Workspace = tools.GitWorkspace{Dir: pickDir(e, cfg)}
 	}
-	c.session.Memory = e.Memory
-	if c.session.Memory == nil {
-		if memDir, err := tools.DefaultMemoryDir(); err == nil {
-			c.session.Memory = tools.FileMemory{Dir: memDir}
-		}
-	}
+	// Without a cache directory there is no memory: nothing since the last
+	// session, and no model for the mark.
+	c.session.Memory, _ = openMemory(e)
 	return c
+}
+
+// openMemory is the memory a command keeps between processes: the test's, or
+// the files under the user's cache directory.
+func openMemory(e Env) (tools.Memory, error) {
+	if e.Memory != nil {
+		return e.Memory, nil
+	}
+	dir, err := tools.DefaultMemoryDir()
+	if err != nil {
+		return nil, err
+	}
+	return tools.FileMemory{Dir: dir}, nil
 }
 
 // serve runs the MCP server over stdio until the host closes it. A missing
@@ -301,6 +314,12 @@ type hookInput struct {
 	Source         string `json:"source"`
 	Model          string `json:"model"`
 	StopHookActive bool   `json:"stop_hook_active"`
+	// ToModel is the model a PostModelSwitch hook names, the one the
+	// session switched to.
+	ToModel string `json:"to_model"`
+	// AgentID is present only when the hook fires inside a subagent; a
+	// session started with --agent names its agent_type and no agent_id.
+	AgentID string `json:"agent_id"`
 }
 
 func readHook(r io.Reader) hookInput {
@@ -412,6 +431,43 @@ func sessionEnd(ctx context.Context, e Env) int {
 		return exitOK
 	}
 	_ = json.NewEncoder(e.Stdout).Encode(stopOutput{SystemMessage: "cowork: " + line})
+	return exitOK
+}
+
+// modelSwitch is the PostModelSwitch hook (docs/adr/0067 D5): it records the
+// model the session switched to — by /model, an automatic fallback, opusplan
+// entering or leaving plan mode, the model restored on a resume — where the
+// SessionStart hook records the model it started with, so the server of the
+// project directory names it in the mark of its next act. A switch inside a
+// subagent is not the session's and changes nothing, nor does an input
+// without to_model; an unconfigured client records nothing, as it records no
+// start. Nothing goes to standard output, which Claude Code would add to the
+// model's context: a configuration it cannot use or a record it cannot write
+// is one line on standard error, which Claude Code keeps in its debug log. It
+// always exits 0: the model has switched, and the hook cannot undo it.
+func modelSwitch(e Env) int {
+	in := readHook(e.Stdin)
+	model := strings.TrimSpace(in.ToModel)
+	if model == "" || in.AgentID != "" {
+		return exitOK
+	}
+	cfg, err := loadConfig(e.Lookup)
+	switch {
+	case errors.Is(err, errUnconfigured):
+		return exitOK
+	case err != nil:
+		fmt.Fprintf(e.Stderr, "cowork-mcp: %v\n", err)
+		return exitOK
+	case cfg.project == "":
+		return exitOK
+	}
+	memory, err := openMemory(e)
+	if err == nil {
+		err = memory.SetModel(cfg.project, model)
+	}
+	if err != nil {
+		fmt.Fprintf(e.Stderr, "cowork-mcp: the model switch is not recorded for the agent mark: %v\n", err)
+	}
 	return exitOK
 }
 

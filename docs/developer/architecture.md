@@ -206,6 +206,7 @@ local:   POST /auth/local ─► LoginLocal: origin check, address throttle, one
 
 identity provider:
   GET /auth/oidc/login ─► LoginOidc: state, nonce, PKCE verifier sealed into __Host-cowork-oidc ─► 302 to the issuer
+       (silent=true, the login page's own attempt: prompt=none, and the issuer's error ─► /login?error=login_required)
        … the browser at the issuer …
   GET /auth/callback?code&state ─► OidcCallback: open the cookie (≤ 10 min), compare the state
        ─► oidc.Provider.Exchange: the code with the verifier and the client secret; the ID token verified,
@@ -242,7 +243,8 @@ authenticateSession ─► LookupSession ─► sessionLive ─► checkProvider
             memberships derived while admitted; judged: the session row only; outside the gate every session of
             the person deleted; refused: this session deleted; unreachable: retry in a minute
    ─► ended: 401 like any ended session ─► otherwise LookupSession again (the administrator flag may have changed)
-   ─► TouchSession ─► the principal
+   ─► the person's activity (movesIdleClock: a write that passes the CSRF check, or a read with
+      X-Cowork-Activity: input)? ─► TouchSession ─► the principal
 ```
 
 An event stream checks the same at its heartbeat (`streamStillAdmitted`), without touching the idle

@@ -7,6 +7,7 @@ import { AuthOptions, LocalLoginResult, Problem } from '../../api/models';
 import { AuthService } from '../../core/auth.service';
 import { HARD_NAVIGATION, HardNavigation } from '../../core/hard-navigation';
 import { Login, providerRefusals, safeReturn, unknownRefusal } from './login';
+import { presenceInputs } from './presence';
 
 describe('safeReturn', () => {
   it.each([
@@ -78,6 +79,7 @@ describe('Login', () => {
     hasValue: () => boolean;
   };
   let login: MockInstance<AuthService['login']>;
+  let hasSession: MockInstance<AuthService['hasSession']>;
   let navigate: MockInstance<HardNavigation>;
 
   beforeEach(() => {
@@ -91,14 +93,22 @@ describe('Login', () => {
     login = vi
       .fn<AuthService['login']>()
       .mockResolvedValue({ password_change_required: false } satisfies LocalLoginResult);
+    hasSession = vi.fn<AuthService['hasSession']>().mockResolvedValue(false);
     navigate = vi.fn<HardNavigation>();
     TestBed.configureTestingModule({
       providers: [
         MessageService,
-        { provide: AuthService, useValue: { options, login } },
+        { provide: AuthService, useValue: { options, login, hasSession } },
         { provide: HARD_NAVIGATION, useValue: navigate },
       ],
     });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    sessionStorage.clear();
+    Reflect.deleteProperty(document, 'visibilityState');
   });
 
   async function render(back?: string, error?: string) {
@@ -610,6 +620,350 @@ describe('Login', () => {
 
       expect(el(fixture, 'login-provider-error')).toBeNull();
       expect(el(fixture, 'login-error')?.textContent).toBe('The name or the password is wrong.');
+    });
+  });
+
+  describe('the button remembers the identity provider (docs/adr/0029 D6)', () => {
+    beforeEach(() => options.value.set(offered(true, true)));
+
+    it('remembers in the browser that the person signs in through the identity provider', async () => {
+      const fixture = await render();
+
+      el(fixture, 'login-oidc')?.click();
+
+      expect(localStorage.getItem('cowork.sign-in')).toBe('oidc');
+      expect(sessionStorage.getItem('cowork.sign-in.attempt')).toBeNull();
+    });
+
+    it('signs in as ever where the browser refuses its storage', async () => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('denied', 'SecurityError');
+      });
+      const fixture = await render();
+
+      el(fixture, 'login-oidc')?.click();
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith('/auth/oidc/login?return_to=%2F');
+    });
+  });
+
+  describe('signing in again by itself (docs/adr/0029 D6)', () => {
+    /** A sign of a person: the pointer moved over the page, unless the test names another input. */
+    const sign = (name = 'pointermove') =>
+      document.body.dispatchEvent(new Event(name, { bubbles: true }));
+
+    function setVisibility(state: DocumentVisibilityState): void {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }
+
+    const silent = (back: string) =>
+      `/auth/oidc/login?return_to=${encodeURIComponent(back)}&silent=true`;
+
+    beforeEach(() => {
+      options.value.set(offered(true, true));
+      localStorage.setItem('cowork.sign-in', 'oidc');
+    });
+
+    describe('when the provider is offered, remembered, and no way back failed', () => {
+      it('says that it signs the person in again, and still offers the button and the form', async () => {
+        const fixture = await render('/t/acme/board');
+
+        expect(el(fixture, 'login-resuming')?.textContent?.trim()).toBe(
+          'Your session ended. Signing you in again through Dex…',
+        );
+        expect(el(fixture, 'login-resuming')?.getAttribute('role')).toBe('status');
+        expect(el(fixture, 'login-oidc')).not.toBeNull();
+        expect(host(fixture).querySelector('form')).not.toBeNull();
+        expect(el(fixture, 'login-provider-error')).toBeNull();
+      });
+
+      it('waits for a sign of a person: an open tab nobody looks at does not sign itself in', async () => {
+        const fixture = await render('/t/acme/board');
+        await settle(fixture);
+
+        expect(hasSession).not.toHaveBeenCalled();
+        expect(navigate).not.toHaveBeenCalled();
+      });
+
+      it("leaves for the provider's sign-in with silent=true and the way back at the first sign", async () => {
+        const fixture = await render('/t/acme/board?q=flicker');
+
+        sign();
+        await settle(fixture);
+
+        expect(hasSession).toHaveBeenCalledOnce();
+        expect(navigate).toHaveBeenCalledExactlyOnceWith(silent('/t/acme/board?q=flicker'));
+        expect(sessionStorage.getItem('cowork.sign-in.attempt')).not.toBeNull();
+        expect(login).not.toHaveBeenCalled();
+      });
+
+      it.each(presenceInputs)('takes %s for a sign', async (name) => {
+        const fixture = await render();
+
+        sign(name);
+        await settle(fixture);
+
+        expect(navigate).toHaveBeenCalledExactlyOnceWith(silent('/'));
+      });
+
+      it('takes the window taking the focus for a sign', async () => {
+        const fixture = await render();
+
+        window.dispatchEvent(new Event('focus'));
+        await settle(fixture);
+
+        expect(navigate).toHaveBeenCalledExactlyOnceWith(silent('/'));
+      });
+
+      it('takes the tab coming back into view for a sign, and its going for none', async () => {
+        const fixture = await render();
+
+        setVisibility('hidden');
+        await settle(fixture);
+        expect(hasSession).not.toHaveBeenCalled();
+        setVisibility('visible');
+        await settle(fixture);
+
+        expect(navigate).toHaveBeenCalledExactlyOnceWith(silent('/'));
+      });
+
+      it('asks once and leaves once, however many signs come', async () => {
+        const fixture = await render();
+
+        sign();
+        sign('keydown');
+        window.dispatchEvent(new Event('focus'));
+        await settle(fixture);
+        sign();
+        await settle(fixture);
+
+        expect(hasSession).toHaveBeenCalledOnce();
+        expect(navigate).toHaveBeenCalledOnce();
+      });
+
+      it('goes back to where the person was when another tab has signed in meanwhile', async () => {
+        hasSession.mockResolvedValue(true);
+        const fixture = await render('/t/acme/tickets/COW-12');
+
+        sign();
+        await settle(fixture);
+
+        expect(navigate).toHaveBeenCalledExactlyOnceWith('/t/acme/tickets/COW-12');
+        expect(sessionStorage.getItem('cowork.sign-in.attempt')).toBeNull();
+      });
+
+      it.each(['/login', '/login?return=%2F', '/login#top'])(
+        'goes to the start page, not back to itself, when the way back is %s and a session exists',
+        async (back) => {
+          hasSession.mockResolvedValue(true);
+          const fixture = await render(back);
+
+          sign();
+          await settle(fixture);
+
+          expect(navigate).toHaveBeenCalledExactlyOnceWith('/');
+        },
+      );
+
+      it.each(['//evil.example', '/\\evil.example', 'https://evil.example', 'javascript:alert(1)'])(
+        'never hands on %s, which is no page of this application',
+        async (back) => {
+          const fixture = await render(back);
+
+          sign();
+          await settle(fixture);
+
+          expect(navigate).toHaveBeenCalledExactlyOnceWith(silent('/'));
+        },
+      );
+
+      it('stays as it is when the backend cannot say whether a session exists', async () => {
+        hasSession.mockRejectedValue(new HttpErrorResponse({ status: 0, statusText: 'Unknown' }));
+        const fixture = await render();
+
+        sign();
+        await settle(fixture);
+        sign();
+        await settle(fixture);
+
+        expect(hasSession).toHaveBeenCalledOnce();
+        expect(navigate).not.toHaveBeenCalled();
+        expect(el(fixture, 'login-resuming')).toBeNull();
+        expect(el(fixture, 'login-oidc')).not.toBeNull();
+        expect(sessionStorage.getItem('cowork.sign-in.attempt')).toBeNull();
+      });
+
+      it('stays signed out when the person signed out in another tab meanwhile', async () => {
+        const fixture = await render();
+        localStorage.removeItem('cowork.sign-in');
+
+        sign();
+        await settle(fixture);
+
+        expect(navigate).not.toHaveBeenCalled();
+        expect(el(fixture, 'login-resuming')).toBeNull();
+      });
+
+      it('does not leave for the provider when the tab cannot note its attempt', async () => {
+        const fixture = await render();
+        vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+          throw new DOMException('quota', 'QuotaExceededError');
+        });
+
+        sign();
+        await settle(fixture);
+
+        expect(navigate).not.toHaveBeenCalled();
+        expect(el(fixture, 'login-resuming')).toBeNull();
+      });
+
+      it("lets the person's click on the button win over its own sign-in", async () => {
+        let answer: (signedIn: boolean) => void = () => undefined;
+        hasSession.mockReturnValue(new Promise<boolean>((resolve) => (answer = resolve)));
+        const fixture = await render();
+        const button = el(fixture, 'login-oidc')!;
+
+        button.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        button.click();
+        answer(false);
+        await settle(fixture);
+
+        expect(navigate).toHaveBeenCalledExactlyOnceWith('/auth/oidc/login?return_to=%2F');
+      });
+
+      it("leaves the person's own local sign-in alone while it is on its way", async () => {
+        let answer: (signedIn: boolean) => void = () => undefined;
+        hasSession.mockReturnValue(new Promise<boolean>((resolve) => (answer = resolve)));
+        login.mockReturnValue(new Promise<LocalLoginResult>(() => undefined));
+        const fixture = await render();
+        sign('keydown');
+        fill(fixture);
+
+        submit(fixture);
+        answer(false);
+        await settle(fixture);
+
+        expect(navigate).not.toHaveBeenCalled();
+        expect(el(fixture, 'login-resuming')).toBeNull();
+      });
+
+      it('stops waiting when the page goes', async () => {
+        const fixture = await render();
+
+        fixture.destroy();
+        sign();
+        await new Promise((resolve) => setTimeout(resolve));
+
+        expect(hasSession).not.toHaveBeenCalled();
+        expect(navigate).not.toHaveBeenCalled();
+      });
+
+      it('waits for the answer of what the page offers before it waits for the person', async () => {
+        options.value.set(undefined);
+        options.isLoading.set(true);
+        const fixture = await render();
+        sign();
+        await settle(fixture);
+        expect(hasSession).not.toHaveBeenCalled();
+
+        options.value.set(offered(true, true));
+        options.isLoading.set(false);
+        await settle(fixture);
+        sign();
+        await settle(fixture);
+
+        expect(navigate).toHaveBeenCalledExactlyOnceWith(silent('/'));
+      });
+    });
+
+    describe('when it waits for the button instead', () => {
+      async function waitsForTheButton(fixture: ComponentFixture<Login>) {
+        sign();
+        sign('keydown');
+        window.dispatchEvent(new Event('focus'));
+        await settle(fixture);
+        expect(el(fixture, 'login-resuming')).toBeNull();
+        expect(hasSession).not.toHaveBeenCalled();
+        expect(navigate).not.toHaveBeenCalled();
+      }
+
+      it('waits without the remembered provider: never chosen, a local sign-in since, or a sign-out', async () => {
+        localStorage.removeItem('cowork.sign-in');
+
+        await waitsForTheButton(await render());
+      });
+
+      it('waits where the installation offers no identity provider', async () => {
+        options.value.set(offered(true, false));
+
+        await waitsForTheButton(await render());
+      });
+
+      it.each([
+        'login_required',
+        'oidc_failed',
+        'not_allowed',
+        'not_initialised',
+        'oidc_unavailable',
+        'anything',
+        '',
+      ])(
+        'waits after a way back with ?error=%j, so that it never tries twice in a row',
+        async (code) => {
+          await waitsForTheButton(await render('/t/acme/board', code));
+        },
+      );
+
+      it('waits in a tab that tried since its last session', async () => {
+        sessionStorage.setItem('cowork.sign-in.attempt', '1');
+
+        await waitsForTheButton(await render());
+      });
+
+      it('waits where the browser refuses its storage', async () => {
+        vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+          throw new DOMException('denied', 'SecurityError');
+        });
+
+        await waitsForTheButton(await render());
+      });
+    });
+  });
+
+  describe('a sign-in of its own the provider could not complete, from ?error=login_required', () => {
+    beforeEach(() => options.value.set(offered(true, true)));
+
+    it('says calmly that the session at the provider ended, as no refusal', async () => {
+      const fixture = await render('/t/acme/board', 'login_required');
+
+      expect(el(fixture, 'login-provider-ended')?.textContent?.trim()).toBe(
+        'Your session at Dex has ended. Sign in again.',
+      );
+      expect(el(fixture, 'login-provider-ended')?.getAttribute('role')).toBe('status');
+      expect(el(fixture, 'login-provider-error')).toBeNull();
+      expect(host(fixture).innerHTML).not.toContain('login_required');
+    });
+
+    it("signs in with the button as ever, the provider's pages and all, back to where the person was", async () => {
+      const fixture = await render('/t/acme/board', 'login_required');
+
+      el(fixture, 'login-oidc')?.click();
+
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(
+        `/auth/oidc/login?return_to=${encodeURIComponent('/t/acme/board')}`,
+      );
+    });
+
+    it('stops saying it once the person tries the local form instead', async () => {
+      login.mockRejectedValue(refusal(401, 'Unauthenticated'));
+      const fixture = await render(undefined, 'login_required');
+      fill(fixture);
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(el(fixture, 'login-provider-ended')).toBeNull();
     });
   });
 });

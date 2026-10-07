@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -170,6 +171,37 @@ func TestInitStateThroughDex(t *testing.T) {
 	require.Equal(t, http.StatusCreated, created.StatusCode, "the administrator group makes the first tenant")
 
 	assert.Equal(t, "/", s.browser(t).oidcLogin("bob@example.com", "/").Header.Get("Location"), "initialised")
+}
+
+// docs/adr/0029 D6: the silent start asks the test issuer with prompt=none and
+// the button's start does not. Dex 2.45.1 keeps no session of its own and
+// ignores the parameter: it shows its form as at any login, and the login
+// completes through it — which the end-to-end tier's silent sign-in relies on.
+func TestASilentStartThroughDex(t *testing.T) {
+	d := newDexWorld(t)
+	s := newAPI(t, withLogin, d.iso.option, devGate(dexProvider(t)))
+	b := s.browser(t)
+
+	plain, err := url.Parse(b.get("/auth/oidc/login").Header.Get("Location"))
+	require.NoError(t, err)
+	assert.False(t, plain.Query().Has("prompt"), "the button's start")
+
+	start := b.get("/auth/oidc/login?silent=true&return_to=" + url.QueryEscape("/t/dev/board"))
+	require.Equal(t, http.StatusFound, start.StatusCode)
+	to, err := url.Parse(start.Header.Get("Location"))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"none"}, to.Query()["prompt"], "the silent start")
+	state, ok := cookieValue(start, stateCookieName)
+	require.True(t, ok)
+	back, err := url.Parse(walkIssuer(t, start.Header.Get("Location"), "bob@example.com"))
+	require.NoError(t, err)
+	res := b.get("/auth/callback?"+back.RawQuery, withState(state))
+	require.Equal(t, http.StatusSeeOther, res.StatusCode)
+	assert.Equal(t, "/t/dev/board", res.Header.Get("Location"), "Dex showed its form, and bob signed in through it")
+	value, set := cookieValue(res, auth.SessionCookie)
+	require.True(t, set && value != "")
+	b.Cookie = value
+	assert.Equal(t, d.bob(t), decode[apigen.Me](t, b.get("/api/v1/me")).Id)
 }
 
 // docs/adr/0030 D5, docs/adr/0035 D8, the phase's verification: a person whose

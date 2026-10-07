@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -81,6 +82,7 @@ func TestTheCommandLine(t *testing.T) {
 	code, stdout, _ = run(t, Env{}, "help")
 	assert.Equal(t, 0, code)
 	assert.Contains(t, stdout, "session-context")
+	assert.Contains(t, stdout, "model-switch")
 	code, _, stderr = run(t, Env{}, "serve")
 	assert.Equal(t, 1, code, "serve without configuration ends at once")
 	assert.Contains(t, stderr, "COWORK_URL is not set")
@@ -161,7 +163,37 @@ func TestTheHooks(t *testing.T) {
 	code, stdout, _ = run(t, Env{Lookup: configured, Stdin: strings.NewReader(`{"stop_hook_active": true}`)}, "session-end")
 	assert.Equal(t, 0, code)
 	assert.Empty(t, stdout)
+
+	// The switch hook says nothing on standard output, which Claude Code
+	// would add to the model's context, whatever goes wrong.
+	memory := &tools.InMemory{}
+	switchWith := func(env map[string]string, m tools.Memory) (int, string, string) {
+		t.Helper()
+		return run(t, Env{Lookup: envOf(env), Memory: m, Stdin: strings.NewReader(postModelSwitchInput)}, "model-switch")
+	}
+	code, stdout, stderr := switchWith(map[string]string{EnvProjectDir: "/Users/ada/src/app"}, memory)
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stdout+stderr, "no installation configured: silence")
+	code, stdout, stderr = switchWith(map[string]string{EnvURL: "https://cowork.example.com", EnvToken: "ghp_secretvalue",
+		EnvProjectDir: "/Users/ada/src/app"}, memory)
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stdout)
+	assert.Equal(t, "cowork-mcp: COWORK_TOKEN is not a cowork token, cwk_ and 43 letters and digits; "+
+		"make one on https://cowork.example.com/me/tokens\n", stderr, "a malformed configuration goes to the debug log")
+	model, err := memory.Model("/Users/ada/src/app")
+	require.NoError(t, err)
+	assert.Empty(t, model, "neither records the switch")
+	code, stdout, stderr = switchWith(map[string]string{EnvURL: "https://cowork.example.com", EnvToken: testToken,
+		EnvProjectDir: "/Users/ada/src/app"}, &fullDisk{})
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stdout)
+	assert.Equal(t, "cowork-mcp: the model switch is not recorded for the agent mark: the disk is full\n", stderr)
 }
+
+// fullDisk is a memory that cannot write a model.
+type fullDisk struct{ tools.InMemory }
+
+func (*fullDisk) SetModel(string, string) error { return errors.New("the disk is full") }
 
 // sessionStartInput is the input Claude Code hands a SessionStart hook, as
 // its hook reference shows it (code.claude.com/docs/en/hooks, "SessionStart
@@ -179,11 +211,18 @@ const sessionStartInput = `{
   "estimated_cache_write_usd": 1.1396
 }`
 
-// docs/adr/0067 D5, docs/adr/0036 D3: the model Claude Code names to the
-// SessionStart hook is the model of the agent mark of the server in the same
-// project directory — when the hook runs after the server started, too — and
-// not of another directory's server.
-func TestTheSessionStartHookNamesTheModelOfTheServer(t *testing.T) {
+// inProject is the configured environment of the server and the hooks in a
+// project directory.
+func inProject(projectDir string) func(string) (string, bool) {
+	return envOf(map[string]string{EnvURL: "https://cowork.example.com", EnvToken: testToken, EnvProjectDir: projectDir})
+}
+
+// markedServer runs serve in the project directory against a fake API, with
+// the memory the hooks write, over an in-memory MCP session that ends with
+// the test. watch calls the watch tool and answers the agent mark of its
+// request; api is the fake API, which answers a session start's check too.
+func markedServer(t *testing.T, memory tools.Memory, projectDir string) (watch func() string, api tools.HandlerDoer) {
+	t.Helper()
 	mux := fakeAPI(t, map[string]any{
 		"GET /api/v1/version": map[string]any{"version": "0.9.1", "commit": "c", "build_time": "0"},
 		"GET /api/v1/me/token": map[string]any{"id": "0199a3c2-1d2e-7f00-8000-000000000001", "name": "laptop", "scope": "write",
@@ -198,7 +237,7 @@ func TestTheSessionStartHookNamesTheModelOfTheServer(t *testing.T) {
 	})
 	var mu sync.Mutex
 	var marks []string
-	api := tools.HandlerDoer{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	api = tools.HandlerDoer{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/interest") {
 			mu.Lock()
 			marks = append(marks, r.Header.Get("X-Cowork-Agent"))
@@ -206,23 +245,28 @@ func TestTheSessionStartHookNamesTheModelOfTheServer(t *testing.T) {
 		}
 		mux.ServeHTTP(w, r)
 	})}
-	in := func(projectDir string) func(string) (string, bool) {
-		return envOf(map[string]string{EnvURL: "https://cowork.example.com", EnvToken: testToken, EnvProjectDir: projectDir})
-	}
-	memory := &tools.InMemory{}
 
 	serverSide, clientSide := mcp.NewInMemoryTransports()
 	done := make(chan int, 1)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	t.Cleanup(cancel)
 	go func() {
 		var out, errs bytes.Buffer
-		done <- Run(ctx, Env{Args: []string{"serve"}, Lookup: in("/Users/ada/src/app"), Doer: api, Workspace: noRepo{},
+		done <- Run(ctx, Env{Args: []string{"serve"}, Lookup: inProject(projectDir), Doer: api, Workspace: noRepo{},
 			Memory: memory, Transport: serverSide, Stdout: &out, Stderr: &errs, Build: Build{Version: "0.9.0"}})
 	}()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "claude-code", Version: "test"}, nil).Connect(ctx, clientSide, nil)
 	require.NoError(t, err)
-	watch := func() string {
+	t.Cleanup(func() {
+		require.NoError(t, cs.Close())
+		select {
+		case code := <-done:
+			assert.Equal(t, 0, code)
+		case <-time.After(5 * time.Second):
+			t.Fatal("serve did not end with its session")
+		}
+	})
+	watch = func() string {
 		t.Helper()
 		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "watch", Arguments: map[string]any{"key": "acme/COW-1"}})
 		require.NoError(t, err)
@@ -231,9 +275,19 @@ func TestTheSessionStartHookNamesTheModelOfTheServer(t *testing.T) {
 		defer mu.Unlock()
 		return marks[len(marks)-1]
 	}
+	return watch, api
+}
+
+// docs/adr/0067 D5, docs/adr/0036 D3: the model Claude Code names to the
+// SessionStart hook is the model of the agent mark of the server in the same
+// project directory — when the hook runs after the server started, too — and
+// not of another directory's server.
+func TestTheSessionStartHookNamesTheModelOfTheServer(t *testing.T) {
+	memory := &tools.InMemory{}
+	watch, api := markedServer(t, memory, "/Users/ada/src/app")
 	hook := func(projectDir, input string) {
 		t.Helper()
-		code, stdout, _ := run(t, Env{Lookup: in(projectDir), Doer: api, Workspace: noRepo{}, Memory: memory,
+		code, stdout, _ := run(t, Env{Lookup: inProject(projectDir), Doer: api, Workspace: noRepo{}, Memory: memory,
 			Stdin: strings.NewReader(input)}, "session-context")
 		assert.Equal(t, 0, code)
 		assert.Empty(t, stdout, "no remote and no binding file: silence")
@@ -252,14 +306,81 @@ func TestTheSessionStartHookNamesTheModelOfTheServer(t *testing.T) {
 	hook("/Users/ada/src/app", `{"session_id": "def456", "hook_event_name": "SessionStart", "source": "resume"}`)
 	assert.Equal(t, "claude-code/unknown/"+strings.Split(mark, "/")[2], watch(),
 		"a session restored without a model is not marked with an older session's")
+}
 
-	require.NoError(t, cs.Close())
-	select {
-	case code := <-done:
+// postModelSwitchInput is the input Claude Code hands a PostModelSwitch hook
+// as its hook reference describes it (code.claude.com/docs/en/hooks,
+// "PostModelSwitch input": the fields of the PreModelSwitch example with the
+// event's name, and the common prompt_id and permission_mode): /model sonnet
+// in a session that runs Opus 5.
+const postModelSwitchInput = `{
+  "session_id": "abc123",
+  "prompt_id": "550e8400-e29b-41d4-a716-446655440000",
+  "transcript_path": "/Users/.../.claude/projects/.../00893aaf-19fa-41d2-8238-13269b9b3ca0.jsonl",
+  "cwd": "/Users/...",
+  "permission_mode": "default",
+  "hook_event_name": "PostModelSwitch",
+  "from_model": "claude-opus-5",
+  "to_model": "claude-sonnet-5",
+  "requested_model": "sonnet",
+  "source": "command",
+  "context_tokens": 182340,
+  "prompt_cache_warm": true,
+  "cache_ttl": "5m",
+  "estimated_cache_write_usd": 1.1396,
+  "pricing": "catalog"
+}`
+
+// docs/adr/0067 D5 as amended: the model Claude Code names to the
+// PostModelSwitch hook is the model of the next act of the server in the same
+// project directory; a switch inside a subagent, an input without to_model
+// and a switch in another directory leave it as it is; and the hook prints
+// nothing, which Claude Code would add to the model's context.
+func TestThePostModelSwitchHookNamesTheModelOfTheServer(t *testing.T) {
+	memory := &tools.InMemory{}
+	watch, api := markedServer(t, memory, "/Users/ada/src/app")
+	start := func(input string) {
+		t.Helper()
+		code, stdout, _ := run(t, Env{Lookup: inProject("/Users/ada/src/app"), Doer: api, Workspace: noRepo{}, Memory: memory,
+			Stdin: strings.NewReader(input)}, "session-context")
 		assert.Equal(t, 0, code)
-	case <-time.After(5 * time.Second):
-		t.Fatal("serve did not end with its session")
+		assert.Empty(t, stdout, "no remote and no binding file: silence")
 	}
+	switchIn := func(projectDir, input string) {
+		t.Helper()
+		code, stdout, stderr := run(t, Env{Lookup: inProject(projectDir), Memory: memory, Stdin: strings.NewReader(input)},
+			"model-switch")
+		assert.Equal(t, 0, code)
+		assert.Empty(t, stdout, "nothing for the model's context")
+		assert.Empty(t, stderr)
+	}
+	switchTo := func(model, more string) string {
+		return strings.Replace(postModelSwitchInput, `"to_model": "claude-sonnet-5"`, `"to_model": "`+model+`"`+more, 1)
+	}
+
+	start(sessionStartInput)
+	mark := watch()
+	require.Regexp(t, `^claude-code/claude-opus-5/[0-9a-f]{8}$`, mark, "the model the session started with")
+	marked := func(model string) string { return "claude-code/" + model + "/" + strings.Split(mark, "/")[2] }
+
+	switchIn("/Users/ada/src/app", postModelSwitchInput)
+	assert.Equal(t, marked("claude-sonnet-5"), watch(), "after /model the server's next act names the new model, under its own session id")
+	switchIn("/Users/ada/src/app", `{"session_id": "abc123", "hook_event_name": "PostModelSwitch", "from_model": "claude-sonnet-5"}`)
+	assert.Equal(t, marked("claude-sonnet-5"), watch(), "an input without to_model changes nothing")
+	switchIn("/Users/ada/src/app", switchTo("claude-haiku-4-5", `, "agent_id": "agent-def456", "agent_type": "Explore"`))
+	assert.Equal(t, marked("claude-sonnet-5"), watch(), "a switch inside a subagent is not the session's")
+	switchIn("/Users/ada/src/other", switchTo("claude-haiku-4-5", ""))
+	assert.Equal(t, marked("claude-sonnet-5"), watch(), "a switch in another project directory names its own server's model")
+	switchIn("/Users/ada/src/app", switchTo("claude-opus-5", `, "agent_type": "reviewer"`))
+	assert.Equal(t, marked("claude-opus-5"), watch(),
+		"a session started with --agent names its agent_type and no agent_id: its switch is the session's")
+
+	start(`{"session_id": "abc123", "hook_event_name": "SessionStart", "source": "compact"}`)
+	assert.Equal(t, marked("claude-opus-5"), watch(), "a compaction keeps the model the session switched to")
+	start(`{"session_id": "def456", "hook_event_name": "SessionStart", "source": "resume"}`)
+	assert.Equal(t, marked("unknown"), watch(), "a session restored without a model")
+	switchIn("/Users/ada/src/app", strings.Replace(switchTo("claude-opus-5", ""), `"source": "command"`, `"source": "resume"`, 1))
+	assert.Equal(t, marked("claude-opus-5"), watch(), "the switch to the model Claude Code restores on a resume names it again")
 }
 
 // docs/adr/0070 D2: token check says whose the token is and what it may do.

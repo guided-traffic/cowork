@@ -88,7 +88,11 @@ in — which decides whether they get in, whether they administer the installati
 tenants' mappings which tenants they belong to in which role — their name, their e-mail address and
 whether the issuer verified it ([identity-provider.md](identity-provider.md)). Whoever can change a
 person's groups at the issuer changes what they may do in cowork, from their next login or refresh;
-whoever controls the issuer's signing keys or its token endpoint can be anybody.
+whoever controls the issuer's signing keys or its token endpoint can be anybody. Since the login page
+signs a person of the provider in again by itself after their session ended, the issuer's own
+session is trusted for one thing more: while it lives, a browser that remembers the provider comes
+back to cowork at the first input, without a click
+([identity-provider.md](identity-provider.md#h-62), H-62).
 
 What is checked rather than trusted: the discovery document's `issuer` against the configured string,
 exactly; an ID token's signature against the keys the issuer publishes, with an asymmetric algorithm,

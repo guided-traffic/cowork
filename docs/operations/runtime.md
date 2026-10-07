@@ -208,8 +208,16 @@ ends none of the local login's, and each session of the identity provider that h
 token at its next refresh, whose sealed token no longer opens — no previous key is kept to open it,
 so each such person logs in again once their session's refresh is due; what else a change of the key
 does is in [installation.md](installation.md#the-secrets). The absolute lifetime is
-`COWORK_SESSION_LIFETIME` (12 hours), the idle limit `COWORK_SESSION_IDLE` (2 hours); a request
-moves the idle clock at most once a minute. An administrator ends a local account's sessions with
+`COWORK_SESSION_LIFETIME` (12 hours), the idle limit `COWORK_SESSION_IDLE` (2 hours). Only the
+person's activity moves the idle clock, at most once a minute: a write, or a read with
+`X-Cowork-Activity: input`, which the UI sends every five minutes while a person works in a page. No
+other read moves it — not the event stream, not a page loading —, so a tab nobody works in signs out
+at the idle limit, and an idle limit of about six minutes or less signs out a person who only reads.
+A proxy in front must pass the header through. When a limit ends a session of the identity
+provider, the login page signs the person in again at their first input while the provider's own
+session lives, so for such persons the provider's session policy is what ends access
+([identity-provider.md](../security/identity-provider.md#h-62), H-62). An administrator ends a
+local account's sessions with
 `DELETE …/accounts/{username}/sessions`; a person's other sessions end when they change their
 password. A person of the identity provider has neither: their sessions end at the limits, or at a
 refresh when the issuer refuses the refresh token or the gate no longer admits them
@@ -250,7 +258,8 @@ of its own; the reason is in the backend's log, never on the page:
 | Code | Means | Where to look |
 |---|---|---|
 | `oidc_unavailable` | no provider is configured, or its gate names no group | `COWORK_OIDC_ALLOWED_GROUPS`, `COWORK_ADMIN_GROUP`; the start's warning |
-| `oidc_failed` | the login could not complete: the state cookie was missing or older than ten minutes, the issuer answered with an error, the code was refused, an answer of the issuer redirected or exceeded 1 MiB, the ID token did not verify, the groups claim had a shape that is no list of names, or the login could not be stored | `a login through the identity provider did not succeed` (info) with the request id, the code, the reason and the error — for the token endpoint its status and OAuth error code, never the answer's body; `a login through the identity provider failed` (error) when storing it failed |
+| `oidc_failed` | the login could not complete: the state cookie was missing or older than ten minutes, the issuer answered a login the person started with an error, the code was refused, an answer of the issuer redirected or exceeded 1 MiB, the ID token did not verify, the groups claim had a shape that is no list of names, or the login could not be stored | `a login through the identity provider did not succeed` (info) with the request id, the code, the reason and the error — for the token endpoint its status and OAuth error code, never the answer's body; `a login through the identity provider failed` (error) when storing it failed |
+| `login_required` | no failure: the login page signed a person in again by itself after their session ended (`silent=true`, `prompt=none`), and the issuer could not without them — its session ended, or it asks for consent or an account. The page asks the person to sign in with the button | the same info line, its reason `the issuer answered a silent login with the error …`; an issuer that shows its own form instead of answering lands the person there |
 | `not_allowed` | the person is outside the gate — none of their groups is allowed or the administrator group — or deactivated | the person's groups at the issuer, the claim's name (`COWORK_OIDC_GROUPS_CLAIM`), the installation-level `login_refused` row, whose note says which |
 | `not_initialised` | no tenant exists, and the person is not in the administrator group | the first tenant: a global administrator creates it, or `bootstrap.tenant` with `auth.oidc.adminGroup` |
 

@@ -15,12 +15,18 @@ export interface LoginOidc$Params {
  * The path to land on after the login, and the `return` of a refusal's redirect to the login page; anything that is not a path of this installation is `/`
  */
   return_to?: string;
+
+/**
+ * The login page's own attempt after a session ended — `prompt=none` at the issuer, and its error a `login_required` on the login page instead of `oidc_failed` (docs/adr/0029 D6)
+ */
+  silent?: boolean;
 }
 
 export function loginOidc(http: HttpClient, rootUrl: string, params?: LoginOidc$Params, context?: HttpContext): Observable<StrictHttpResponse<Problem>> {
   const rb = new RequestBuilder(rootUrl, loginOidc.PATH, 'get');
   if (params) {
     rb.query('return_to', params.return_to, {});
+    rb.query('silent', params.silent, {});
   }
 
   return http.request(

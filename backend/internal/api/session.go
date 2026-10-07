@@ -66,9 +66,7 @@ func (h *handler) authenticateSession(r *http.Request, value string) (auth.Princ
 	if perr != nil {
 		return auth.Principal{}, perr
 	}
-	if err := h.opts.DB.TouchSession(ctx, rec, now); err != nil {
-		h.logger.Error("touching the session failed", "request_id", requestid.From(ctx), "error", err)
-	}
+	h.touchOnActivity(r, rec, now)
 	p := auth.Principal{
 		PersonID:               rec.Person.ID,
 		DisplayName:            rec.Person.DisplayName,
@@ -89,6 +87,45 @@ func (h *handler) authenticateSession(r *http.Request, value string) (auth.Princ
 		p.Agent, p.Capabilities = header, caps
 	}
 	return p, nil
+}
+
+// The header that marks a read of a session as the person's own activity, and
+// its one value: the browser's keep-alive sends it after the person's input
+// (docs/adr/0031 D3).
+const (
+	ActivityHeader = "X-Cowork-Activity"
+	ActivityInput  = "input"
+)
+
+// touchOnActivity moves the session's idle clock when the request is the
+// person's activity (movesIdleClock), at most once a minute
+// (store.SessionTouchInterval). A failure is logged and the request served.
+func (h *handler) touchOnActivity(r *http.Request, rec store.SessionRecord, now time.Time) {
+	if !h.movesIdleClock(r) {
+		return
+	}
+	if err := h.opts.DB.TouchSession(r.Context(), rec, now); err != nil {
+		h.logger.Error("touching the session failed", "request_id", requestid.From(r.Context()), "error", err)
+	}
+}
+
+// movesIdleClock says whether a session's request is the person's activity,
+// which alone moves its idle clock (docs/adr/0031 D3 as amended 2026-10-06):
+// a write that passes the CSRF check, or a read that carries
+// X-Cowork-Activity: input — the browser's keep-alive sends one after the
+// person's input. A read without it moves nothing: not the event stream's
+// connections and reconnects, not its polling fallback's reloads, not the
+// reloads an event triggers, so a tab that is only open reaches the idle limit.
+// No other site can keep a session alive this way: a page of another origin
+// cannot send the header, because a custom header needs a CORS preflight and
+// the API answers none (docs/adr/0037 D3); and a write it sends from a page of
+// the same site, where SameSite=Lax lets the cookie ride along, fails the CSRF
+// check and moves nothing either.
+func (h *handler) movesIdleClock(r *http.Request) bool {
+	if safeMethod(r.Method) {
+		return r.Header.Get(ActivityHeader) == ActivityInput
+	}
+	return h.csrf(r) == nil
 }
 
 // chatCapabilities is what the chat of a person holds: the set the person
@@ -119,7 +156,8 @@ func agentHeader(r *http.Request) (string, *problem.Error) {
 }
 
 // sessionLive reports whether neither limit has passed: the absolute one, set
-// at login, and the idle one, which each use moves (docs/adr/0031 D3).
+// at login, and the idle one, which the person's activity moves
+// (movesIdleClock, docs/adr/0031 D3).
 func (h *handler) sessionLive(expiresAt, lastSeenAt, now time.Time) bool {
 	return now.Before(expiresAt) && now.Before(lastSeenAt.Add(h.opts.SessionIdle))
 }
@@ -133,10 +171,12 @@ func sessionEnded() *problem.Error {
 }
 
 // sessionCookie is the cookie a login sets: HttpOnly, Secure in every
-// environment — browsers treat localhost as secure — SameSite=Lax, Path=/ and
-// no Domain, which the __Host- prefix makes the browser enforce
-// (docs/adr/0031 D2). maxAge is the time left to the absolute limit; the server
-// decides, the cookie only stops being sent when the session cannot be live.
+// environment with no exception for development — WebKit, Safari's engine,
+// stores no Secure cookie from http://localhost, measured with Playwright, so
+// make dev serves HTTPS — SameSite=Lax, Path=/ and no Domain, which the __Host-
+// prefix makes the browser enforce (docs/adr/0031 D2). maxAge is the time left
+// to the absolute limit; the server decides, the cookie only stops being sent
+// when the session cannot be live.
 func sessionCookie(value string, maxAge time.Duration) string {
 	return (&http.Cookie{
 		Name: auth.SessionCookie, Value: value, Path: "/", MaxAge: int(maxAge.Seconds()),

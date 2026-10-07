@@ -10,7 +10,11 @@ controller pod, since the Ingress routes `/api/` and `/auth/` to the backend,
 D3), amended 2026-10-06 (D3 and the References: they say that
 [ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
 D3 names this minimum in place instead of claiming to amend it, by the owner's rule that every
-amendment is made in place in the record it changes; no rule changes). Date: 2026-10-01. Decided
+amendment is made in place in the record it changes; no rule changes), amended 2026-10-06 (D8: the
+page that offers the identity provider's button starts that sign-in by itself after a session
+ended, by
+[ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md) D6;
+what it offers does not change). Date: 2026-10-01. Decided
 by the owner as the answer to the catalog question "local accounts beyond the one administrator?": administrator-managed local accounts, over none,
 over self-registration with e-mail reset, and over global-administrator-only creation. The
 owner set two conditions: the minimum password length is configurable in the chart, and
@@ -155,7 +159,13 @@ exists; an installation with neither shows the "not configured" notice of
 [ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
 D4. *(Amended 2026-10-03: built as `GET /auth/options`, which answers `local` when at
 least one active local account exists and `oidc: false`, since no identity provider is built.
-The login page itself belongs to the frontend.)*
+The login page itself belongs to the frontend.)* *(Amended 2026-10-06: where the browser remembers
+that the person signs in through the identity provider, the page that offers its button starts that
+sign-in by itself at the person's first input after a session ended, and still shows the button and
+the local form while it waits
+([ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
+D6); a local sign-in that succeeds forgets the provider, so the page waits for the person again.
+What the page offers does not change.)*
 
 ## Consequences
 

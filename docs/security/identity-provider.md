@@ -3,8 +3,9 @@
 How cowork logs a person in as an OpenID Connect relying party, what it checks of what the issuer
 says, what the issuer's groups decide — who gets in, who administers the installation, which
 tenants a person belongs to and in which role — how a session and a token keep up with the groups,
-what cowork keeps of the issuer's tokens, and what is recorded, as built on 2026-10-04. What a
-session is once the login has made one is [sessions.md](sessions.md); the local login beside this
+what cowork keeps of the issuer's tokens, how a person comes back without a click after a session
+ended, and what is recorded, as built on 2026-10-06. What a session is once the login has made one
+is [sessions.md](sessions.md); the local login beside this
 one is [local-accounts.md](local-accounts.md); what a tenant's administrators do with the groups —
 mappings, grants, a restricted project's access list — is [tenancy.md](tenancy.md); what a token
 may do is [tokens.md](tokens.md); what cowork trusts from the issuer, in one table with everything
@@ -88,6 +89,14 @@ and the test asserts that the value carries neither the state nor the path.
 - Without a provider, or with a gate that admits nobody, the start answers `303` to
   `/login?error=oidc_unavailable` ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
   D8; `TestOIDCRoutesWithoutAProvider`).
+- **`silent=true` is the login page's own start** after a session ended
+  ([ADR 0029](../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
+  D6, [below](#signing-in-again-without-a-click)): the authorization request carries `prompt=none`
+  (OIDC Core 1.0 3.1.2.1, `AuthCodeURL`) and the sealed state records that the login is silent; it
+  is the same code flow otherwise (`TestASilentLoginAsksForNoPage`, `TestASilentSignIn`). A forged
+  link with `silent=true` decides no more than one without: an issuer that holds the person's
+  session gives a code to the browser that holds the state cookie, as the button's start would
+  without asking for the password either.
 
 ### The callback
 
@@ -98,7 +107,9 @@ outcome clears the state cookie. Before the issuer is asked anything, each of th
 1. the state cookie is missing, longer than 8192 characters, does not open with the server key, or
    is older than ten minutes by the backend's clock — a minute ahead passes, for another replica's
    clock;
-2. the issuer answered with `error`;
+2. the issuer answered with `error` — except to a silent login, whose error is `login_required`
+   whenever the state cookie opens, stale or not, whatever the issuer's error says: the person did
+   not ask for the attempt (`TestASilentLoginTheIssuerCannotCompleteAsksForASignIn`);
 3. the `state` is not the cookie's — compared in constant time;
 4. there is no code.
 
@@ -183,8 +194,8 @@ Otherwise:
 
 Every failure is `303` to `/login?error=<code>`, with `&return=<path>` when the state cookie still
 opened, stale or not, and the path is not `/` — so the next attempt lands where the person wanted
-(`TestAFailedCallbackKeepsThePathThePersonWanted`). The codes are `oidc_failed`, `not_allowed`,
-`not_initialised` and `oidc_unavailable`; the reason is in the log, never on the page.
+(`TestAFailedCallbackKeepsThePathThePersonWanted`). The codes are `oidc_failed`, `login_required`,
+`not_allowed`, `not_initialised` and `oidc_unavailable`; the reason is in the log, never on the page.
 
 ## The identity is issuer and subject
 
@@ -405,7 +416,40 @@ kept ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D4;
 `TestLogoutAtTheIssuer`, `TestEndSessionURL`). The browser goes there — the UI follows the URL only
 when it is `https:` or `http:` ([frontend.md](../developer/frontend.md#where-state-lives)); cowork
 does not call the issuer itself. Every other logout answers `204`. Dex names no
-`end_session_endpoint` ([H-28](#h-28)).
+`end_session_endpoint` ([H-28](#h-28)). Before the logout is asked, the browser forgets that the
+person signs in through the provider, so the login page does not sign them in again by itself
+([below](#signing-in-again-without-a-click)).
+
+## Signing in again without a click
+
+When the idle or the absolute limit ends a session of the provider, the login page signs the person
+in again by itself, while the provider's own session lives
+([ADR 0029](../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
+D6; [`login.ts`](../../frontend/src/app/features/auth/login.ts),
+[`sign-in-memory.ts`](../../frontend/src/app/core/sign-in-memory.ts),
+[`presence.ts`](../../frontend/src/app/features/auth/presence.ts)):
+
+- **Only for a person who chose the provider.** The browser remembers it — `cowork.sign-in` =
+  `oidc` in `localStorage` — once the person started the provider's sign-in with the button. A local
+  sign-in that succeeds forgets it, and so does a sign-out, before the backend is asked: an explicit
+  sign-out is never undone by the page. Storage the browser refuses remembers nothing, and the page
+  then waits for the button.
+- **Only with a person at the page.** The page waits for a pointer pressed, a key, the wheel, a
+  touch, a pointer moved to another place than the move before, the window taking the focus, or the
+  tab coming back into view; an open tab nobody touches does not sign itself in and show its content
+  again. At the sign it asks `GET /api/v1/me` — another tab may have signed in — and otherwise
+  leaves for `/auth/oidc/login?silent=true` with the path the person wanted.
+- **Never twice in a row.** Any `?error=` — `login_required` included — leaves the page as it was,
+  with the button; and a tab tries once between two sessions (`cowork.sign-in.attempt` in
+  `sessionStorage`, cleared once the tab has a session again), because an issuer that ignores
+  `prompt=none` shows its own form instead of an error: Dex v2.45.1 does, measured on 2026-10-06
+  (`TestASilentStartThroughDex`).
+- **The issuer decides.** A code completes the login like any — the gate, a deactivated person, the
+  init state —, so a person the issuer disabled or the gate no longer admits does not come back this
+  way either.
+
+What it costs is [H-62](#h-62): the provider's session policy, not cowork's idle limit, is what ends
+the access of whoever sits at an unlocked browser.
 
 ## Who decides who gets in
 
@@ -439,8 +483,9 @@ database only; the tenant's rows show in its audit view. Every row written for a
 identity provider's included — carries the keyed hash of the client's address
 ([tokens.md](tokens.md#what-is-recorded)). **`login_refused` is written only after an ID token
 verified**: a stale state, the issuer's error, a failed exchange or verification and a claim of the
-wrong shape fail before anybody is known, and `oidc_failed` is in the log only. **No row names a
-person's groups** — their change is `groups_changed: true`, and the memberships they cause are
+wrong shape fail before anybody is known, and `oidc_failed` is in the log only — as is
+`login_required`, the issuer's error to a silent login. **No row names a person's groups** — their
+change is `groups_changed: true`, and the memberships they cause are
 recorded tenant by tenant, with the cause
 ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
 D6; `TestNoAuditRowNamesAPersonsGroups`). A mapping's own rows name its group: they are an
@@ -597,10 +642,14 @@ the cowork session and answers `204`; the session the browser holds at the issue
 *Sign in with* on that browser may pass without a password — on a shared computer, as the person who
 logged out. With an endpoint, the browser is sent there, and a browser that does not follow — closed,
 offline — leaves the issuer's session as well; the URL carries no `id_token_hint`, and an issuer that
-wants one may ask the person to confirm, or refuse. Not verified: whether Dex v2.45.1 keeps a session
-of its own between two logins — the integration tier's browser keeps no cookie of Dex — and the
-end-session URL against any issuer but the fake one (`TestLogoutAtTheIssuer`). Mitigation: an issuer
-with an end-session endpoint; on a shared computer, log out at the issuer as well.
+wants one may ask the person to confirm, or refuse. Dex v2.45.1 keeps no session of its own,
+measured on 2026-10-06 — it sets no cookie of one, and a second authorization request shows its form
+again —, so with Dex the next sign-in asks for the password. Not verified: the end-session URL
+against any issuer but the fake one (`TestLogoutAtTheIssuer`). A sign-out also forgets that the
+person signs in through the provider, so the login page never starts that sign-in by itself
+afterwards ([above](#signing-in-again-without-a-click)); the button still may pass without a
+password. Mitigation: an issuer with an end-session endpoint; on a shared computer, log out at the
+issuer as well.
 
 <a id="h-29"></a>
 ### H-29 — The issuer's word can leave a tenant without an administrator who can log in
@@ -634,3 +683,21 @@ administrator of every tenant by a grant to a local account the tenant manages i
 a derivation nor the gate touches and whose deactivation the tenant's `last_admin` holds — an
 account another tenant manages, that tenant can still deactivate ([local-accounts.md](local-accounts.md#h-32)
 H-32).
+
+<a id="h-62"></a>
+### H-62 — While the issuer's session lives, the idle limit no longer guards an unattended browser
+
+Live with every issuer that keeps a session of its own and answers `prompt=none` with a code; dormant
+with Dex, which keeps none, and with an issuer whose session has ended. The idle and the absolute
+limit still end cowork's session ([sessions.md](sessions.md)), but a browser that remembers the
+provider signs the person in again at the first input on the login page
+([above](#signing-in-again-without-a-click)): whoever sits at an unattended, unlocked browser —
+a colleague at a desk left open, a shared computer — is one input away from the person's tenants,
+where they were one click away. The click was no barrier either: it too passed without a password
+while the issuer's session lived. What ends that access is the issuer's session policy — its own
+idle and absolute limits, its sign-out — and cowork's sign-out, which forgets the method; an open tab
+nobody touches still shows nothing again by itself. Not verified in a browser: whether a browser sends
+pointer moves of its own under a resting pointer — the page asks for a move to another place than the
+move before, which such a move is not — or gives the window the focus without a person; either would
+sign such a tab in at that moment. Mitigation: an issuer session policy as strict as cowork's should
+be; a locked screen; on a shared computer, sign out of cowork and of the issuer.

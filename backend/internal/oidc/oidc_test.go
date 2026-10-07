@@ -59,7 +59,7 @@ func TestExchangeYieldsTheVerifiedPerson(t *testing.T) {
 	assert.NotEmpty(t, id.RefreshToken)
 	assert.Equal(t, is.URL, p.Issuer())
 
-	u, err := url.Parse(p.AuthCodeURL("the-state", "the-nonce", "the-verifier"))
+	u, err := url.Parse(p.AuthCodeURL("the-state", "the-nonce", "the-verifier", false))
 	require.NoError(t, err)
 	q := u.Query()
 	assert.Equal(t, "the-state", q.Get("state"))
@@ -68,6 +68,22 @@ func TestExchangeYieldsTheVerifiedPerson(t *testing.T) {
 	assert.Equal(t, oauth2.S256ChallengeFromVerifier("the-verifier"), q.Get("code_challenge"))
 	assert.Equal(t, redirect, q.Get("redirect_uri"))
 	assert.Equal(t, "openid email groups offline_access", q.Get("scope"))
+	assert.False(t, q.Has("prompt"), "a login the person started may show the issuer's pages")
+}
+
+// docs/adr/0029 D6: a silent login asks the issuer with prompt=none to answer
+// without a page of its own, and is the same code flow otherwise.
+func TestASilentLoginAsksForNoPage(t *testing.T) {
+	is := fakeissuer.Start(t)
+	p := provider(t, is)
+	u, err := url.Parse(p.AuthCodeURL("the-state", "the-nonce", "the-verifier", true))
+	require.NoError(t, err)
+	q := u.Query()
+	assert.Equal(t, []string{"none"}, q["prompt"])
+	assert.Equal(t, "the-state", q.Get("state"))
+	assert.Equal(t, "the-nonce", q.Get("nonce"))
+	assert.Equal(t, oauth2.S256ChallengeFromVerifier("the-verifier"), q.Get("code_challenge"))
+	assert.Equal(t, "code", q.Get("response_type"))
 }
 
 // docs/adr/0029 D1: the ID token's signature, audience, expiry and nonce are

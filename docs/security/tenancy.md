@@ -269,13 +269,17 @@ catalog for every table with a `tenant_id` column, seeds each with a row of a se
 and asserts that an unfiltered query as the runtime role under the first tenant sees none of
 them — a new table is covered the day it is created.
 
-One migration lifts the force for itself. The rank's backfill
+A migration whose own statements rewrite rows lifts the force for itself. The rank's backfill
 ([migration 17](../../backend/internal/store/migrations/000017_ticket_rank.up.sql)) rewrites
 `tickets` as the owner with no tenant set, which the forced policy would hide every row from,
 so it runs `NO FORCE` before the backfill and `FORCE` after it
-([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D1). The
-file runs as one transaction, which holds `tickets` exclusively from its first `ALTER` on: no
-other transaction sees the table unforced, and a failed run rolls the lift back with the rest.
+([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D1); later
+backfills do the same on `tickets` and `ticket_interest`, and the rewrites of a capability's old
+name ([migration 38](../../backend/internal/store/migrations/000038_horizon_names_only.up.sql),
+[migration 40](../../backend/internal/store/migrations/000040_capability_checks_set_horizon_only.up.sql))
+on `tokens`, `chat_capabilities` and `saved_filters`. Each file runs as one transaction, which
+holds a table exclusively from its first `ALTER` on: no other transaction sees the table
+unforced, and a failed run rolls the lift back with the rest.
 The runtime role is held by the policy either way — the force concerns the owner alone.
 `TestLiftedForceIsRestoredInTheSameMigration` holds every lift to a restore in the same file,
 which `TestEveryTableHasItsPolicyAndGrant` alone would not notice, and

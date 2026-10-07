@@ -18,8 +18,9 @@ import (
 // Memory keeps what one process of cowork-mcp leaves the next: when
 // session_start last ran for a binding, so "since the last session" has a
 // meaning (docs/adr/0042 D5), and the model Claude Code named to the
-// SessionStart hook in a project directory, which the MCP server of that
-// directory puts into its agent mark (docs/adr/0067 D5, docs/adr/0036 D3).
+// SessionStart hook in a project directory, or to the PostModelSwitch hook
+// after a switch, which the MCP server of that directory puts into its agent
+// mark (docs/adr/0067 D5, docs/adr/0036 D3).
 type Memory interface {
 	// LastStart is the time of the previous start for the binding; ok is
 	// false when there was none.
@@ -29,8 +30,8 @@ type Memory interface {
 	// Model is the model last recorded for the project directory; "" when
 	// none was, or the last record was "".
 	Model(projectDir string) (string, error)
-	// SetModel records the model of the session started in the project
-	// directory; "" records that it named none.
+	// SetModel records the model of the session started or switched in the
+	// project directory; "" records that a start named none.
 	SetModel(projectDir, model string) error
 }
 
@@ -87,8 +88,9 @@ func (m *InMemory) SetModel(projectDir, model string) error {
 // FileMemory keeps the times in one small file per installation and binding
 // under a directory, the user's cache directory by default — the only file
 // the MCP server writes (docs/adr/0042 D5, docs/adr/0067 D5) —, and the model
-// in one file per project directory, which the SessionStart hook writes and
-// the server reads. A missing file is no previous session, and no model.
+// in one file per project directory, which the SessionStart and
+// PostModelSwitch hooks write and the server reads. A missing file is no
+// previous session, and no model.
 type FileMemory struct {
 	Dir string
 }

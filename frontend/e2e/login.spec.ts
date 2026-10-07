@@ -148,3 +148,45 @@ test(
     await signOut(page);
   },
 );
+
+test(
+  "a person of the identity provider whose session ended is sent to the provider's sign-in without a click",
+  { tag: '@smoke' },
+  async ({ page, context }) => {
+    // Signed in with the button: the browser remembers the identity provider (docs/adr/0029 D6).
+    await page.goto('/login');
+    await page.getByTestId('login-oidc').click();
+    await expect(page).toHaveURL(/localhost:\d+\/dex\//);
+    await page.locator('input[name="login"]').fill(dexMember.email);
+    await page.locator('input[name="password"]').fill(dexMember.password);
+    await page.locator('button[type="submit"]').click();
+    await expect(page.getByTestId('me-menu')).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('cowork.sign-in'))).toBe('oidc');
+
+    // The session ends without a sign-out — here the browser loses its cookie — and the next page
+    // the person opens sends them to the login page, which says that it signs them in again.
+    await context.clearCookies({ name: sessionCookie });
+    const starts: string[] = [];
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/auth/oidc/login') {
+        starts.push(request.url());
+      }
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/login\?return=/);
+    await expect(page.getByTestId('login-resuming')).toContainText(
+      'Signing you in again through Dex',
+    );
+    expect(starts, 'nothing before a sign of the person').toEqual([]);
+
+    // The pointer moves: the page leaves for the provider by itself, with silent=true. Dex keeps no
+    // session and ignores prompt=none, so its form is where the person lands — without a click.
+    await page.mouse.move(40, 40);
+    await page.mouse.move(160, 120, { steps: 4 });
+    await expect(page).toHaveURL(/localhost:\d+\/dex\//);
+    await expect(page.locator('input[name="login"]')).toBeVisible();
+    expect(starts).toHaveLength(1);
+    expect(new URL(starts[0]).searchParams.get('silent')).toBe('true');
+    expect(new URL(starts[0]).searchParams.get('return_to')).toBe('/');
+  },
+);

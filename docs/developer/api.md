@@ -167,8 +167,11 @@ administrator's view of the installation's clients, which a token of theirs does
   groups are due runs its groups refresh first — the request that claims it waits for the issuer,
   the session's others are served on its groups — and a refresh that ends it is that `401` too
   ([architecture.md](architecture.md#the-groups-refresh-in-the-request-path)). A live session moves
-  its idle clock at most once a minute (`DB.TouchSession`, bookkeeping outside `Mutate`; a failure
-  is logged).
+  its idle clock only for the person's activity — a write that passes the CSRF check, or a read
+  that carries `X-Cowork-Activity: input` (`api.ActivityHeader`, `api.ActivityInput`), which the
+  UI's keep-alive sends after the person's input; no other read, the event stream's included
+  ([ADR 0031] D3; `movesIdleClock`) — and then at most once a minute (`DB.TouchSession`,
+  bookkeeping outside `Mutate`; a failure is logged).
   The principal has `Session: true`, the cookie's hash in `SessionHash`, the scope `admin` — a
   session has no scope, the role decides — no agent mark but the header's, `GlobalAdmin` and
   `PasswordChangeRequired` from the person. `callerOf` puts the hash into `store.Caller`, which
@@ -220,7 +223,10 @@ design is [docs/security/local-accounts.md](../security/local-accounts.md),
 [`oidc.go`](../../backend/internal/api/oidc.go): `LoginOidc` and `OidcCallback` are browser
 navigations — the login page sets `window.location` — that answer redirects, never JSON: the start
 `302` to the issuer, the callback `303` to the path the login began with or to
-`/login?error=<code>`. The callback's answer sets two cookies, the session's and the cleared state
+`/login?error=<code>`. The start's `silent=true` — the login page's own attempt after a session
+ended ([ADR 0029] D6) — adds `prompt=none` to the authorization request (`oidc.Provider.AuthCodeURL`)
+and `Silent` to the sealed `loginState`; `callbackRefusal` turns the issuer's `error` to such a login
+into `login_required` when the cookie opens, and every other refusal into `oidc_failed`. The callback's answer sets two cookies, the session's and the cleared state
 cookie, which the generated response type, with one `Set-Cookie`, cannot carry: `redirect`
 implements the generated `VisitOidcCallbackResponse` itself. Its failures are redirects too, so
 `OidcCallback` returns no `problem.Error` for them; the reason goes to the log. The relying party
@@ -566,7 +572,10 @@ expand and a later contract ([ADR 0028] D3):
   out an answer names both.
 - **The contract**, in a release after the expand and once no supported client reads the old names,
   takes them out of the document, the code and the tests, and a migration of its own rewrites what
-  the database stored under them.
+  the database stored under them. Where the release before still writes an old name into a column
+  whose check takes it, the check keeps the name until the first release whose release before no
+  longer writes it; that release's migration rewrites again what an image rollback wrote in between
+  and then narrows the check ([ADR 0028] D3).
 
 The horizon went through both ([ADR 0010] D1 as amended 2026-10-05 and 2026-10-06). Release 0.5
 answered `urgency`, `urgency_derived`, `urgency_rule` and `urgency_override` beside `horizon` and
@@ -575,9 +584,12 @@ filter's `urgency` and the capability `override-urgency`, and stored `override-u
 `set-horizon`. The release after it knows the new names only — an old one sent is `400`, a field or
 a parameter the operation does not have —, and
 [migration 38](../../backend/internal/store/migrations/000038_horizon_names_only.up.sql) rewrote
-the stored capability sets and a saved filter's `urgency`. The checks of the capability sets still
-take `override-urgency` until a later release, since 0.5 writes it beside `set-horizon` after an
-image rollback; `auth.Canonical` drops it wherever a set is read, so no answer carries it. What keeps the old word is what no
+the stored capability sets and a saved filter's `urgency`. The checks of the capability sets took
+`override-urgency` in 0.6 and 0.7, since 0.5 writes it beside `set-horizon` after an image rollback,
+and those releases dropped it wherever a set was read;
+[migration 40](../../backend/internal/store/migrations/000040_capability_checks_set_horizon_only.up.sql)
+rewrote the three again and took the old name out of both checks, which refuse it now
+(`TestTheNarrowingMigrationRewritesAgainAndRefusesTheOldName`). What keeps the old word is what no
 client reads as API: the enum `urgency` and its columns (`TicketRow.UrgencyOverride` …, mapped in
 `ticketView` and `setOverride`), and the audit record's act `overridden` with its payload
 `urgency_override`, which the activity, the context and the session start read as setting the

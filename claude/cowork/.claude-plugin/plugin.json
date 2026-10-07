@@ -1,7 +1,7 @@
 {
   "name": "cowork",
   "displayName": "cowork",
-  "description": "Work from a cowork backlog: the cowork MCP server, a SessionStart hook that shows the session's ticket, a Stop hook that reminds of unfinished work, and the skills /next, /ticket, /question and /done. Needs the cowork-mcp binary on the PATH.",
+  "description": "Work from a cowork backlog: the cowork MCP server, a SessionStart hook that shows the session's ticket, a Stop hook that reminds of unfinished work, a PostModelSwitch hook that keeps the agent mark on the session's model, and the skills /next, /ticket, /question and /done. Needs the cowork-mcp binary on the PATH.",
   "author": {
     "name": "Guided Traffic",
     "url": "https://github.com/guided-traffic"
@@ -10,6 +10,7 @@
   "repository": "https://github.com/guided-traffic/cowork",
   "license": "Apache-2.0",
   "keywords": ["backlog", "tickets", "kanban", "mcp"],
+  "hooks": "./hooks/model-switch.json",
   "userConfig": {
     "cowork_url": {
       "type": "string",

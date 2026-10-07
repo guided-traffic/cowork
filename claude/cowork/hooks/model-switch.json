@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostModelSwitch": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "COWORK_URL=\"${CLAUDE_PLUGIN_OPTION_COWORK_URL:-$COWORK_URL}\" COWORK_TOKEN=\"${CLAUDE_PLUGIN_OPTION_COWORK_TOKEN:-$COWORK_TOKEN}\" cowork-mcp model-switch",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -64,6 +64,12 @@
   text-align: center;
 }
 
+// A calm word above the identity provider's button: the session ended, and what comes next.
+.note {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
 // Between the identity provider's button and the local form.
 .divider {
   margin: 0;
