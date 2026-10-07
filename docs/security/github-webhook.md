@@ -139,7 +139,7 @@ into another tenant's row does not open there (`TestTheSecretIsSealedForItsTenan
 
 Making a secret and rotating it — one route, which replaces the old secret at once — lets whoever
 learns the new secret write into the tenant after a leaked token's revocation, so it takes a
-browser session ([ADR 0035](../adr/0035-personal-access-tokens.md) D5, eighteen session-only
+browser session ([ADR 0035](../adr/0035-personal-access-tokens.md) D5, one of the session-only
 operations): a token is `403 session_required`, a session the agent header marks `403
 agent_forbidden`, and the role is a tenant administrator's with `admin` scope, never an agent's
 ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)

@@ -1,0 +1,69 @@
+.card {
+  padding: 1.25rem;
+  border: 1px solid var(--p-app-border);
+  border-radius: var(--p-border-radius-xl);
+  background: var(--p-app-panel);
+}
+
+.consistency {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  h2 {
+    margin: 0;
+    font-size: 1rem;
+  }
+
+  h3 {
+    margin: 0.5rem 0 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  p {
+    margin: 0;
+  }
+}
+
+.small {
+  font-size: 0.8125rem;
+}
+
+.panel {
+  border: 1px solid var(--p-app-border);
+  border-radius: var(--p-border-radius-lg);
+  overflow: hidden;
+}
+
+.name {
+  overflow-wrap: anywhere;
+}
+
+.key {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.col-key {
+  width: 7rem;
+  white-space: nowrap;
+}
+
+.col-size {
+  width: 6rem;
+  white-space: nowrap;
+}
+
+.col-state {
+  width: 9rem;
+}
+
+.missing {
+  color: var(--p-severity-high);
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+}

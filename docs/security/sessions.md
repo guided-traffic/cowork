@@ -126,7 +126,7 @@ D3 as amended; `authenticateSession` in [`api/session.go`](../../backend/interna
 The chat in the UI marks its tool calls so ([chat.md](chat.md)); a request without the header is the
 person's.
 
-- **Eighteen routes take a session only** and answer a token `403 session_required`
+- **Nineteen routes take a session only** and answer a token `403 session_required`
   ([ADR 0035](../adr/0035-personal-access-tokens.md) D5, [ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
   D1, D5): creating a token (`POST /api/v1/me/tokens`), creating a tenant
   (`POST /api/v1/tenants`), creating a local account (`POST …/accounts`), resetting its
@@ -138,16 +138,20 @@ person's.
   capabilities (`PUT /api/v1/me/chat`), a global administrator's list of every tenant
   (`GET /api/v1/tenants`), purging a deleted ticket (`DELETE …/deleted-tickets/{key}`,
   [ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
-  D7), and making or rotating the tenant's GitHub webhook secret (`POST …/integrations/github/secret`,
+  
+  D7), making or rotating the tenant's GitHub webhook secret (`POST …/integrations/github/secret`,
   [ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
-  D1). What the first twelve, the chat's capabilities and the webhook secret make, and what a purge
+  D1), and removing the orphaned objects of a consistency check
+  (`POST …/attachment-consistency/orphan-removal`,
+  [ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+  D4). What the first twelve, the chat's capabilities and the webhook secret make, and what a purge or a removal
   destroys, would outlive the revocation of a leaked token, a turn acts with the person's session and its stop ends the session's
   person's turns, and the list shows a global administrator's view across the installation's
   clients, which a token of theirs does not get; the table and the rule are
   [tokens.md](tokens.md#what-only-a-session-does). The API document declares them with
-  `sessionCookie` alone, and a unit test over the document holds the set to exactly these eighteen
+  `sessionCookie` alone, and a unit test over the document holds the set to exactly these nineteen
   ([`backend/api/document_test.go`](../../backend/api/document_test.go)). A session's request the
-  agent header marks is refused all eighteen with `403 agent_forbidden`. Every other operation
+  agent header marks is refused all nineteen with `403 agent_forbidden`. Every other operation
   that names a person takes either credential; GitHub's webhook names none, and a session cookie on
   a delivery is not looked at ([github-webhook.md](github-webhook.md)).
 - **A turn of the chat presents the session again with every tool call.** Each call is a request of

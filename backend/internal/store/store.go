@@ -36,9 +36,10 @@ type Options struct {
 	// SlowQuery is the threshold of the slow-query log; zero means
 	// DefaultSlowQuery.
 	SlowQuery time.Duration
-	// Metrics receives what the store can tell (docs/adr/0060 D4): the pool
-	// and the schema state, read at a scrape, the failed statements by kind,
-	// the jobs' runs and the committed acts. nil records nothing.
+	// Metrics receives what the store can tell (docs/adr/0060 D4): the pool,
+	// the schema state and the consistency check's counts, read at a scrape,
+	// the failed statements by kind, the jobs' runs and the committed acts.
+	// nil records nothing.
 	Metrics *metrics.Metrics
 }
 
@@ -85,6 +86,7 @@ func Open(ctx context.Context, databaseURL string, opts Options) (*DB, error) {
 	db := &DB{pool: pool, logger: logger, metrics: opts.Metrics}
 	opts.Metrics.ObservePool(db.poolStats)
 	opts.Metrics.ObserveSchema(db.schemaForMetrics)
+	opts.Metrics.ObserveConsistency(db.consistencyForMetrics)
 	return db, nil
 }
 

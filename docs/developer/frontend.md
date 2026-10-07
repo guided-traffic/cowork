@@ -94,6 +94,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `AuditService` | A numbered page of the tenant's audit record, and its CSV: the JSON's first page gives the server's `Date`, which ends the period of the download, then numbered pages of a hundred rows as CSV, put together with the header once, at most the newest 10 000 rows (*The audit record*, below) |
 | `TenantsService` | Creating a tenant (a global administrator, in a session), then `me` and the installation's tenants again so the new membership shows |
 | `DeletedTicketsService` | The current tenant's bin of deleted tickets, every page of it, loaded only while the person is its administrator; a restoration, whose answer goes into the ticket cache, and a purge; loads again on a `ticket.changed` of its tenant whose kind is `deleted`, `restored` or `purged` (`changesExistence`) — the purge job's included —, on `resync` and on `poll`, through `ConditionalPages` |
+| `AttachmentConsistencyService` | The current tenant's latest consistency check of its attachments, loaded only while the person is its administrator, through `ConditionalPages`; accepting the loss of its missing files and removing its orphaned objects, each naming the check shown; loads again after either act, on `resync` and on `poll` — the check is on no event stream |
 | `SavedFiltersService` | The saved filters of `workTenant` — the person's own and the shared ones —, every page of them, through `ConditionalPages`; `create` with the form's key, `update` with the filter's version as `If-Match`, `remove`; filters are not on the event stream, so the list loads again after each act, on `resync`, `poll` and when a filter bar opens its select |
 | `ChatService` | The chat of the tenant the pages show: its availability and providers (`GET …/chat`, of `workTenant`), the provider the person picked and whether the panel is open — the person's preferences in `localStorage` —, the chat's capabilities (`GET`/`PUT /api/v1/me/chat`, read while the panel is open), one conversation — in memory, gone when another tenant's pages open —, the turn that runs and its Stop ([the assistant](#the-assistant)) |
 
@@ -1066,7 +1067,8 @@ administrators'.
 
 **The tenant's settings** ([`tenant-settings.ts`](../../frontend/src/app/features/tenant/tenant-settings.ts),
 `/t/:tenant/settings`) show its administrators what the tenant's attachments hold — the sum, the
-number of files and the quota, with a meter where there is one (`byteSize`, `quotaShare`), or that
+number of files and the quota, with a meter where there is one (`byteSize` of
+[`shared/bytes.ts`](../../frontend/src/app/shared/bytes.ts), `quotaShare`), or that
 the installation sets none — read by the page itself when it opens (`GET …/attachment-usage`,
 [ADR 0016] D6) through a `ConditionalPages`, and again on an upload or a purge in the tenant, a
 `resync` and a `poll` (`changesUsage`) — a deletion moves nothing, because a deleted ticket's files
@@ -1078,7 +1080,20 @@ what to set at GitHub; *Make the secret*, or *Rotate the secret* and *Revoke*, e
 a question of the section's own `ConfirmationService`. A new secret shows once in
 [`SecretDialog`](../../frontend/src/app/shared/secret-dialog.ts) with the payload URL beside it, held in
 one signal until *I have stored it*; the section loads again after each act. Making and rotating go in the
-page's browser session, which the API asks of them.
+page's browser session, which the API asks of them. Below it, *Files and the bucket*
+([`attachment-consistency.ts`](../../frontend/src/app/features/tenant/attachment-consistency.ts),
+[ADR 0059] D4, D5) shows the latest consistency check of the attachments against the bucket — when it
+ran and what it found in one sentence (`consistencySummary`), the files whose bytes are missing with
+their tickets — a ticket in the bin unlinked — and whether their loss was accepted, the objects no file
+names by key, size and time, who removed a check's objects, and that the lists stop at a thousand
+(`listsCut`) — read through `AttachmentConsistencyService`
+([`attachment-consistency.service.ts`](../../frontend/src/app/core/attachment-consistency.service.ts))
+for the tenant's administrators only, when the page opens, after either act and on a `resync` and a
+`poll`; the check is on no event stream. *Accept the loss…* asks once, saying that nothing is
+removed; *Remove the objects…* asks twice like the purge of a ticket — the second time *Remove for
+good*, a danger button, with the focus on *Keep them* — and goes in the page's browser session, which
+the API asks of it. A refusal — `409 consistency_check_stale` when a newer check replaced the lists —
+is a toast, and the check is read again.
 
 The settings form of a project starts again from the list only when another project or another
 value of its own fields arrives: the list loads again on events, and the restriction raises the
@@ -1229,6 +1244,7 @@ accessible names an element, are part of a page's contract, and `ng lint` covers
 [ADR 0053]: ../adr/0053-signals-and-services-no-store-framework.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
 [ADR 0055]: ../adr/0055-english-only-browser-locale-for-dates-and-numbers.md
+[ADR 0059]: ../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md
 [ADR 0071]: ../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md
 [ADR 0076]: ../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md

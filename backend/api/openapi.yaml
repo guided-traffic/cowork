@@ -20,7 +20,8 @@ info:
     password, logging out, a turn of the chat and stopping one, choosing the
     chat's capabilities, a global administrator's list of every tenant, purging a
     deleted ticket — the one irreversible act on a ticket —, making or rotating
-    the tenant's GitHub webhook secret, and the
+    the tenant's GitHub webhook secret, removing the orphaned objects a
+    consistency check found — gone for good as well —, and the
     administration acts that give access: adding a member, setting a grant,
     making or changing a group mapping, restricting or opening a project,
     putting a person on its access list. A request of a session that writes must come from the installation's
@@ -228,6 +229,12 @@ paths:
     $ref: './time.yaml#/timeReport'
   /api/v1/tenants/{tenant}/attachment-usage:
     $ref: './attachments.yaml#/attachmentUsage'
+  /api/v1/tenants/{tenant}/attachment-consistency:
+    $ref: './attachments.yaml#/attachmentConsistency'
+  /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal:
+    $ref: './attachments.yaml#/orphanRemoval'
+  /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance:
+    $ref: './attachments.yaml#/danglingAcceptance'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments:
     $ref: './attachments.yaml#/attachments'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}:

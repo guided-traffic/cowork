@@ -88,7 +88,11 @@ actor's name: `idempotency-expiry`, `session-expiry`, `login-expiry`, `notificat
 `ticket-purge`. A session past a
 limit is refused at its next request whether or not the job has run; the job only keeps the
 table small. A purge is irreversible; an installation that must keep a deleted ticket longer has
-no setting for it yet.
+no setting for it yet. Every hour each replica also asks whether the consistency check of the
+attachments is due, `consistency-check`: it is once a day in the hour after 03:00 UTC, and at a start
+that finds the last run before the latest 03:00 UTC; one replica then compares every tenant's
+attachments with the bucket and keeps the result for the tenant's administrators, removing nothing
+([backups.md](backups.md#the-consistency-check)). Without object storage it never runs.
 
 ## The migration run
 
@@ -198,6 +202,10 @@ an alert or a look:
 | `metrics listening`, `the metrics listener is off` | info | at start: the metrics listener's address, or `COWORK_METRICS_ADDR` empty ([metrics.md](metrics.md)) |
 | `the schema version could not be read for the metrics` | warn | a scrape's read of the version table failed; the line carries the error, the scrape goes without the schema's two series until the next read |
 | `ticket purged` | info | the purge job removed a ticket deleted thirty days ago; the line names its key and how many attachments it had |
+| `consistency check done` | info | the daily consistency check ran: how many tenants, files whose bytes are missing and objects no file names, in all |
+| `the attachments of a tenant are out of step with the bucket` | warn | the check found files whose bytes are missing or objects no file names in a tenant; the line names the tenant's slug and the counts, never a file name ([backups.md](backups.md#the-consistency-check)) |
+| `the consistency counts could not be read for the metrics` | warn | a scrape's read of the check's results failed; the line carries the error, the scrape goes without the two series until the next read, a minute later |
+| `an orphaned object could not be removed` | error | a tenant administrator confirmed the removal of a check's orphans and the object store refused one; the line names the tenant and the object key, and the next check lists it again |
 | `an attachment object of a purged ticket could not be removed`, `a purged ticket had attachments, and no object storage is configured to remove them from` | error, warn | a purge — the job's or an administrator's — committed and an object stays in the bucket that no row names; the line names the ticket and the object key, which the operator may remove by hand |
 | `the chat's provider failed`, `a turn of the chat failed` | warn, error | a turn of the chat ended on its provider — the kind, the status and a clip of the provider's message without the key — or on anything else ([the chat's stream](#the-chats-stream)) |
 | `no object storage configured; attachments cannot be uploaded` | warn | at start, without `COWORK_S3_*` |
@@ -527,7 +535,8 @@ answers `404` saying the installation has no object storage. With storage config
 download whose object is missing from the bucket — a restore that brought the database back
 without the bytes — answers `404` saying so, and an object store that refuses the backend shows
 as `500 internal` with a `request failed` log line naming the storage's error. The storage is
-checked by nothing at start; the first upload is the test. Setting it up:
+checked by nothing at start; the first upload is the test, and the first consistency check — at
+the first start — the test of the listing. Setting it up:
 [installation.md, object storage](installation.md#object-storage).
 
 ## The frontend

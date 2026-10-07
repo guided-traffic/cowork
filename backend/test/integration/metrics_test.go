@@ -101,8 +101,11 @@ func TestServeAnswersAScrapeOnItsMetricsListener(t *testing.T) {
 	assert.True(t, metrics.Has(samples, "go_goroutines"))
 	for _, s := range samples {
 		for label, value := range s.Labels {
-			assert.NotContains(t, []string{"person", "person_id", "user", "user_id", "ticket", "key", "token", "token_id", "request_id", "tenant"},
+			assert.NotContains(t, []string{"person", "person_id", "user", "user_id", "ticket", "key", "token", "token_id", "request_id"},
 				label, "%s carries the label %s", s.Name, label)
+			if label == "tenant" {
+				assert.True(t, strings.HasPrefix(s.Name, "cowork_consistency_"), "%s carries a tenant", s.Name)
+			}
 			if label == "route" {
 				for _, instance := range []string{"metrics", "OBS", "/" + strconv.Itoa(number)} {
 					assert.NotContains(t, value, instance, "a route label holds what the client sent")

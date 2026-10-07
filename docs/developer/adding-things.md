@@ -163,7 +163,8 @@ The registry and how it records are [metrics.md](metrics.md); the decision is
    in `_seconds`; `TestEveryInstrumentIsNamedByTheRule` holds the subsystems of D4.
 2. **The labels** come from a closed set of typed constants, the API document's route patterns or a
    name in the code — never from a request, and never a person, a ticket, a key, a token, a request
-   id, or a tenant outside the consistency family (D5). Not `job` or `instance`, which Prometheus
+   id, or a tenant outside the consistency family's two counts, which `tenantLabelled` names (D5).
+   Not `job` or `instance`, which Prometheus
    gives every target and would rename. A closed set is made at zero (`initialise`).
 3. **Make it** in the subsystem's `…Instruments` method of
    [`internal/metrics/metrics.go`](../../backend/internal/metrics/metrics.go) through `m.counter`,

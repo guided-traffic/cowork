@@ -1005,6 +1005,7 @@ included. After the purge, its key and the ids of its rows stay in the audit rec
 in the event ring for the replay window (H-5); the stored answer of a keyed creation of the ticket, a
 question or a comment keeps their text in `idempotency_keys` for up to a day after it was written
 (H-2); and an object whose removal failed after the commit stays in the bucket with no row naming it
+until a tenant administrator removes it from the next consistency check's list
 ([attachments.md](attachments.md#h-13)). Backups taken before the purge keep everything. A legal
 retention shorter or longer than thirty days is not configurable.
 

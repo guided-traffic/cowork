@@ -6,11 +6,14 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/guided-traffic/cowork/backend/internal/config"
+	"github.com/guided-traffic/cowork/backend/internal/store"
 )
 
 func envOf(values map[string]string) func(string) (string, bool) {
@@ -49,6 +52,42 @@ func TestRunHelp(t *testing.T) {
 	require.Equal(t, 0, code)
 	assert.Contains(t, stdout.String(), "serve")
 	assert.Contains(t, stdout.String(), "migrate")
+}
+
+// docs/adr/0059 D5: the check a restore runs at once compares the bucket with
+// the database, so it needs both; it says which variable is missing.
+func TestCheckConsistencyNeedsTheDatabaseAndTheStorage(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run(context.Background(), []string{"check-consistency"}, envOf(nil), &stdout, &stderr)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr.String(), config.EnvDatabaseURL+", or its components")
+	assert.Contains(t, stderr.String(), "is required")
+
+	stderr.Reset()
+	env := envOf(map[string]string{config.EnvDatabaseURL: "postgres://cowork_app@db/cowork"})
+	code = run(context.Background(), []string{"check-consistency"}, env, &stdout, &stderr)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr.String(), config.EnvS3Endpoint+" is required by cowork check-consistency")
+	assert.Empty(t, stdout.String())
+
+	stdout.Reset()
+	require.Equal(t, 0, run(context.Background(), []string{"help"}, envOf(nil), &stdout, &stderr))
+	assert.Contains(t, stdout.String(), "check-consistency")
+}
+
+// What the check prints: the run in all, then every tenant by slug and id with
+// its counts — never a file name or a key.
+func TestTheCheckPrintsEveryTenantsCounts(t *testing.T) {
+	quiet, loud := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	var out bytes.Buffer
+	printConsistency(&out, store.ConsistencyRun{Ran: true, At: time.Date(2026, 10, 6, 3, 12, 0, 0, time.UTC),
+		Tenants: []store.TenantConsistency{
+			{TenantID: quiet, Slug: "quiet"},
+			{TenantID: loud, Slug: "loud", Dangling: 1, Accepted: 2, Orphans: 3, OrphanBytes: 4096},
+		}})
+	assert.Equal(t, "consistency check at 2026-10-06T03:12:00Z: 2 tenants, 1 dangling, 2 accepted as lost, 3 orphaned objects (4096 bytes)\n"+
+		"tenant quiet ("+quiet.String()+"): 0 dangling, 0 accepted as lost, 0 orphaned objects (0 bytes)\n"+
+		"tenant loud ("+loud.String()+"): 1 dangling, 2 accepted as lost, 3 orphaned objects (4096 bytes)\n", out.String())
 }
 
 func TestRunDownIsUnknown(t *testing.T) {

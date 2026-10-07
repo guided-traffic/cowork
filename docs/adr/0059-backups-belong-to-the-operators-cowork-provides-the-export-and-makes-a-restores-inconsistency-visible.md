@@ -12,6 +12,34 @@ not objected to.
 `/markdown`) and D4's honest `404` for an attachment whose bytes are missing; the project and
 tenant export, the consistency check, the restore steps and D6 arrive with the export.
 
+**Built** (2026-10-06): D4 and D6 — the consistency check —, and D1, D2 and D5 as the operations
+page [docs/operations/backups.md](../operations/backups.md). The project and the tenant export
+of D2 and D3 come with the export of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4, which the
+same release brings and the page describes as built; the metric of the last export's age comes
+with it. What the record left open is made concrete in place, in D4, D5 and D6, by the
+implementer, open to the owner's objection:
+
+- **D4** — the job `consistency-check` ([`store/consistency.go`](../../backend/internal/store/consistency.go)),
+  [migration 42](../../backend/internal/store/migrations/000042_attachment_consistency.up.sql),
+  `GET`, `POST …/orphan-removal` and `POST …/dangling-acceptance` under
+  `/api/v1/tenants/{tenant}/attachment-consistency`
+  ([`api/consistency.go`](../../backend/internal/api/consistency.go)), the section *Files and the
+  bucket* on the tenant's settings page, the gauges `cowork_consistency_dangling_attachments` and
+  `cowork_consistency_orphaned_objects` and the alert `CoworkAttachmentsOutOfStep`
+  ([ADR 0060](0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
+  D4, D6).
+- **D5** — the acceptance of a loss and `cowork check-consistency`, the step that runs the check
+  at once.
+- **D6** — the schedule, daily in the hour after 03:00 UTC and at a start that finds the last run
+  older than that.
+- Verified by the unit tests of the schedule, the judgement and the family, the integration tier —
+  a restore's dangling row and orphans in one tenant and nothing in another, the summary, the
+  counts on a second replica, the acceptance, the removal in a session that keeps an object
+  that gained metadata, the refusals, the command line on the built binary — and the frontend's
+  specs. Not run: the check against a store other than the MinIO of the tests, and a restore of a
+  real installation.
+
 ## Context
 
 cowork's state lives in two external systems — PostgreSQL and an S3-compatible store
@@ -49,17 +77,51 @@ a tenant's prefix without metadata (orphans), writes a summary into the installa
 audit record, exposes both counts as metrics (the metrics record), and shows them in the
 tenant's administration page. A download of a dangling attachment answers `404` with a
 problem whose `detail` says the object is missing, never a bare `404`. Orphans are removed by
-the purge job only after an administrator confirms the list.
+the purge job only after an administrator confirms the list. *(Made concrete 2026-10-06 by the
+implementer, open to the owner's objection:)* the job is `consistency-check`, under the job lock
+`(cowk, 7)`, in one transaction: for every tenant it lists the objects under `<tenant-id>/` —
+which takes `s3:ListBucket` on the bucket beside reading, writing and deleting objects — then
+reads the tenant's attachments, asks the bucket for each attachment the listing missed, and
+judges an object no metadata names an orphan unless the time in its key's UUIDv7, or the last
+change of a key the backend does not write, lies within the last hour: an upload puts its object
+before its row commits. The tenant's result replaces its last one under a new id — the counts
+exact, each list at most a thousand entries, the dangling files with their names and tickets — and
+is readable by the tenant's administrators and the job alone, under row-level security. The
+installation-level act is `checked`, with the counts in all and per tenant by id, never a file
+name or a key. The gauges are read from the stored results at a scrape, so every replica answers
+the same. The removal is not the hourly purge job's but the confirming request's: the
+administrator names the check whose list they were shown — a newer check, or a removal confirmed
+already, is `409 consistency_check_stale` —, each orphan of that list is asked again in the
+confirming transaction whether metadata names it now, the act `purged` is recorded with the
+counts, and the objects are removed after its commit, as an administrator's purge of a ticket
+removes its objects; a removal that fails is logged and listed again by the next check. It takes a
+browser session and no agent, by the rule of
+[ADR 0035](0035-personal-access-tokens.md) D5 for an act nothing undoes. The objects under the
+prefix of a tenant the database does not know are not listed.
 
 **D5 — The restore procedure is a step list in `docs/operations/`,** honest about the
 non-transactional gap: restore the database to its point in time first, then the bucket to
 the nearest point at or after it; run the consistency check; read its summary; accept the
 dangling metadata or re-upload. The page says plainly that an attachment uploaded between the
-two snapshots is the one that will be missing.
+two snapshots is the one that will be missing. *(Made concrete 2026-10-06 by the implementer,
+open to the owner's objection:)* the check runs at once with `cowork check-consistency` in a
+backend container, which prints every tenant's counts; a restart does not run it when the restored
+database records a run after the last 03:00 UTC. Accepting the dangling metadata is a tenant
+administrator's recorded act, `accepted`, with `admin` scope and never an agent's: the listed
+files count as accepted instead of dangling and hold no alert, nothing is removed, and their
+download keeps answering that the bytes are missing; a file whose bytes come back is whole again,
+and the check forgets its acceptance, so that a later loss counts once more.
 
 **D6 — Export and consistency check need no new configuration.** The export is an API route;
 the check uses the storage configuration that exists; its schedule is a constant (daily, at a
-fixed UTC hour) until an installation asks for a value.
+fixed UTC hour) until an installation asks for a value. *(Made concrete 2026-10-06 by the
+implementer, open to the owner's objection:)* the jobs ask every hour whether the check is due —
+when no tenant has a result yet, or when the last run, as the database records it, lies before the
+latest 03:00 UTC —, so it runs once a day in the hour after 03:00 UTC on whichever replica asks
+first, and at a start that finds the last run older than that, which a run a day old always is.
+Without object storage it never runs. The alert's restore window is a value of the chart
+([ADR 0060](0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
+D6), not of the backend.
 
 ## Consequences
 
@@ -91,7 +153,12 @@ fixed UTC hour) until an installation asks for a value.
 - D4's orphan listing on a very large bucket is a prefix scan per tenant per day; at the
   expected sizes it is seconds, and the job is bounded by the per-tenant prefix of
   [ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
-  D1.
+  D1. *(Added 2026-10-06:)* The run holds one database transaction open for every tenant's
+  listing; not measured on a large bucket.
+- *(Added 2026-10-06:)* The listing needs `s3:ListBucket`, so the access key can enumerate every
+  tenant's object keys, which it could not before; a key that leaks alone then reads every object,
+  not only those whose keys the database names
+  ([docs/security/attachments.md](../security/attachments.md#h-68) H-68).
 
 ## References
 

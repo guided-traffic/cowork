@@ -1,11 +1,11 @@
 #!/bin/sh
 # AN EXAMPLE TO COPY AND ADAPT, NOT A SUPPORTED DEPLOYMENT (docs/adr/0058 D1, D2).
 # Written against the MinIO client mc RELEASE.2025-08-13T08-35-41Z, its last
-# release. `make examples-lint` checks only that `sh -n` reads it. Run once, on
-# 2026-10-06, with other names and a stand-in for kubectl, against the MinIO of
+# release. `make examples-lint` checks only that `sh -n` reads it. Run on
+# 2026-10-07, with other names and a stand-in for kubectl, against the MinIO of
 # `make minio-up` — Chainguard's build, version 2026-09-22T19-25-18Z: the key it
-# made put, read and deleted objects in its bucket and was refused listing the
-# bucket, another bucket and the administration. The repositories of the MinIO
+# made put, read, listed and deleted objects in its bucket and was refused
+# listing another bucket and the administration. The repositories of the MinIO
 # server and of mc are archived on GitHub, and neither image can be pulled from
 # Docker Hub or quay.io any more (both checked 2026-10-06): no fix follows from
 # MinIO.
@@ -39,8 +39,10 @@ trap 'rm -f "$policy_file"; mc alias remove "$ALIAS" >/dev/null 2>&1 || true' EX
 mc alias set "$ALIAS" "$MINIO_URL" "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
 mc mb --ignore-existing "$ALIAS/$BUCKET"
 
-# The backend writes, reads and deletes objects under <tenant-id>/<attachment-id>;
-# it never lists, creates or deletes a bucket.
+# The backend writes, reads and deletes objects under <tenant-id>/<attachment-id>,
+# and its daily consistency check lists the bucket's keys under each tenant's
+# prefix (docs/operations/installation.md#object-storage); it never creates or
+# deletes a bucket.
 cat >"$policy_file" <<EOF
 {
   "Version": "2012-10-17",
@@ -49,6 +51,11 @@ cat >"$policy_file" <<EOF
       "Effect": "Allow",
       "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
       "Resource": ["arn:aws:s3:::$BUCKET/*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::$BUCKET"]
     }
   ]
 }

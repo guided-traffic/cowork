@@ -59,7 +59,8 @@ flowchart LR
 - 📜 **Contract first** — the OpenAPI 3.1 document in `backend/api/` generates the server, is served at `/api/v1/openapi.json` and validates every request; every error is RFC 9457 problem details with a stable `code`.
 - 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; every act made through a token shows it on the ticket — the agent's mark, or the token's name — so nothing a script or a model does reads as the person's own; `ETag` and `If-Match` keep two writers from overwriting each other.
 - 📡 **Live updates** — server-sent events per tenant carry keys and versions, never content, filtered by what the reader may see; a reconnect replays what it missed.
-- 📈 **Prometheus metrics** — requests by route pattern, the database pool, the jobs, the event streams, the acts, the logins and the schema, on a port of their own that no Service carries and no label of which names a tenant or a person; the chart adds a `PodMonitor` or a `ServiceMonitor`, four alerts with their runbooks and a Grafana dashboard, each behind a switch.
+- 📈 **Prometheus metrics** — requests by route pattern, the database pool, the jobs, the event streams, the acts, the logins, the schema and each tenant's attachments out of step with the bucket, on a port of their own that no Service carries and no label of which names a person, a tenant only by its id; the chart adds a `PodMonitor` or a `ServiceMonitor`, five alerts with their runbooks and a Grafana dashboard, each behind a switch.
+- 🩹 **A restore that cannot go silently wrong** — backups are the database's and the object store's; cowork checks every tenant's files against the bucket once a day, shows its administrators the files whose bytes are missing and the objects no file names, lets them accept a loss or remove the leftovers in a browser session, and `cowork check-consistency` runs the check at once after a restore.
 - 🗑️ **Deletion that waits thirty days** — a tenant administrator deletes a ticket, never an agent; from then on it answers like a missing one everywhere but the tenant's bin, which restores it as it was, until the purge — a job thirty days later, or an administrator's second confirmation in a browser session, which no token gives — removes it with its files, keeping in the audit record only its key, who did what and when.
 - 🔖 **Saved filters** — the list filters under a name, the person's own or shared with the tenant with its owner beside it, applied, saved and shared from the filter bars of the backlog, of the tenant board and of the tenant's ticket list — every project's tickets in one table, whose address is its filter, so a filtered list is a link; a value that no longer holds is a warning, a shared filter that names what the reader cannot see is shown without its conditions, and a tenant administrator unshares or deletes a shared one — of a person who left, say — and changes nothing else of it.
 - 🔎 **Search with snippets** — PostgreSQL full text over titles, bodies, comments, questions and file names, keys by their beginning and titles by trigram, one ranked hit per ticket with the words found marked; a tenant's from its pages, every tenant's of the person from anywhere, each hit held to what the reader may see.
@@ -137,7 +138,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Username | 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit; unique in the installation; the identity is `local:<username>`, which `POST …/members` takes as well | `ada.lovelace` |
 | Person of the identity provider | the issuer and the ID token's `sub`; no username | — |
 | Group name | as the provider's groups claim carries it, matched exactly, case and all; in a mapping 1–256 characters with no white space at either end | `cowork-users` `# example` |
-| System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge` | `system:identity-provider` |
+| System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge`, `consistency-check` | `system:identity-provider` |
 | Local account origin | `config` — the one account `COWORK_LOCAL_ADMIN_*` names — or `tenant` — one a tenant administrator created and that tenant manages | — |
 | Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
 | Activity header | `X-Cowork-Activity: input` on a read of a session: the person's activity, which moves the idle clock; any other value, or none, moves nothing | `X-Cowork-Activity: input` |
@@ -228,7 +229,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
 | [docs/developer/development-credentials.md](docs/developer/development-credentials.md) | Every development-only username, password, key and token of `make dev`, its containers and the test tiers, with the file that sets it |
-| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation; [GitHub's webhook](docs/operations/github.md) per repository |
+| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; [upgrading](docs/operations/upgrade.md); [backups, the consistency check and a restore](docs/operations/backups.md); runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation; [GitHub's webhook](docs/operations/github.md) per repository |
 | [deploy/examples/](deploy/examples/) | A CloudNativePG cluster and a MinIO bucket to copy and adapt — examples checked for syntax against the operators' CRD schemas, not supported deployments |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
@@ -443,6 +444,8 @@ keeps the old chart's defaults too, so a value a release adds is missing
 ([upgrade](docs/operations/installation.md#upgrade)). The pending migrations run before the new
 server starts — in the init container of each new backend pod, or in the migration Job in job mode;
 see [docs/operations/runtime.md](docs/operations/runtime.md#the-migration-run).
+Take a backup first; the procedure — the order, where the schema stands, a rollback, a dirty
+schema — is [docs/operations/upgrade.md](docs/operations/upgrade.md).
 
 </details>
 
@@ -609,6 +612,7 @@ is substituted at start, and it serves the UI and nothing else — the Ingress r
 |---|---|
 | `cowork serve` | Load the configuration (`COWORK_SESSION_KEY` required, the owner role's connection too while migrating on start, the identity provider's client id and secret with `COWORK_OIDC_ISSUER`); migrate unless `COWORK_MIGRATE_ON_START=false`; connect as the runtime role; refuse a runtime role that could bypass row-level security, a dirty schema and pending migrations; discover the identity provider when `COWORK_OIDC_ISSUER` is set, and refuse to start when it cannot; synchronise the local administrator and the bootstrap tenant under an advisory lock; listen until `SIGINT`/`SIGTERM` |
 | `cowork migrate` | Load the configuration (the runtime role's connection — `COWORK_DATABASE_URL` or its components — names the role the migrations grant to, the owner role's is the role they run as); apply pending migrations; with `COWORK_MIGRATE_BOOTSTRAP=true` then synchronise the local administrator and the bootstrap tenant as `serve` does, as the runtime role and under the same advisory lock; exit 0. Exit 1 on a dirty or failing schema, a runtime role that could bypass row-level security or a failed bootstrap |
+| `cowork check-consistency` | Load the configuration (the runtime role's connection — `COWORK_DATABASE_URL` or its components — and the `COWORK_S3_*` variables required); refuse a runtime role that could bypass row-level security, a dirty schema and pending migrations; run the consistency check of the attachments against the bucket now, as the daily job does, and print the run and every tenant — slug, id, dangling, accepted as lost, orphaned objects and their bytes; exit 0. Exit 1 on a failure, and when another replica runs the check at that moment. In the chart: `kubectl exec deploy/<fullname>-backend -c backend -- /app/cowork check-consistency` ([backups](docs/operations/backups.md#the-consistency-check)) |
 | `cowork version` | Print `cowork <version> (commit <sha>, built <epoch>)` |
 | `cowork help` | Print the usage (also `-h`, `--help`) |
 
@@ -697,14 +701,16 @@ full.
   `Authorization` header is a token's, whatever cookie it carries. Without a valid credential the
   answer is `401` (`unauthenticated`, `token_expired`, `token_revoked`, and `not_allowed` for a
   token whose person the identity provider's gate no longer admits) with
-  `WWW-Authenticate: Bearer realm="cowork"`. Eighteen routes take a **session only** and answer a
+  `WWW-Authenticate: Bearer realm="cowork"`. Nineteen routes take a **session only** and answer a
   token `403 session_required`: creating a token, a tenant or a local account, resetting or
   changing a password, logging out, a turn of the chat and stopping one, choosing the chat's
   capabilities, a global administrator's list of every tenant, purging a deleted ticket, making or
-  rotating the tenant's GitHub webhook secret, and the administration acts that can give access — adding a
+  rotating the tenant's GitHub webhook secret, removing the orphaned objects of a consistency check,
+  and the administration acts that can give access — adding a
   member, setting a grant, making or changing a group mapping, restricting or opening a project,
   putting a person on its access list ([ADR 0035](docs/adr/0035-personal-access-tokens.md) D5,
   [ADR 0024](docs/adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7,
+  [ADR 0059](docs/adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md) D4,
   [tokens](docs/security/tokens.md#what-only-a-session-does)). A **write of a session** must come
   from `COWORK_BASE_URL` — its `Origin`, or without one its `Referer` — and carry
   `X-Requested-With: cowork`, else `403 csrf`; a token's writes need neither
@@ -745,7 +751,7 @@ full.
   the ticket lists, the projects, the members, the group mappings, a project's access list, the
   lists of a ticket — comments, activity, questions, links, interest, attachments, time entries,
   the prerequisite tree, the pull requests —, the person's inbox, "next for me", assigned tickets and decisions, the bin of deleted
-  tickets, the saved filters, the tenant's dashboard, the tenant's tokens and the attachments' usage answer
+  tickets, the saved filters, the tenant's dashboard, the tenant's tokens, the attachments' usage and their consistency check answer
   a weak `ETag`, the caller's page, and `304` without a body to it in `If-None-Match`. A query
   parameter the route does not declare is `400`; a path parameter that cannot name anything is
   `404`. The person-level lists under `/api/v1/me/` — the inbox, "next for me", the tickets assigned
@@ -997,7 +1003,7 @@ to a project is refused like an unknown tenant.
 </details>
 
 <details>
-<summary>Attachments — 5 routes</summary>
+<summary>Attachments — 8 routes</summary>
 
 | Method and path | Does |
 |---|---|
@@ -1006,6 +1012,9 @@ to a project is refused like an unknown tenant.
 | `GET …/{number}/attachments/{attachment}` | its metadata |
 | `GET …/{number}/attachments/{attachment}/content` | its bytes, with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`; raster images inline, everything else as a download; the `ETag` is the SHA-256 of the bytes; every `200` is recorded |
 | `GET /api/v1/tenants/{tenant}/attachment-usage` | the tenant's administrators, `read` scope: `{"used_bytes","attachments","quota_bytes"}` — every attachment of the tenant summed, confidential tickets' included and a deleted ticket's until the purge, and `COWORK_ATTACHMENT_TENANT_QUOTA` or `null` without one; a weak `ETag`, `304` to it; anybody else `403 forbidden` |
+| `GET …/attachment-consistency` | the tenant's administrators, `read` scope: the latest consistency check — `check_id` and `checked_at` (`null` before the first), `dangling` (files whose bytes are missing, loss not accepted), `accepted`, `orphans` (objects under the tenant's prefix no file names) with `orphan_bytes`, `dangling_attachments` (id, file name, size, type, the ticket's key, whether the ticket is in the bin, uploaded, accepted) and `orphaned_objects` (key, size, last modified), at most 1000 each, and `orphan_removal` (who, when, removed, kept) or `null`; a weak `ETag`, `304` to it; anybody else `403 forbidden` |
+| `POST …/attachment-consistency/orphan-removal` | a tenant administrator in a **browser session only**, never an agent: `{"check_id"}` → `200 {"removed","kept","failed"}` — each orphan of that check's list asked again whether a file names it now (`kept`), the act `purged` recorded, the objects removed after the commit, a failure logged and listed by the next check; another check than the latest, or one whose orphans were removed already, `409 consistency_check_stale`; no orphans, `200` with zeros and nothing recorded; a token `403 session_required`; without object storage `501 uploads_disabled` |
+| `POST …/attachment-consistency/dangling-acceptance` | a tenant administrator with `admin` scope, never an agent: `{"check_id"}` → `200 {"accepted"}` — the check's listed missing files nobody accepted count as accepted from now on, recorded as `accepted`; nothing is removed, and a file whose bytes come back is whole again; another check than the latest `409 consistency_check_stale` |
 
 </details>
 
@@ -1071,7 +1080,8 @@ every error body carries one of these as `code`.
 | `period_locked` | 409 | The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8) |
 | `attachment_limit` | 409 | The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6) |
 | `attachment_quota` | 409 | The tenant's attachments would hold more bytes than COWORK_ATTACHMENT_TENANT_QUOTA allows; nothing was stored (docs/adr/0016 D6) |
-| `uploads_disabled` | 501 | The installation has no object storage configured; attachments cannot be uploaded (docs/adr/0016 D1) |
+| `consistency_check_stale` | 409 | The consistency check the request names is not the tenant's latest any more — a newer check replaced its lists — or its orphans were removed already; read `GET …/attachment-consistency` again (docs/adr/0059 D4) |
+| `uploads_disabled` | 501 | The installation has no object storage configured; attachments cannot be uploaded, and orphaned objects cannot be removed (docs/adr/0016 D1) |
 | `chat_unavailable` | 409 | The tenant has no chat: the installation configures no provider; `GET …/chat` says so (docs/adr/0076) |
 | `precondition_failed` | 412 | The `If-Match` version is stale; the response carries the current `ETag` and `errors[]` the current values (docs/adr/0050 D5) |
 | `payload_too_large` | 413 | The body is larger than the configured limit (docs/adr/0039 D2) |
@@ -1092,8 +1102,9 @@ The backend's instruments, Prometheus text at `/metrics` on `COWORK_METRICS_ADDR
 ([ADR 0060](docs/adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md);
 scraping, the alerts and the dashboard: [docs/operations/metrics.md](docs/operations/metrics.md)).
 Source: [`backend/internal/metrics/metrics.go`](backend/internal/metrics/metrics.go). Every count is
-the replica's; no label names a person, a ticket, a key, a token, a request id or a tenant. A label
-set marked *at zero* exists from the start. A scrape through the Prometheus Operator adds the
+the replica's but the consistency family's, which the database answers alike on every replica; no
+label names a person, a ticket, a key, a token or a request id, and a tenant only on the consistency
+family, by its id. A label set marked *at zero* exists from the start. A scrape through the Prometheus Operator adds the
 target's `namespace`, `pod`, `container` and `job`.
 
 <details>
@@ -1110,7 +1121,7 @@ target's `namespace`, `pod`, `container` and `job`.
 | `cowork_db_pool_wait_duration_seconds` | summary: `_count`, `_sum` | — | The acquires among them that waited because no connection was free, and the time they waited; `rate(_sum)` is the mean number waiting |
 | `cowork_db_pool_canceled_acquires_total` | counter | — | Acquires a context ended before a connection was free |
 | `cowork_db_query_errors_total` | counter | `kind`: `unique_violation`, `foreign_key_violation`, `check_violation`, `not_null_violation`, `integrity_violation`, `serialization_failure`, `deadlock_detected`, `insufficient_privilege`, `lock_not_available`, `query_canceled`, `connection`, `other_sqlstate`, `canceled`, `timeout`, `other` | Failed statements by the SQLSTATE's meaning or what the client saw; a row that was not found is no failure. `insufficient_privilege` is a policy, a grant or a guard that refused |
-| `cowork_jobs_runs_total` | counter | `name` | Runs of a background job on this replica that took its lock, or failed before it could; `name` is the job's system actor: `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge`, `bootstrap` |
+| `cowork_jobs_runs_total` | counter | `name` | Runs of a background job on this replica that took its lock, or failed before it could; `name` is the job's system actor: `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge`, `consistency-check` (once a day), `bootstrap` |
 | `cowork_jobs_failures_total` | counter | `name` | The runs that failed |
 | `cowork_jobs_duration_seconds` | histogram, 10 ms to 600 s | `name` | A run's duration |
 | `cowork_jobs_consecutive_failures` | gauge | `name` | Runs that failed one after the other since the job's last success on this replica; `CoworkJobFailing` fires at 2 |
@@ -1124,11 +1135,13 @@ target's `namespace`, `pod`, `container` and `job`.
 | `cowork_auth_token_refusals_total` | counter | `reason`: `malformed`, `unknown`, `revoked`, `expired`, `not_allowed`, `session_only`, *at zero* | Personal access tokens refused; `session_only` is a usable token on a route that takes a session only |
 | `cowork_migrations_schema_version` | gauge | — | The schema version the database records, read at a scrape at most every ten seconds; absent after a read that failed |
 | `cowork_migrations_schema_dirty` | gauge | — | `1` while the recorded version is dirty: a migration failed halfway, or one is running |
+| `cowork_consistency_dangling_attachments` | gauge | `tenant`: the tenant's id | Files of the tenant whose metadata is there and whose bytes the bucket lacks, and whose loss nobody accepted, at its latest consistency check; read from the stored results at a scrape at most once a minute, the same on every replica; no series for a tenant without a result |
+| `cowork_consistency_orphaned_objects` | gauge | `tenant`: the tenant's id | Objects under the tenant's prefix that no file names, at its latest check; after an administrator's confirmed removal, those its list of a thousand did not show |
 | `go_*`, `process_*` | | | The Go runtime's and the process's, `client_golang`'s defaults |
 
-The consistency family of [ADR 0059](docs/adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-D4 — dangling attachment metadata, orphaned objects, seconds since the last export, the only one with
-a `tenant` label — comes with the consistency check, which is not built.
+The consistency family's third instrument of
+[ADR 0059](docs/adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4, the seconds since the last export, comes with the export.
 
 </details>
 
@@ -1261,6 +1274,7 @@ metrics:                              # Prometheus text at /metrics on the backe
     enabled: false
     labels: {}                        # what your Prometheus's ruleSelector matches
     alertLabels: {}                   # on every alert, for Alertmanager's routing; a severity here replaces the alert's own
+    restoreWindow: 24h                # how long a tenant's consistency counts stay above zero before CoworkAttachmentsOutOfStep fires
   grafanaDashboard:                   # a ConfigMap with the dashboard, for the Grafana sidecar
     enabled: false
     labels:

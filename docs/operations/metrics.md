@@ -76,11 +76,13 @@ one, switch the rule off and write your own from
 | [`CoworkEventStreamDrops`](#coworkeventstreamdrops) | warning | a pod dropped an event stream that fell behind in every ten minutes for fifteen |
 | [`CoworkDatabasePoolExhausted`](#coworkdatabasepoolexhausted) | warning | every connection of a pod's pool has been in use, with acquires waiting, for ten minutes |
 | [`CoworkJobFailing`](#coworkjobfailing) | warning | a background job failed at its last two runs on a pod |
+| [`CoworkAttachmentsOutOfStep`](#coworkattachmentsoutofstep) | warning | a tenant's latest consistency check found files whose bytes are missing or objects no file names, and they stayed for `metrics.prometheusRule.restoreWindow` (`24h` `# default`) |
 
-The consistency check's two alerts — counts above zero for longer than the restore window, the last
-export too old — come with the check, which is not built
-([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-D4); so do its instruments, the only ones with a `tenant` label.
+`metrics.prometheusRule.restoreWindow` is the one threshold that is a value: how long a restore takes
+to be settled is the installation's
+([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
+D6). The alert on the age of the last export comes with the export; nothing watches the export's
+schedule yet ([backups.md](backups.md#the-export-the-second-line)).
 
 ## The dashboard
 
@@ -89,8 +91,9 @@ D4); so do its instruments, the only ones with a `tenant` label.
 is `grafana_dashboard: "1"` `# default`, the label and value kube-prometheus-stack's sidecar looks
 for, and `metrics.grafanaDashboard.annotations` carries what your sidecar reads beside it, a folder
 for one. The dashboard picks a Prometheus data source and a namespace, and has a row each for HTTP,
-the database, the background jobs, the event stream, the audit and the login, and the process — the
-last reads the series of the container `backend`, the label the operator's targets carry. Not run
+the database, the background jobs, the event stream, the audit and the login, the attachments'
+consistency by tenant id, and the process — the last reads the series of the container `backend`,
+the label the operator's targets carry. Not run
 here: a Grafana loading it.
 
 ## nginx's numbers
@@ -204,7 +207,8 @@ replica.
 
 **What it means.** A background job failed at its last two runs on a pod — the jobs run at start
 and every hour. The label `name` is the job: `idempotency-expiry`, `session-expiry`, `login-expiry`,
-`notification-expiry`, `ticket-purge`, or `bootstrap`, the start's synchronisation, which ends the
+`notification-expiry`, `ticket-purge`, `consistency-check` — asked every hour whether it is due,
+and due again every hour while it fails —, or `bootstrap`, the start's synchronisation, which ends the
 process when it fails, so its alert shows only as a pod that does not start. While a job fails,
 what it removes stays: stored responses of idempotent requests, sessions past their limits — which are
 refused at their next request all the same —, failed login attempts and ended locks, notifications
@@ -215,4 +219,27 @@ D2).
 
 **What to do.** The pod's log says `job failed` with the same job name and the error. A database
 that does not answer shows on `/readyz` as well; a refusal of a policy or a grant after an upgrade
-is a defect to report with the line. The alert ends with the job's next success, an hour later.
+is a defect to report with the line. `consistency-check` failing with `Access Denied` at `list the
+objects` is a storage key without `s3:ListBucket` on the bucket
+([installation.md](installation.md#object-storage)). The alert ends with the job's next success, an
+hour later.
+
+## CoworkAttachmentsOutOfStep
+
+**What it means.** The latest consistency check of the tenant with the id in the label `tenant`
+found files whose metadata is there and whose bytes the bucket lacks, or objects under the tenant's
+prefix that no file names, and they have stayed for longer than the restore window
+([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4). The value is the two counts together; a loss an administrator accepted counts in neither. The
+usual cause is a restore of the database and the bucket from two points in time; an orphan alone is
+also what a removal that failed after a purge leaves. The tenant's people see a file that answers its
+download with `404` saying the bytes are missing, or nothing at all — an orphan is a file no ticket
+lists any more.
+
+**What to do.** Find the tenant: the label is its id; the slug is in the log line `the attachments of
+a tenant are out of step with the bucket` of the check's run, and in the output of
+`cowork check-consistency`. Its administrators see the lists on its settings page and settle them
+there — putting lost bytes back or accepting their loss, copying orphans out and removing them —, as
+[backups.md](backups.md#the-consistency-check) says. Bytes put back show at the next check, which
+`cowork check-consistency` runs at once; an acceptance or a removal shows within a minute. The alert
+ends when the counts are zero.

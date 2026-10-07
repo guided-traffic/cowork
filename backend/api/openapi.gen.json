@@ -1012,6 +1012,80 @@
         ],
         "type": "object"
       },
+      "AttachmentConsistency": {
+        "description": "The tenant's latest consistency check of its attachments (docs/adr/0059 D4): the files whose\nmetadata is there and whose bytes the bucket lacks — dangling — and the objects under the\ntenant's prefix that no metadata names — orphans —, with the counts exact and each list at most\n1000 entries long. `check_id` is null, and everything else empty, while no check has run in the\ntenant.\n",
+        "properties": {
+          "accepted": {
+            "description": "The files whose bytes are missing and whose loss an administrator accepted",
+            "type": "integer"
+          },
+          "check_id": {
+            "description": "The check's id, which a removal of its orphans or an acceptance of its missing files names",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checked_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dangling": {
+            "description": "The files whose bytes are missing and whose loss nobody accepted",
+            "type": "integer"
+          },
+          "dangling_attachments": {
+            "description": "The missing files, those nobody accepted first, at most 1000",
+            "items": {
+              "$ref": "#/components/schemas/DanglingAttachment"
+            },
+            "type": "array"
+          },
+          "orphan_bytes": {
+            "description": "The orphans' sizes, summed",
+            "format": "int64",
+            "type": "integer"
+          },
+          "orphan_removal": {
+            "description": "The removal of this check's orphans an administrator confirmed; null before",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OrphanRemovalRecord"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "orphaned_objects": {
+            "description": "The orphans in key order, at most 1000; empty once their removal was confirmed",
+            "items": {
+              "$ref": "#/components/schemas/OrphanedObject"
+            },
+            "type": "array"
+          },
+          "orphans": {
+            "description": "The objects no metadata names; after a confirmed removal, those its list did not show",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "check_id",
+          "checked_at",
+          "dangling",
+          "accepted",
+          "orphans",
+          "orphan_bytes",
+          "dangling_attachments",
+          "orphaned_objects",
+          "orphan_removal"
+        ],
+        "type": "object"
+      },
       "AttachmentList": {
         "properties": {
           "items": {
@@ -1104,7 +1178,8 @@
           "read",
           "merged",
           "closed",
-          "reopened"
+          "reopened",
+          "accepted"
         ],
         "type": "string"
       },
@@ -1944,6 +2019,20 @@
         ],
         "type": "object"
       },
+      "ConsistencyCheckRef": {
+        "additionalProperties": false,
+        "description": "The consistency check whose lists the administrator was shown",
+        "properties": {
+          "check_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check_id"
+        ],
+        "type": "object"
+      },
       "CurrentToken": {
         "allOf": [
           {
@@ -1962,6 +2051,65 @@
           }
         ],
         "description": "The token a request presents, and what it makes of the request (docs/adr/0043 D6)"
+      },
+      "DanglingAcceptance": {
+        "description": "What an acceptance of the missing files did",
+        "properties": {
+          "accepted": {
+            "description": "The files whose loss was accepted now",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "type": "object"
+      },
+      "DanglingAttachment": {
+        "description": "A file whose metadata is there and whose bytes the bucket lacks; its download answers 404 saying so",
+        "properties": {
+          "accepted": {
+            "description": "An administrator accepted the loss",
+            "type": "boolean"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "ticket": {
+            "description": "The key of its ticket, tenant/PROJECT-number",
+            "type": "string"
+          },
+          "ticket_deleted": {
+            "description": "The ticket is in the bin; the purge removes the file with it",
+            "type": "boolean"
+          },
+          "uploaded_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "file_name",
+          "size",
+          "content_type",
+          "ticket",
+          "ticket_deleted",
+          "uploaded_at",
+          "accepted"
+        ],
+        "type": "object"
       },
       "Dashboard": {
         "description": "The tenant's dashboard, the nine fixed tiles of docs/adr/0018 D6, read in one read-only\ntransaction. Every tile counts only what the caller can see: the visibility predicate holds\neach ticket, question and time entry it reads, so a restricted project or a confidential\nticket the caller cannot see counts nowhere and is named nowhere (docs/adr/0034 D4,\ndocs/adr/0065 D4), and a time entry follows the visibility of time as well (docs/adr/0034\nD5). A deleted ticket counts nowhere either — nor its questions and its time — until it is\nrestored (docs/adr/0024 D1). *Open* is every state but `done` and `dropped`. The open tiles count the tickets as they\nstand at the request; throughput and lead time end with the period's last day; the time is\nthe period's (docs/adr/0019 D2). Days are UTC days and weeks ISO weeks of them\n(docs/adr/0055 D3). The counted projects are the ones the `project` filter names, or, without\na plain value, every project the caller sees that is not archived; a negated value leaves its\nproject out, and a key that names no project the caller sees counts nothing.\n",
@@ -3493,6 +3641,78 @@
         ],
         "type": "object"
       },
+      "OrphanRemoval": {
+        "description": "What a confirmed removal of the orphans did, object by object",
+        "properties": {
+          "failed": {
+            "description": "Objects whose removal failed; the log names each, and the next check lists them again",
+            "type": "integer"
+          },
+          "kept": {
+            "description": "Objects that had gained metadata since the check: no orphans any more, kept",
+            "type": "integer"
+          },
+          "removed": {
+            "description": "Objects removed, or gone already",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "removed",
+          "kept",
+          "failed"
+        ],
+        "type": "object"
+      },
+      "OrphanRemovalRecord": {
+        "properties": {
+          "kept": {
+            "description": "The orphans that had gained metadata by then and were kept",
+            "type": "integer"
+          },
+          "removed": {
+            "description": "The orphans whose removal was confirmed and tried",
+            "type": "integer"
+          },
+          "removed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "removed_by": {
+            "$ref": "#/components/schemas/Person"
+          }
+        },
+        "required": [
+          "removed_at",
+          "removed_by",
+          "removed",
+          "kept"
+        ],
+        "type": "object"
+      },
+      "OrphanedObject": {
+        "description": "An object under the tenant's prefix that no metadata names",
+        "properties": {
+          "key": {
+            "description": "The object key in the bucket, \u003ctenant-id\u003e/\u003cattachment-id\u003e where it is one the backend wrote",
+            "type": "string"
+          },
+          "last_modified": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "size": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "size",
+          "last_modified"
+        ],
+        "type": "object"
+      },
       "PasswordChange": {
         "additionalProperties": false,
         "properties": {
@@ -3726,6 +3946,7 @@
           "period_locked",
           "attachment_limit",
           "attachment_quota",
+          "consistency_check_stale",
           "uploads_disabled",
           "chat_unavailable",
           "precondition_failed",
@@ -6314,7 +6535,7 @@
     }
   },
   "info": {
-    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat and stopping one, choosing the\nchat's capabilities, a global administrator's list of every tenant, purging a\ndeleted ticket — the one irreversible act on a ticket —, making or rotating\nthe tenant's GitHub webhook secret, and the\nadministration acts that give access: adding a member, setting a grant,\nmaking or changing a group mapping, restricting or opening a project,\nputting a person on its access list. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). GitHub's\nwebhook takes neither credential: its deliveries are signed with the\ntenant's secret (docs/adr/0071). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
+    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat and stopping one, choosing the\nchat's capabilities, a global administrator's list of every tenant, purging a\ndeleted ticket — the one irreversible act on a ticket —, making or rotating\nthe tenant's GitHub webhook secret, removing the orphaned objects a\nconsistency check found — gone for good as well —, and the\nadministration acts that give access: adding a member, setting a grant,\nmaking or changing a group mapping, restricting or opening a project,\nputting a person on its access list. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). GitHub's\nwebhook takes neither credential: its deliveries are signed with the\ntenant's secret (docs/adr/0071). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
     "title": "cowork",
     "version": "0.0.0"
   },
@@ -7442,6 +7663,142 @@
           "$ref": "#/components/parameters/Username"
         }
       ]
+    },
+    "/api/v1/tenants/{tenant}/attachment-consistency": {
+      "get": {
+        "description": "What the daily check found last: the files whose metadata is there and whose bytes the bucket\nlacks — dangling, after a restore that brought the database back without them; their download\nanswers 404 saying so — and the objects under the tenant's prefix that no metadata names —\norphans, after a restore that brought the bucket back from a later point, or a removal that\nfailed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,\na token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets\nthey may not see. Before the first check `check_id` is null. An answer the client holds\nunchanged is `304` to its weak `ETag` (docs/adr/0054 D7).\n",
+        "operationId": "getAttachmentConsistency",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentConsistency"
+                }
+              }
+            },
+            "description": "The latest result",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The latest consistency check of the tenant's attachments against the bucket",
+        "tags": [
+          "attachments"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ],
+      "post": {
+        "description": "A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,\ndocs/adr/0043 D3): the missing files of the check's list nobody accepted yet count as accepted\nfrom now on — as lost — instead of dangling, and no longer hold the alert. Nothing is removed:\nthe files stay listed on their tickets and their download answers 404 saying the bytes are\nmissing; one whose bytes come back is whole again, and a later loss of it counts once more. The\nbody names the check whose list the administrator was shown; a newer check is\n`409 consistency_check_stale`. Recorded as `accepted`, with the count. A list with nothing to\naccept changes nothing and records nothing.\n",
+        "operationId": "acceptDanglingAttachments",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsistencyCheckRef"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "accepted": 3
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/DanglingAcceptance"
+                }
+              }
+            },
+            "description": "What the acceptance did"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Accept the loss of a consistency check's missing files",
+        "tags": [
+          "attachments"
+        ]
+      }
+    },
+    "/api/v1/tenants/{tenant}/attachment-consistency/orphan-removal": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        }
+      ],
+      "post": {
+        "description": "A tenant administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a\nbrowser session only**: nothing brings a removed object back, so a token — an administrator's\n`admin` token included — answers `403 session_required` (docs/adr/0035 D5). The body names the\ncheck whose list the administrator confirms; a newer check, or a removal confirmed already, is\n`409 consistency_check_stale`. Each orphan of that list is asked again whether an attachment\nnames it now — one that does is kept —, the act is recorded as `purged`, with the counts and no\nkey, and the objects are removed after the commit; a removal that fails is logged with its key\nand listed again by the next check. A check with no orphans changes nothing and records\nnothing. Without object storage, `501 uploads_disabled`.\n",
+        "operationId": "removeOrphanedObjects",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsistencyCheckRef"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "failed": 0,
+                  "kept": 1,
+                  "removed": 2
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/OrphanRemoval"
+                }
+              }
+            },
+            "description": "What the removal did"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Remove the orphaned objects of a consistency check, confirmed",
+        "tags": [
+          "attachments"
+        ]
+      }
     },
     "/api/v1/tenants/{tenant}/attachment-usage": {
       "get": {

@@ -58,6 +58,8 @@ const (
 	AuditActionMerged             AuditAction = "merged"
 	AuditActionClosed             AuditAction = "closed"
 	AuditActionReopened           AuditAction = "reopened"
+	AuditActionChecked            AuditAction = "checked"
+	AuditActionAccepted           AuditAction = "accepted"
 )
 
 func (e *AuditAction) Scan(src interface{}) error {
@@ -796,6 +798,29 @@ type CommentRevision struct {
 	CreatedAt time.Time
 	TokenID   *uuid.UUID
 	TokenName *string
+}
+
+type ConsistencyAcceptance struct {
+	TenantID     uuid.UUID
+	AttachmentID uuid.UUID
+	AcceptedBy   uuid.UUID
+	AcceptedAt   time.Time
+}
+
+type ConsistencyCheck struct {
+	ID               uuid.UUID
+	TenantID         uuid.UUID
+	CheckedAt        time.Time
+	Dangling         int32
+	Accepted         int32
+	Orphans          int32
+	OrphanBytes      int64
+	DanglingItems    []byte
+	OrphanItems      []byte
+	OrphansRemovedAt *time.Time
+	OrphansRemovedBy *uuid.UUID
+	OrphansRemoved   *int32
+	OrphansKept      *int32
 }
 
 type GithubDelivery struct {

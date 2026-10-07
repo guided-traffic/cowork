@@ -118,16 +118,16 @@ reaches further than its person does at that moment.
 
 | Scope | Reaches |
 |---|---|
-| `read` | every read of what the person may see, the tenant's member list included; for a tenant administrator also the tenant's audit view, its group mappings, a project's access list ([`api/members.go`](../../backend/internal/api/members.go) `adminRead`) and the tokens that can act in the tenant |
+| `read` | every read of what the person may see, the tenant's member list included; for a tenant administrator also the tenant's audit view, its group mappings, a project's access list ([`api/members.go`](../../backend/internal/api/members.go) `adminRead`), the tokens that can act in the tenant, the attachments' usage and their consistency check with the names of the missing files |
 | `write` | additionally what a member does: filing and editing tickets, transitions, links, comments, questions and answers, stakes, progress, uploads, booking time; creating a project where the person may ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D9); revoking another of the person's tokens |
-| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, revoking the tenant's GitHub webhook secret ([github-webhook.md](github-webhook.md)) — never making or rotating it, which takes a session —, archiving a project, setting or lifting the confidential flag, deleting a ticket and restoring it, which the bin undoes for thirty days ([tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one), [H-54](tenancy.md#h-54)) — never purging it, which takes a session —, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`), unsharing or deleting another person's shared saved filter ([`api/filters.go`](../../backend/internal/api/filters.go) `mayChangeFilter`, [tenancy.md](tenancy.md#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw)); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); revoking a member's token that can act in the tenant — never the acts that only a session makes ([below](#what-only-a-session-does)) |
+| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, revoking the tenant's GitHub webhook secret ([github-webhook.md](github-webhook.md)) — never making or rotating it, which takes a session —, archiving a project, setting or lifting the confidential flag, deleting a ticket and restoring it, which the bin undoes for thirty days ([tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one), [H-54](tenancy.md#h-54)) — never purging it, which takes a session —, accepting the loss of the files a consistency check found missing ([attachments.md](attachments.md#the-consistency-check)) — never removing its orphaned objects, which takes a session —, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`), unsharing or deleting another person's shared saved filter ([`api/filters.go`](../../backend/internal/api/filters.go) `mayChangeFilter`, [tenancy.md](tenancy.md#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw)); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); revoking a member's token that can act in the tenant — never the acts that only a session makes ([below](#what-only-a-session-does)) |
 
 ## What only a session does
 
-Eighteen operations take a browser session only, and answer a token — whatever its scope, an
+Nineteen operations take a browser session only, and answer a token — whatever its scope, an
 administrator's `admin` token included — `403 session_required` before anything is written. The API
 document declares them with the session cookie alone, and a unit test over the document holds the
-set to exactly these eighteen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
+set to exactly these nineteen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
 `sessionOnly`; [ADR 0035](../adr/0035-personal-access-tokens.md) D5):
 
 | Operation | Route | What a leaked token would leave behind |
@@ -150,6 +150,7 @@ set to exactly these eighteen ([`backend/api/document_test.go`](../../backend/ap
 | `listTenants` | `GET /api/v1/tenants` | — it leaves nothing; it shows a global administrator every client of the installation, which a token of theirs does not reach ([tenancy.md](tenancy.md#a-global-administrator-without-a-role)) |
 | `purgeTicket` | `DELETE …/deleted-tickets/{key}` | a ticket gone for good — its texts, its files and its time, its audit rows emptied; nothing undoes a purge ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7 as amended 2026-10-05, [tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one)) |
 | `createGitHubSecret` | `POST …/integrations/github/secret` | a webhook secret whose holder writes links into the tenant and tells its people of merges until somebody rotates or revokes it ([github-webhook.md](github-webhook.md), [ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md) D1) |
+| `removeOrphanedObjects` | `POST …/attachment-consistency/orphan-removal` | objects gone from the bucket for good — the bytes of files a restore left without a ticket, which nobody could copy out any more ([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md) D4, [attachments.md](attachments.md#the-consistency-check)) |
 
 **The rule: an act that can give access, or make something that outlives the token's revocation,
 takes a session; an act that only takes access away does not.** A route that does both — a grant
@@ -162,11 +163,14 @@ from a project's access list (`TestGrantsAndTheLastAdministrator`, `TestGroupMap
 (`TestTheWebhookSecretIsAnAdministratorsAct`). Deleting a ticket and restoring it stay open as well,
 because the bin undoes either for thirty days; the purge, which nothing undoes, does not
 (`TestPurgingTakesABrowserSession`; what a leaked token can still delete is
-[tenancy.md H-54](tenancy.md#h-54)). No agent makes any administration act: an agent token's
+[tenancy.md H-54](tenancy.md#h-54)), nor the removal of a consistency check's orphaned objects; the
+acceptance of the check's missing files stays open, because it removes nothing
+(`TestTheConsistencyCheckIsTheTenantAdministratorsAndNoAgents`; what an acceptance can hide is
+[attachments.md H-70](attachments.md#h-70)). No agent makes any administration act: an agent token's
 scope is at most `write`, and a plain token marked by the header meets the hard-off rule
 "administration".
 
-A session's request that the agent header marks is refused all eighteen,
+A session's request that the agent header marks is refused all nineteen,
 with `403 agent_forbidden`: what only a session does is a person's act, never an agent's
 ([`api/api.go`](../../backend/internal/api/api.go) `sessionRules`).
 

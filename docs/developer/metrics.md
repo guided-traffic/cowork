@@ -3,7 +3,7 @@
 How the backend records its Prometheus instruments: one registry, made in `main.go` and passed to
 every package that records, never the client library's global one; the typed methods each package
 records through; the listener and the lifecycle it shares with the API's; the Grafana dashboard
-generated from Go; the tests; and where the consistency family goes. The decision is
+generated from Go; the tests; and the consistency family, read from the database at a scrape. The decision is
 [ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md);
 the names and labels are [README.md, Metrics](../../README.md#metrics); scraping and the alerts are
 [docs/operations/metrics.md](../operations/metrics.md); what the port tells is
@@ -11,8 +11,8 @@ the names and labels are [README.md, Metrics](../../README.md#metrics); scraping
 
 ```
 runServe ─► metricsOf(cfg) ─► *metrics.Metrics, or nil while COWORK_METRICS_ADDR is empty
-   ├─► store.Open(Options{Metrics})      the pool and the schema state, read at a scrape; failed statements;
-   │                                     every RunJob; the acts, after their commit; the lockouts
+   ├─► store.Open(Options{Metrics})      the pool, the schema state and the consistency counts, read at a scrape;
+   │                                     failed statements; every RunJob; the acts, after their commit; the lockouts
    ├─► events.New(window, limit, m)      open streams, notifications received, streams dropped, replays
    ├─► api.New(Options{Metrics})         the route's pattern for every request; logins; refused tokens
    ├─► httpserver.New(Options{Metrics})  every request: in flight, then its route, method, status, duration
@@ -39,7 +39,8 @@ A label value comes from one of three places and from nowhere else: a closed set
 (`Actor`, `LoginMethod`, `LoginOutcome`, `TokenRefusal`, `StreamDrop`, the store's query error
 kinds), the API document's route patterns, or a name in the code — a job's, an audit action, which
 the database's enum bounds. No value a request carries reaches a label: a route nobody names is
-`Unmatched`, a method HTTP does not define `other` (D5). The closed sets are made at zero
+`Unmatched`, a method HTTP does not define `other` (D5). The one exception is the consistency
+family's `tenant`, a tenant's id read from the database ([below](#the-consistency-family)). The closed sets are made at zero
 (`initialise`), so a rate over them is defined from the first scrape.
 
 ## Who records what
@@ -51,7 +52,7 @@ the database's enum bounds. No value a request carries reaches a label: a route 
 | [`api/authn.go`](../../backend/internal/api/authn.go), [`identity.go`](../../backend/internal/api/identity.go) | `TokenRefused`: `malformed` and `unknown` in `authenticateToken`, `revoked` and `expired` through `recordRefusal`, `not_allowed` through it from `tokenGate`, `session_only` in `authenticate` |
 | [`api/login.go`](../../backend/internal/api/login.go), [`oidc.go`](../../backend/internal/api/oidc.go) | `Login`: the local form's outcome after `RecordLoginAttempt` — `throttled` in `throttled` —, the identity provider's in `OidcCallback`'s `fail` and at its success |
 | [`events/hub.go`](../../backend/internal/events/hub.go) | `OpenStreams` in `Subscribe`, `remove` and `endAll`; `EventPublished` in `Publish`; `SubscriberDropped` — `behind` in `send`, `limit` in `limit`, `resync` in `SetUp` — only for a stream `end` actually ended; `Replay` in `Subscribe` with a `Last-Event-ID` |
-| [`store/store.go`](../../backend/internal/store/store.go) | `ObservePool(poolStats)` and `ObserveSchema(schemaForMetrics)` in `Open`; `QueryError(queryErrorKind(err))` in the slow-query tracer, for every failed statement but `pgx.ErrNoRows` |
+| [`store/store.go`](../../backend/internal/store/store.go) | `ObservePool(poolStats)`, `ObserveSchema(schemaForMetrics)` and `ObserveConsistency(consistencyForMetrics)` in `Open`; `QueryError(queryErrorKind(err))` in the slow-query tracer, for every failed statement but `pgx.ErrNoRows` |
 | [`store/jobs.go`](../../backend/internal/store/jobs.go) `RunJob` | `JobRun(name, took, failed)` for a run that took the lock or failed before it, unless the context ended; the bootstrap is a `RunJob` too |
 | [`store/tx.go`](../../backend/internal/store/tx.go) | `writeEvents` keeps each act's action and actor (`actorOf`), and `countActs` records them after the commit of `Mutate`, `RunJob`, `RecordLoginAttempt` and the identity provider's transactions — a rolled-back act is never counted |
 | [`store/login.go`](../../backend/internal/store/login.go) `RecordLoginAttempt` | `Lockout` for a committed `locked` act |
@@ -88,24 +89,38 @@ registry answers, so a renamed instrument fails the test and not a panel.
 
 | Test | Holds |
 |---|---|
-| [`metrics_test.go`](../../backend/internal/metrics/metrics_test.go) | the naming rule; no forbidden label on any family, every family exercised (`exercise`); a request recorded by its pattern, `unmatched` and `other`; a nil registry; a job's consecutive failures; the pool read at a scrape; the schema read at most every ten seconds and left out after a failure; the closed sets at zero; the text format; the dashboard; the import boundary |
+| [`metrics_test.go`](../../backend/internal/metrics/metrics_test.go) | the naming rule; no forbidden label on any family, every family exercised (`exercise`), the tenant on the consistency family's two counts alone, an id, and nothing else beside it (`tenantLabelled`); a request recorded by its pattern, `unmatched` and `other`; a nil registry; a job's consecutive failures; the pool read at a scrape; the schema read at most every ten seconds and the consistency counts at most once a minute, each left out after a failure; the closed sets at zero; the text format; the dashboard; the import boundary |
 | [`httpserver/server_test.go`](../../backend/internal/httpserver/server_test.go) | the route through the outer handler, the metrics listener's paths, `ServeAll` |
 | [`api/metrics_test.go`](../../backend/internal/api/metrics_test.go) | the route label is the document's pattern, never the tenant, project or number sent; a malformed token; a failed callback |
 | [`events/hub_test.go`](../../backend/internal/events/hub_test.go) `TestTheHubRecordsItsInstruments` | open streams, published, the three drops — a shutdown none —, hits and misses |
 | [`store/metrics_test.go`](../../backend/internal/store/metrics_test.go) | the kinds of a failed statement, `ErrNoRows` none; an act's actor |
 | [`config_test.go`](../../backend/internal/config/config_test.go) `TestLoadMetricsAddr` | the default, the empty value that switches the listener off, an address without a port, the API's address |
+| [`api_consistency_test.go`](../../backend/test/integration/api_consistency_test.go) `TestTheConsistencyCheckFindsWhatARestoreLeftAndTheAdministratorSettlesIt` | a second store with a registry of its own answers the counts a check stored, by tenant id, a clean tenant's zero included |
 | [`metrics_test.go`](../../backend/test/integration/metrics_test.go) `TestServeAnswersAScrapeOnItsMetricsListener` | the built binary against a database of its own: both listeners, a scrape after a few API requests — routes, acts by actor, a refused token, the pool, the schema, the jobs, no forbidden label —, the dirty flag seen while it serves, `SIGTERM`, and the empty variable |
 
 How to add an instrument is [adding-things.md](adding-things.md#an-instrument).
 
 ## The consistency family
 
-Not built. Its instruments — dangling attachment metadata, orphaned objects, seconds since the last
-export — belong to the consistency check of
+`cowork_consistency_dangling_attachments` and `cowork_consistency_orphaned_objects` are the counts of
+each tenant's latest consistency check of
 [ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-D4 that sets them, and come with it: into `internal/metrics` as `cowork_consistency_*`, the one family
-whose `tenant` label `TestNoInstrumentCarriesAForbiddenLabel` admits, recorded by the check through
-typed methods like every other; its two alerts — counts above zero for longer than the restore
-window, the last export too old — into
-[`prometheusrule.yaml`](../../deploy/helm/cowork/templates/prometheusrule.yaml) with their sections in
-[docs/operations/metrics.md](../operations/metrics.md); its panels into `dashboard.go`.
+D4 ([storage.md](storage.md#the-consistency-check)), and the only family with a `tenant` label —
+the tenant's id, never its slug, which names a client on a port without authentication (ADR 0060
+D5).
+
+**Read, not recorded.** The check runs on one replica, once a day; a gauge it set in its own process
+would stay behind on that replica and be missing on the others. So `consistencyCollector` reads the
+stored results at a scrape through `ObserveConsistency(read)` — the store's `consistencyForMetrics`,
+a `jobRead` that names the job and no tenant, the one transaction policy `consistency_checks_counts`
+admits —, at most once a minute and within two seconds, keeping the last answer between, and leaves
+the family out after a failed read, as `schemaCollector` does. Every replica answers the same counts,
+one that starts answers them at once, and an acceptance or a removal shows within a minute. A tenant
+without a result has no series.
+
+`TestNoInstrumentCarriesAForbiddenLabel` holds the `tenant` label to these two families alone — their
+names in `tenantLabelled` —, its value to an id and the families to that one label. The alert
+`CoworkAttachmentsOutOfStep` in [`prometheusrule.yaml`](../../deploy/helm/cowork/templates/prometheusrule.yaml)
+sums the two per tenant, `max` over the replicas, for `metrics.prometheusRule.restoreWindow`; the
+dashboard's row *Attachment consistency* shows both. The family's third instrument, the seconds since
+the last export, and its alert come with the export.

@@ -7,10 +7,11 @@ import { Subject } from 'rxjs';
 import type { MockInstance } from 'vitest';
 import { AttachmentUsage, Problem, Tenant } from '../../api/models';
 import { Api } from '../../api/api';
+import { AttachmentConsistencyService } from '../../core/attachment-consistency.service';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
-import { byteSize, changesUsage, quotaShare, TenantSettings } from './tenant-settings';
+import { changesUsage, quotaShare, TenantSettings } from './tenant-settings';
 
 function tenant(overrides: Partial<Tenant> = {}): Tenant {
   return {
@@ -32,15 +33,6 @@ function refusal(status: number, title: string, detail: string) {
 }
 
 describe('the attachment usage helpers', () => {
-  it('names a count of bytes in binary units', () => {
-    expect(byteSize(0)).toBe('0 bytes');
-    expect(byteSize(1)).toBe('1 byte');
-    expect(byteSize(1023)).toBe('1023 bytes');
-    expect(byteSize(1536)).toBe('1.5 KiB');
-    expect(byteSize(70 * 1024 * 1024)).toBe('70 MiB');
-    expect(byteSize(10 * 1024 ** 3)).toBe('10 GiB');
-  });
-
   it('gives the share of the quota in whole percent, at most 100, and none without a quota', () => {
     expect(quotaShare({ used_bytes: 25, attachments: 1, quota_bytes: 100 })).toBe(25);
     expect(quotaShare({ used_bytes: 999, attachments: 3, quota_bytes: 1000 })).toBe(99);
@@ -116,8 +108,30 @@ describe('TenantSettings', () => {
           },
         },
         { provide: EventStreamService, useValue: { events } },
+        // The consistency check's section reads through a service of its own, which its own spec
+        // covers; here it has nothing to show.
+        {
+          provide: AttachmentConsistencyService,
+          useValue: {
+            latest: {
+              hasValue: signal(false),
+              value: signal(undefined),
+              error: signal(undefined),
+              reload: vi.fn(),
+            },
+          },
+        },
       ],
     });
+  });
+
+  it('shows the consistency check beside the usage to an administrator, and to nobody else', async () => {
+    const fixture = await render();
+    expect(el(fixture, 'attachment-consistency')).not.toBeNull();
+
+    isAdmin.set(false);
+    await settle(fixture);
+    expect(el(fixture, 'attachment-consistency')).toBeNull();
   });
 
   describe("the attachments' usage (docs/adr/0016 D6)", () => {

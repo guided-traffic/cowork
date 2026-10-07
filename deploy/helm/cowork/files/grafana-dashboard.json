@@ -1062,7 +1062,7 @@
     {
       "id": 26,
       "type": "row",
-      "title": "Process",
+      "title": "Attachment consistency",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1074,12 +1074,112 @@
     {
       "id": 27,
       "type": "timeseries",
-      "title": "Goroutines",
+      "title": "Dangling attachment metadata by tenant",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
         "y": 90
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (tenant) (cowork_consistency_dangling_attachments{namespace=~\"$namespace\"})",
+          "legendFormat": "{{tenant}}"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "timeseries",
+      "title": "Orphaned objects by tenant",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 90
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (tenant) (cowork_consistency_orphaned_objects{namespace=~\"$namespace\"})",
+          "legendFormat": "{{tenant}}"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "type": "row",
+      "title": "Process",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 98
+      },
+      "collapsed": false
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Goroutines",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 99
       },
       "datasource": {
         "type": "prometheus",
@@ -1116,14 +1216,14 @@
       ]
     },
     {
-      "id": 28,
+      "id": 31,
       "type": "timeseries",
       "title": "Resident memory",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 90
+        "y": 99
       },
       "datasource": {
         "type": "prometheus",
@@ -1160,14 +1260,14 @@
       ]
     },
     {
-      "id": 29,
+      "id": 32,
       "type": "timeseries",
       "title": "CPU",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 98
+        "y": 107
       },
       "datasource": {
         "type": "prometheus",

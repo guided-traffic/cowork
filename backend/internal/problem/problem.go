@@ -71,7 +71,8 @@ var (
 	LinkCycle              = Code{"link_cycle", http.StatusConflict, "Link cycle", "The blocks link would close a cycle of prerequisites (docs/adr/0012 D4)"}
 	AttachmentLimit        = Code{"attachment_limit", http.StatusConflict, "Attachment limit", "The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6)"}
 	AttachmentQuota        = Code{"attachment_quota", http.StatusConflict, "Attachment quota", "The tenant's attachments would hold more bytes than COWORK_ATTACHMENT_TENANT_QUOTA allows; nothing was stored (docs/adr/0016 D6)"}
-	UploadsDisabled        = Code{"uploads_disabled", http.StatusNotImplemented, "Uploads disabled", "The installation has no object storage configured; attachments cannot be uploaded (docs/adr/0016 D1)"}
+	ConsistencyCheckStale  = Code{"consistency_check_stale", http.StatusConflict, "Consistency check stale", "The consistency check the request names is not the tenant's latest any more — a newer check replaced its lists — or its orphans were removed already; read `GET …/attachment-consistency` again (docs/adr/0059 D4)"}
+	UploadsDisabled        = Code{"uploads_disabled", http.StatusNotImplemented, "Uploads disabled", "The installation has no object storage configured; attachments cannot be uploaded, and orphaned objects cannot be removed (docs/adr/0016 D1)"}
 	ChatUnavailable        = Code{"chat_unavailable", http.StatusConflict, "Chat unavailable", "The tenant has no chat: the installation configures no provider; `GET …/chat` says so (docs/adr/0076)"}
 	PeriodLocked           = Code{"period_locked", http.StatusConflict, "Period locked", "The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8)"}
 	OpenPrerequisites      = Code{"open_prerequisites", http.StatusConflict, "Open prerequisites", "Tickets that block this one are not done or dropped; `errors[]` lists them, and a person may override with a reason (docs/adr/0012 D7)"}
@@ -95,7 +96,8 @@ var Catalogue = []Code{
 	Forbidden, InsufficientScope, AgentForbidden, SessionRequired, PasswordChangeRequired, NotInitialised, Csrf,
 	NotFound, PersonNotFound, MethodNotAllowed, UsernameTaken, TenantSlugTaken, ProjectKeyTaken, RepositoryBound,
 	PersonAmbiguous, GrantExists, MappingExists, LastAdmin,
-	ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, PeriodLocked, AttachmentLimit, AttachmentQuota, UploadsDisabled,
+	ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, PeriodLocked, AttachmentLimit, AttachmentQuota,
+	ConsistencyCheckStale, UploadsDisabled,
 	ChatUnavailable, PreconditionFailed, PayloadTooLarge,
 	UnsupportedMediaType, IdempotencyMismatch, PreconditionRequired, TooManyAttempts, ChatBusy,
 	Internal, ChatProviderFailed, NotReady, Timeout,

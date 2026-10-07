@@ -35,7 +35,10 @@ recommendation, and it was built on the owner's instruction of 2026-10-05 to bui
 option, the owner reviewing the result. Amended 2026-10-06 for GitHub's webhook of
 [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md),
 by D5's rule and built the same day (D5: eighteen operations, making or rotating the tenant's
-webhook secret the eighteenth). Date: 2026-10-01. Decided by the owner as the answer to the
+webhook secret the eighteenth), and again by the rule of D5 itself for the consistency check of
+[ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4, made concrete by the implementer, open to the owner's objection (D5: nineteen operations,
+removing the orphaned objects of a consistency check the nineteenth; built the same day). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "personal access token design?" at its three contested points: three hierarchical scopes
 with optional tenant and project restriction; mandatory expiry with a ninety-day default and
 a one-year maximum; creation only by the person themselves in a browser session, never by an
@@ -246,7 +249,16 @@ D1, and built the same day: ~~seventeen~~ eighteen operations. Making the tenant
 or rotating it — one operation, `createGitHubSecret` —, takes a session: whoever learns the secret
 writes links into the tenant and tells its people of merges, long after a leaked token that made it
 was revoked. Revoking the secret only takes access away and stays open to an administrator's
-`admin`-scope token. A session the agent header marks is refused all eighteen.)*
+`admin`-scope token. A session the agent header marks is refused all ~~eighteen~~.)*
+*(Amended 2026-10-06 by the rule itself, for the consistency check of
+[ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4, made concrete by the implementer, open to the owner's objection: ~~eighteen~~ nineteen
+operations. Removing the orphaned objects of a consistency check, `removeOrphanedObjects`, takes a
+session: nothing brings a removed object back, so what a leaked token did there would outlive its
+revocation, as with the purge of a ticket. Reading the check takes either credential with `read`
+scope, and accepting the loss of its missing files an administrator's `admin`-scope token as well:
+the acceptance removes nothing, and a file whose bytes come back is whole again. A session the agent
+header marks is refused all nineteen. Built the same day.)*
 
 **D6 — Revocation is immediate and keeps the row.** Revoked and expired tokens stay listed
 with their state; a revoked token answers `401` with the reason. *(Amended 2026-10-02: a
