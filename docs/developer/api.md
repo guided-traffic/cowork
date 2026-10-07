@@ -62,8 +62,8 @@ router over it with `servers` dropped, so the paths match whatever host a reques
 
 ## Examples
 
-Every request body and every response with a body has an example ([ADR 0046] D6). Where it is
-written is decided once:
+Every request body and every response with a body has an example, bytes aside ([ADR 0046] D6).
+Where it is written is decided once:
 
 - **A response's example is the schema's.** The schema a response body names in
   [`components/schemas.yaml`](../../backend/api/components/schemas.yaml) carries it as `example:` —

@@ -36,8 +36,9 @@ lint.
 D7 and D8; D3 since phase 3 (2026-10-03); D6's request and response examples on every
 operation since 2026-10-06, held by a unit test over the bundled document
 ([`backend/api/examples_test.go`](../../backend/api/examples_test.go)): every request body and
-every response with a body has an example, its own or the one of the schema it names, and every
-example validates against its schema. The `sessionCookie` scheme is built since phase 3
+every response with a body has an example, its own or the one of the schema it names — but the
+bytes of a download, and the upload, which describes its parts instead —, and every example
+validates against its schema. The `sessionCookie` scheme is built since phase 3
 (2026-10-03): the sessions of [ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) exist,
 and every operation declares which credential it takes.
 

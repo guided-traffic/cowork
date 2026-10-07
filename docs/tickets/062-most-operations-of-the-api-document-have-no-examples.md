@@ -18,8 +18,9 @@ done:
 
 Every operation of the API document has its request and response examples
 ([ADR 0046](../adr/0046-spec-first-the-openapi-document-is-the-contract.md) D6): the 109 of the
-129 operations that have a body of their own carry an example for each body, and every operation's
-errors share the three examples of the shared `Problem` response. Where an example is written — a
+129 operations that have a body of their own carry an example for each body — but the bytes of an
+attachment's download, which have none, and its upload, which describes its parts instead —, and
+every operation's errors share the three examples of the shared `Problem` response. Where an example is written — a
 response's on the schema it names in `components/schemas.yaml`, a request's on the operation, an
 answer the schema's example cannot stand for on the operation — and the one world they share are
 [docs/developer/api.md](../developer/api.md#examples). Two unit tests over the bundled document,
