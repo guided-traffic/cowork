@@ -14,7 +14,10 @@ the installation provides them, and the chart takes references to them.
 ([`.github/workflows/build.yml`](../../.github/workflows/build.yml)): the chart to the Helm
 repository `https://guided-traffic.github.io/cowork/`, the images to Docker Hub as
 `guidedtraffic/cowork-backend` and `guidedtraffic/cowork-frontend`. The chart's image tags
-default to its `appVersion`, so a chart version brings its own images. The first release is
+default to its `appVersion`, so a chart version brings its own images. The images are built for
+`linux/amd64` alone: a node of another architecture — an arm64 node of a kind cluster on a Mac, say —
+cannot pull them (`no match for platform in manifest`) and runs them only under emulation, from
+images pulled with `--platform linux/amd64` and loaded by hand (seen 2026-10-07). The first release is
 `0.1.0`. Installing from the checked-out tree, with images you built with `make docker-build`,
 works the same way with `deploy/helm/cowork` and the image values set. The values reference is
 [README.md, Helm chart values](../../README.md#helm-chart-values).
@@ -623,7 +626,7 @@ and what it makes, and the chart's values for it.
 
 | File | Written against | What it makes |
 |---|---|---|
-| [`cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml) | CloudNativePG 1.30.1, PostgreSQL 18.6 | a `Cluster` whose `initdb` bootstrap makes the database, the owner role, the runtime role with the attributes [above](#the-database-and-its-two-roles), the three extensions and `CONNECT` for the two roles only; the runtime role's `basic-auth` Secret; a ConfigMap with the location. Never applied to a cluster here |
+| [`cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml) | CloudNativePG 1.30.1, PostgreSQL 18.6 | a `Cluster` whose `initdb` bootstrap makes the database, the owner role, the runtime role with the attributes [above](#the-database-and-its-two-roles), the three extensions and `CONNECT` for the two roles only; the runtime role's `basic-auth` Secret; a ConfigMap with the location. Applied on 2026-10-07 to a kind cluster with CloudNativePG 1.30.1, with only the password changed, for the upgrade from 0.8.0 to 0.9.0; the runtime role's Secret carries `cnpg.io/reload`, so a changed password reaches the role at once — without the label CloudNativePG applies it only at a later reconciliation and the old password stays valid meanwhile |
 | [`minio-tenant.yaml`](../../deploy/examples/minio-tenant.yaml) | the MinIO Operator v7.1.1 | a `Tenant` with one pool and the bucket — and no user: the operator gives every user of its `users` field the policy `consoleAdmin`, an administrator of the whole store. Never applied to a cluster here |
 | [`minio-bucket.sh`](../../deploy/examples/minio-bucket.sh) | `mc` RELEASE.2025-08-13T08-35-41Z | the bucket, the bucket-scoped policy, the access key with that policy alone and the Secret `cowork-storage`, for an existing MinIO or the Tenant above. Run on 2026-10-07 against the MinIO of `make minio-up`: the key put, read, listed and deleted objects in its bucket and was refused listing another bucket and the administration |
 
