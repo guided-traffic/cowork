@@ -8,8 +8,9 @@ ticket and nothing else ([ADR 0044] D1), in the shape of the ticket files cowork
 Read against the tree on 2026-10-05. Turning the Markdown people write into the HTML a browser shows
 is another package and another page, [rendered-markdown.md](rendered-markdown.md).
 
-The links are not in it: `/context` shows them, and the project export will write them once each
-in a links manifest beside the tickets ([ADR 0051] D4, not built yet).
+The links are not in it: `/context` shows them, and the project export writes them once each in
+a links manifest beside the tickets ([ADR 0051] D4, [import-and-export.md](import-and-export.md#the-export)).
+The importer reads this grammar back ([import-and-export.md](import-and-export.md#the-reading-of-a-file)).
 
 ## The route
 
@@ -50,6 +51,7 @@ left out.
 | `title` | the title |
 | `type`, `state`, `severity`, `security` | the vocabulary values |
 | `threat` | the threat; only when `security` is not `none` |
+| `confidential` | `true` while the ticket is confidential, and left out otherwise ([ADR 0065] D1), so that an import of the export sets the flag again (D7); made concrete 2026-10-06 ([ADR 0044] D1), golden file `confidential.md` |
 | `horizon` | the ticket's horizon: the one set on it, else `later`. The key was `urgency` until 2026-10-05, when the API took the word ([ADR 0010] D1); grammar v1 was amended in place, since nothing parses the export yet, and the importer reads `urgency` as `horizon` — an export written before and the ticket files of a repository name it so ([ADR 0044] D3) |
 | `effort` | the effort |
 | `progress-refinement` | always present: the refinement stage as the ticket shows it — derived while there are children, else the ticket's own ([ADR 0017] D2, D3) |
@@ -173,8 +175,10 @@ The golden files are the specification's test: `TestRender` in
 [`markdown_test.go`](../../backend/internal/markdown/markdown_test.go) compares `Render` with
 them, `TestScalar` pins the quoting and `TestPerson` the form of a person. After a deliberate
 change, `cd backend && go test ./internal/markdown -update` rewrites them; the diff of the golden
-files is what a reviewer reads. The importer will read this form back ([ADR 0044] D3), so a
-change of the grammar is a change of a contract. The question form and the state notes stay as
+files is what a reviewer reads. The importer reads this form back ([ADR 0044] D3), so a change of
+the grammar is a change of a contract: `TestParseReadsTheGoldenFilesOfGrammarV1` in
+[`internal/importer`](../../backend/internal/importer/roundtrip_test.go) parses every golden file and
+renders it again, and fails until the reader follows the change. The question form and the state notes stay as
 they are until the importer of phase 6 has read this repository's tickets with them ([ADR 0044]
 D1): what it cannot map is the evidence for a change.
 
@@ -185,3 +189,4 @@ D1): what it cannot map is the evidence for a change.
 [ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0044]: ../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md
 [ADR 0051]: ../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md
+[ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md

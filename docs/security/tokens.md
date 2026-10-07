@@ -325,10 +325,11 @@ the columns released before keep their places. The mark tells, it does not bind:
   compare with rows after it. With `COWORK_TRUSTED_PROXIES` empty, every browser's request through
   the Ingress has a controller pod's address, and the hash tells no browser behind it apart. Whoever holds the
   key reverses it ([H-30](#h-30)).
-- Reads are not recorded, with two exceptions that mean data left the system (ADR 0026 D5):
-  every download of an attachment's bytes — a `304` is not one — and every Markdown export of
+- Reads are not recorded, with the exceptions that mean data left the system (ADR 0026 D5):
+  every download of an attachment's bytes — a `304` is not one —, every Markdown export of
   a ticket, which is never answered with `304`
-  ([`api/export.go`](../../backend/internal/api/export.go)). The CSV forms of the time lists,
+  ([`api/export.go`](../../backend/internal/api/export.go)), and every project and tenant export
+  ([`api/exports.go`](../../backend/internal/api/exports.go), [import-and-export.md](import-and-export.md)). The CSV forms of the time lists,
   the time report and the audit view are reads like any other.
 - The answer to an abused token is the record and revocation (ADR 0039 D4): an administrator
   filters the tenant's audit view (`GET …/audit`) by token, person, action, entity type and

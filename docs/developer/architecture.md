@@ -108,7 +108,7 @@ the person's token, like a script — no path to the database, nothing the API d
     the server key the keys of the cursors, the fingerprints, the two address hashes, the two
     sealers of the identity provider and the sealer of the tenants' GitHub webhook secrets);
     `httpserver.New` wraps it with the health endpoints.
-11. `go runJobs` runs the idempotency, session, login, notification and GitHub delivery expiries and
+11. `go runJobs` runs the idempotency, session, login, notification, GitHub delivery and import expiries and
     the purge of the tickets deleted thirty days ago at start and every hour, and asks as often whether the daily
     consistency check of the attachments is due ([data-access.md](data-access.md#jobs),
     [storage.md](storage.md#the-consistency-check)).
@@ -343,7 +343,7 @@ The reactivation of a person, the deactivation of a person of the identity provi
 of one's own sessions; a global administrator's reading of the installation-level audit rows and
 the deletion of a tenant ([ADR 0034] D2); the
 revocation of a refresh token at the issuer when a session ends; the saved filters of the
-tenant board; the deletion of a project; import; the age of the last export among the metrics of
+tenant board; the deletion of a project; the age of the last export among the metrics of
 [ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D4 ([metrics.md](metrics.md#the-consistency-family)). The order in which they come is
 [docs/planning/project-plan.md](../planning/project-plan.md); each gets its section here, or a

@@ -408,13 +408,13 @@ D3), so an answer comes from one of three places:
 
 | From | When | Body |
 |---|---|---|
-| the backend | everything that reaches it — its own `413` above `COWORK_MAX_JSON_BODY` or the upload limit, its `503 not_ready`, its `504 timeout` included | a problem with `instance` and `request_id`, and `X-Request-Id` |
+| the backend | everything that reaches it — its own `413` above `COWORK_MAX_JSON_BODY`, the upload limit or the import limit, its `503 not_ready`, its `504 timeout` included | a problem with `instance` and `request_id`, and `X-Request-Id` |
 | the Ingress controller | what never reaches the backend: no backend pod ready (`502` or `503`), a body above the controller's limit (`413`), no answer within its read timeout (`504`) | the controller's own page, not a problem body — ingress-nginx's, in the run of [installation.md](installation.md#expose-it), is HTML. The UI shows a `502`, `503` or `504` without a problem body as the backend out of reach — "The backend cannot be reached: The Ingress answered 503: no backend took the request. cowork tries again on its own." — and another status without one as an unexpected answer that names it |
 | the frontend's nginx | a request for `/api/` or `/auth/` that reaches the frontend — an Ingress that sends every path there | `404` with a static problem, `not_found`, whose detail is "the frontend serves the UI only; the Ingress must route /api/ and /auth/ to the backend Service", without `instance` and `request_id` — a body above nginx's own 1 MiB limit gets the same |
 
 So a request over a backend limit gets the backend's answer only while the controller's limits sit
-above the backend's: a body size of at least the larger of `maxJsonBody` and `attachmentMaxBytes`,
-rounded up to whole MiB, plus 1 MiB (`11m` with the defaults), and a read timeout of at least
+above the backend's: a body size of at least the largest of `maxJsonBody`, `attachmentMaxBytes` and
+`maxImportBytes`, rounded up to whole MiB, plus 1 MiB (`51m` with the defaults), and a read timeout of at least
 `requestTimeout` plus ten seconds (`40` seconds). The chart sets neither — it does not know the
 controller — and its notes print both; [installation.md, expose it](installation.md#expose-it)
 has what any controller must do, a worked example for a cluster that still runs the retired

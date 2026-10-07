@@ -875,7 +875,7 @@ in `ingress.annotations` or in the controller's own configuration. What any cont
 
 | What | Must be | Otherwise |
 |---|---|---|
-| request body limit | above the backend's larger limit: `max(maxJsonBody, attachmentMaxBytes)` rounded up to MiB, plus 1 MiB — `11m` with the defaults; none when either is `0`. The chart's notes print the figure | an upload or a body above the controller's limit gets the controller's own `413` page, not the backend's problem |
+| request body limit | above the backend's largest limit: `max(maxJsonBody, attachmentMaxBytes, maxImportBytes)` rounded up to MiB, plus 1 MiB — `51m` with the defaults; none when any of them is `0`. The chart's notes print the figure | an upload, an import or a body above the controller's limit gets the controller's own `413` page, not the backend's problem |
 | read timeout | above `backend.config.requestTimeout` plus 10 s — `40` seconds with the default; an hour when it is `0`. The chart's notes print the figure. The two streams send something at least every twenty seconds — the event stream's heartbeat, the chat's comment every ten — so they stay open within any timeout above that | a slow request gets the controller's `504` page instead of the backend's `504` problem with its request id; below twenty seconds the streams are cut |
 | buffering of `text/event-stream` | off. The backend answers the event stream and a turn of the chat with `X-Accel-Buffering: no`; a controller that honours that header — nginx does — needs no setting, one that does not must be told not to buffer | events arrive late and in bursts, a turn's text all at once at its end |
 | `X-Forwarded-For` | the address the controller saw as the header's last entry, written in place of the client's header or appended to it | `backend.config.trustedProxies` finds the wrong client ([below](#the-client-address-and-the-trusted-proxies)) |
@@ -895,7 +895,7 @@ ingress:
   enabled: true
   className: nginx                                       # example
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: 11m     # example: the figure for the default limits
+    nginx.ingress.kubernetes.io/proxy-body-size: 51m     # example: the figure for the default limits
     nginx.ingress.kubernetes.io/proxy-read-timeout: "40" # example: the figure for the default requestTimeout
   hosts:
     - host: cowork.example.com                           # example
@@ -908,8 +908,8 @@ ingress:
 its Ingress: the controller routed `/api/`, `/auth/` and `/auth/callback` to the backend and the
 rest to the frontend; its generated configuration had `client_max_body_size 1m`,
 `proxy_read_timeout 60s` and `proxy_buffering off` by default, and a 2 MiB body got the
-controller's `413` page until `proxy-body-size: 11m` let it through to the backend's own `413`
-problem; the event stream delivered an event within 50 ms and stayed open past a read timeout of
+controller's `413` page until `proxy-body-size: 11m` — the figure for the limits of that day, before
+the import's — let it through to the backend's own `413` problem; the event stream delivered an event within 50 ms and stayed open past a read timeout of
 60 s and of 40 s on its heartbeats — with `proxy-buffering: "on"` forced as well, so the backend's
 header alone keeps it unbuffered. The chat's stream carries the same header and was not run through
 the controller. No other controller was tried here: give yours the four settings above in its own

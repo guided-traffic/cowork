@@ -172,7 +172,7 @@ D3):
   default server of `INGRESS_IMAGE` (`nginxinc/nginx-unprivileged:1.31-alpine` `# default`, the
   `Makefile`), published on the loopback address. It routes `/api/` and `/auth/` to `backend:8080`
   and everything else to `frontend:8080`, as the chart's Ingress does; writes the address it saw
-  into `X-Forwarded-For`, as ingress-nginx does by default; and has the body limit (`11m`) and read
+  into `X-Forwarded-For`, as ingress-nginx does by default; and has the body limit (`51m`) and read
   timeout (`40s`) the operations page names for the controller. It leaves response buffering on, so
   the two streams pass unbuffered by the backend's `X-Accel-Buffering: no` alone. It looks both
   names up per request (cached a second), so the three may start in any order. Its configuration
@@ -201,7 +201,7 @@ listening with TLS, in front of the images and walks the UI through it in a brow
 Then check through the stand-in: `/healthz` (the frontend's), `/api/v1/version` (the backend's,
 with `X-Request-Id`), a deep link and a hashed asset (`no-store`, `immutable`, the shell's
 policy); with a token or a session, an authenticated route; a JSON body above
-`COWORK_MAX_JSON_BODY` (the backend's `413`, with a `request_id`) and one above `11m` (the
+`COWORK_MAX_JSON_BODY` (the backend's `413`, with a `request_id`) and one above `51m` (the
 stand-in's own `413` page); the event stream, which must deliver an event at once and stay open
 past the stand-in's read timeout on its heartbeats; and `SIGTERM` to the backend with a stream
 open, which must end the stream at once. Then the frontend alone — published, or reached from a

@@ -29,11 +29,13 @@ cowork/
 │   │   ├── domain/             # vocabularies, keys, the horizon's default, transitions, attachment types
 │   │   ├── events/             # the event hub of one replica
 │   │   ├── httpserver/         # health, request id, HTTP instruments, request log, recovery, the metrics listener, server lifecycle
+│   │   ├── importer/           # the import's reading and analysis: the upload, ticket files, the report, the plan
+│   │   │   └── testdata/       # copies of this repository's ticket files, and three made for the shapes it lacks
 │   │   ├── llm/                # the chat's gateway: OpenAI Chat Completions and Anthropic Messages, streaming
 │   │   ├── markdown/           # the Markdown export, grammar v1, and the context document
 │   │   │   └── testdata/       # golden files
 │   │   ├── metrics/            # the Prometheus registry and instruments, the Grafana dashboard as data
-│   │   ├── mcpcli/             # cowork-mcp's command line: serve, the hooks, token check, lookup
+│   │   ├── mcpcli/             # cowork-mcp's command line: serve, the hooks, token check, lookup, export
 │   │   ├── mcpserver/          # the tool catalogue over the MCP Go SDK
 │   │   ├── oidc/               # the OpenID Connect relying party: discovery, the code, the ID token, the refresh
 │   │   ├── problem/            # the problem code catalogue and the RFC 9457 body

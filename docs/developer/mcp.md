@@ -25,7 +25,8 @@ cmd/cowork-mcp ──► internal/mcpcli ──┬──► internal/mcpserver �
                    session-end,      │
                    model-switch,     └──► internal/tools ──► internal/api/apigen (the generated client)
                    token check,             the catalogue,        ──► HttpRequestDoer: the network,
-                   lookup, version          Session, Start,           or a handler in the same process
+                   lookup, export,          Session, Start,           or a handler in the same process
+                   version
                                             Resolve, Remind
 ```
 
@@ -51,7 +52,7 @@ database driver, the object storage client or the API's handlers.
 | [`tools/keys.go`](../../backend/internal/tools/keys.go), [`query.go`](../../backend/internal/tools/query.go), [`limits.go`](../../backend/internal/tools/limits.go) | Keys resolved against the binding, the commit strings of ADR 0068; the list and read helpers; the capability line of a description |
 | `tools/tool_*.go` | The tools: `tool_tickets.go` (get_ticket, search — over the ticket lists' `q` filter, not the ranked search routes ([search.md](search.md#the-q-filter-and-the-mcp-tool)) —, file_ticket, record_state, comment, link, watch, place_ticket), `tool_flow.go` (transition, set_progress, finish_work), `tool_questions.go` (open_question, record_answer, and `person`, which resolves a person named as `me`, a username, a display name or an id through the tenant's member list — `open_question`'s `asked_of` and `comment`'s `mentions`), `tool_project.go` (session_start, create_project), `tool_api.go` (api) |
 | [`mcpserver/server.go`](../../backend/internal/mcpserver/server.go) | `New(Options)`: the server, its `Instructions`, each tool with its schema, its described limits and its annotations; a handler that learns the client's name, asks `Ready` and runs the tool |
-| [`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go), [`config.go`](../../backend/internal/mcpcli/config.go), [`commands.go`](../../backend/internal/mcpcli/commands.go) | `Run` and the command table; the configuration from `COWORK_URL`, `COWORK_TOKEN`, `CLAUDE_PROJECT_DIR`; `serve` with its readiness; the hooks' input and output; `token check`, `lookup` |
+| [`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go), [`config.go`](../../backend/internal/mcpcli/config.go), [`commands.go`](../../backend/internal/mcpcli/commands.go) | `Run` and the command table; the configuration from `COWORK_URL`, `COWORK_TOKEN`, `CLAUDE_PROJECT_DIR`; `serve` with its readiness; the hooks' input and output; `token check`, `lookup`; `export` in [`export.go`](../../backend/internal/mcpcli/export.go) |
 | [`cmd/cowork-mcp/main.go`](../../backend/cmd/cowork-mcp/main.go) | The linker's variables, the signal context, standard input for a hook when it is not a terminal |
 
 ## A tool
@@ -157,6 +158,7 @@ transport in place of the real ones.
 | `session-end` | Prints `{"systemMessage": "cowork: …"}` when `Remind` has a line — a message to the person, which neither blocks nor continues the turn — and nothing otherwise, also on every error. Always exits 0 |
 | `model-switch` | Reads the hook's JSON on standard input (`to_model`, `agent_id`) and records `to_model` for the server of the project directory ([below](#the-agent-mark)), as `session-context` records the `model`; an input with an `agent_id` — a subagent's switch — or without `to_model` records nothing, nor does an unconfigured client or one without `CLAUDE_PROJECT_DIR`. Talks to no installation. Prints nothing on standard output, which Claude Code adds to the model's context after a switch; a malformed variable or a failed write is one line on standard error, which Claude Code keeps in its debug log. Always exits 0 |
 | `token check`, `lookup` | Results on standard output, `--json` for the structured form, exit 1 on an error |
+| `export <tenant>/<PROJECT> <dir>` | Exit 2 on a malformed argument; refuses a target that is a file or a non-empty directory before it asks (exit 1); fetches the project export and unpacks it — regular files only, each inside the directory, `O_EXCL`, directories `0700`, files `0600` —, printing the count of documents and of the confidential tickets left out ([import-and-export.md](import-and-export.md#cowork-mcp-export)); its requests carry `cowork-mcp/unknown/export` |
 
 ### The agent mark
 

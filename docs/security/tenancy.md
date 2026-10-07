@@ -843,9 +843,11 @@ the text at rest (ADR 0065 D8). The text sits in plain columns: the ticket's tit
 threat and block reason; its questions; its comments and their revisions — a withdrawn
 comment keeps its text in its row; the audit record, which holds every replaced version of
 the body, the titles, the questions and answers, and the reasons and notes of the acts, append-only and
-without an end of retention (ADR 0026 D7); and for a day, until the hourly expiry job removes
+without an end of retention (ADR 0026 D7); for a day, until the hourly expiry job removes
 it, the stored response of a keyed creation — a ticket, a question, a comment — in
-`idempotency_keys`. Its attachments' bytes lie in the bucket
+`idempotency_keys`; for a day as well, every file an import's dry run read, and until the
+ticket's purge the report of the import that created it ([import-and-export.md, H-62 and
+H-63](import-and-export.md#h-62)). Its attachments' bytes lie in the bucket
 ([attachments.md](attachments.md)). Whoever reads the database past row-level security — a
 superuser, a role with `BYPASSRLS`, the owner role, which can switch `FORCE` off — or holds a
 dump, a backup or the volume, reads all of it, and so does a compromised serving process

@@ -106,15 +106,16 @@ which a script in the page does not know and which counts toward the lockout whe
 browser extension runs outside the page's policy.
 
 <a id="h-22"></a>
-### H-22 — Two reads write an audit row, and a link can trigger them
+### H-22 — Reads that write an audit row, and a link can trigger them
 
-Live today. The rule leaves reads unchecked because a read mutates nothing (D2), and two
+Live today. The rule leaves reads unchecked because a read mutates nothing (D2), and four
 routes record an act on a read, as data leaving the system must be recorded
 ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D5): an
-attachment's bytes (`downloaded`) and a ticket's Markdown export (`exported`). A page of
+attachment's bytes (`downloaded`), a ticket's Markdown export, and the project's and the tenant's
+export (each `exported`, [import-and-export.md](import-and-export.md)). A page of
 another site that gets a person to follow a link to one of them makes a top-level `GET` that
 carries the `Lax` cookie, so the act is recorded under the person — a row in an append-only
-table, not a change to any ticket, and the response is unreadable to the other site. An
+table, not a change to any ticket —, and the response is unreadable to the other site. An
 `<img>` or a `fetch` from another site does not carry the cookie. If an attacker choosing the
-audit record's content matters to an installation, the answer is a decision on these two
+audit record's content matters to an installation, the answer is a decision on these
 routes — a header they require too — not a setting.
