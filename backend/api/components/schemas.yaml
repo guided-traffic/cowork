@@ -35,6 +35,10 @@ Version:
     version: {type: string}
     commit: {type: string}
     build_time: {type: string}
+  example:
+    version: 0.7.0
+    commit: b4ceb2e
+    build_time: '1791273600'
 Role:
   type: string
   enum: [viewer, member, admin]
