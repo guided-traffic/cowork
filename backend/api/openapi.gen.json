@@ -1796,6 +1796,16 @@
       },
       "ChatCapabilities": {
         "description": "The capabilities the chat's requests hold (docs/adr/0043 D5): what the chat may do beyond the\nbaseline, as the person chose it\n",
+        "example": {
+          "capabilities": [
+            "rank",
+            "set-horizon",
+            "interest",
+            "upload",
+            "create-project"
+          ],
+          "chosen": false
+        },
         "properties": {
           "capabilities": {
             "items": {
@@ -2423,7 +2433,47 @@
             "type": "object"
           }
         ],
-        "description": "The token a request presents, and what it makes of the request (docs/adr/0043 D6)"
+        "description": "The token a request presents, and what it makes of the request (docs/adr/0043 D6)",
+        "example": {
+          "agent": true,
+          "capabilities": [
+            "decide",
+            "close",
+            "drop",
+            "rank",
+            "set-horizon",
+            "interest",
+            "upload",
+            "create-project",
+            "record-answer"
+          ],
+          "created_at": "2026-09-15T07:50:00Z",
+          "expires_at": "2026-12-14T07:50:00Z",
+          "id": "01a0a40b-5040-78e5-8344-63ccb2705d84",
+          "last_used_on": "2026-10-06",
+          "name": "Claude Code on the laptop",
+          "request": {
+            "agent": true,
+            "agent_mark": "claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911",
+            "capabilities": [
+              "decide",
+              "close",
+              "drop",
+              "rank",
+              "set-horizon",
+              "interest",
+              "upload",
+              "create-project",
+              "record-answer"
+            ]
+          },
+          "restricted_project": "WEB",
+          "restricted_project_id": "019cadcb-2e60-7116-9641-67b17d11d0ef",
+          "restricted_tenant": "acme",
+          "revoked_at": null,
+          "scope": "write",
+          "state": "active"
+        }
       },
       "DanglingAcceptance": {
         "description": "What an acceptance of the missing files did",
@@ -2943,6 +2993,53 @@
         "type": "object"
       },
       "DecisionList": {
+        "example": {
+          "items": [
+            {
+              "question": {
+                "answer": null,
+                "answer_html": null,
+                "answered_at": null,
+                "answered_by": null,
+                "answered_by_token": null,
+                "asked_by": {
+                  "display_name": "Grace Hopper",
+                  "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                  "username": null
+                },
+                "asked_by_agent": null,
+                "asked_by_token": null,
+                "asked_of": {
+                  "display_name": "Ada Lovelace",
+                  "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                  "username": "ada"
+                },
+                "created_at": "2026-10-05T14:55:00Z",
+                "id": "01a10c8f-99a0-7cd1-bb0b-c187d4e41c04",
+                "number": 1,
+                "options": "- A: trim nowhere: a password is sent and stored as typed.\n- B: trim on both ends, and say so at sign-up.",
+                "options_html": "\u003cul\u003e\n\u003cli\u003eA: trim nowhere: a password is sent and stored as typed.\u003c/li\u003e\n\u003cli\u003eB: trim on both ends, and say so at sign-up.\u003c/li\u003e\n\u003c/ul\u003e",
+                "question": "Do we trim passwords on the server as well?",
+                "recommendation": "A: a space is a character like any other; trimming would lock out who chose one.",
+                "recorded_by_agent": false,
+                "status": "open",
+                "updated_at": "2026-10-05T14:55:00Z",
+                "version": 1,
+                "withdrawn_at": null
+              },
+              "tenant": {
+                "name": "Acme",
+                "slug": "acme"
+              },
+              "ticket": {
+                "key": "acme/WEB-42",
+                "state": "in-progress",
+                "title": "Sign-in fails in Safari when the password contains a space"
+              }
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -4196,6 +4293,50 @@
         "type": "object"
       },
       "InboxList": {
+        "example": {
+          "items": [
+            {
+              "act": {
+                "action": "commented",
+                "actor": {
+                  "display_name": "Grace Hopper",
+                  "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                  "username": null
+                },
+                "actor_system": null,
+                "after": null,
+                "agent": null,
+                "at": "2026-10-05T15:02:00Z",
+                "before": null,
+                "entity_id": "01a10c96-0240-79ce-bd04-bc6c377cbc17",
+                "entity_type": "comment",
+                "explained_by_comment": null,
+                "id": "01a10c96-0240-7fdd-bbe7-eb2168110b66",
+                "note": null,
+                "reason": null,
+                "redacted": false,
+                "token": null
+              },
+              "blocker": null,
+              "created_at": "2026-10-05T15:02:00Z",
+              "id": "01a10c96-0240-7196-85bb-eeab014066b7",
+              "read": false,
+              "reason": "mentioned",
+              "tenant": {
+                "name": "Acme",
+                "slug": "acme"
+              },
+              "ticket": {
+                "key": "acme/WEB-42",
+                "state": "in-progress",
+                "title": "Sign-in fails in Safari when the password contains a space"
+              },
+              "withdrawn": false
+            }
+          ],
+          "next_cursor": null,
+          "unread": 1
+        },
         "properties": {
           "items": {
             "items": {
@@ -4251,6 +4392,9 @@
         "type": "string"
       },
       "InboxState": {
+        "example": {
+          "unread": 0
+        },
         "properties": {
           "unread": {
             "type": "integer"
@@ -4597,6 +4741,29 @@
         "type": "object"
       },
       "Me": {
+        "example": {
+          "display_name": "Ada Lovelace",
+          "global_admin": true,
+          "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+          "local": true,
+          "memberships": [
+            {
+              "origins": [
+                {
+                  "role": "admin",
+                  "source": "grant"
+                }
+              ],
+              "role": "admin",
+              "tenant": {
+                "name": "Acme",
+                "slug": "acme"
+              }
+            }
+          ],
+          "password_change_required": false,
+          "username": "ada"
+        },
         "properties": {
           "display_name": {
             "type": "string"
@@ -4925,6 +5092,76 @@
         "type": "object"
       },
       "MyTicketList": {
+        "example": {
+          "items": [
+            {
+              "place": 1,
+              "tenant": {
+                "name": "Acme",
+                "slug": "acme"
+              },
+              "ticket": {
+                "assignee": {
+                  "display_name": "Grace Hopper",
+                  "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                  "username": null
+                },
+                "block": null,
+                "body": "## Current state\n\nSafari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.\n\n## Required changes\n\n- Send the password as typed.\n- An end-to-end test that signs in with a trailing space in Safari.",
+                "confidential": false,
+                "created_at": "2026-10-01T08:15:00Z",
+                "decided_at": "2026-10-02T09:05:00Z",
+                "done_at": null,
+                "done_by_hand": false,
+                "done_from": null,
+                "effort": "S",
+                "horizon": "now",
+                "horizon_set": {
+                  "at": "2026-10-02T09:14:00Z",
+                  "by": {
+                    "display_name": "",
+                    "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                    "username": null
+                  },
+                  "reason": "Customers cannot sign in",
+                  "value": "now"
+                },
+                "id": "01a0f687-f3a0-7516-87ab-709ca2b1c1e6",
+                "key": "acme/WEB-42",
+                "number": 42,
+                "open_prerequisites": 1,
+                "opened_at": "2026-10-01T08:15:00Z",
+                "parent": "acme/WEB-40",
+                "progress": 60,
+                "progress_derived": false,
+                "progress_refinement": 100,
+                "progress_review": 0,
+                "project": "WEB",
+                "reporter": {
+                  "display_name": "Ada Lovelace",
+                  "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                  "username": "ada"
+                },
+                "reporter_agent": "claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911",
+                "reporter_token": {
+                  "id": "01a0a40b-5040-78e5-8344-63ccb2705d84",
+                  "name": "Claude Code on the laptop"
+                },
+                "score": 14.2,
+                "score_version": 1,
+                "security": "none",
+                "severity": "high",
+                "state": "in-progress",
+                "threat": null,
+                "title": "Sign-in fails in Safari when the password contains a space",
+                "type": "bug",
+                "updated_at": "2026-10-06T10:12:05Z",
+                "version": 8
+              }
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -7965,6 +8202,31 @@
         "type": "object"
       },
       "Token": {
+        "example": {
+          "agent": true,
+          "capabilities": [
+            "decide",
+            "close",
+            "drop",
+            "rank",
+            "set-horizon",
+            "interest",
+            "upload",
+            "create-project",
+            "record-answer"
+          ],
+          "created_at": "2026-09-15T07:50:00Z",
+          "expires_at": "2026-12-14T07:50:00Z",
+          "id": "01a0a40b-5040-78e5-8344-63ccb2705d84",
+          "last_used_on": "2026-10-06",
+          "name": "Claude Code on the laptop",
+          "restricted_project": "WEB",
+          "restricted_project_id": "019cadcb-2e60-7116-9641-67b17d11d0ef",
+          "restricted_tenant": "acme",
+          "revoked_at": null,
+          "scope": "write",
+          "state": "active"
+        },
         "properties": {
           "agent": {
             "description": "The agent flag; every request of the token is an agent's (docs/adr/0036 D2)",
@@ -8111,9 +8373,78 @@
             "type": "object"
           }
         ],
-        "description": "A token as listed, and its plaintext in the answer that created it"
+        "description": "A token as listed, and its plaintext in the answer that created it",
+        "example": {
+          "agent": true,
+          "capabilities": [
+            "decide",
+            "close",
+            "drop",
+            "rank",
+            "set-horizon",
+            "interest",
+            "upload",
+            "create-project",
+            "record-answer"
+          ],
+          "created_at": "2026-09-15T07:50:00Z",
+          "expires_at": "2026-12-14T07:50:00Z",
+          "id": "01a0a40b-5040-78e5-8344-63ccb2705d84",
+          "name": "Claude Code on the laptop",
+          "restricted_project": "WEB",
+          "restricted_project_id": "019cadcb-2e60-7116-9641-67b17d11d0ef",
+          "restricted_tenant": "acme",
+          "revoked_at": null,
+          "scope": "write",
+          "state": "active",
+          "token": "cwk_EXAMPLE000000000000000000000000000000000000"
+        }
       },
       "TokenList": {
+        "example": {
+          "items": [
+            {
+              "agent": true,
+              "capabilities": [
+                "decide",
+                "close",
+                "drop",
+                "rank",
+                "set-horizon",
+                "interest",
+                "upload",
+                "create-project",
+                "record-answer"
+              ],
+              "created_at": "2026-09-15T07:50:00Z",
+              "expires_at": "2026-12-14T07:50:00Z",
+              "id": "01a0a40b-5040-78e5-8344-63ccb2705d84",
+              "last_used_on": "2026-10-06",
+              "name": "Claude Code on the laptop",
+              "restricted_project": "WEB",
+              "restricted_project_id": "019cadcb-2e60-7116-9641-67b17d11d0ef",
+              "restricted_tenant": "acme",
+              "revoked_at": null,
+              "scope": "write",
+              "state": "active"
+            },
+            {
+              "agent": false,
+              "capabilities": [],
+              "created_at": "2026-08-03T12:00:00Z",
+              "expires_at": "2026-11-01T12:00:00Z",
+              "id": "019fc77e-be00-7f86-be5e-47b14273332f",
+              "last_used_on": "2026-09-29",
+              "name": "Release notes script",
+              "restricted_project": null,
+              "restricted_tenant": "acme",
+              "revoked_at": "2026-09-30T08:00:00Z",
+              "scope": "read",
+              "state": "revoked"
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -8295,29 +8626,6 @@
           "200": {
             "content": {
               "application/json": {
-                "example": {
-                  "display_name": "Developer",
-                  "global_admin": false,
-                  "id": "0199a3c2-1d2e-7f00-8000-000000000001",
-                  "local": true,
-                  "memberships": [
-                    {
-                      "origins": [
-                        {
-                          "role": "admin",
-                          "source": "grant"
-                        }
-                      ],
-                      "role": "admin",
-                      "tenant": {
-                        "name": "Acme",
-                        "slug": "acme"
-                      }
-                    }
-                  ],
-                  "password_change_required": false,
-                  "username": "dev"
-                },
                 "schema": {
                   "$ref": "#/components/schemas/Me"
                 }
@@ -8390,16 +8698,6 @@
           "200": {
             "content": {
               "application/json": {
-                "example": {
-                  "capabilities": [
-                    "rank",
-                    "set-horizon",
-                    "interest",
-                    "upload",
-                    "create-project"
-                  ],
-                  "chosen": false
-                },
                 "schema": {
                   "$ref": "#/components/schemas/ChatCapabilities"
                 }
@@ -8439,6 +8737,13 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "capabilities": [
+                    "rank",
+                    "set-horizon"
+                  ],
+                  "chosen": true
+                },
                 "schema": {
                   "$ref": "#/components/schemas/ChatCapabilities"
                 }
@@ -8567,6 +8872,9 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "through": "01a10c96-0240-7196-85bb-eeab014066b7"
+              },
               "schema": {
                 "$ref": "#/components/schemas/InboxReadThrough"
               }
@@ -8689,6 +8997,10 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "current_password": "correct horse battery staple",
+                "new_password": "four random words outlast one clever one"
+              },
               "schema": {
                 "$ref": "#/components/schemas/PasswordChange"
               }
@@ -8911,7 +9223,7 @@
                 "agent": true,
                 "lifetime_days": 90,
                 "name": "Claude Code on the laptop",
-                "project": "COW",
+                "project": "WEB",
                 "scope": "write",
                 "tenant": "acme"
               },

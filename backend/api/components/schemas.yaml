@@ -165,6 +165,19 @@ Me:
       type: array
       items:
         $ref: '#/Membership'
+  example:
+    id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3
+    username: ada
+    display_name: Ada Lovelace
+    global_admin: true
+    local: true
+    password_change_required: false
+    memberships:
+      - tenant: {slug: acme, name: Acme}
+        role: admin
+        origins:
+          - source: grant
+            role: admin
 TokenState:
   type: string
   enum: [active, expired, revoked]
@@ -210,6 +223,21 @@ Token:
       format: date-time
     state:
       $ref: '#/TokenState'
+  # An agent token restricted to a project; the deprecated restricted_project_id is still answered.
+  example: &example-token
+    id: 01a0a40b-5040-78e5-8344-63ccb2705d84
+    name: Claude Code on the laptop
+    scope: write
+    agent: true
+    capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+    restricted_tenant: acme
+    restricted_project: WEB
+    restricted_project_id: 019cadcb-2e60-7116-9641-67b17d11d0ef
+    created_at: '2026-09-15T07:50:00Z'
+    expires_at: '2026-12-14T07:50:00Z'
+    last_used_on: '2026-10-06'
+    revoked_at: null
+    state: active
 TokenCreate:
   type: object
   additionalProperties: false
@@ -262,6 +290,21 @@ TokenCreated:
             The plaintext, `cwk_` and 43 base62 characters, shown once: cowork
             keeps its SHA-256 only (docs/adr/0035 D1). An answer replayed for an
             `Idempotency-Key` leaves it out.
+  # The plaintext is an example that no installation accepts.
+  example:
+    id: 01a0a40b-5040-78e5-8344-63ccb2705d84
+    name: Claude Code on the laptop
+    scope: write
+    agent: true
+    capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+    restricted_tenant: acme
+    restricted_project: WEB
+    restricted_project_id: 019cadcb-2e60-7116-9641-67b17d11d0ef
+    created_at: '2026-09-15T07:50:00Z'
+    expires_at: '2026-12-14T07:50:00Z'
+    revoked_at: null
+    state: active
+    token: cwk_EXAMPLE000000000000000000000000000000000000
 TokenList:
   type: object
   required: [items, next_cursor]
@@ -276,6 +319,22 @@ TokenList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  example:
+    items:
+      - *example-token
+      - id: 019fc77e-be00-7f86-be5e-47b14273332f
+        name: Release notes script
+        scope: read
+        agent: false
+        capabilities: []
+        restricted_tenant: acme
+        restricted_project: null
+        created_at: '2026-08-03T12:00:00Z'
+        expires_at: '2026-11-01T12:00:00Z'
+        last_used_on: '2026-09-29'
+        revoked_at: '2026-09-30T08:00:00Z'
+        state: revoked
+    next_cursor: null
 MemberToken:
   type: object
   description: |
@@ -341,6 +400,24 @@ CurrentToken:
       properties:
         request:
           $ref: '#/RequestMark'
+  example:
+    id: 01a0a40b-5040-78e5-8344-63ccb2705d84
+    name: Claude Code on the laptop
+    scope: write
+    agent: true
+    capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+    restricted_tenant: acme
+    restricted_project: WEB
+    restricted_project_id: 019cadcb-2e60-7116-9641-67b17d11d0ef
+    created_at: '2026-09-15T07:50:00Z'
+    expires_at: '2026-12-14T07:50:00Z'
+    last_used_on: '2026-10-06'
+    revoked_at: null
+    state: active
+    request:
+      agent: true
+      agent_mark: claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911
+      capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
 RequestMark:
   type: object
   required: [agent, agent_mark, capabilities]
@@ -2800,6 +2877,9 @@ ChatCapabilities:
       description: |
         The person chose the set; false is the default, every capability but decide, close, drop and
         record-answer
+  example:
+    capabilities: [rank, set-horizon, interest, upload, create-project]
+    chosen: false
 ChatCapabilitiesUpdate:
   type: object
   additionalProperties: false
@@ -2857,11 +2937,27 @@ InboxList:
     unread:
       type: integer
       description: The person's unread notifications in the tenants the request reaches
+  # Ada Lovelace told that Grace Hopper's comment on acme/WEB-42 mentions her.
+  example:
+    items:
+      - id: 01a10c96-0240-7196-85bb-eeab014066b7
+        tenant: {slug: acme, name: Acme}
+        ticket: {key: acme/WEB-42, title: Sign-in fails in Safari when the password contains a space, state: in-progress}
+        reason: mentioned
+        act: *example-activity
+        blocker: null
+        withdrawn: false
+        read: false
+        created_at: '2026-10-05T15:02:00Z'
+    next_cursor: null
+    unread: 1
 InboxState:
   type: object
   required: [unread]
   properties:
     unread: {type: integer}
+  example:
+    unread: 0
 InboxReadThrough:
   type: object
   additionalProperties: false
@@ -2896,6 +2992,13 @@ MyTicketList:
         $ref: '#/MyTicket'
     next_cursor:
       type: [string, 'null']
+  # What Grace Hopper reads: acme/WEB-42 is assigned to her.
+  example:
+    items:
+      - tenant: {slug: acme, name: Acme}
+        ticket: *example-ticket
+        place: 1
+    next_cursor: null
 Decision:
   type: object
   required: [tenant, ticket, question]
@@ -2916,6 +3019,13 @@ DecisionList:
         $ref: '#/Decision'
     next_cursor:
       type: [string, 'null']
+  # What Ada Lovelace reads: Q1 of acme/WEB-42 is asked of her.
+  example:
+    items:
+      - tenant: {slug: acme, name: Acme}
+        ticket: {key: acme/WEB-42, title: Sign-in fails in Safari when the password contains a space, state: in-progress}
+        question: *example-question
+    next_cursor: null
 Dashboard:
   type: object
   description: |
