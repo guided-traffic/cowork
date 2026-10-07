@@ -111,7 +111,7 @@ export function blockLacks(file: ImportFile, draft: Draft | undefined): string |
   }
   const block = draft?.block;
   if (!block) {
-    return file.state === 'blocked'
+    return file.state === 'blocked' && file.block !== null
       ? null
       : 'The state blocked needs its block: what it waits on and why.';
   }
