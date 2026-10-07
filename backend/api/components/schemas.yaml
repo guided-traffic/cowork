@@ -1683,6 +1683,21 @@ TimeEntry:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-time-entry
+    id: 01a10d1d-81c0-77f6-82f0-6d35a8aef0d0
+    ticket: acme/WEB-42
+    person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    author: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    token: null
+    minutes: 90
+    day: '2026-10-05'
+    note: Reproduced in Safari 18 and traced the trimmed field
+    voided: false
+    voided_at: null
+    edited: false
+    version: 1
+    created_at: '2026-10-05T17:30:00Z'
+    updated_at: '2026-10-05T17:30:00Z'
 TimeEntryCreate:
   type: object
   additionalProperties: false
@@ -1713,6 +1728,12 @@ TimeEntryList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  # A ticket's entries, which come with their total; the tenant's list has its own example.
+  example:
+    items:
+      - *example-time-entry
+    next_cursor: null
+    total_minutes: 90
 TimeEntryRevision:
   type: object
   required: [minutes, day, note, edited_by, token, at]
@@ -1738,6 +1759,16 @@ TimeEntryRevisionList:
         $ref: '#/TimeEntryRevision'
     next_cursor:
       type: [string, 'null']
+  # The values an entry of Sam Rivera on acme/WEB-39 had before he corrected it.
+  example:
+    items:
+      - minutes: 30
+        day: '2026-10-06'
+        note: Listed the reasons
+        edited_by: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+        token: null
+        at: '2026-10-06T16:30:00Z'
+    next_cursor: null
 TimeReport:
   type: object
   required: [group_by, items, total_minutes]
@@ -1753,6 +1784,16 @@ TimeReport:
           label: {type: string}
           minutes: {type: integer}
     total_minutes: {type: integer}
+  example:
+    group_by: ticket
+    items:
+      - key: acme/WEB-39
+        label: Log the sign-in failures with their reason
+        minutes: 45
+      - key: acme/WEB-42
+        label: Sign-in fails in Safari when the password contains a space
+        minutes: 90
+    total_minutes: 135
 InterestWeight:
   type: string
   enum: [watch, need, urgent]

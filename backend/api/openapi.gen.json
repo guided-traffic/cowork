@@ -7524,6 +7524,30 @@
         "type": "string"
       },
       "TimeEntry": {
+        "example": {
+          "author": {
+            "display_name": "Grace Hopper",
+            "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+            "username": null
+          },
+          "created_at": "2026-10-05T17:30:00Z",
+          "day": "2026-10-05",
+          "edited": false,
+          "id": "01a10d1d-81c0-77f6-82f0-6d35a8aef0d0",
+          "minutes": 90,
+          "note": "Reproduced in Safari 18 and traced the trimmed field",
+          "person": {
+            "display_name": "Grace Hopper",
+            "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+            "username": null
+          },
+          "ticket": "acme/WEB-42",
+          "token": null,
+          "updated_at": "2026-10-05T17:30:00Z",
+          "version": 1,
+          "voided": false,
+          "voided_at": null
+        },
         "properties": {
           "author": {
             "$ref": "#/components/schemas/Person"
@@ -7631,6 +7655,36 @@
         "type": "object"
       },
       "TimeEntryList": {
+        "example": {
+          "items": [
+            {
+              "author": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "created_at": "2026-10-05T17:30:00Z",
+              "day": "2026-10-05",
+              "edited": false,
+              "id": "01a10d1d-81c0-77f6-82f0-6d35a8aef0d0",
+              "minutes": 90,
+              "note": "Reproduced in Safari 18 and traced the trimmed field",
+              "person": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "ticket": "acme/WEB-42",
+              "token": null,
+              "updated_at": "2026-10-05T17:30:00Z",
+              "version": 1,
+              "voided": false,
+              "voided_at": null
+            }
+          ],
+          "next_cursor": null,
+          "total_minutes": 90
+        },
         "properties": {
           "items": {
             "items": {
@@ -7727,6 +7781,23 @@
         "type": "object"
       },
       "TimeEntryRevisionList": {
+        "example": {
+          "items": [
+            {
+              "at": "2026-10-06T16:30:00Z",
+              "day": "2026-10-06",
+              "edited_by": {
+                "display_name": "Sam Rivera",
+                "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+                "username": "sam"
+              },
+              "minutes": 30,
+              "note": "Listed the reasons",
+              "token": null
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -7748,6 +7819,22 @@
         "type": "object"
       },
       "TimeReport": {
+        "example": {
+          "group_by": "ticket",
+          "items": [
+            {
+              "key": "acme/WEB-39",
+              "label": "Log the sign-in failures with their reason",
+              "minutes": 45
+            },
+            {
+              "key": "acme/WEB-42",
+              "label": "Sign-in fails in Safari when the password contains a space",
+              "minutes": 90
+            }
+          ],
+          "total_minutes": 135
+        },
         "properties": {
           "group_by": {
             "enum": [
@@ -13656,6 +13743,11 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "day": "2026-10-05",
+                "minutes": 90,
+                "note": "Reproduced in Safari 18 and traced the trimmed field"
+              },
               "schema": {
                 "$ref": "#/components/schemas/TimeEntryCreate"
               }
@@ -13745,6 +13837,10 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "minutes": 45,
+                "note": "Listed the reasons the sign-in records"
+              },
               "schema": {
                 "$ref": "#/components/schemas/TimeEntryPatch"
               }
@@ -13756,6 +13852,30 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "author": {
+                    "display_name": "Sam Rivera",
+                    "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+                    "username": "sam"
+                  },
+                  "created_at": "2026-10-06T16:05:00Z",
+                  "day": "2026-10-06",
+                  "edited": true,
+                  "id": "01a111f6-0be0-7944-856c-23487b30768e",
+                  "minutes": 45,
+                  "note": "Listed the reasons the sign-in records",
+                  "person": {
+                    "display_name": "Sam Rivera",
+                    "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+                    "username": "sam"
+                  },
+                  "ticket": "acme/WEB-39",
+                  "token": null,
+                  "updated_at": "2026-10-06T16:30:00Z",
+                  "version": 2,
+                  "voided": false,
+                  "voided_at": null
+                },
                 "schema": {
                   "$ref": "#/components/schemas/TimeEntry"
                 }
@@ -13846,6 +13966,30 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "author": {
+                    "display_name": "Grace Hopper",
+                    "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                    "username": null
+                  },
+                  "created_at": "2026-10-05T17:30:00Z",
+                  "day": "2026-10-05",
+                  "edited": false,
+                  "id": "01a10d1d-81c0-77f6-82f0-6d35a8aef0d0",
+                  "minutes": 90,
+                  "note": "Reproduced in Safari 18 and traced the trimmed field",
+                  "person": {
+                    "display_name": "Grace Hopper",
+                    "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                    "username": null
+                  },
+                  "ticket": "acme/WEB-42",
+                  "token": null,
+                  "updated_at": "2026-10-06T09:10:00Z",
+                  "version": 2,
+                  "voided": true,
+                  "voided_at": "2026-10-06T09:10:00Z"
+                },
                 "schema": {
                   "$ref": "#/components/schemas/TimeEntry"
                 }
@@ -14186,11 +14330,65 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "items": [
+                    {
+                      "author": {
+                        "display_name": "Sam Rivera",
+                        "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+                        "username": "sam"
+                      },
+                      "created_at": "2026-10-06T16:05:00Z",
+                      "day": "2026-10-06",
+                      "edited": true,
+                      "id": "01a111f6-0be0-7944-856c-23487b30768e",
+                      "minutes": 45,
+                      "note": "Listed the reasons the sign-in records",
+                      "person": {
+                        "display_name": "Sam Rivera",
+                        "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+                        "username": "sam"
+                      },
+                      "ticket": "acme/WEB-39",
+                      "token": null,
+                      "updated_at": "2026-10-06T16:30:00Z",
+                      "version": 2,
+                      "voided": false,
+                      "voided_at": null
+                    },
+                    {
+                      "author": {
+                        "display_name": "Grace Hopper",
+                        "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                        "username": null
+                      },
+                      "created_at": "2026-10-05T17:30:00Z",
+                      "day": "2026-10-05",
+                      "edited": false,
+                      "id": "01a10d1d-81c0-77f6-82f0-6d35a8aef0d0",
+                      "minutes": 90,
+                      "note": "Reproduced in Safari 18 and traced the trimmed field",
+                      "person": {
+                        "display_name": "Grace Hopper",
+                        "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                        "username": null
+                      },
+                      "ticket": "acme/WEB-42",
+                      "token": null,
+                      "updated_at": "2026-10-05T17:30:00Z",
+                      "version": 1,
+                      "voided": false,
+                      "voided_at": null
+                    }
+                  ],
+                  "next_cursor": null
+                },
                 "schema": {
                   "$ref": "#/components/schemas/TimeEntryList"
                 }
               },
               "text/csv": {
+                "example": "id,ticket,day,minutes,person_id,person,note,voided_at,created_at\n01a111f6-0be0-7944-856c-23487b30768e,acme/WEB-39,2026-10-06,45,019e165f-39c0-7937-931a-d0fa7735df32,Sam Rivera,Listed the reasons the sign-in records,,2026-10-06T16:05:00Z\n01a10d1d-81c0-77f6-82f0-6d35a8aef0d0,acme/WEB-42,2026-10-05,90,019cb855-3d80-7d3c-a80d-97fa1e50d59e,Grace Hopper,Reproduced in Safari 18 and traced the trimmed field,,2026-10-05T17:30:00Z\n",
                 "schema": {
                   "type": "string"
                 }
@@ -14243,6 +14441,7 @@
                 }
               },
               "text/csv": {
+                "example": "ticket,label,minutes\nacme/WEB-39,Log the sign-in failures with their reason,45\nacme/WEB-42,Sign-in fails in Safari when the password contains a space,90\n",
                 "schema": {
                   "type": "string"
                 }
