@@ -3439,6 +3439,22 @@ SearchHitList:
         $ref: '#/SearchHit'
     next_cursor:
       type: [string, 'null']
+  # q=macOS, which only a comment of acme/WEB-42 holds.
+  example:
+    items:
+      - tenant: {slug: acme, name: Acme}
+        key: acme/WEB-42
+        title: Sign-in fails in Safari when the password contains a space
+        type: bug
+        state: in-progress
+        found_in: comment
+        comment: 01a10c96-0240-79ce-bd04-bc6c377cbc17
+        question: null
+        snippet:
+          - {text: 'Reproduced with Safari 18.0 on ', match: false}
+          - {text: macOS, match: true}
+          - {text: ' 15: the request carries the password without its trailing space.', match: false}
+    next_cursor: null
 ImportStatus:
   type: string
   enum: [dry_run, executed]

@@ -7244,6 +7244,38 @@
         "type": "object"
       },
       "SearchHitList": {
+        "example": {
+          "items": [
+            {
+              "comment": "01a10c96-0240-79ce-bd04-bc6c377cbc17",
+              "found_in": "comment",
+              "key": "acme/WEB-42",
+              "question": null,
+              "snippet": [
+                {
+                  "match": false,
+                  "text": "Reproduced with Safari 18.0 on "
+                },
+                {
+                  "match": true,
+                  "text": "macOS"
+                },
+                {
+                  "match": false,
+                  "text": " 15: the request carries the password without its trailing space."
+                }
+              ],
+              "state": "in-progress",
+              "tenant": {
+                "name": "Acme",
+                "slug": "acme"
+              },
+              "title": "Sign-in fails in Safari when the password contains a space",
+              "type": "bug"
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -14846,38 +14878,6 @@
           "200": {
             "content": {
               "application/json": {
-                "example": {
-                  "items": [
-                    {
-                      "comment": "0199a3c2-1d2e-7f00-8000-0000000000c1",
-                      "found_in": "comment",
-                      "key": "acme/COW-12",
-                      "question": null,
-                      "snippet": [
-                        {
-                          "match": false,
-                          "text": "the "
-                        },
-                        {
-                          "match": true,
-                          "text": "readyReplicas"
-                        },
-                        {
-                          "match": false,
-                          "text": " count is 0 after the rollout"
-                        }
-                      ],
-                      "state": "in-progress",
-                      "tenant": {
-                        "name": "Acme",
-                        "slug": "acme"
-                      },
-                      "title": "The gate fails on a fresh cluster",
-                      "type": "bug"
-                    }
-                  ],
-                  "next_cursor": null
-                },
                 "schema": {
                   "$ref": "#/components/schemas/SearchHitList"
                 }
