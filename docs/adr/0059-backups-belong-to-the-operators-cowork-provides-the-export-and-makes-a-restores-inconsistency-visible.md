@@ -9,8 +9,15 @@ and over documentation alone. The rules of D4–D6 were put to the owner with th
 not objected to.
 
 **Partly built** (phase 2, 2026-10-02): D3 for the one export that exists (a ticket's
-`/markdown`) and D4's honest `404` for an attachment whose bytes are missing; the project and
-tenant export, the consistency check, the restore steps and D6 arrive with the export.
+`/markdown`) and D4's honest `404` for an attachment whose bytes are missing; ~~the project and
+tenant export,~~ the consistency check, the restore steps and D6 arrive with the export.
+*(2026-10-06.)* D2 and D3 are built for the project and the tenant export of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4: `GET …/projects/{project}/export` and
+`GET /api/v1/tenants/{tenant}/export` each record `exported` on what they exported, and
+[docs/operations/import-and-export.md](../operations/import-and-export.md) shows the CronJob as a
+snippet, with a `read`-scoped token restricted to the tenant; the export needs no configuration of
+its own (D6). A restore of the tickets through the importer keeps what the archive carries, and
+not the comments, the time or the attachments' bytes (ADR 0051 Residual risks).
 
 **Built** (2026-10-06): D4 and D6 — the consistency check —, and D1, D2 and D5 as the operations
 page [docs/operations/backups.md](../operations/backups.md). The project and the tenant export

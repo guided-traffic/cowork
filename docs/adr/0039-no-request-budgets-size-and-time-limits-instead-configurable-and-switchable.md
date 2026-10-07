@@ -37,7 +37,15 @@ the quota is a limit of the table, `0` for none, and the one whose default is `0
 the routing recorded in
 [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D3
 (D3: the frontend proxies nothing, so the proxy sized above the backend's limits is the Ingress
-controller, whose limits the installation sets and the chart documents; built the same day).
+controller, whose limits the installation sets and the chart documents; built the same day). Amended 2026-10-06 with the import of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D7 (D2: its
+variable joins the table; D3: the controller's body limit covers its upload), built the same day
+([`config.go`](../../backend/internal/config/config.go), `limitBody` in
+[`validate.go`](../../backend/internal/api/validate.go), the chart's `cowork.ingressBodySize`). Fixed,
+not configured: at most 10,000 files an upload (`importer.MaxFiles`) and one import at a time per
+replica, a dry run or an execution (`importSlot` in
+[`imports.go`](../../backend/internal/api/imports.go)); both bound what one request holds in memory,
+neither is a budget, and D1 stands.
 
 ## Context
 
@@ -65,6 +73,7 @@ not guessed.
 | `COWORK_MAX_JSON_BODY` | `1MiB` | `413` with a JSON error |
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md) D6) | `413` before bytes are stored |
 | `COWORK_ATTACHMENT_TENANT_QUOTA` *(added 2026-10-05)* | `0`, none (ADR 0016 D6) | `409 attachment_quota` before bytes are stored |
+| `COWORK_MAX_IMPORT_BYTES` *(added 2026-10-06)* | `50MiB` ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D7) | `413` — an import's upload whose body, or whose files together, are larger; the dry run stores nothing |
 | `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled; `504` with a JSON error |
 | `COWORK_MAX_PAGE_SIZE` | `200` | a larger `limit` is clamped, not refused |
 | `COWORK_MAX_QUERY_LENGTH` | `256` | a longer search query answers `400` |
@@ -102,8 +111,11 @@ does not know which controller it is, so its limits are the installation's to se
 controller's own configuration, and the chart documents them (the `ingress` comment of
 [`values.yaml`](../../deploy/helm/cowork/values.yaml),
 [docs/operations/installation.md](../operations/installation.md#expose-it)) and prints them in its
-notes for the values given: a body limit of at least the larger of the JSON and the attachment
-maximum, rounded up to MiB, plus one MiB (`11m` with the defaults; none when either is `0`), and a
+notes for the values given: a body limit of at least ~~the larger of the JSON and the attachment
+maximum~~ the largest of the JSON, the attachment and the import maximum *(amended 2026-10-06 with
+the import's upload, [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
+D7)*, rounded up to MiB, plus one MiB (~~`11m`~~ `51m` with the defaults; none when any of them is
+`0`), and a
 read timeout of at least the request timeout plus ten seconds (`40` seconds; an hour when it is
 `0`), so a limit is the backend's problem body with its request id. What the controller answers
 itself — its own `413` above its limit, its `502` or `503` without a ready backend pod, its `504`

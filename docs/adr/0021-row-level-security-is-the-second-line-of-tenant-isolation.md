@@ -81,7 +81,14 @@ shared filter only into one that is not shared, deletes it, and reads it back un
 the transaction names it in D3's `app.saved_filter_id`; a trigger, `saved_filters_moderation_guard`,
 refuses any other change of a filter that is not the caller's own — its name, its parameters —, as
 `projects_restriction_guard` holds a project's restriction, because a policy sees the row and not
-the columns (`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`).
+the columns (`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`). Migration 41
+(2026-10-06) adds `import_jobs` with the canonical policy and restrictive ones that hold every row to
+the tenant's administrators — inserting one to them alone, changing one to them and to the purge of a
+ticket, which takes the ticket's file out of its job's report — and its deletion to the job
+`import-expiry`, a name `app.job` gains, which a permissive policy admits past the tenant to the dry
+runs of every tenant and to nothing else
+([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D6, D7;
+`TestTheImportJobPoliciesAdmitTheTenantsAdministratorsOnly`).
 
 ## Context
 

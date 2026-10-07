@@ -41,7 +41,13 @@ the same filter — the `q` filter of the lists and the search of
 [ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md) D5, every ticket
 it reads —, and the person-level stream carries the deletion and the restoration across the
 person's tenants, on which the person-level pages and the inbox's count read their lists again; the
-dashboard of D1's "dashboard tile" is not built. D4's deletion of a project and D6 are not built.
+dashboard of D1's "dashboard tile" is not built. D4's deletion of a project and D6 are not built. *(2026-10-06,
+made concrete by the implementer with the import of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md), open to the
+owner's objection:)* the purge of a ticket an import created also takes the ticket's file out of the
+report of its import job, which keeps every file's title, threat, note and questions for good and
+would keep what the purge removes; the report's summary still counts it, and the purge's act counts
+`import_report` (`forgetImportedFile` in [`store/deletion.go`](../../backend/internal/store/deletion.go)).
 
 **Partly built** (phase 3, 2026-10-03): D5 for local accounts — a tenant's administrator
 deactivates an account their tenant manages (`PUT …/accounts/{username}/deactivation`), and the

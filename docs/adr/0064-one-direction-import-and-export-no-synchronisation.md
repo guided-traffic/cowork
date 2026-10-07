@@ -7,8 +7,21 @@ Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog qu
 mirror written by cowork, and over an MCP convenience tool for the export. The rules of D4–D5
 were put to the owner with the question and not objected to.
 
-**Not built.** No importer, no exporter. Amended 2026-10-04 (D4: the workflow plan that was to
+~~**Not built.** No importer, no exporter.~~ Amended 2026-10-04 (D4: the workflow plan that was to
 carry the sentence beside the operations page is consumed).
+
+**Built** (phase 6, 2026-10-06, in the API): D1–D3 and D4's sentence — the import and the export
+of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md), neither of
+which holds a repository's credential or reaches one; the dry run reports a number the project
+holds as a conflict naming the ticket's key, and the execution refuses while one remains
+(`409 import_conflict`, [`imports.go`](../../backend/internal/api/imports.go) `blockingProblem`).
+*(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* a number the
+project holds is one of any of its tickets, a deleted one included, and a number a purged ticket
+held is a conflict too, since a number is never handed out again
+([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D4). D4's
+sentence is on [docs/operations/import-and-export.md](../operations/import-and-export.md); this
+repository's own `docs/tickets/README.md` gets its note on the day its tickets are imported, which
+has not happened. D5 found the `api` tool unfit for it (below).
 
 ## Context
 
@@ -50,9 +63,15 @@ are removed — the repository decides. This repository's own `docs/tickets/READ
 that note from the day its tickets are imported (phase 6, this repository first).
 
 **D5 — An MCP convenience for writing the export into the working directory is not built;**
-the `api` tool reaches `GET …/export` and a session may unpack it where it stands
+~~the `api` tool reaches `GET …/export` and a session may unpack it where it stands~~
 ([ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md)). A dedicated tool is an
-amendment if sessions do it often.
+amendment if sessions do it often. *(Found 2026-10-06, when the export was built: the `api` tool
+answers a body as text cut at 100,000 bytes — `apiAnswer` in
+[`tool_api.go`](../../backend/internal/tools/tool_api.go) —, so an archive does not reach a session
+intact through it. A session that needs the export in its working directory runs
+`cowork-mcp export <tenant>/<PROJECT> <dir>`, the subcommand of
+[ADR 0070](0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md) D2, as a command; the
+rule of D5 stands.)*
 
 ## Consequences
 

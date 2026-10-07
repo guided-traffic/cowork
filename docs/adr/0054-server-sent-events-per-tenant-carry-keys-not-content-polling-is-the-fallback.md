@@ -101,6 +101,11 @@ show or, on the person-level pages, on the person's first tenant
 tier asserts what the person-level stream never carries: another person's events, a tenant the person
 left, a project restricted away from them, a confidential ticket they cannot see.
 
+**Built** (phase 6, 2026-10-06): D2's `project.changed` for an import, as made concrete that day —
+`Event.Quiet` in [`store/tx.go`](../../backend/internal/store/tx.go), the act `imported` in
+[`importwrite.go`](../../backend/internal/api/importwrite.go) —; the integration tier asserts one
+event and no more for an import's execution (`TestImportADryRunAndItsExecution`).
+
 ## Context
 
 The owner wants a change to reach every open client in under a second. Two boards, a
@@ -151,6 +156,10 @@ kind `linked`, `merged`, `closed`, `reopened`, `updated` or `unlinked` — says 
 linked a pull request or a commit to the ticket or reported its state, or that a person removed a
 link; the ticket's version is the one it has, which the act did not move. The client loads the
 ticket's list of pull requests and its activity again.
+*(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* an import's
+execution ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D3) is announced the same way, with the kind
+`imported`: its acts on the tickets, questions and links it creates are recorded and not
+published, so an import of hundreds of tickets is one event, not a burst.
 
 **D3 — Visibility is enforced at the stream.** Each event carries the project; a
 subscription knows the person's visible projects (computed at connect, recomputed on
@@ -287,7 +296,8 @@ not send a turn again by itself; the person does, on another replica.)*
 - D3's visibility filter at the stream is a second place, after the data layer's predicate,
   where project restriction is enforced; the integration tier subscribes a person outside a
   restricted project and asserts silence.
-- A burst of mutations (an import, an agent loop) produces a burst of events; D4's bounded
+- A burst of mutations (~~an import,~~ an agent loop) produces a burst of events *(2026-10-06: an
+  import is one event, D2)*; D4's bounded
   buffers and `resync` keep the backend safe, at the cost of a full refetch for the clients
   that fell behind. The inbox collapse of ADR 0039 D5 does not apply to the stream.
 - `NOTIFY` is not durable: a replica that is down misses nothing it needs (its clients are

@@ -9,7 +9,23 @@ mapped. The owner expects to import most repositories' tickets including their a
 holds that the choice belongs to the person importing, not to this project. The mapping of
 D3 follows the earlier records; D4–D6 were proposed with the question and not objected to.
 
-**Not built.** No importer.
+Made concrete 2026-10-06 by the implementer where the record left the detail open, each marked
+in place and open to the owner's objection: a dropped ticket's reason where its source has none
+and how a done one is done (D2); the keys D3's table does not name, what an unfixed finding is,
+and the forms of the questions and the mentions (D3); the columns of a record without frontmatter
+(D4); and that a `/context` document is an error, not a skipped file, as the records it cites have
+it (D5).
+
+~~**Not built.** No importer.~~ **Built** (phase 6, 2026-10-06, in the API; the UI's import page
+outstanding): D1–D5 — [`internal/importer`](../../backend/internal/importer/) reads a repository's
+ticket files and the documents of an export, maps them as D3 says and reports every file of the
+upload with its outcome; the person corrects or excludes a file at the execution
+([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D2). The
+fixtures of the Consequences are copies of this repository's ticket files in
+[`testdata/tickets`](../../backend/internal/importer/testdata/tickets/), and the integration tier
+reads this repository's whole `docs/tickets/` without an error
+(`TestImportThisRepositorysTickets`). The mapping in full:
+[docs/developer/import-and-export.md](../developer/import-and-export.md).
 
 ## Context
 
@@ -38,6 +54,11 @@ note `imported from archive; the source carried no verification note` so that
 [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 holds without
 inventing a verification. Archived tickets keep their numbers like open ones
 ([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D6).
+*(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* a `dropped`
+without a `dropped-reason:` receives the reason `imported from archive; the source carried no
+reason`, since a drop needs one (ADR 0009 D4). A `done` ticket is done from `in-progress`, by its
+stages when all three are full and it has no children, by hand otherwise (ADR 0009 D5); `opened:`,
+`decided:` and `done:` are its dates, and a ticket without `opened:` is opened at the execution.
 
 **D3 — The mapping of a file, fixed by the earlier records:**
 
@@ -55,15 +76,42 @@ inventing a verification. Archived tickets keep their numbers like open ones
 | `T<n>` mentions in the body | rewritten to the full key of the imported ticket when it is in the import, left as text otherwise |
 | type | detected by content and reported for correction ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D5) |
 
+*(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* beside the table,
+the importer reads `urgency` as `horizon`
+([ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
+D3), the three progress stages, `parent`, and an `assignee` by its identity only (ADR 0044 D1); a
+key it does not know is a warning and not read, a key named twice an error. A `blocked-by:` beside a
+state other than `blocked` that names a ticket is the `blocks` link of the table; one that names a
+block kind, or an ADR (`adr-NNNN`, a decision), is the candidate the report names, and the body
+keeps it as a line under `## Related` — nothing is dropped silently. A `filed-from:` that names an
+event rather than a ticket is such a line too (ADR 0051 D2). An unfixed finding is one without a
+`shipped:` line ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D7). The questions are the last `## Open questions` heading outside fenced code, up to the next
+heading of its level; `_withdrawn_` is a withdrawn question, and a question without an answer line,
+or with an empty one, is open with a warning. A `T<n>` is rewritten outside fenced code and code
+spans, in the body and the questions of a repository's file; an export's document names full keys
+and is left as it is. The type is detected from the title — a question mark, a `live` or
+`boundary` finding, the words of a decision, a defect or a missing capability, in that order, else
+a task — and the report names the rule that matched.
+
 **D4 — A file without frontmatter is not refused; it is reported for a decision.** The
 multi-item archive records become one ticket each, type `task`, state `done` with the import
 note of D2, their numbered items kept as body text; the report says so per file, and the
-person may exclude the file or accept it.
+person may exclude the file or accept it. *(Made concrete 2026-10-06 by the implementer, open to
+the owner's objection:)* such a ticket has the severity `low`, the security class `none` and the
+effort `S`, the number of its file name, and as its title the file's first `# ` heading, or its
+name without the number.
 
 **D5 — Files that are not tickets are skipped and listed.** `README.md`, notes, anything
-not matching `NNN-<slug>.md` or `local_NNN-<slug>.md`, and any `/context` document
+not matching `NNN-<slug>.md` or `local_NNN-<slug>.md`, ~~and any `/context` document
 ([ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
-D3) appear in the report as skipped with the reason.
+D3)~~ appear in the report as skipped with the reason. *(Made concrete 2026-10-06 by the
+implementer, open to the owner's objection:)* a `/context` document is not skipped but reported
+as an error with the line where its first read-only section starts, as ADR 0044 D3 ("refused")
+and ADR 0051 D2 (an error) have it: the execution waits until the person excludes it, so a
+context export is never passed over unseen. An export's document, `<PROJECT>-<n>.md`, is a
+ticket file too (ADR 0051 D4); a file that is no Markdown, and the export's `attachments.json`, are
+skipped with their reason, and its `manifest.json` and `links.json` are read beside the tickets.
 
 **D6 — Several repositories of one tenant import into several projects.** Keys do not collide
 because the project is the namespace (ADR 0007 D1); the person chooses the project per
