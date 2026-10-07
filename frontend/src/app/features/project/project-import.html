@@ -30,9 +30,10 @@
       <section class="card upload" aria-labelledby="upload-heading">
         <h2 id="upload-heading">The files</h2>
         <p class="muted small">
-          A <code>tar.gz</code> or a <code>zip</code> of a repository's <code>docs/tickets/</code> or
-          of an export, or the Markdown ticket files themselves. Only ticket files are read —
-          <code>NNN-&lt;slug&gt;.md</code>, <code>local_NNN-&lt;slug&gt;.md</code> and an export's
+          A <code>tar.gz</code> or a <code>zip</code> of a repository's
+          <code>docs/tickets/</code> or of an export, or the Markdown ticket files themselves. Only
+          ticket files are read — <code>NNN-&lt;slug&gt;.md</code>,
+          <code>local_NNN-&lt;slug&gt;.md</code> and an export's
           <code>&lt;PROJECT&gt;-&lt;n&gt;.md</code> —; the report lists everything else as skipped.
         </p>
         <div
@@ -220,8 +221,8 @@
             The execution was refused — nothing was imported
           </h2>
           <p>
-            {{ refused.title }}: {{ refused.detail }}. The execution reads every file again with your
-            corrections, against {{ project() }} as it stands now.
+            {{ refused.title }}: {{ refused.detail }}. The execution reads every file again with
+            your corrections, against {{ project() }} as it stands now.
           </p>
           <ul>
             @for (entry of refusedFiles(); track entry.path) {
@@ -245,7 +246,11 @@
       }
 
       @if (blockingFiles().length > 0) {
-        <section class="card danger" data-testid="import-blocking" aria-labelledby="blocking-heading">
+        <section
+          class="card danger"
+          data-testid="import-blocking"
+          aria-labelledby="blocking-heading"
+        >
           <h2 id="blocking-heading">
             {{ count(blockingFiles().length, 'file') }}
             {{ blockingFiles().length === 1 ? 'blocks' : 'block' }} the execution
@@ -335,9 +340,11 @@
                   <div class="line">
                     @if (row.file.key; as key) {
                       @if (row.file.outcome === 'created' && session.tenant(); as tenant) {
-                        <a class="number tabular" [routerLink]="['/t', tenant, 'tickets', shortKey(key)]">{{
-                          shortKey(key)
-                        }}</a>
+                        <a
+                          class="number tabular"
+                          [routerLink]="['/t', tenant, 'tickets', shortKey(key)]"
+                          >{{ shortKey(key) }}</a
+                        >
                       } @else {
                         <span class="number tabular">{{ shortKey(key) }}</span>
                       }
@@ -429,7 +436,11 @@
                   }
                   <td colspan="6">
                     @if (row.editsBlock) {
-                      <div class="block" role="group" [attr.aria-label]="'Block of ' + row.file.path">
+                      <div
+                        class="block"
+                        role="group"
+                        [attr.aria-label]="'Block of ' + row.file.path"
+                      >
                         <p-select
                           [options]="blockKinds"
                           [ngModel]="row.draft?.block?.kind ?? null"
@@ -467,9 +478,9 @@
                       }
                       @if (row.candidate; as candidate) {
                         <li class="info">
-                          <span class="place">blocked-by</span> names <code>{{ candidate }}</code>
-                          beside the state {{ row.file.state }}; the import never sets blocked on
-                          its own.
+                          <span class="place">blocked-by</span> names
+                          <code>{{ candidate }}</code> beside the state {{ row.file.state }}; the
+                          import never sets blocked on its own.
                           <button
                             type="button"
                             class="inline"
@@ -505,7 +516,9 @@
 
       @if (dryRun()) {
         <div class="execute" data-testid="import-execute-bar">
-          <span class="muted" role="status" data-testid="import-execute-text">{{ executeText() }}</span>
+          <span class="muted" role="status" data-testid="import-execute-text">{{
+            executeText()
+          }}</span>
           <button
             pButton
             type="button"

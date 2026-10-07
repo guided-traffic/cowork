@@ -232,9 +232,7 @@ export function placeOf(message: ImportMessage): string {
  */
 export function linkText(link: ImportLink): string {
   const other = shortKey(link.key);
-  return link.direction === 'outgoing'
-    ? `${link.type} ${other}`
-    : `${other} ${link.type} this one`;
+  return link.direction === 'outgoing' ? `${link.type} ${other}` : `${other} ${link.type} this one`;
 }
 
 /**

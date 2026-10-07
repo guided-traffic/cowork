@@ -151,7 +151,11 @@ export function notesOf(file: ImportFile, refused: readonly string[] = []): Note
     });
   }
   if (file.note) {
-    notes.push({ tone: 'info', place: file.state === 'dropped' ? 'reason' : 'note', text: file.note });
+    notes.push({
+      tone: 'info',
+      place: file.state === 'dropped' ? 'reason' : 'note',
+      text: file.note,
+    });
   }
   if (file.parent) {
     notes.push({ tone: 'info', place: 'parent', text: shortKey(file.parent) });
@@ -242,7 +246,9 @@ export class ProjectImport {
   private readonly address = computed(() => {
     const tenant = this.session.tenant();
     const id = this.job();
-    return tenant && id && this.tenantInfo.isAdmin() ? `${tenant}/${this.project()}/${id}` : undefined;
+    return tenant && id && this.tenantInfo.isAdmin()
+      ? `${tenant}/${this.project()}/${id}`
+      : undefined;
   });
   protected readonly loaded: ResourceRef<ImportJob | undefined> = resource({
     params: () => this.address(),
@@ -268,7 +274,9 @@ export class ProjectImport {
   /** The dry run's day is over by the browser's clock: its execution would be refused. */
   protected readonly lapsed = computed(() => {
     const expires = this.report()?.expires_at;
-    return !!expires && this.report()?.status === 'dry_run' && Date.parse(expires) <= this.clock.now();
+    return (
+      !!expires && this.report()?.status === 'dry_run' && Date.parse(expires) <= this.clock.now()
+    );
   });
 
   /** The person's corrections, by path; another job starts without any. */
@@ -300,7 +308,9 @@ export class ProjectImport {
   protected readonly dryRun = computed(() => this.report()?.status === 'dry_run');
   protected readonly files = computed(() => this.report()?.files ?? []);
   protected readonly people = computed(() =>
-    this.members.list().map((member) => ({ id: member.person.id, name: member.person.display_name })),
+    this.members
+      .list()
+      .map((member) => ({ id: member.person.id, name: member.person.display_name })),
   );
   protected readonly blockingFiles = computed(() =>
     this.dryRun() ? blocking(this.files(), this.drafts()) : [],
@@ -490,7 +500,9 @@ export class ProjectImport {
   // The corrections.
 
   private change(file: ImportFile, change: (draft: Draft) => Draft): void {
-    this.drafts.update((drafts) => new Map(drafts).set(file.path, change(drafts.get(file.path) ?? {})));
+    this.drafts.update((drafts) =>
+      new Map(drafts).set(file.path, change(drafts.get(file.path) ?? {})),
+    );
   }
 
   protected exclude(file: ImportFile, exclude: boolean): void {
