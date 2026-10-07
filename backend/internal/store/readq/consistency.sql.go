@@ -39,7 +39,7 @@ type GetAttachmentConsistencyRow struct {
 	OrphansKept              *int32
 }
 
-// The consistency check of the attachments (docs/adr/0059 D4, migration 43):
+// The consistency check of the attachments (docs/adr/0059 D4, migration 42):
 // the latest result of a tenant, read by its administrators, and every
 // tenant's counts and the time of the last run, read in a transaction that
 // names the job and no tenant — a scrape's and the schedule's.

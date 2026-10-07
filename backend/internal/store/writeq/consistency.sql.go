@@ -249,11 +249,11 @@ type ListTenantsToCheckRow struct {
 	Slug string
 }
 
-// The consistency check of the attachments (docs/adr/0059 D4, migration 43):
+// The consistency check of the attachments (docs/adr/0059 D4, migration 42):
 // the job's run, tenant by tenant, and an administrator's confirmed removal
 // of the orphans and acceptance of the missing files.
 // Every tenant of the installation, read by the job with no tenant set; the
-// policy of migration 43 admits it.
+// policy of migration 42 admits it.
 func (q *Queries) ListTenantsToCheck(ctx context.Context) ([]ListTenantsToCheckRow, error) {
 	rows, err := q.db.Query(ctx, listTenantsToCheck)
 	if err != nil {

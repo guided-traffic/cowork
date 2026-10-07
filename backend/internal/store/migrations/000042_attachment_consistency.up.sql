@@ -96,11 +96,12 @@ CREATE POLICY consistency_acceptances_delete ON consistency_acceptances AS RESTR
     USING (app_job() = 'consistency-check');
 
 -- tenants: the job checks every tenant, read with no tenant set
--- (docs/adr/0021 D6). The body is migration 26's with the job added.
+-- (docs/adr/0021 D6). The body is migration 41's — migration 26's with the
+-- webhook's job — with this job added: a later restatement carries both.
 ALTER POLICY tenants_read ON tenants USING (
     id = app_tenant_id()
     OR EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id = tenants.id AND m.user_id = app_user_id())
-    OR app_job() IN ('login', 'bootstrap', 'identity-provider', 'consistency-check')
+    OR app_job() IN ('login', 'bootstrap', 'identity-provider', 'github-webhook', 'consistency-check')
     OR app_is_global_admin());
 
 DO $$

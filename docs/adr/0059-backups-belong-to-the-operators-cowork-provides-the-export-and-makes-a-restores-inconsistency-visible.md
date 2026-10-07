@@ -21,7 +21,7 @@ with it. What the record left open is made concrete in place, in D4, D5 and D6, 
 implementer, open to the owner's objection:
 
 - **D4** — the job `consistency-check` ([`store/consistency.go`](../../backend/internal/store/consistency.go)),
-  [migration 43](../../backend/internal/store/migrations/000043_attachment_consistency.up.sql),
+  [migration 42](../../backend/internal/store/migrations/000042_attachment_consistency.up.sql),
   `GET`, `POST …/orphan-removal` and `POST …/dangling-acceptance` under
   `/api/v1/tenants/{tenant}/attachment-consistency`
   ([`api/consistency.go`](../../backend/internal/api/consistency.go)), the section *Files and the
@@ -158,7 +158,7 @@ D6), not of the backend.
 - *(Added 2026-10-06:)* The listing needs `s3:ListBucket`, so the access key can enumerate every
   tenant's object keys, which it could not before; a key that leaks alone then reads every object,
   not only those whose keys the database names
-  ([docs/security/attachments.md](../security/attachments.md#h-70) H-70).
+  ([docs/security/attachments.md](../security/attachments.md#h-68) H-68).
 
 ## References
 

@@ -25,10 +25,10 @@ import (
 // time, or an object a purge failed to remove.
 const (
 	// JobConsistencyCheck names the job: its system actor, its log lines, its
-	// metrics and the policies of migration 43.
+	// metrics and the policies of migration 42.
 	JobConsistencyCheck = "consistency-check"
 	// consistencyLockKey is the job's advisory lock key.
-	consistencyLockKey int32 = 7
+	consistencyLockKey int32 = 8
 	// ConsistencyCheckHour is the hour of the day, in UTC, from which the
 	// daily check is due (docs/adr/0059 D6: a constant, no configuration).
 	ConsistencyCheckHour = 3

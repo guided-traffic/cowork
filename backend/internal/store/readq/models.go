@@ -55,6 +55,9 @@ const (
 	AuditActionReactivated        AuditAction = "reactivated"
 	AuditActionLoginRefused       AuditAction = "login_refused"
 	AuditActionRead               AuditAction = "read"
+	AuditActionMerged             AuditAction = "merged"
+	AuditActionClosed             AuditAction = "closed"
+	AuditActionReopened           AuditAction = "reopened"
 	AuditActionChecked            AuditAction = "checked"
 	AuditActionAccepted           AuditAction = "accepted"
 )
@@ -324,6 +327,7 @@ const (
 	NotificationReasonCommented     NotificationReason = "commented"
 	NotificationReasonUrgent        NotificationReason = "urgent"
 	NotificationReasonMentioned     NotificationReason = "mentioned"
+	NotificationReasonMerged        NotificationReason = "merged"
 )
 
 func (e *NotificationReason) Scan(src interface{}) error {
@@ -819,6 +823,21 @@ type ConsistencyCheck struct {
 	OrphansKept      *int32
 }
 
+type GithubDelivery struct {
+	ID         uuid.UUID
+	TenantID   uuid.UUID
+	Delivery   uuid.UUID
+	ReceivedAt time.Time
+	ExpiresAt  time.Time
+}
+
+type GithubWebhookSecret struct {
+	TenantID  uuid.UUID
+	Secret    []byte
+	CreatedBy uuid.UUID
+	CreatedAt time.Time
+}
+
 type GroupMapping struct {
 	ID        uuid.UUID
 	TenantID  uuid.UUID
@@ -1072,6 +1091,27 @@ type TicketLink struct {
 	TargetID  uuid.UUID
 	CreatedBy uuid.UUID
 	CreatedAt time.Time
+}
+
+type TicketPullRequest struct {
+	ID              uuid.UUID
+	TenantID        uuid.UUID
+	TicketID        uuid.UUID
+	Kind            string
+	Repository      string
+	Number          *int32
+	Sha             *string
+	Title           string
+	State           string
+	Url             string
+	Author          *string
+	MergedAt        *time.Time
+	FoundIn         string
+	SourceUpdatedAt *time.Time
+	FirstSeenAt     time.Time
+	LastSeenAt      time.Time
+	RemovedAt       *time.Time
+	RemovedBy       *uuid.UUID
 }
 
 type TimeEntry struct {
