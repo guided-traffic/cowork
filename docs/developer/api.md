@@ -9,7 +9,7 @@ JSON. The decisions are [ADR 0046] (spec first), [ADR 0047] (errors), [ADR 0045]
 contract), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
 against the tree on 2026-10-05, GitHub's webhook ([below](#githubs-webhook)) and the examples
-([below](#examples)) on 2026-10-06.
+([below](#examples)) on 2026-10-06, the examples of the import and the export on 2026-10-07.
 
 ## The document
 
@@ -84,17 +84,20 @@ Where it is written is decided once:
   stand for it, because the act is what the answer shows — a ticket just filed, a new tenant's
   settings, an archived or restricted project, a withdrawn comment or question, an answered
   question, a voided or corrected time entry, a mapping changed, a grant above the mapped role, the
-  chat's capabilities chosen, the tenant's time list without the ticket's total — and where the body
+  chat's capabilities chosen, the tenant's time list without the ticket's total, an import executed
+  — and where the body
   names no schema of `components/schemas`: the CSV answers, the Markdown export and the context, the
   first lines of the event stream and of a turn of the chat, the two documents of [`meta.yaml`](../../backend/api/meta.yaml).
 - **The errors share the shared response's.** `Problem` in
   [`components/responses.yaml`](../../backend/api/components/responses.yaml) carries three named
   examples, the shapes of [the problem body](#problem-details): `notFound`, `validationFailed` with
   `errors[]` as the validator writes it, `preconditionFailed` with `errors[].current`.
-- **Bytes have none**: a body whose schema is `format: binary`, the download of an attachment. A
-  `multipart/form-data` body without an example names each of its parts in backticks in the request
-  body's `description` — the upload of an attachment does, and ng-openapi-gen writes that
-  description into the comment of the Angular client's function, where oapi-codegen writes nothing.
+- **Bytes have none**: a body whose schema is `format: binary`, the download of an attachment and
+  the archive of an export; what the archive holds is the examples of `ExportManifest`, `ExportLink`
+  and `ExportAttachment`. A `multipart/form-data` body without an example names each of its parts in
+  backticks in the request body's `description` — the upload of an attachment and of an import's
+  dry run do, and ng-openapi-gen writes that description into the comment of the Angular client's
+  function, where oapi-codegen writes nothing.
 
 The examples are one world, so a reader can follow a ticket from one route to the next: the tenant
 `acme` (*Acme*), its project `WEB` (*Website*, bound to `github.com/acme/website`), the ticket
@@ -108,8 +111,10 @@ as `horizonSetView` answers it. A text the server renders is the renderer's outp
 input, not a hand-written guess: `body_html`, `options_html` and `answer_html` are what
 [`internal/richtext`](../../backend/internal/richtext/richtext.go) makes of the Markdown beside them,
 the export and the context what [`internal/markdown`](../../backend/internal/markdown/markdown.go)
-writes for `acme/WEB-42`. A secret is one no installation accepts: the token
-`cwk_EXAMPLE000…`, a webhook secret of a visible pattern.
+writes for `acme/WEB-42`, and the two reports of `ImportJob` what
+[`internal/importer`](../../backend/internal/importer/analyze.go) makes of an upload of the website's
+`docs/tickets/` into `WEB`, as a dry run and executed with the corrections of its request. A secret
+is one no installation accepts: the token `cwk_EXAMPLE000…`, a webhook secret of a visible pattern.
 
 **The test.** [`api/examples_test.go`](../../backend/api/examples_test.go) walks the bundled
 document — every operation's request body, every response with a body and the shared problem
