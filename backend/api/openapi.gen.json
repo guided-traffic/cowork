@@ -6568,6 +6568,14 @@
         "type": "string"
       },
       "Repository": {
+        "example": {
+          "created_at": "2026-03-02T09:05:00Z",
+          "id": "019cadcb-2e60-777c-8a62-7ace634e20bf",
+          "identity": "github.com/acme/website",
+          "path": "",
+          "remote": "git@github.com:acme/website.git",
+          "updated_at": "2026-03-02T09:05:00Z"
+        },
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -6659,6 +6667,19 @@
         "type": "object"
       },
       "RepositoryList": {
+        "example": {
+          "items": [
+            {
+              "created_at": "2026-03-02T09:05:00Z",
+              "id": "019cadcb-2e60-777c-8a62-7ace634e20bf",
+              "identity": "github.com/acme/website",
+              "path": "",
+              "remote": "git@github.com:acme/website.git",
+              "updated_at": "2026-03-02T09:05:00Z"
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -6680,6 +6701,31 @@
         "type": "object"
       },
       "RepositoryLookup": {
+        "example": {
+          "bindings": [],
+          "proposal": {
+            "identity": "github.com/acme/mobile-app",
+            "name": "mobile-app",
+            "reason": "only-tenant",
+            "remote": "git@github.com:acme/mobile-app.git",
+            "tenant": "acme",
+            "tenants": [
+              {
+                "key": "MA",
+                "name": "Acme",
+                "slug": "acme"
+              }
+            ]
+          },
+          "proposal_unavailable": null,
+          "remotes": [
+            {
+              "identity": "github.com/acme/mobile-app",
+              "remote": "git@github.com:acme/mobile-app.git"
+            }
+          ],
+          "status": "unbound"
+        },
         "properties": {
           "bindings": {
             "items": {
@@ -9381,31 +9427,6 @@
           "200": {
             "content": {
               "application/json": {
-                "example": {
-                  "bindings": [],
-                  "proposal": {
-                    "identity": "github.com/guided-traffic/valkey-operator",
-                    "name": "valkey-operator",
-                    "reason": "remote-owner",
-                    "remote": "git@github.com:guided-traffic/valkey-operator.git",
-                    "tenant": "guided-traffic",
-                    "tenants": [
-                      {
-                        "key": "VO",
-                        "name": "Guided Traffic",
-                        "slug": "guided-traffic"
-                      }
-                    ]
-                  },
-                  "proposal_unavailable": null,
-                  "remotes": [
-                    {
-                      "identity": "github.com/guided-traffic/valkey-operator",
-                      "remote": "git@github.com:guided-traffic/valkey-operator.git"
-                    }
-                  ],
-                  "status": "unbound"
-                },
                 "schema": {
                   "$ref": "#/components/schemas/RepositoryLookup"
                 }
@@ -12251,7 +12272,7 @@
           "content": {
             "application/json": {
               "example": {
-                "remote": "git@github.com:guided-traffic/cowork.git"
+                "remote": "git@github.com:acme/website.git"
               },
               "schema": {
                 "$ref": "#/components/schemas/RepositoryBind"

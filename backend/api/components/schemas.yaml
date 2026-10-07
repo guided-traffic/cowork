@@ -944,6 +944,13 @@ Repository:
       description: The remote as it was last given, without credentials
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-repository
+    id: 019cadcb-2e60-777c-8a62-7ace634e20bf
+    identity: github.com/acme/website
+    path: ''
+    remote: git@github.com:acme/website.git
+    created_at: '2026-03-02T09:05:00Z'
+    updated_at: '2026-03-02T09:05:00Z'
 RepositoryBind:
   type: object
   additionalProperties: false
@@ -969,6 +976,10 @@ RepositoryList:
         $ref: '#/Repository'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-repository
+    next_cursor: null
 LookupRemote:
   type: object
   required: [remote, identity]
@@ -1052,6 +1063,24 @@ RepositoryLookup:
     proposal_unavailable:
       type: [string, 'null']
       description: Why an unbound repository has no proposal, when it has none
+  # A repository no project binds yet, looked up by a person who may create projects in acme only.
+  example:
+    status: unbound
+    remotes:
+      - remote: git@github.com:acme/mobile-app.git
+        identity: github.com/acme/mobile-app
+    bindings: []
+    proposal:
+      identity: github.com/acme/mobile-app
+      remote: git@github.com:acme/mobile-app.git
+      name: mobile-app
+      tenant: acme
+      tenants:
+        - slug: acme
+          name: Acme
+          key: MA
+      reason: only-tenant
+    proposal_unavailable: null
 TicketType:
   type: string
   enum: [task, bug, feature, decision, question]
