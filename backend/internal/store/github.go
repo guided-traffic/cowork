@@ -13,7 +13,7 @@ import (
 )
 
 // GitHub's webhook (docs/adr/0071): the job its transactions name, which the
-// policies of migration 42 admit to the tenant by slug, the secret and the
+// policies of migration 41 admit to the tenant by slug, the secret and the
 // writes of a delivery; the system actor its acts carry; and how long a
 // delivery is kept for its repetition to change nothing (D3).
 const (

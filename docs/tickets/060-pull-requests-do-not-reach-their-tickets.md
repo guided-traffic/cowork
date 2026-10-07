@@ -34,7 +34,7 @@ is built, D1–D7, on trial; the details it left open were made concrete by the 
   session-only operation), revoked by an administrator's `admin`-scope credential, never an agent's;
   sealed under a key derived from `COWORK_SESSION_KEY`, bound to the tenant
   ([`api/integrations.go`](../../backend/internal/api/integrations.go)).
-- **What a ticket gains**: `ticket_pull_requests` (migration 42) under the ticket's predicate,
+- **What a ticket gains**: `ticket_pull_requests` (migration 41) under the ticket's predicate,
   `GET` and `DELETE …/tickets/{number}/pull-requests`, the acts `linked`, `merged`, `closed`,
   `reopened`, `updated` (left out of the activity) and `unlinked`, the inbox reason `merged`, the
   event `pull_request.changed`, a `## Pull requests` section in the context document; in the UI the
@@ -140,6 +140,6 @@ key on the body's first line and the short key in the title, so both usually nam
 - An organisation's webhook, which sends the same events for every repository of the organisation,
   and a GitHub Enterprise Server were not tried.
 - Whether GitHub signs a delivery it sends again from its log with the secret it holds then.
-- **Migration 42 has not run after 40 and 41.** It restates the `tenants_read` policy of migration
+- **Migration 41 has not run after 40 and 41.** It restates the `tenants_read` policy of migration
   26 with the webhook's job added; a migration 40 or 41 that changes that policy as well must be
   merged into 42's statement, or the later one drops the other's clause.

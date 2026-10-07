@@ -26,7 +26,7 @@ ON CONFLICT (tenant_id, delivery) DO UPDATE
 RETURNING id;
 
 -- name: DeleteExpiredGitHubDeliveries :execrows
--- The expiry job's sweep across the tenants (migration 42).
+-- The expiry job's sweep across the tenants (migration 41).
 DELETE FROM github_deliveries WHERE expires_at <= sqlc.arg(now)::timestamptz;
 
 -- name: RepositoryBoundInTenant :one

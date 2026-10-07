@@ -3,7 +3,7 @@
 
 -- name: GetGitHubWebhook :one
 -- When and by whom the tenant's secret was made, never the secret: the
--- restrictive policy of migration 42 shows the row to the tenant's
+-- restrictive policy of migration 41 shows the row to the tenant's
 -- administrators and the webhook's job only.
 SELECT s.created_at, s.created_by, u.username AS created_by_username, u.display_name AS created_by_name
 FROM github_webhook_secrets s

@@ -21,7 +21,7 @@ Amended 2026-10-06 by GitHub's webhook of
 whose D6 gives this record's D2 the merge as an event (D2: a pull request of a ticket merged tells
 its assignee and its watchers, by the reason `merged`; built the same day,
 [`api/github_links.go`](../../backend/internal/api/github_links.go) `mergeNotices`,
-[migration 42](../../backend/internal/store/migrations/000042_github_webhook.up.sql)). D5 stands:
+[migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql)). D5 stands:
 the webhook is inbound, and nothing leaves cowork.
 
 **Built** (phase 3, 2026-10-04), ~~but for D2's mention~~ *(built 2026-10-05, below)*: D1 — the inbox `GET /api/v1/me/inbox`, a

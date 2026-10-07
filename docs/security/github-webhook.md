@@ -82,7 +82,7 @@ and its neighbours in [`api_github_test.go`](../../backend/test/integration/api_
   ([ADR 0065](../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
   D1, `TestAConfidentialTicketsPullRequestsAreItsReadersOnly`).
 
-Only the webhook's job inserts a link — a restrictive policy of migration 42 holds every insert of
+Only the webhook's job inserts a link — a restrictive policy of migration 41 holds every insert of
 `ticket_pull_requests` to it, so no person's request writes one —, a person removes a wrong one for
 good ([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
 Residual risks), and only the purge of a deleted ticket deletes them, under migration 32's rule.
@@ -127,7 +127,7 @@ into another tenant's row does not open there (`TestTheSecretIsSealedForItsTenan
 - **A copy of the database alone opens nothing.** The plaintext needs the row and the server key
   together — the backend, or whoever holds both.
 - **The runtime role reads the sealed value only for the tenant's administrators and the webhook's
-  job**: restrictive policies of migration 42 hold reading, writing and deleting
+  job**: restrictive policies of migration 41 hold reading, writing and deleting
   `github_webhook_secrets` to them, and the administrators' route reads when and by whom, never
   the column.
 - **A change of `COWORK_SESSION_KEY` makes every sealed secret unopenable**: from then on each

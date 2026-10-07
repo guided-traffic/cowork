@@ -18,7 +18,7 @@ to.
 [`api/integrations.go`](../../backend/internal/api/integrations.go)), a ticket's pull requests
 (`GET …/tickets/{number}/pull-requests`, `DELETE …/pull-requests/{pull_request}`,
 [`api/pullrequests.go`](../../backend/internal/api/pullrequests.go)),
-[migration 42](../../backend/internal/store/migrations/000042_github_webhook.up.sql), the settings'
+[migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql), the settings'
 GitHub section and the ticket page's card and hint in the UI; the operator's page is
 [docs/operations/github.md](../operations/github.md), the boundary and its gaps
 [docs/security/github-webhook.md](../security/github-webhook.md). Whether the feature earns its place

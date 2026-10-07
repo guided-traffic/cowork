@@ -50,7 +50,7 @@ and `login_locks` — and `DELETE` only on `ticket_links`, `ticket_interest`,
 to an administrator of the tenant, by a restrictive policy — and `notifications` — to its retention job and the purge alone —, and, since migration 32,
 on `tickets`, `questions`, `comments`, `comment_revisions`, `attachments`, `time_entries` and
 `time_entry_revisions`, which restrictive policies hold to the purge of a deleted ticket
-([below](#deletion-and-the-purge)) — and, since migration 42, on `github_webhook_secrets` (an
+([below](#deletion-and-the-purge)) — and, since migration 41, on `github_webhook_secrets` (an
 administrator's revocation), `github_deliveries` (their expiry job) and `ticket_pull_requests`
 (the purge of a deleted ticket alone; a person's removal of a link is an update). `audit_events` gets `SELECT, INSERT` and
 nothing else — append-only is a grant ([ADR 0026] D3). `users`, `tenants`, `memberships` and
@@ -199,7 +199,7 @@ name `shared` as the policies do, and the unshare runs only through `Writer.Unsh
 ([`store/filters.go`](../../backend/internal/store/filters.go)), which names the filter
 (`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`).
 
-GitHub's webhook ([migration 42](../../backend/internal/store/migrations/000042_github_webhook.up.sql),
+GitHub's webhook ([migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql),
 [ADR 0071]) adds three tables, each with `tenant_id` and the canonical policy. `github_webhook_secrets`
 — the tenant's sealed secret, one row per tenant — has restrictive policies that hold reading to an
 administrator of the tenant or the job `github-webhook`, and inserting, changing and deleting to an
