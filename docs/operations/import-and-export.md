@@ -243,7 +243,7 @@ spec:
 It calls the installation's own address, so the token travels over TLS; the backend's Service
 inside the cluster answers plain HTTP. Keep the archives as the backups they are: they hold the
 tickets' text, the persons' identities and, for an administrator's token, the confidential tickets
-([docs/security/import-and-export.md, H-65](../security/import-and-export.md#h-65)). Rotation and
+([docs/security/import-and-export.md, H-75](../security/import-and-export.md#h-75)). Rotation and
 retention are the volume's, or whatever stores the files further.
 
 **Restoring tickets from an export.** The import reads an export's documents and its links

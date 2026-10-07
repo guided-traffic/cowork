@@ -846,8 +846,8 @@ the body, the titles, the questions and answers, and the reasons and notes of th
 without an end of retention (ADR 0026 D7); for a day, until the hourly expiry job removes
 it, the stored response of a keyed creation — a ticket, a question, a comment — in
 `idempotency_keys`; for a day as well, every file an import's dry run read, and until the
-ticket's purge the report of the import that created it ([import-and-export.md, H-62 and
-H-63](import-and-export.md#h-62)). Its attachments' bytes lie in the bucket
+ticket's purge the report of the import that created it ([import-and-export.md, H-72 and
+H-73](import-and-export.md#h-72)). Its attachments' bytes lie in the bucket
 ([attachments.md](attachments.md)). Whoever reads the database past row-level security — a
 superuser, a role with `BYPASSRLS`, the owner role, which can switch `FORCE` off — or holds a
 dump, a backup or the volume, reads all of it, and so does a compromised serving process

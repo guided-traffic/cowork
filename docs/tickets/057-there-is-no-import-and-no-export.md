@@ -22,7 +22,7 @@ The import and the export of phase 6 are built, in the API and in the UI
 [ADR 0064](../adr/0064-one-direction-import-and-export-no-synchronisation.md)):
 
 - **The API**: the dry run, the read of a job and its execution, the project's and the tenant's
-  export ([`imports.yaml`](../../backend/api/imports.yaml)); migration 41 with the job and the
+  export ([`imports.yaml`](../../backend/api/imports.yaml)); migration 43 with the job and the
   ticket's source; the importer ([`internal/importer`](../../backend/internal/importer/));
   `cowork-mcp export`; `COWORK_MAX_IMPORT_BYTES` and `backend.config.maxImportBytes`. The integration
   tier reads this repository's whole `docs/tickets/`, the archive included, without an error, and its

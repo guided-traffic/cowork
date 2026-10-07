@@ -31,7 +31,7 @@ administrators only and the tenant's export in its settings to them alone; that 
 offer, not a check — the routes above are the check.
 
 Below the handlers, the rows of `import_jobs` are the tenant's administrators' alone: the
-restrictive policies of [migration 41](../../backend/internal/store/migrations/000041_import_jobs.up.sql)
+restrictive policies of [migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql)
 hold reading, inserting and changing a job to `app_is_tenant_admin()`, so a query that forgot its
 caller's role shows a member nothing; beside the administrators, the job `import-expiry` reads and
 deletes dry runs and nothing else, and the purge of a ticket (`ticket-purge`) reads and changes the
@@ -86,7 +86,7 @@ that the execution reads exactly what the person reviewed and no second upload c
 No route answers `source`: the report is what `GET …/imports/{import}` shows. Twenty-four hours
 after the dry run a read and an execution answer `404`, and the job `import-expiry` deletes the row
 with its files within the hour; the execution drops the files at once. The report stays with an
-executed job for good ([H-63](#h-63)), except that the purge of a ticket the import created takes
+executed job for good ([H-73](#h-73)), except that the purge of a ticket the import created takes
 that ticket's file out of it, so the text the purge removes from the ticket and the audit record
 does not stay readable there ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
 D2; `TestThePurgeTakesAnImportedTicketOutOfItsReport`).
@@ -140,7 +140,7 @@ The archive holds, for the projects its reader sees:
   only a reader of the ticket fetches — never the bytes.
 
 It leaves out the confidential tickets its reader may not read, counting them per project
-([H-64](#h-64)); a restricted project its reader cannot see, without a count; and, for everybody,
+([H-74](#h-74)); a restricted project its reader cannot see, without a count; and, for everybody,
 the comments, the time entries, the activity and the audit record. An administrator's export
 holds every confidential ticket of the tenant. Each export is the act `exported` on the project or
 the tenant, with the format and the counts, the token and the agent mark as every act carries them,
@@ -160,8 +160,8 @@ Its requests carry the agent mark `cowork-mcp/unknown/export`, so the export's a
 
 ## What this does not cover
 
-<a id="h-62"></a>
-### H-62 — A dry run keeps the files it read for a day, in the database and its backups
+<a id="h-72"></a>
+### H-72 — A dry run keeps the files it read for a day, in the database and its backups
 
 Live for every dry run. Until its execution, or for a day, the job's `source` holds the full text
 of every file the upload carried that the import reads — a file the person then excludes, an
@@ -171,8 +171,8 @@ within the day, reads it, as they read a confidential ticket ([tenancy.md, H-2](
 A backup keeps it for its own retention. Mitigation: execute the dry run, or let it expire, before
 a backup that must not hold it; upload only the files to be imported.
 
-<a id="h-63"></a>
-### H-63 — An import job's report keeps what the upload said, the files it left out included
+<a id="h-73"></a>
+### H-73 — An import job's report keeps what the upload said, the files it left out included
 
 Live for every import. An executed job's report is kept for good, and no route deletes it: it names
 every file of the upload by its path, and for each file the import read its title, its type and
@@ -185,8 +185,8 @@ as the file had it after a person changed the ticket, as the audit record keeps 
 ticket anyway. Mitigation: upload only the files to be imported; a report holding what must go is
 changed by hand in the database.
 
-<a id="h-64"></a>
-### H-64 — An export tells its reader how many confidential tickets they cannot read
+<a id="h-74"></a>
+### H-74 — An export tells its reader how many confidential tickets they cannot read
 
 Live today, by decision (ADR 0065 D5). The manifest counts, per project the reader sees, the
 confidential tickets left out. Every other surface behaves as if such a ticket did not exist — a
@@ -194,8 +194,8 @@ dashboard tile counts only what its reader sees —, but an export does not: a m
 project now and then learns how many confidential tickets it holds and when one more appears,
 though nothing of what they are. A restricted project the reader cannot see is not counted.
 
-<a id="h-65"></a>
-### H-65 — An export takes what its reader may read beyond cowork's reach
+<a id="h-75"></a>
+### H-75 — An export takes what its reader may read beyond cowork's reach
 
 Live for every export, by its nature. Once answered, an archive is outside every control cowork
 has: the act records who exported what and when, and nothing after. An administrator's archive
@@ -208,8 +208,8 @@ backup's token the `read` scope and the tenant's restriction, keep its archives 
 are, encrypted and readable only by those who may read the tenant, and read the `exported` acts in
 the tenant's audit view.
 
-<a id="h-66"></a>
-### H-66 — One import's memory is not measured at its bound
+<a id="h-76"></a>
+### H-76 — One import's memory is not measured at its bound
 
 Live on every installation that leaves `COWORK_MAX_IMPORT_BYTES` at a size its memory limit does
 not allow for. A dry run holds its upload several times over — the zip's bytes or the files read,
@@ -222,8 +222,8 @@ each up to its request timeout, so one administrator who keeps uploading keeps t
 Mitigation: keep the backend's memory limit well above the variable, lower the
 variable to what the installation's imports need, split an import by directory.
 
-<a id="h-67"></a>
-### H-67 — The command line checks its target once, before it writes
+<a id="h-77"></a>
+### H-77 — The command line checks its target once, before it writes
 
 Live where another local account may write the target directory or its parent. `cowork-mcp
 export` checks that the directory is empty, or absent, before it asks the server, and writes after
