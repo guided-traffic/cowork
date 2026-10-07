@@ -9,6 +9,7 @@ import { AttachmentUsage, Problem, Tenant } from '../../api/models';
 import { Api } from '../../api/api';
 import { AttachmentConsistencyService } from '../../core/attachment-consistency.service';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
+import { ExportArchive, ImportsService } from '../../core/imports.service';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
 import { changesUsage, quotaShare, TenantSettings } from './tenant-settings';
@@ -69,8 +70,10 @@ describe('TenantSettings', () => {
     (fn: unknown, params: { tenant: string; 'If-None-Match'?: string }) => Promise<unknown>
   >;
   let events: Subject<StreamEvent>;
+  let exportTenant: MockInstance<ImportsService['exportTenant']>;
 
   beforeEach(() => {
+    exportTenant = vi.fn<ImportsService['exportTenant']>();
     value = signal<Tenant | undefined>(tenant());
     isAdmin = signal(true);
     update = vi.fn<TenantService['update']>().mockResolvedValue(tenant());
@@ -121,6 +124,7 @@ describe('TenantSettings', () => {
             },
           },
         },
+        { provide: ImportsService, useValue: { exportTenant } },
       ],
     });
   });
@@ -132,6 +136,88 @@ describe('TenantSettings', () => {
     isAdmin.set(false);
     await settle(fixture);
     expect(el(fixture, 'attachment-consistency')).toBeNull();
+  });
+
+  describe('the export of the tenant (docs/adr/0051 D4)', () => {
+    let created: MockInstance<typeof URL.createObjectURL>;
+    let clicked: MockInstance<HTMLAnchorElement['click']>;
+    const archive = (tickets: number, left: number): ExportArchive => ({
+      blob: new Blob(['archive'], { type: 'application/gzip' }),
+      filename: 'acme-20261007.tar.gz',
+      manifest: {
+        format: 'cowork export v1',
+        tenant: 'acme',
+        projects: [],
+        exported_at: '2026-10-07T08:00:00Z',
+        exported_by: 'Ada Lovelace <local:ada>',
+        tickets,
+        confidential_not_included: left,
+      },
+    });
+
+    beforeEach(() => {
+      created = vi.fn<typeof URL.createObjectURL>().mockReturnValue('blob:tenant');
+      vi.stubGlobal(
+        'URL',
+        Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() }),
+      );
+      clicked = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    it('saves the archive of the tenant under its name and says what it holds', async () => {
+      exportTenant.mockResolvedValue(archive(41, 0));
+      const fixture = await render();
+
+      el(fixture, 'tenant-export-button')?.click();
+      await settle(fixture);
+
+      expect(exportTenant).toHaveBeenCalledExactlyOnceWith('acme');
+      expect(created).toHaveBeenCalledOnce();
+      const link = clicked.mock.contexts[0] as HTMLAnchorElement;
+      expect(link.download).toBe('acme-20261007.tar.gz');
+      expect(link.href).toBe('blob:tenant');
+      expect(el(fixture, 'tenant-export-note')?.textContent?.trim()).toBe(
+        '41 tickets in acme-20261007.tar.gz.',
+      );
+    });
+
+    it('names the confidential tickets it leaves out (docs/adr/0065 D5)', async () => {
+      exportTenant.mockResolvedValue(archive(41, 1));
+      const fixture = await render();
+
+      el(fixture, 'tenant-export-button')?.click();
+      await settle(fixture);
+
+      expect(el(fixture, 'tenant-export-note')?.textContent?.trim()).toBe(
+        '41 tickets in acme-20261007.tar.gz. 1 confidential ticket you cannot read is not included.',
+      );
+    });
+
+    it('toasts a refusal and offers the export again', async () => {
+      exportTenant.mockRejectedValue(refusal(504, 'Timeout', 'The export took too long.'));
+      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const fixture = await render();
+
+      el(fixture, 'tenant-export-button')?.click();
+      await settle(fixture);
+
+      expect(clicked).not.toHaveBeenCalled();
+      expect(add).toHaveBeenCalledOnce();
+      expect(el(fixture, 'tenant-export-note')).toBeNull();
+      expect((el(fixture, 'tenant-export-button') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it("is not offered to anybody but the tenant's administrators", async () => {
+      isAdmin.set(false);
+      const fixture = await render();
+
+      expect(el(fixture, 'tenant-export')).toBeNull();
+    });
   });
 
   describe("the attachments' usage (docs/adr/0016 D6)", () => {

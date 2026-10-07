@@ -1,3 +1,4 @@
+import { DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -5,6 +6,7 @@ import {
   effect,
   inject,
   Injector,
+  linkedSignal,
   resource,
   ResourceRef,
   signal,
@@ -19,6 +21,7 @@ import { getAttachmentUsage } from '../../api/fn/attachments/get-attachment-usag
 import { AttachmentUsage } from '../../api/models';
 import { ConditionalPages } from '../../core/conditional';
 import { EventStreamService, ofTenant, StreamEvent } from '../../core/event-stream.service';
+import { exportNote, ImportsService } from '../../core/imports.service';
 import { ProblemService } from '../../core/problem.service';
 import { keepShown, refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
@@ -26,6 +29,7 @@ import { TenantService } from '../../core/tenant.service';
 import { byteSize } from '../../shared/bytes';
 import { AttachmentConsistencySection } from './attachment-consistency';
 import { GitHubWebhook } from './github-webhook';
+import { saveFile } from '../../shared/download';
 
 /**
  * Whether an event may have moved what the tenant's attachments hold: an upload or a purge in the
@@ -57,8 +61,9 @@ export function quotaShare(usage: AttachmentUsage): number | null {
  * the version read (docs/adr/0050 D3); what the tenant's attachments hold against the quota
  * of the installation (docs/adr/0016 D6), read when the page opens and again on an upload or a
  * purge in the tenant; the latest consistency check of the attachments against the bucket
- * (docs/adr/0059 D4), {@link AttachmentConsistencySection}; and GitHub's webhook with its secret
- * (docs/adr/0071, {@link GitHubWebhook}).
+ * (docs/adr/0059 D4), {@link AttachmentConsistencySection}; GitHub's webhook with its secret
+ * (docs/adr/0071, {@link GitHubWebhook}); and the export of the whole tenant as one archive
+ * (docs/adr/0051 D4), the second line of a backup (docs/adr/0059 D2).
  */
 @Component({
   selector: 'app-tenant-settings',
@@ -161,6 +166,38 @@ export function quotaShare(usage: AttachmentUsage): number | null {
           }
         </section>
         <app-attachment-consistency />
+        <section class="card usage" data-testid="tenant-export" aria-labelledby="export-heading">
+          <h2 id="export-heading">Export</h2>
+          <p class="muted small">
+            Every project of the tenant you see, archived ones too, as one archive: each ticket's
+            Markdown document, with a manifest of the links and one of the attachments — their
+            names, never their bytes. The export is recorded in the audit record; kept on a schedule
+            of the installation's, it is the second line of a backup.
+          </p>
+          <div class="actions">
+            @if (exported(); as note) {
+              <span class="muted small" role="status" data-testid="tenant-export-note">{{
+                note
+              }}</span>
+            }
+            <button
+              pButton
+              type="button"
+              severity="secondary"
+              [outlined]="true"
+              [disabled]="exporting()"
+              (click)="exportTenant()"
+              data-testid="tenant-export-button"
+            >
+              @if (exporting()) {
+                <i class="pi pi-spinner pi-spin"></i>
+              } @else {
+                <i class="pi pi-download"></i>
+              }
+              Export the tenant
+            </button>
+          </div>
+        </section>
         <app-github-webhook />
       }
     </section>
@@ -203,7 +240,9 @@ export function quotaShare(usage: AttachmentUsage): number | null {
     }
     .actions {
       display: flex;
+      align-items: center;
       justify-content: flex-end;
+      gap: 0.75rem;
     }
     .small {
       font-size: 0.8125rem;
@@ -247,6 +286,14 @@ export class TenantSettings {
   private readonly api = inject(Api);
   private readonly session = inject(SessionService);
   private readonly injector = inject(Injector);
+  private readonly imports = inject(ImportsService);
+  private readonly document = inject(DOCUMENT);
+  protected readonly exporting = signal(false);
+  /** What the last export of the tenant shown held; another tenant's page starts without it. */
+  protected readonly exported = linkedSignal<string | null, string | null>({
+    source: () => this.session.tenant(),
+    computation: () => null,
+  });
   /** The weak `ETag` of the usage held: a load again that finds it unchanged is a `304`. */
   private readonly conditional = new ConditionalPages(this.api);
   /** The tenant while the person is its administrator: the usage is theirs to read. */
@@ -298,6 +345,29 @@ export class TenantSettings {
         this.timeVisible.set(tenant.time_visible_to_members);
       }
     });
+  }
+
+  /**
+   * Downloads every project of the tenant the person sees as one archive (docs/adr/0051 D4), saved
+   * under the name the server gives it, and says beside the button what it holds.
+   */
+  protected async exportTenant(): Promise<void> {
+    const tenant = this.session.tenant();
+    if (!tenant || this.exporting()) {
+      return;
+    }
+    this.exporting.set(true);
+    try {
+      const archive = await this.imports.exportTenant(tenant);
+      saveFile(this.document, archive.blob, archive.filename);
+      if (this.session.tenant() === tenant) {
+        this.exported.set(exportNote(archive));
+      }
+    } catch (error) {
+      this.problems.report(error);
+    } finally {
+      this.exporting.set(false);
+    }
   }
 
   protected async save(): Promise<void> {
