@@ -4,6 +4,41 @@
     <h1 data-testid="project-name">{{ details()?.name ?? project() }}</h1>
     <span class="spacer"></span>
     @if (session.tenant(); as tenant) {
+      <button
+        pButton
+        type="button"
+        [text]="true"
+        [rounded]="true"
+        severity="secondary"
+        [iconOnly]="true"
+        aria-label="Export the tickets"
+        pTooltip="Export the tickets as an archive"
+        tooltipPosition="bottom"
+        [disabled]="exporting()"
+        (click)="exportTickets(tenant)"
+        data-testid="project-export"
+      >
+        @if (exporting()) {
+          <i class="pi pi-spinner pi-spin"></i>
+        } @else {
+          <i class="pi pi-download"></i>
+        }
+      </button>
+      @if (mayImport()) {
+        <a
+          pButton
+          [text]="true"
+          [rounded]="true"
+          severity="secondary"
+          [iconOnly]="true"
+          aria-label="Import tickets"
+          pTooltip="Import tickets"
+          tooltipPosition="bottom"
+          [routerLink]="['/t', tenant, 'p', project(), 'imports']"
+          data-testid="project-import"
+          ><i class="pi pi-upload"></i
+        ></a>
+      }
       <a
         pButton
         [text]="true"
