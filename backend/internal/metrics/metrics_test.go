@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,6 +40,16 @@ func exercise(m *Metrics) {
 	m.Login(LoginLocal, LoginSuccess)
 	m.Lockout()
 	m.TokenRefused(TokenExpired)
+	m.ObserveConsistency(func(context.Context) ([]ConsistencyCounts, error) {
+		return []ConsistencyCounts{{Tenant: "0199a7c2-1d2e-7f00-8000-0000000000aa", Dangling: 1, Orphans: 2}}, nil
+	})
+}
+
+// tenantLabelled are the families that carry a tenant, by its id: the
+// consistency check's counts, and nothing else (docs/adr/0060 D5).
+var tenantLabelled = map[string]bool{
+	"cowork_consistency_dangling_attachments": true,
+	"cowork_consistency_orphaned_objects":     true,
 }
 
 func gathered(t *testing.T, m *Metrics) []Sample {
@@ -53,7 +65,7 @@ func TestEveryInstrumentIsNamedByTheRule(t *testing.T) {
 	m := New()
 	names := m.Names()
 	require.NotEmpty(t, names)
-	rule := regexp.MustCompile(`^cowork_(http|db|jobs|events|audit|auth|migrations)_[a-z][a-z_]*[a-z]$`)
+	rule := regexp.MustCompile(`^cowork_(http|db|jobs|events|audit|auth|migrations|consistency)_[a-z][a-z_]*[a-z]$`)
 	for _, name := range names {
 		assert.Regexp(t, rule, name)
 	}
@@ -68,8 +80,9 @@ func TestEveryInstrumentIsNamedByTheRule(t *testing.T) {
 }
 
 // docs/adr/0060 D5: no label carries a person, a ticket, a key, a token or a
-// request id, anywhere; the tenant label belongs to the consistency family
-// alone. Every family of the backend's is gathered, so a new instrument cannot
+// request id, anywhere; the tenant label belongs to the consistency check's two
+// counts alone, as the tenant's id — never its slug — and they carry nothing
+// else. Every family of the backend's is gathered, so a new instrument cannot
 // slip past this test unexercised.
 func TestNoInstrumentCarriesAForbiddenLabel(t *testing.T) {
 	m := New()
@@ -78,16 +91,24 @@ func TestNoInstrumentCarriesAForbiddenLabel(t *testing.T) {
 	families := map[string]bool{}
 	for _, s := range samples {
 		families[strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(s.Name, "_bucket"), "_count"), "_sum")] = true
-		for label := range s.Labels {
+		for label, value := range s.Labels {
 			assert.NotContains(t, []string{"person", "person_id", "user", "user_id", "ticket", "key", "token", "token_id", "request_id"},
 				label, "%s carries the label %s", s.Name, label)
 			if label == "tenant" {
-				assert.True(t, strings.HasPrefix(s.Name, "cowork_consistency_"), "%s carries a tenant", s.Name)
+				assert.True(t, tenantLabelled[s.Name], "%s carries a tenant", s.Name)
+				_, err := uuid.Parse(value)
+				assert.NoError(t, err, "%s names a tenant by %q, which is no id", s.Name, value)
 			}
+		}
+		if tenantLabelled[s.Name] {
+			assert.Equal(t, []string{"tenant"}, slices.Sorted(maps.Keys(s.Labels)), "%s carries the tenant and nothing else", s.Name)
 		}
 	}
 	for _, name := range m.Names() {
 		assert.True(t, families[name], "%s was not gathered: exercise it in this test", name)
+	}
+	for name := range tenantLabelled {
+		assert.True(t, slices.Contains(m.Names(), name), "%s is an instrument of the registry", name)
 	}
 }
 
@@ -132,6 +153,7 @@ func TestANilRegistryRecordsNothing(t *testing.T) {
 	m.Login(LoginOIDC, LoginRefused)
 	m.Lockout()
 	m.TokenRefused(TokenUnknown)
+	m.ObserveConsistency(nil)
 	samples, err := m.Samples()
 	assert.NoError(t, err)
 	assert.Empty(t, samples)
@@ -221,6 +243,58 @@ func TestTheSchemaIsReadAtMostEveryTenSeconds(t *testing.T) {
 	samples = gathered(t, m)
 	assert.False(t, Has(samples, "cowork_migrations_schema_version"), "a failed read shows nothing it does not know")
 	assert.False(t, Has(samples, "cowork_migrations_schema_dirty"))
+	clock = clock.Add(time.Second)
+	gathered(t, m)
+	assert.Equal(t, 3, reads, "a failed read is not repeated at every scrape either")
+}
+
+// docs/adr/0059 D4, docs/adr/0060 D4, D5: the consistency check's counts are
+// read from the database at a scrape — the same on every replica, whichever
+// ran the check —, at most once a minute; every tenant with a result has its
+// two series, by its id; a read that fails leaves the family out and is not
+// repeated at every scrape either.
+func TestTheConsistencyCountsAreReadAtMostOnceAMinute(t *testing.T) {
+	m := New()
+	clock := time.Date(2026, 10, 6, 3, 0, 0, 0, time.UTC)
+	m.consistency.now = func() time.Time { return clock }
+	assert.False(t, Has(gathered(t, m), "cowork_consistency_dangling_attachments"), "nothing observed, no series")
+
+	const a, b = "0199a7c2-1d2e-7f00-8000-0000000000aa", "0199a7c2-1d2e-7f00-8000-0000000000bb"
+	reads := 0
+	state := struct {
+		counts []ConsistencyCounts
+		err    error
+	}{counts: []ConsistencyCounts{{Tenant: a, Dangling: 3, Orphans: 2}, {Tenant: b}}}
+	m.ObserveConsistency(func(ctx context.Context) ([]ConsistencyCounts, error) {
+		reads++
+		_, ok := ctx.Deadline()
+		assert.True(t, ok, "the read is bounded")
+		return state.counts, state.err
+	})
+
+	samples := gathered(t, m)
+	assert.Equal(t, 3.0, Sum(samples, "cowork_consistency_dangling_attachments", "tenant", a))
+	assert.Equal(t, 2.0, Sum(samples, "cowork_consistency_orphaned_objects", "tenant", a))
+	assert.True(t, Has(samples, "cowork_consistency_dangling_attachments", "tenant", b), "a checked tenant shows its zero")
+	assert.Equal(t, 0.0, Sum(samples, "cowork_consistency_orphaned_objects", "tenant", b))
+
+	state.counts = []ConsistencyCounts{{Tenant: a, Dangling: 1}}
+	clock = clock.Add(59 * time.Second)
+	gathered(t, m)
+	assert.Equal(t, 1, reads, "a scrape within the minute reuses the read")
+
+	clock = clock.Add(time.Second)
+	samples = gathered(t, m)
+	assert.Equal(t, 2, reads)
+	assert.Equal(t, 1.0, Sum(samples, "cowork_consistency_dangling_attachments", "tenant", a), "an acceptance shows at the next read")
+	assert.Equal(t, 0.0, Sum(samples, "cowork_consistency_orphaned_objects", "tenant", a), "a removal shows at the next read")
+	assert.False(t, Has(samples, "cowork_consistency_dangling_attachments", "tenant", b), "a tenant without a result has no series")
+
+	state.err = errors.New("the database does not answer")
+	clock = clock.Add(time.Minute)
+	samples = gathered(t, m)
+	assert.False(t, Has(samples, "cowork_consistency_dangling_attachments"), "a failed read shows nothing it does not know")
+	assert.False(t, Has(samples, "cowork_consistency_orphaned_objects"))
 	clock = clock.Add(time.Second)
 	gathered(t, m)
 	assert.Equal(t, 3, reads, "a failed read is not repeated at every scrape either")

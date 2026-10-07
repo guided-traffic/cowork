@@ -143,6 +143,8 @@ type Metrics struct {
 	logins   *prometheus.CounterVec
 	lockouts prometheus.Counter
 	refusals *prometheus.CounterVec
+
+	consistency *consistencyCollector
 }
 
 // New makes a registry of its own with every instrument of the first release
@@ -156,6 +158,7 @@ func New() *Metrics {
 	m.eventInstruments()
 	m.auditInstruments()
 	m.authInstruments()
+	m.consistencyInstruments()
 	return m
 }
 
@@ -588,4 +591,95 @@ func (m *Metrics) TokenRefused(reason TokenRefusal) {
 		return
 	}
 	m.refusals.WithLabelValues(string(reason)).Inc()
+}
+
+// --- consistency ------------------------------------------------------------
+
+// ConsistencyCounts are a tenant's counts of its latest consistency check of
+// the attachments (docs/adr/0059 D4): the metadata whose bytes are missing and
+// not accepted as lost, and the objects no metadata names.
+type ConsistencyCounts struct {
+	// Tenant is the tenant's id, the value of the family's tenant label: an
+	// id, never its slug, which names a client on a port without
+	// authentication (docs/adr/0060 D5).
+	Tenant            string
+	Dangling, Orphans int64
+}
+
+// consistencyReadEvery is how long a read of the counts for a scrape is
+// reused: they change at a run of the check — daily — and at an
+// administrator's removal or acceptance, and a scrape must not become a query
+// per request. consistencyReadTimeout bounds the read.
+const (
+	consistencyReadEvery   = time.Minute
+	consistencyReadTimeout = 2 * time.Second
+)
+
+func (m *Metrics) consistencyInstruments() {
+	m.consistency = &consistencyCollector{
+		dangling: prometheus.NewDesc(m.name("consistency", "dangling_attachments"),
+			"Attachments of a tenant whose metadata is there and whose object is missing, not accepted as lost, at its latest consistency check, by the tenant's id.",
+			[]string{"tenant"}, nil),
+		orphans: prometheus.NewDesc(m.name("consistency", "orphaned_objects"),
+			"Objects under a tenant's prefix that no attachment names, at its latest consistency check, by the tenant's id.",
+			[]string{"tenant"}, nil),
+	}
+	m.registry.MustRegister(m.consistency)
+}
+
+// ObserveConsistency makes a scrape read every tenant's counts of its latest
+// consistency check through read, at most once a minute and within two
+// seconds; a read that fails leaves the family out of the scrapes until the
+// next read (docs/adr/0060 D4, D5). The counts are the database's, so every
+// replica answers the same, whichever ran the check, and a replica that
+// starts answers them at once.
+func (m *Metrics) ObserveConsistency(read func(ctx context.Context) ([]ConsistencyCounts, error)) {
+	if m == nil {
+		return
+	}
+	m.consistency.mu.Lock()
+	defer m.consistency.mu.Unlock()
+	m.consistency.read, m.consistency.at = read, time.Time{}
+}
+
+type consistencyCollector struct {
+	dangling, orphans *prometheus.Desc
+	// now is the clock the reuse of a read is measured by; nil is time.Now.
+	now func() time.Time
+
+	mu   sync.Mutex
+	read func(ctx context.Context) ([]ConsistencyCounts, error)
+	at   time.Time
+	ok   bool
+	last []ConsistencyCounts
+}
+
+func (c *consistencyCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.dangling
+	ch <- c.orphans
+}
+
+func (c *consistencyCollector) Collect(ch chan<- prometheus.Metric) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.read == nil {
+		return
+	}
+	clock := c.now
+	if clock == nil {
+		clock = time.Now
+	}
+	if now := clock(); c.at.IsZero() || now.Sub(c.at) >= consistencyReadEvery {
+		ctx, cancel := context.WithTimeout(context.Background(), consistencyReadTimeout)
+		counts, err := c.read(ctx)
+		cancel()
+		c.at, c.ok, c.last = now, err == nil, counts
+	}
+	if !c.ok {
+		return
+	}
+	for _, t := range c.last {
+		ch <- prometheus.MustNewConstMetric(c.dangling, prometheus.GaugeValue, float64(t.Dangling), t.Tenant)
+		ch <- prometheus.MustNewConstMetric(c.orphans, prometheus.GaugeValue, float64(t.Orphans), t.Tenant)
+	}
 }

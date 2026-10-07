@@ -103,6 +103,12 @@ var dashboardRows = []dashboardRow{
 			{`sum(rate(cowork_auth_lockouts_total{$sel}[$__rate_interval]))`, "lockouts"},
 			{`sum by (reason) (rate(cowork_auth_token_refusals_total{$sel}[$__rate_interval]))`, "token {{reason}}"}}},
 	}},
+	{"Attachment consistency", []dashboardPanel{
+		{title: "Dangling attachment metadata by tenant", unit: unitCount, queries: []dashboardQuery{
+			{`max by (tenant) (cowork_consistency_dangling_attachments{$sel})`, "{{tenant}}"}}},
+		{title: "Orphaned objects by tenant", unit: unitCount, queries: []dashboardQuery{
+			{`max by (tenant) (cowork_consistency_orphaned_objects{$sel})`, "{{tenant}}"}}},
+	}},
 	{"Process", []dashboardPanel{
 		{title: "Goroutines", unit: unitCount, queries: []dashboardQuery{
 			{`sum by (pod) (go_goroutines{` + backendOnly + `})`, byPod}}},
