@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"math"
 	"slices"
 	"strings"
@@ -42,6 +43,11 @@ const (
 	// UUIDv7 and tells its time even after a restore rewrote the object; an
 	// object under another key is judged by its last change.
 	OrphanGrace = time.Hour
+	// consistencyBatch is how many listed objects the check judges together:
+	// it compares the listing with the rows a batch at a time, so what it
+	// holds does not grow with the objects of a tenant (docs/adr/0059 D4, as
+	// amended 2026-10-07).
+	consistencyBatch = 1000
 )
 
 // The installation-level act of a run and its fields.
@@ -53,9 +59,15 @@ const (
 )
 
 // ObjectStore is the object storage as the check reads it: the objects under
-// a prefix, and whether one exists. *storage.Client is one.
+// a prefix, handed on one at a time in the byte order of their keys, and
+// whether one exists. *storage.Client is one.
 type ObjectStore interface {
-	List(ctx context.Context, prefix string) ([]storage.Object, error)
+	List(ctx context.Context, prefix string) iter.Seq2[storage.Object, error]
+	Exists(ctx context.Context, key string) (bool, error)
+}
+
+// objectProbe is the part of the object storage confirmMissing asks.
+type objectProbe interface {
 	Exists(ctx context.Context, key string) (bool, error)
 }
 
@@ -246,19 +258,18 @@ func summaryOf(tenants []TenantConsistency) map[string]any {
 // The listing comes first and the rows after it: an upload puts its object
 // before its row commits, so a row the read finds has its object listed —
 // or put after the listing passed it, which the question for each such
-// attachment answers.
+// attachment answers. The comparison keeps that order for every row while
+// it holds one batch of the listing at a time (comparison.run).
 func (w *Writer) checkTenant(ctx context.Context, objects ObjectStore, tenantID uuid.UUID, slug string, now time.Time) (TenantConsistency, error) {
 	result := TenantConsistency{TenantID: tenantID, Slug: slug}
-	listed, err := objects.List(ctx, tenantID.String()+"/")
-	if err != nil {
-		return result, fmt.Errorf("list the objects of the tenant %s: %w", slug, err)
+	c := comparison{tenantID: tenantID, now: now, batch: consistencyBatch}
+	rows := func(ctx context.Context, after, upto uuid.UUID) ([]uuid.UUID, error) {
+		return w.ListTenantAttachmentIDs(ctx, writeq.ListTenantAttachmentIDsParams{TenantID: tenantID, After: after, Upto: upto})
 	}
-	rows, err := w.ListTenantAttachmentIDs(ctx, tenantID)
-	if err != nil {
-		return result, fmt.Errorf("read the attachments of the tenant %s: %w", slug, err)
+	if err := c.run(ctx, objects.List(ctx, tenantID.String()+"/"), rows); err != nil {
+		return result, fmt.Errorf("compare the objects and the attachments of the tenant %s: %w", slug, err)
 	}
-	j := judge(tenantID, listed, rows, now)
-	missing, err := confirmMissing(ctx, objects, tenantID, j.unlisted)
+	missing, err := confirmMissing(ctx, objects, tenantID, c.unlisted)
 	if err != nil {
 		return result, fmt.Errorf("ask for the objects of the tenant %s: %w", slug, err)
 	}
@@ -277,15 +288,109 @@ func (w *Writer) checkTenant(ctx context.Context, objects ObjectStore, tenantID 
 	if err != nil {
 		return result, err
 	}
-	result.Orphans = len(j.orphans)
-	for _, o := range j.orphans {
-		result.OrphanBytes += o.Size
-	}
-	return result, w.saveCheck(ctx, result, now, items, orphanItems(j.orphans))
+	result.Orphans, result.OrphanBytes = c.orphans, c.orphanBytes
+	return result, w.saveCheck(ctx, result, now, items, orphanItems(c.firstOrphans))
 }
 
-// judgement is what a listing and the rows say of a tenant before the
-// attachments the listing missed are asked for.
+// readRange reads the ids of the tenant's attachments above after and up to
+// upto, in the order of the ids.
+type readRange func(ctx context.Context, after, upto uuid.UUID) ([]uuid.UUID, error)
+
+// comparison is what the check keeps of a tenant while it compares the
+// objects listed under the tenant's prefix with its attachments: the orphans
+// counted with their bytes, the first ConsistencyListBound of them in key
+// order, and the attachments whose object the listing did not show, which
+// confirmMissing asks for. Of the listing and the rows it holds one batch at
+// a time, whatever the number of objects.
+type comparison struct {
+	tenantID uuid.UUID
+	now      time.Time
+	// batch is how many listed objects are judged together.
+	batch int
+
+	orphans      int
+	orphanBytes  int64
+	firstOrphans []storage.Object
+	unlisted     []uuid.UUID
+	// after is the id up to which the rows were read: uuid.Nil before the
+	// first read, which leaves no row out — an attachment's id is a UUIDv7,
+	// made by the backend or by the column's default, never the nil UUID.
+	after uuid.UUID
+}
+
+// run compares the listing with the rows, a batch of the listing at a time.
+// The keys must come in byte order, as S3 lists them; a listing out of that
+// order fails the run. A key that names an attachment is the tenant's prefix
+// and the id in lowercase hexadecimal, so such keys sort as PostgreSQL sorts
+// the ids, and the attachments a batch's keys can name are the rows above the
+// last batch's and up to its own last such key. Those rows are read once the
+// listing has handed the batch on, so it passed each of them before its row
+// is read, and the batch is judged against them. When the listing ends, the
+// rows left are read, none of whose objects it showed.
+func (c *comparison) run(ctx context.Context, listing iter.Seq2[storage.Object, error], rows readRange) error {
+	batch := make([]storage.Object, 0, c.batch)
+	first, last := true, ""
+	for o, err := range listing {
+		if err != nil {
+			return fmt.Errorf("list the objects: %w", err)
+		}
+		if !first && o.Key <= last {
+			return fmt.Errorf("the object storage listed %q after %q: the comparison needs the keys in byte order", o.Key, last)
+		}
+		first, last = false, o.Key
+		batch = append(batch, o)
+		if len(batch) == c.batch {
+			if err := c.judgeBatch(ctx, rows, batch, false); err != nil {
+				return err
+			}
+			batch = batch[:0]
+		}
+	}
+	return c.judgeBatch(ctx, rows, batch, true)
+}
+
+// judgeBatch reads the rows a batch of the listing reaches and judges the
+// batch against them; the last batch, at the end of the listing, reaches
+// every row left.
+func (c *comparison) judgeBatch(ctx context.Context, rows readRange, batch []storage.Object, end bool) error {
+	var ids []uuid.UUID
+	if upto, ok := c.reach(batch, end); ok {
+		var err error
+		if ids, err = rows(ctx, c.after, upto); err != nil {
+			return fmt.Errorf("read the attachments: %w", err)
+		}
+		c.after = upto
+	}
+	j := judge(c.tenantID, batch, ids, c.now)
+	for _, o := range j.orphans {
+		c.orphans++
+		c.orphanBytes += o.Size
+		if len(c.firstOrphans) < ConsistencyListBound {
+			c.firstOrphans = append(c.firstOrphans, o)
+		}
+	}
+	c.unlisted = append(c.unlisted, j.unlisted...)
+	return nil
+}
+
+// reach is the id up to which a batch needs the rows: that of its last key
+// naming an attachment, or every id at the end of the listing. A batch with
+// no such key needs none before the end.
+func (c *comparison) reach(batch []storage.Object, end bool) (uuid.UUID, bool) {
+	if end {
+		return uuid.Max, true
+	}
+	for i := len(batch) - 1; i >= 0; i-- {
+		if id, ok := storage.ParseKey(c.tenantID, batch[i].Key); ok {
+			return id, true
+		}
+	}
+	return uuid.Nil, false
+}
+
+// judgement is what objects listed under the tenant's prefix and the rows
+// that reach them say before the attachments the listing missed are asked
+// for.
 type judgement struct {
 	// orphans are the objects no row names, old enough to be judged, in key
 	// order.
@@ -294,30 +399,35 @@ type judgement struct {
 	unlisted []uuid.UUID
 }
 
-// judge compares the objects listed under the tenant's prefix with the ids of
-// its attachments. An object under any other key than <tenant-id>/<id> in the
-// form the backend writes is an orphan: no row can name it. One whose id no
-// row names is an orphan unless it is younger than OrphanGrace.
+// judge compares objects listed under the tenant's prefix with the ids of the
+// tenant's attachments their keys can name — a batch of the listing and the
+// rows up to its last key, or a whole listing and every row. An object under
+// any other key than <tenant-id>/<id> in the form the backend writes is an
+// orphan: no row can name it. One whose id no row names is an orphan unless
+// it is younger than OrphanGrace. It keeps a set of the listed ids, never one
+// of the rows.
 func judge(tenantID uuid.UUID, listed []storage.Object, rows []uuid.UUID, now time.Time) judgement {
-	named := make(map[uuid.UUID]bool, len(rows))
-	for _, id := range rows {
-		named[id] = true
+	named := make(map[uuid.UUID]bool, len(listed))
+	for _, o := range listed {
+		if id, ok := storage.ParseKey(tenantID, o.Key); ok {
+			named[id] = false
+		}
 	}
-	seen := make(map[uuid.UUID]bool, len(listed))
 	var j judgement
+	for _, id := range rows {
+		if _, ok := named[id]; ok {
+			named[id] = true
+		} else {
+			j.unlisted = append(j.unlisted, id)
+		}
+	}
 	for _, o := range listed {
 		id, ok := storage.ParseKey(tenantID, o.Key)
 		switch {
 		case ok && named[id]:
-			seen[id] = true
 		case young(id, ok, o, now):
 		default:
 			j.orphans = append(j.orphans, o)
-		}
-	}
-	for _, id := range rows {
-		if !seen[id] {
-			j.unlisted = append(j.unlisted, id)
 		}
 	}
 	slices.SortFunc(j.orphans, func(a, b storage.Object) int { return strings.Compare(a.Key, b.Key) })
@@ -339,7 +449,7 @@ func young(id uuid.UUID, named bool, o storage.Object, now time.Time) bool {
 // confirmMissing asks for each attachment the listing did not show whether
 // its object exists now: an upload's put that came after the listing passed
 // its key is no missing object.
-func confirmMissing(ctx context.Context, objects ObjectStore, tenantID uuid.UUID, unlisted []uuid.UUID) ([]uuid.UUID, error) {
+func confirmMissing(ctx context.Context, objects objectProbe, tenantID uuid.UUID, unlisted []uuid.UUID) ([]uuid.UUID, error) {
 	missing := []uuid.UUID{}
 	for _, id := range unlisted {
 		ok, err := objects.Exists(ctx, storage.Key(tenantID, id))

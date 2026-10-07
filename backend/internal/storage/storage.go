@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"net/http"
 	"net/url"
 	"os"
@@ -150,22 +151,30 @@ type Object struct {
 	LastModified time.Time
 }
 
-// List returns every object whose key begins with prefix — the current
-// versions only, in a versioned bucket — for the consistency check
-// (docs/adr/0059 D4). It takes s3:ListBucket on the bucket, which the
-// access key's policy must grant beside reading, writing and deleting
-// objects.
-func (c *Client) List(ctx context.Context, prefix string) ([]Object, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	var out []Object
-	for info := range c.mc.ListObjectsIter(ctx, c.bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
-		if info.Err != nil {
-			return nil, fmt.Errorf("list objects: %w", info.Err)
+// List hands on every object whose key begins with prefix — the current
+// versions only, in a versioned bucket — one at a time, in the order the
+// store lists them, which for S3 is the byte order of the keys; it keeps
+// none of them, and reads the store's next page when the last one is
+// handed on. It is the consistency check's (docs/adr/0059 D4) and takes
+// s3:ListBucket on the bucket, which the access key's policy must grant
+// beside reading, writing and deleting objects. A listing the store
+// refuses, or whose context ends first, ends with the error.
+func (c *Client) List(ctx context.Context, prefix string) iter.Seq2[Object, error] {
+	return func(yield func(Object, error) bool) {
+		for info := range c.mc.ListObjectsIter(ctx, c.bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+			if info.Err != nil {
+				yield(Object{}, fmt.Errorf("list objects: %w", info.Err))
+				return
+			}
+			if !yield(Object{Key: info.Key, Size: info.Size, LastModified: info.LastModified}, nil) {
+				return
+			}
 		}
-		out = append(out, Object{Key: info.Key, Size: info.Size, LastModified: info.LastModified})
+		// minio-go ends a listing whose context ended as if it were complete.
+		if err := ctx.Err(); err != nil {
+			yield(Object{}, fmt.Errorf("list objects: %w", err))
+		}
 	}
-	return out, nil
 }
 
 // Exists says whether the bucket holds an object under key.

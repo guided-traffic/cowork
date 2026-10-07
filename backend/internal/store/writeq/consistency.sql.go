@@ -214,13 +214,24 @@ func (q *Queries) ListCheckedAttachments(ctx context.Context, arg ListCheckedAtt
 }
 
 const listTenantAttachmentIDs = `-- name: ListTenantAttachmentIDs :many
-SELECT id FROM attachments WHERE tenant_id = $1 ORDER BY id
+SELECT id FROM attachments
+WHERE tenant_id = $1 AND id > $2::uuid AND id <= $3::uuid
+ORDER BY id
 `
 
-// Every attachment of the tenant, a deleted ticket's included: its row names
-// its object until the purge removes both.
-func (q *Queries) ListTenantAttachmentIDs(ctx context.Context, tenantID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, listTenantAttachmentIDs, tenantID)
+type ListTenantAttachmentIDsParams struct {
+	TenantID uuid.UUID
+	After    uuid.UUID
+	Upto     uuid.UUID
+}
+
+// The attachments of the tenant whose id lies above after and up to upto, in
+// the order of their ids — the order of their objects' keys —, a deleted
+// ticket's included: its row names its object until the purge removes both.
+// The check reads the tenant's attachments range by range this way, each
+// range once the listing has passed it.
+func (q *Queries) ListTenantAttachmentIDs(ctx context.Context, arg ListTenantAttachmentIDsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listTenantAttachmentIDs, arg.TenantID, arg.After, arg.Upto)
 	if err != nil {
 		return nil, err
 	}

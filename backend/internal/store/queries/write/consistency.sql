@@ -8,9 +8,14 @@
 SELECT id, slug FROM tenants ORDER BY id;
 
 -- name: ListTenantAttachmentIDs :many
--- Every attachment of the tenant, a deleted ticket's included: its row names
--- its object until the purge removes both.
-SELECT id FROM attachments WHERE tenant_id = sqlc.arg(tenant_id) ORDER BY id;
+-- The attachments of the tenant whose id lies above after and up to upto, in
+-- the order of their ids — the order of their objects' keys —, a deleted
+-- ticket's included: its row names its object until the purge removes both.
+-- The check reads the tenant's attachments range by range this way, each
+-- range once the listing has passed it.
+SELECT id FROM attachments
+WHERE tenant_id = sqlc.arg(tenant_id) AND id > sqlc.arg(after)::uuid AND id <= sqlc.arg(upto)::uuid
+ORDER BY id;
 
 -- name: ListCheckedAttachments :many
 -- What the list of the missing files shows of each: its name, size and type,
