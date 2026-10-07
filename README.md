@@ -1071,7 +1071,8 @@ every error body carries one of these as `code`.
 | `period_locked` | 409 | The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8) |
 | `attachment_limit` | 409 | The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6) |
 | `attachment_quota` | 409 | The tenant's attachments would hold more bytes than COWORK_ATTACHMENT_TENANT_QUOTA allows; nothing was stored (docs/adr/0016 D6) |
-| `uploads_disabled` | 501 | The installation has no object storage configured; attachments cannot be uploaded (docs/adr/0016 D1) |
+| `consistency_check_stale` | 409 | The consistency check the request names is not the tenant's latest any more — a newer check replaced its lists — or its orphans were removed already; read `GET …/attachment-consistency` again (docs/adr/0059 D4) |
+| `uploads_disabled` | 501 | The installation has no object storage configured; attachments cannot be uploaded, and orphaned objects cannot be removed (docs/adr/0016 D1) |
 | `chat_unavailable` | 409 | The tenant has no chat: the installation configures no provider; `GET …/chat` says so (docs/adr/0076) |
 | `precondition_failed` | 412 | The `If-Match` version is stale; the response carries the current `ETag` and `errors[]` the current values (docs/adr/0050 D5) |
 | `payload_too_large` | 413 | The body is larger than the configured limit (docs/adr/0039 D2) |

@@ -52,13 +52,15 @@ var openQuery = map[string]bool{"oidcCallback": true}
 // irreversible act on a ticket, which a leaked token must not make either
 // (docs/adr/0024 D7 as amended 2026-10-05). The tenant's GitHub webhook secret
 // lets whoever holds it write links into the tenant after a leaked token's
-// revocation; revoking it only takes access away (docs/adr/0071 D1).
+// revocation; revoking it only takes access away (docs/adr/0071 D1). Removing
+// the orphaned objects of a consistency check is irreversible like a purge
+// (docs/adr/0059 D4).
 var sessionOnly = map[string]bool{
 	"logout": true, "changeMyPassword": true, "createMyToken": true, "createTenant": true, "listTenants": true,
 	"createAccount": true, "resetAccountPassword": true,
 	"addMember": true, "setMemberGrant": true, "createGroupMapping": true, "updateGroupMapping": true,
 	"setProjectRestriction": true, "setProjectAccess": true, "runChatTurn": true, "stopChatTurns": true,
-	"setMyChat": true, "purgeTicket": true, "createGitHubSecret": true,
+	"setMyChat": true, "purgeTicket": true, "createGitHubSecret": true, "removeOrphanedObjects": true,
 }
 
 // The document is part of the security documentation (docs/adr/0046 D8):

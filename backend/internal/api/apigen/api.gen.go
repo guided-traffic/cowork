@@ -58,6 +58,7 @@ func (e AttachmentContentType) Valid() bool {
 
 // Defines values for AuditAction.
 const (
+	AuditActionAccepted           AuditAction = "accepted"
 	AuditActionAnswered           AuditAction = "answered"
 	AuditActionArchived           AuditAction = "archived"
 	AuditActionAsked              AuditAction = "asked"
@@ -104,6 +105,8 @@ const (
 // Valid indicates whether the value is a known member of the AuditAction enum.
 func (e AuditAction) Valid() bool {
 	switch e {
+	case AuditActionAccepted:
+		return true
 	case AuditActionAnswered:
 		return true
 	case AuditActionArchived:
@@ -532,6 +535,7 @@ const (
 	ProblemCodeChatBusy               ProblemCode = "chat_busy"
 	ProblemCodeChatProviderFailed     ProblemCode = "chat_provider_failed"
 	ProblemCodeChatUnavailable        ProblemCode = "chat_unavailable"
+	ProblemCodeConsistencyCheckStale  ProblemCode = "consistency_check_stale"
 	ProblemCodeCsrf                   ProblemCode = "csrf"
 	ProblemCodeForbidden              ProblemCode = "forbidden"
 	ProblemCodeGrantExists            ProblemCode = "grant_exists"
@@ -591,6 +595,8 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodeChatProviderFailed:
 		return true
 	case ProblemCodeChatUnavailable:
+		return true
+	case ProblemCodeConsistencyCheckStale:
 		return true
 	case ProblemCodeCsrf:
 		return true
@@ -1487,6 +1493,38 @@ type Attachment struct {
 // AttachmentContentType Detected from the bytes (docs/adr/0016 D3)
 type AttachmentContentType string
 
+// AttachmentConsistency The tenant's latest consistency check of its attachments (docs/adr/0059 D4): the files whose
+// metadata is there and whose bytes the bucket lacks — dangling — and the objects under the
+// tenant's prefix that no metadata names — orphans —, with the counts exact and each list at most
+// 1000 entries long. `check_id` is null, and everything else empty, while no check has run in the
+// tenant.
+type AttachmentConsistency struct {
+	// Accepted The files whose bytes are missing and whose loss an administrator accepted
+	Accepted int `json:"accepted"`
+
+	// CheckId The check's id, which a removal of its orphans or an acceptance of its missing files names
+	CheckId   nullable.Nullable[openapi_types.UUID] `json:"check_id"`
+	CheckedAt nullable.Nullable[time.Time]          `json:"checked_at"`
+
+	// Dangling The files whose bytes are missing and whose loss nobody accepted
+	Dangling int `json:"dangling"`
+
+	// DanglingAttachments The missing files, those nobody accepted first, at most 1000
+	DanglingAttachments []DanglingAttachment `json:"dangling_attachments"`
+
+	// OrphanBytes The orphans' sizes, summed
+	OrphanBytes int64 `json:"orphan_bytes"`
+
+	// OrphanRemoval The removal of this check's orphans an administrator confirmed; null before
+	OrphanRemoval nullable.Nullable[OrphanRemovalRecord] `json:"orphan_removal"`
+
+	// OrphanedObjects The orphans in key order, at most 1000; empty once their removal was confirmed
+	OrphanedObjects []OrphanedObject `json:"orphaned_objects"`
+
+	// Orphans The objects no metadata names; 0 once their removal was confirmed
+	Orphans int `json:"orphans"`
+}
+
 // AttachmentList defines model for AttachmentList.
 type AttachmentList struct {
 	Items      []Attachment              `json:"items"`
@@ -1861,6 +1899,11 @@ type ConfidentialSet struct {
 	Reason *string `json:"reason,omitempty"`
 }
 
+// ConsistencyCheckRef The consistency check whose lists the administrator was shown
+type ConsistencyCheckRef struct {
+	CheckId openapi_types.UUID `json:"check_id"`
+}
+
 // CurrentToken The token a request presents, and what it makes of the request (docs/adr/0043 D6)
 type CurrentToken struct {
 	// Agent The agent flag; every request of the token is an agent's (docs/adr/0036 D2)
@@ -1891,6 +1934,29 @@ type CurrentToken struct {
 	// Scope A token's scope (docs/adr/0035 D3)
 	Scope Scope      `json:"scope"`
 	State TokenState `json:"state"`
+}
+
+// DanglingAcceptance What an acceptance of the missing files did
+type DanglingAcceptance struct {
+	// Accepted The files whose loss was accepted now
+	Accepted int `json:"accepted"`
+}
+
+// DanglingAttachment A file whose metadata is there and whose bytes the bucket lacks; its download answers 404 saying so
+type DanglingAttachment struct {
+	// Accepted An administrator accepted the loss
+	Accepted    bool               `json:"accepted"`
+	ContentType string             `json:"content_type"`
+	FileName    string             `json:"file_name"`
+	Id          openapi_types.UUID `json:"id"`
+	Size        int64              `json:"size"`
+
+	// Ticket The key of its ticket, tenant/PROJECT-number
+	Ticket string `json:"ticket"`
+
+	// TicketDeleted The ticket is in the bin; the purge removes the file with it
+	TicketDeleted bool      `json:"ticket_deleted"`
+	UploadedAt    time.Time `json:"uploaded_at"`
 }
 
 // Dashboard The tenant's dashboard, the nine fixed tiles of docs/adr/0018 D6, read in one read-only
@@ -2584,6 +2650,37 @@ type MyTicket struct {
 type MyTicketList struct {
 	Items      []MyTicket                `json:"items"`
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// OrphanRemoval What a confirmed removal of the orphans did, object by object
+type OrphanRemoval struct {
+	// Failed Objects whose removal failed; the log names each, and the next check lists them again
+	Failed int `json:"failed"`
+
+	// Kept Objects that had gained metadata since the check: no orphans any more, kept
+	Kept int `json:"kept"`
+
+	// Removed Objects removed, or gone already
+	Removed int `json:"removed"`
+}
+
+// OrphanRemovalRecord defines model for OrphanRemovalRecord.
+type OrphanRemovalRecord struct {
+	// Kept The orphans that had gained metadata by then and were kept
+	Kept int `json:"kept"`
+
+	// Removed The orphans whose removal was confirmed and tried
+	Removed   int       `json:"removed"`
+	RemovedAt time.Time `json:"removed_at"`
+	RemovedBy Person    `json:"removed_by"`
+}
+
+// OrphanedObject An object under the tenant's prefix that no metadata names
+type OrphanedObject struct {
+	// Key The object key in the bucket, <tenant-id>/<attachment-id> where it is one the backend wrote
+	Key          string    `json:"key"`
+	LastModified time.Time `json:"last_modified"`
+	Size         int64     `json:"size"`
 }
 
 // PasswordChange defines model for PasswordChange.
@@ -4012,6 +4109,12 @@ type CreateAccountParams struct {
 	IdempotencyKey *IdempotencyKey `json:"Idempotency-Key,omitempty"`
 }
 
+// GetAttachmentConsistencyParams defines parameters for GetAttachmentConsistency.
+type GetAttachmentConsistencyParams struct {
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
+}
+
 // GetAttachmentUsageParams defines parameters for GetAttachmentUsage.
 type GetAttachmentUsageParams struct {
 	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
@@ -4748,6 +4851,12 @@ type CreateAccountJSONRequestBody = AccountCreate
 // ResetAccountPasswordJSONRequestBody defines body for ResetAccountPassword for application/json ContentType.
 type ResetAccountPasswordJSONRequestBody = AccountPasswordReset
 
+// AcceptDanglingAttachmentsJSONRequestBody defines body for AcceptDanglingAttachments for application/json ContentType.
+type AcceptDanglingAttachmentsJSONRequestBody = ConsistencyCheckRef
+
+// RemoveOrphanedObjectsJSONRequestBody defines body for RemoveOrphanedObjects for application/json ContentType.
+type RemoveOrphanedObjectsJSONRequestBody = ConsistencyCheckRef
+
 // CreateSavedFilterJSONRequestBody defines body for CreateSavedFilter for application/json ContentType.
 type CreateSavedFilterJSONRequestBody = SavedFilterCreate
 
@@ -5398,6 +5507,86 @@ type ClientInterface interface {
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
 	EndAccountSessions(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAttachmentConsistency The latest consistency check of the tenant's attachments against the bucket
+	//
+	// What the daily check found last: the files whose metadata is there and whose bytes the bucket
+	// lacks — dangling, after a restore that brought the database back without them; their download
+	// answers 404 saying so — and the objects under the tenant's prefix that no metadata names —
+	// orphans, after a restore that brought the bucket back from a later point, or a removal that
+	// failed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,
+	// a token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets
+	// they may not see. Before the first check `check_id` is null. An answer the client holds
+	// unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/attachment-consistency (the `GetAttachmentConsistency` operationId).
+	GetAttachmentConsistency(ctx context.Context, tenant TenantSlug, params *GetAttachmentConsistencyParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AcceptDanglingAttachmentsWithBody Accept the loss of a consistency check's missing files
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,
+	// docs/adr/0043 D3): the missing files of the check's list nobody accepted yet count as accepted
+	// from now on — as lost — instead of dangling, and no longer hold the alert. Nothing is removed:
+	// the files stay listed on their tickets and their download answers 404 saying the bytes are
+	// missing; one whose bytes come back is whole again, and a later loss of it counts once more. The
+	// body names the check whose list the administrator was shown; a newer check is
+	// `409 consistency_check_stale`. Recorded as `accepted`, with the count. A list with nothing to
+	// accept changes nothing and records nothing.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance (the `AcceptDanglingAttachments` operationId).
+	AcceptDanglingAttachmentsWithBody(ctx context.Context, tenant TenantSlug, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AcceptDanglingAttachments Accept the loss of a consistency check's missing files
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,
+	// docs/adr/0043 D3): the missing files of the check's list nobody accepted yet count as accepted
+	// from now on — as lost — instead of dangling, and no longer hold the alert. Nothing is removed:
+	// the files stay listed on their tickets and their download answers 404 saying the bytes are
+	// missing; one whose bytes come back is whole again, and a later loss of it counts once more. The
+	// body names the check whose list the administrator was shown; a newer check is
+	// `409 consistency_check_stale`. Recorded as `accepted`, with the count. A list with nothing to
+	// accept changes nothing and records nothing.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance (the `AcceptDanglingAttachments` operationId).
+	AcceptDanglingAttachments(ctx context.Context, tenant TenantSlug, body AcceptDanglingAttachmentsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveOrphanedObjectsWithBody Remove the orphaned objects of a consistency check, confirmed
+	//
+	// A tenant administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a
+	// browser session only**: nothing brings a removed object back, so a token — an administrator's
+	// `admin` token included — answers `403 session_required` (docs/adr/0035 D5). The body names the
+	// check whose list the administrator confirms; a newer check, or a removal confirmed already, is
+	// `409 consistency_check_stale`. Each orphan of that list is asked again whether an attachment
+	// names it now — one that does is kept —, the act is recorded as `purged`, with the counts and no
+	// key, and the objects are removed after the commit; a removal that fails is logged with its key
+	// and listed again by the next check. A check with no orphans changes nothing and records
+	// nothing. Without object storage, `501 uploads_disabled`.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal (the `RemoveOrphanedObjects` operationId).
+	RemoveOrphanedObjectsWithBody(ctx context.Context, tenant TenantSlug, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveOrphanedObjects Remove the orphaned objects of a consistency check, confirmed
+	//
+	// A tenant administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a
+	// browser session only**: nothing brings a removed object back, so a token — an administrator's
+	// `admin` token included — answers `403 session_required` (docs/adr/0035 D5). The body names the
+	// check whose list the administrator confirms; a newer check, or a removal confirmed already, is
+	// `409 consistency_check_stale`. Each orphan of that list is asked again whether an attachment
+	// names it now — one that does is kept —, the act is recorded as `purged`, with the counts and no
+	// key, and the objects are removed after the commit; a removal that fails is logged with its key
+	// and listed again by the next check. A check with no orphans changes nothing and records
+	// nothing. Without object storage, `501 uploads_disabled`.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal (the `RemoveOrphanedObjects` operationId).
+	RemoveOrphanedObjects(ctx context.Context, tenant TenantSlug, body RemoveOrphanedObjectsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAttachmentUsage The bytes the tenant's attachments hold, and the quota
 	//
@@ -7867,6 +8056,136 @@ func (c *Client) ResetAccountPassword(ctx context.Context, tenant TenantSlug, us
 // Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
 func (c *Client) EndAccountSessions(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewEndAccountSessionsRequest(c.Server, tenant, username)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAttachmentConsistency The latest consistency check of the tenant's attachments against the bucket
+//
+// What the daily check found last: the files whose metadata is there and whose bytes the bucket
+// lacks — dangling, after a restore that brought the database back without them; their download
+// answers 404 saying so — and the objects under the tenant's prefix that no metadata names —
+// orphans, after a restore that brought the bucket back from a later point, or a removal that
+// failed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,
+// a token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets
+// they may not see. Before the first check `check_id` is null. An answer the client holds
+// unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/attachment-consistency (the `GetAttachmentConsistency` operationId).
+func (c *Client) GetAttachmentConsistency(ctx context.Context, tenant TenantSlug, params *GetAttachmentConsistencyParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAttachmentConsistencyRequest(c.Server, tenant, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AcceptDanglingAttachmentsWithBody Accept the loss of a consistency check's missing files
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,
+// docs/adr/0043 D3): the missing files of the check's list nobody accepted yet count as accepted
+// from now on — as lost — instead of dangling, and no longer hold the alert. Nothing is removed:
+// the files stay listed on their tickets and their download answers 404 saying the bytes are
+// missing; one whose bytes come back is whole again, and a later loss of it counts once more. The
+// body names the check whose list the administrator was shown; a newer check is
+// `409 consistency_check_stale`. Recorded as `accepted`, with the count. A list with nothing to
+// accept changes nothing and records nothing.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance (the `AcceptDanglingAttachments` operationId).
+func (c *Client) AcceptDanglingAttachmentsWithBody(ctx context.Context, tenant TenantSlug, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAcceptDanglingAttachmentsRequestWithBody(c.Server, tenant, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// AcceptDanglingAttachments Accept the loss of a consistency check's missing files
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,
+// docs/adr/0043 D3): the missing files of the check's list nobody accepted yet count as accepted
+// from now on — as lost — instead of dangling, and no longer hold the alert. Nothing is removed:
+// the files stay listed on their tickets and their download answers 404 saying the bytes are
+// missing; one whose bytes come back is whole again, and a later loss of it counts once more. The
+// body names the check whose list the administrator was shown; a newer check is
+// `409 consistency_check_stale`. Recorded as `accepted`, with the count. A list with nothing to
+// accept changes nothing and records nothing.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance (the `AcceptDanglingAttachments` operationId).
+func (c *Client) AcceptDanglingAttachments(ctx context.Context, tenant TenantSlug, body AcceptDanglingAttachmentsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAcceptDanglingAttachmentsRequest(c.Server, tenant, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveOrphanedObjectsWithBody Remove the orphaned objects of a consistency check, confirmed
+//
+// A tenant administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a
+// browser session only**: nothing brings a removed object back, so a token — an administrator's
+// `admin` token included — answers `403 session_required` (docs/adr/0035 D5). The body names the
+// check whose list the administrator confirms; a newer check, or a removal confirmed already, is
+// `409 consistency_check_stale`. Each orphan of that list is asked again whether an attachment
+// names it now — one that does is kept —, the act is recorded as `purged`, with the counts and no
+// key, and the objects are removed after the commit; a removal that fails is logged with its key
+// and listed again by the next check. A check with no orphans changes nothing and records
+// nothing. Without object storage, `501 uploads_disabled`.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal (the `RemoveOrphanedObjects` operationId).
+func (c *Client) RemoveOrphanedObjectsWithBody(ctx context.Context, tenant TenantSlug, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveOrphanedObjectsRequestWithBody(c.Server, tenant, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveOrphanedObjects Remove the orphaned objects of a consistency check, confirmed
+//
+// A tenant administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a
+// browser session only**: nothing brings a removed object back, so a token — an administrator's
+// `admin` token included — answers `403 session_required` (docs/adr/0035 D5). The body names the
+// check whose list the administrator confirms; a newer check, or a removal confirmed already, is
+// `409 consistency_check_stale`. Each orphan of that list is asked again whether an attachment
+// names it now — one that does is kept —, the act is recorded as `purged`, with the counts and no
+// key, and the objects are removed after the commit; a removal that fails is logged with its key
+// and listed again by the next check. A check with no orphans changes nothing and records
+// nothing. Without object storage, `501 uploads_disabled`.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal (the `RemoveOrphanedObjects` operationId).
+func (c *Client) RemoveOrphanedObjects(ctx context.Context, tenant TenantSlug, body RemoveOrphanedObjectsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveOrphanedObjectsRequest(c.Server, tenant, body)
 	if err != nil {
 		return nil, err
 	}
@@ -12290,6 +12609,149 @@ func NewEndAccountSessionsRequest(server string, tenant TenantSlug, username Use
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewGetAttachmentConsistencyRequest constructs an http.Request for the GetAttachmentConsistency method
+func NewGetAttachmentConsistencyRequest(server string, tenant TenantSlug, params *GetAttachmentConsistencyParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/attachment-consistency", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewAcceptDanglingAttachmentsRequest calls the generic AcceptDanglingAttachments builder with application/json body
+func NewAcceptDanglingAttachmentsRequest(server string, tenant TenantSlug, body AcceptDanglingAttachmentsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAcceptDanglingAttachmentsRequestWithBody(server, tenant, "application/json", bodyReader)
+}
+
+// NewAcceptDanglingAttachmentsRequestWithBody constructs an http.Request for the AcceptDanglingAttachments method, with any body, and a specified content type
+func NewAcceptDanglingAttachmentsRequestWithBody(server string, tenant TenantSlug, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/attachment-consistency/dangling-acceptance", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRemoveOrphanedObjectsRequest calls the generic RemoveOrphanedObjects builder with application/json body
+func NewRemoveOrphanedObjectsRequest(server string, tenant TenantSlug, body RemoveOrphanedObjectsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRemoveOrphanedObjectsRequestWithBody(server, tenant, "application/json", bodyReader)
+}
+
+// NewRemoveOrphanedObjectsRequestWithBody constructs an http.Request for the RemoveOrphanedObjects method, with any body, and a specified content type
+func NewRemoveOrphanedObjectsRequestWithBody(server string, tenant TenantSlug, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/attachment-consistency/orphan-removal", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -20093,6 +20555,88 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions (the `EndAccountSessions` operationId).
 	EndAccountSessionsWithResponse(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*EndAccountSessionsResponse, error)
 
+	// GetAttachmentConsistencyWithResponse The latest consistency check of the tenant's attachments against the bucket
+	//
+	// What the daily check found last: the files whose metadata is there and whose bytes the bucket
+	// lacks — dangling, after a restore that brought the database back without them; their download
+	// answers 404 saying so — and the objects under the tenant's prefix that no metadata names —
+	// orphans, after a restore that brought the bucket back from a later point, or a removal that
+	// failed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,
+	// a token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets
+	// they may not see. Before the first check `check_id` is null. An answer the client holds
+	// unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/attachment-consistency (the `GetAttachmentConsistency` operationId).
+	GetAttachmentConsistencyWithResponse(ctx context.Context, tenant TenantSlug, params *GetAttachmentConsistencyParams, reqEditors ...RequestEditorFn) (*GetAttachmentConsistencyResponse, error)
+
+	// AcceptDanglingAttachmentsWithBodyWithResponse Accept the loss of a consistency check's missing files
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,
+	// docs/adr/0043 D3): the missing files of the check's list nobody accepted yet count as accepted
+	// from now on — as lost — instead of dangling, and no longer hold the alert. Nothing is removed:
+	// the files stay listed on their tickets and their download answers 404 saying the bytes are
+	// missing; one whose bytes come back is whole again, and a later loss of it counts once more. The
+	// body names the check whose list the administrator was shown; a newer check is
+	// `409 consistency_check_stale`. Recorded as `accepted`, with the count. A list with nothing to
+	// accept changes nothing and records nothing.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance (the `AcceptDanglingAttachments` operationId).
+	AcceptDanglingAttachmentsWithBodyWithResponse(ctx context.Context, tenant TenantSlug, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcceptDanglingAttachmentsResponse, error)
+
+	// AcceptDanglingAttachmentsWithResponse Accept the loss of a consistency check's missing files
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,
+	// docs/adr/0043 D3): the missing files of the check's list nobody accepted yet count as accepted
+	// from now on — as lost — instead of dangling, and no longer hold the alert. Nothing is removed:
+	// the files stay listed on their tickets and their download answers 404 saying the bytes are
+	// missing; one whose bytes come back is whole again, and a later loss of it counts once more. The
+	// body names the check whose list the administrator was shown; a newer check is
+	// `409 consistency_check_stale`. Recorded as `accepted`, with the count. A list with nothing to
+	// accept changes nothing and records nothing.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance (the `AcceptDanglingAttachments` operationId).
+	AcceptDanglingAttachmentsWithResponse(ctx context.Context, tenant TenantSlug, body AcceptDanglingAttachmentsJSONRequestBody, reqEditors ...RequestEditorFn) (*AcceptDanglingAttachmentsResponse, error)
+
+	// RemoveOrphanedObjectsWithBodyWithResponse Remove the orphaned objects of a consistency check, confirmed
+	//
+	// A tenant administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a
+	// browser session only**: nothing brings a removed object back, so a token — an administrator's
+	// `admin` token included — answers `403 session_required` (docs/adr/0035 D5). The body names the
+	// check whose list the administrator confirms; a newer check, or a removal confirmed already, is
+	// `409 consistency_check_stale`. Each orphan of that list is asked again whether an attachment
+	// names it now — one that does is kept —, the act is recorded as `purged`, with the counts and no
+	// key, and the objects are removed after the commit; a removal that fails is logged with its key
+	// and listed again by the next check. A check with no orphans changes nothing and records
+	// nothing. Without object storage, `501 uploads_disabled`.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal (the `RemoveOrphanedObjects` operationId).
+	RemoveOrphanedObjectsWithBodyWithResponse(ctx context.Context, tenant TenantSlug, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RemoveOrphanedObjectsResponse, error)
+
+	// RemoveOrphanedObjectsWithResponse Remove the orphaned objects of a consistency check, confirmed
+	//
+	// A tenant administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a
+	// browser session only**: nothing brings a removed object back, so a token — an administrator's
+	// `admin` token included — answers `403 session_required` (docs/adr/0035 D5). The body names the
+	// check whose list the administrator confirms; a newer check, or a removal confirmed already, is
+	// `409 consistency_check_stale`. Each orphan of that list is asked again whether an attachment
+	// names it now — one that does is kept —, the act is recorded as `purged`, with the counts and no
+	// key, and the objects are removed after the commit; a removal that fails is logged with its key
+	// and listed again by the next check. A check with no orphans changes nothing and records
+	// nothing. Without object storage, `501 uploads_disabled`.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal (the `RemoveOrphanedObjects` operationId).
+	RemoveOrphanedObjectsWithResponse(ctx context.Context, tenant TenantSlug, body RemoveOrphanedObjectsJSONRequestBody, reqEditors ...RequestEditorFn) (*RemoveOrphanedObjectsResponse, error)
+
 	// GetAttachmentUsageWithResponse The bytes the tenant's attachments hold, and the quota
 	//
 	// Every attachment of the tenant counts, on every ticket, confidential ones and those of
@@ -23423,6 +23967,185 @@ func (r EndAccountSessionsResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r EndAccountSessionsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetAttachmentConsistencyResponse200Headers the declared response headers of an HTTP 200 response for GetAttachmentConsistency
+type GetAttachmentConsistencyResponse200Headers struct {
+	ETag *string
+}
+
+// GetAttachmentConsistencyResponse304Headers the declared response headers of an HTTP 304 response for GetAttachmentConsistency
+type GetAttachmentConsistencyResponse304Headers struct {
+	ETag *string
+}
+
+// GetAttachmentConsistencyResponseDefaultHeaders the declared response headers of an HTTP default response for GetAttachmentConsistency
+type GetAttachmentConsistencyResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetAttachmentConsistencyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AttachmentConsistency
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *GetAttachmentConsistencyResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *GetAttachmentConsistencyResponse304Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetAttachmentConsistencyResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAttachmentConsistencyResponse) GetJSON200() *AttachmentConsistency {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetAttachmentConsistencyResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAttachmentConsistencyResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAttachmentConsistencyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAttachmentConsistencyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAttachmentConsistencyResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// AcceptDanglingAttachmentsResponseDefaultHeaders the declared response headers of an HTTP default response for AcceptDanglingAttachments
+type AcceptDanglingAttachmentsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type AcceptDanglingAttachmentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *DanglingAcceptance
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *AcceptDanglingAttachmentsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r AcceptDanglingAttachmentsResponse) GetJSON200() *DanglingAcceptance {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r AcceptDanglingAttachmentsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r AcceptDanglingAttachmentsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r AcceptDanglingAttachmentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AcceptDanglingAttachmentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r AcceptDanglingAttachmentsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// RemoveOrphanedObjectsResponseDefaultHeaders the declared response headers of an HTTP default response for RemoveOrphanedObjects
+type RemoveOrphanedObjectsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type RemoveOrphanedObjectsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *OrphanRemoval
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *RemoveOrphanedObjectsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r RemoveOrphanedObjectsResponse) GetJSON200() *OrphanRemoval {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RemoveOrphanedObjectsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveOrphanedObjectsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveOrphanedObjectsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveOrphanedObjectsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveOrphanedObjectsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -29917,6 +30640,118 @@ func (c *ClientWithResponses) EndAccountSessionsWithResponse(ctx context.Context
 	return ParseEndAccountSessionsResponse(rsp)
 }
 
+// GetAttachmentConsistencyWithResponse The latest consistency check of the tenant's attachments against the bucket
+//
+// What the daily check found last: the files whose metadata is there and whose bytes the bucket
+// lacks — dangling, after a restore that brought the database back without them; their download
+// answers 404 saying so — and the objects under the tenant's prefix that no metadata names —
+// orphans, after a restore that brought the bucket back from a later point, or a removal that
+// failed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,
+// a token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets
+// they may not see. Before the first check `check_id` is null. An answer the client holds
+// unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/attachment-consistency (the `GetAttachmentConsistency` operationId).
+func (c *ClientWithResponses) GetAttachmentConsistencyWithResponse(ctx context.Context, tenant TenantSlug, params *GetAttachmentConsistencyParams, reqEditors ...RequestEditorFn) (*GetAttachmentConsistencyResponse, error) {
+	rsp, err := c.GetAttachmentConsistency(ctx, tenant, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAttachmentConsistencyResponse(rsp)
+}
+
+// AcceptDanglingAttachmentsWithBodyWithResponse Accept the loss of a consistency check's missing files
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,
+// docs/adr/0043 D3): the missing files of the check's list nobody accepted yet count as accepted
+// from now on — as lost — instead of dangling, and no longer hold the alert. Nothing is removed:
+// the files stay listed on their tickets and their download answers 404 saying the bytes are
+// missing; one whose bytes come back is whole again, and a later loss of it counts once more. The
+// body names the check whose list the administrator was shown; a newer check is
+// `409 consistency_check_stale`. Recorded as `accepted`, with the count. A list with nothing to
+// accept changes nothing and records nothing.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance (the `AcceptDanglingAttachments` operationId).
+func (c *ClientWithResponses) AcceptDanglingAttachmentsWithBodyWithResponse(ctx context.Context, tenant TenantSlug, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcceptDanglingAttachmentsResponse, error) {
+	rsp, err := c.AcceptDanglingAttachmentsWithBody(ctx, tenant, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAcceptDanglingAttachmentsResponse(rsp)
+}
+
+// AcceptDanglingAttachmentsWithResponse Accept the loss of a consistency check's missing files
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,
+// docs/adr/0043 D3): the missing files of the check's list nobody accepted yet count as accepted
+// from now on — as lost — instead of dangling, and no longer hold the alert. Nothing is removed:
+// the files stay listed on their tickets and their download answers 404 saying the bytes are
+// missing; one whose bytes come back is whole again, and a later loss of it counts once more. The
+// body names the check whose list the administrator was shown; a newer check is
+// `409 consistency_check_stale`. Recorded as `accepted`, with the count. A list with nothing to
+// accept changes nothing and records nothing.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance (the `AcceptDanglingAttachments` operationId).
+func (c *ClientWithResponses) AcceptDanglingAttachmentsWithResponse(ctx context.Context, tenant TenantSlug, body AcceptDanglingAttachmentsJSONRequestBody, reqEditors ...RequestEditorFn) (*AcceptDanglingAttachmentsResponse, error) {
+	rsp, err := c.AcceptDanglingAttachments(ctx, tenant, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAcceptDanglingAttachmentsResponse(rsp)
+}
+
+// RemoveOrphanedObjectsWithBodyWithResponse Remove the orphaned objects of a consistency check, confirmed
+//
+// A tenant administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a
+// browser session only**: nothing brings a removed object back, so a token — an administrator's
+// `admin` token included — answers `403 session_required` (docs/adr/0035 D5). The body names the
+// check whose list the administrator confirms; a newer check, or a removal confirmed already, is
+// `409 consistency_check_stale`. Each orphan of that list is asked again whether an attachment
+// names it now — one that does is kept —, the act is recorded as `purged`, with the counts and no
+// key, and the objects are removed after the commit; a removal that fails is logged with its key
+// and listed again by the next check. A check with no orphans changes nothing and records
+// nothing. Without object storage, `501 uploads_disabled`.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal (the `RemoveOrphanedObjects` operationId).
+func (c *ClientWithResponses) RemoveOrphanedObjectsWithBodyWithResponse(ctx context.Context, tenant TenantSlug, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RemoveOrphanedObjectsResponse, error) {
+	rsp, err := c.RemoveOrphanedObjectsWithBody(ctx, tenant, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveOrphanedObjectsResponse(rsp)
+}
+
+// RemoveOrphanedObjectsWithResponse Remove the orphaned objects of a consistency check, confirmed
+//
+// A tenant administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a
+// browser session only**: nothing brings a removed object back, so a token — an administrator's
+// `admin` token included — answers `403 session_required` (docs/adr/0035 D5). The body names the
+// check whose list the administrator confirms; a newer check, or a removal confirmed already, is
+// `409 consistency_check_stale`. Each orphan of that list is asked again whether an attachment
+// names it now — one that does is kept —, the act is recorded as `purged`, with the counts and no
+// key, and the objects are removed after the commit; a removal that fails is logged with its key
+// and listed again by the next check. A check with no orphans changes nothing and records
+// nothing. Without object storage, `501 uploads_disabled`.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal (the `RemoveOrphanedObjects` operationId).
+func (c *ClientWithResponses) RemoveOrphanedObjectsWithResponse(ctx context.Context, tenant TenantSlug, body RemoveOrphanedObjectsJSONRequestBody, reqEditors ...RequestEditorFn) (*RemoveOrphanedObjectsResponse, error) {
+	rsp, err := c.RemoveOrphanedObjects(ctx, tenant, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveOrphanedObjectsResponse(rsp)
+}
+
 // GetAttachmentUsageWithResponse The bytes the tenant's attachments hold, and the quota
 //
 // Every attachment of the tenant counts, on every ticket, confidential ones and those of
@@ -33794,6 +34629,167 @@ func ParseEndAccountSessionsResponse(rsp *http.Response) (*EndAccountSessionsRes
 	switch {
 	case true:
 		var headers EndAccountSessionsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetAttachmentConsistencyResponse parses an HTTP response from a GetAttachmentConsistencyWithResponse call
+func ParseGetAttachmentConsistencyResponse(rsp *http.Response) (*GetAttachmentConsistencyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAttachmentConsistencyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AttachmentConsistency
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers GetAttachmentConsistencyResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers GetAttachmentConsistencyResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
+	case true:
+		var headers GetAttachmentConsistencyResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseAcceptDanglingAttachmentsResponse parses an HTTP response from a AcceptDanglingAttachmentsWithResponse call
+func ParseAcceptDanglingAttachmentsResponse(rsp *http.Response) (*AcceptDanglingAttachmentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AcceptDanglingAttachmentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DanglingAcceptance
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers AcceptDanglingAttachmentsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseRemoveOrphanedObjectsResponse parses an HTTP response from a RemoveOrphanedObjectsWithResponse call
+func ParseRemoveOrphanedObjectsResponse(rsp *http.Response) (*RemoveOrphanedObjectsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveOrphanedObjectsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest OrphanRemoval
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers RemoveOrphanedObjectsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -39239,6 +40235,15 @@ type ServerInterface interface {
 	// EndAccountSessions End every session of an account
 	// (DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions)
 	EndAccountSessions(w http.ResponseWriter, r *http.Request, tenant TenantSlug, username Username)
+	// GetAttachmentConsistency The latest consistency check of the tenant's attachments against the bucket
+	// (GET /api/v1/tenants/{tenant}/attachment-consistency)
+	GetAttachmentConsistency(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params GetAttachmentConsistencyParams)
+	// AcceptDanglingAttachments Accept the loss of a consistency check's missing files
+	// (POST /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance)
+	AcceptDanglingAttachments(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// RemoveOrphanedObjects Remove the orphaned objects of a consistency check, confirmed
+	// (POST /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal)
+	RemoveOrphanedObjects(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// GetAttachmentUsage The bytes the tenant's attachments hold, and the quota
 	// (GET /api/v1/tenants/{tenant}/attachment-usage)
 	GetAttachmentUsage(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params GetAttachmentUsageParams)
@@ -40681,6 +41686,108 @@ func (siw *ServerInterfaceWrapper) EndAccountSessions(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.EndAccountSessions(w, r, tenant, username)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAttachmentConsistency operation middleware
+func (siw *ServerInterfaceWrapper) GetAttachmentConsistency(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAttachmentConsistencyParams
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAttachmentConsistency(w, r, tenant, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AcceptDanglingAttachments operation middleware
+func (siw *ServerInterfaceWrapper) AcceptDanglingAttachments(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AcceptDanglingAttachments(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveOrphanedObjects operation middleware
+func (siw *ServerInterfaceWrapper) RemoveOrphanedObjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveOrphanedObjects(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -47310,6 +48417,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/lockout", wrapper.UnlockAccount)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/password", wrapper.ResetAccountPassword)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/accounts/{username}/sessions", wrapper.EndAccountSessions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/attachment-consistency", wrapper.GetAttachmentConsistency)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance", wrapper.AcceptDanglingAttachments)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/attachment-consistency/orphan-removal", wrapper.RemoveOrphanedObjects)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/attachment-usage", wrapper.GetAttachmentUsage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/audit", wrapper.ListAudit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/chat", wrapper.GetChatAvailability)
@@ -48701,6 +49811,158 @@ type EndAccountSessionsdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response EndAccountSessionsdefaultApplicationProblemPlusJSONResponse) VisitEndAccountSessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAttachmentConsistencyRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Params GetAttachmentConsistencyParams
+}
+
+type GetAttachmentConsistencyResponseObject interface {
+	VisitGetAttachmentConsistencyResponse(w http.ResponseWriter) error
+}
+
+type GetAttachmentConsistency200ResponseHeaders struct {
+	ETag *string
+}
+
+type GetAttachmentConsistency200JSONResponse struct {
+	Body    AttachmentConsistency
+	Headers GetAttachmentConsistency200ResponseHeaders
+}
+
+func (response GetAttachmentConsistency200JSONResponse) VisitGetAttachmentConsistencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAttachmentConsistency304Response = NotModifiedResponse
+
+func (response GetAttachmentConsistency304Response) VisitGetAttachmentConsistencyResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type GetAttachmentConsistencydefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetAttachmentConsistencydefaultApplicationProblemPlusJSONResponse) VisitGetAttachmentConsistencyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptDanglingAttachmentsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *AcceptDanglingAttachmentsJSONRequestBody
+}
+
+type AcceptDanglingAttachmentsResponseObject interface {
+	VisitAcceptDanglingAttachmentsResponse(w http.ResponseWriter) error
+}
+
+type AcceptDanglingAttachments200JSONResponse DanglingAcceptance
+
+func (response AcceptDanglingAttachments200JSONResponse) VisitAcceptDanglingAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AcceptDanglingAttachmentsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response AcceptDanglingAttachmentsdefaultApplicationProblemPlusJSONResponse) VisitAcceptDanglingAttachmentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveOrphanedObjectsRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+	Body   *RemoveOrphanedObjectsJSONRequestBody
+}
+
+type RemoveOrphanedObjectsResponseObject interface {
+	VisitRemoveOrphanedObjectsResponse(w http.ResponseWriter) error
+}
+
+type RemoveOrphanedObjects200JSONResponse OrphanRemoval
+
+func (response RemoveOrphanedObjects200JSONResponse) VisitRemoveOrphanedObjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveOrphanedObjectsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RemoveOrphanedObjectsdefaultApplicationProblemPlusJSONResponse) VisitRemoveOrphanedObjectsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -54068,6 +55330,15 @@ type StrictServerInterface interface {
 	// EndAccountSessions End every session of an account
 	// (DELETE /api/v1/tenants/{tenant}/accounts/{username}/sessions)
 	EndAccountSessions(ctx context.Context, request EndAccountSessionsRequestObject) (EndAccountSessionsResponseObject, error)
+	// GetAttachmentConsistency The latest consistency check of the tenant's attachments against the bucket
+	// (GET /api/v1/tenants/{tenant}/attachment-consistency)
+	GetAttachmentConsistency(ctx context.Context, request GetAttachmentConsistencyRequestObject) (GetAttachmentConsistencyResponseObject, error)
+	// AcceptDanglingAttachments Accept the loss of a consistency check's missing files
+	// (POST /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance)
+	AcceptDanglingAttachments(ctx context.Context, request AcceptDanglingAttachmentsRequestObject) (AcceptDanglingAttachmentsResponseObject, error)
+	// RemoveOrphanedObjects Remove the orphaned objects of a consistency check, confirmed
+	// (POST /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal)
+	RemoveOrphanedObjects(ctx context.Context, request RemoveOrphanedObjectsRequestObject) (RemoveOrphanedObjectsResponseObject, error)
 	// GetAttachmentUsage The bytes the tenant's attachments hold, and the quota
 	// (GET /api/v1/tenants/{tenant}/attachment-usage)
 	GetAttachmentUsage(ctx context.Context, request GetAttachmentUsageRequestObject) (GetAttachmentUsageResponseObject, error)
@@ -55164,6 +56435,99 @@ func (sh *strictHandler) EndAccountSessions(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(EndAccountSessionsResponseObject); ok {
 		if err := validResponse.VisitEndAccountSessionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAttachmentConsistency operation middleware
+func (sh *strictHandler) GetAttachmentConsistency(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params GetAttachmentConsistencyParams) {
+	var request GetAttachmentConsistencyRequestObject
+
+	request.Tenant = tenant
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAttachmentConsistency(ctx, request.(GetAttachmentConsistencyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAttachmentConsistency")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAttachmentConsistencyResponseObject); ok {
+		if err := validResponse.VisitGetAttachmentConsistencyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// AcceptDanglingAttachments operation middleware
+func (sh *strictHandler) AcceptDanglingAttachments(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request AcceptDanglingAttachmentsRequestObject
+
+	request.Tenant = tenant
+
+	var body AcceptDanglingAttachmentsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AcceptDanglingAttachments(ctx, request.(AcceptDanglingAttachmentsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AcceptDanglingAttachments")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AcceptDanglingAttachmentsResponseObject); ok {
+		if err := validResponse.VisitAcceptDanglingAttachmentsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveOrphanedObjects operation middleware
+func (sh *strictHandler) RemoveOrphanedObjects(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request RemoveOrphanedObjectsRequestObject
+
+	request.Tenant = tenant
+
+	var body RemoveOrphanedObjectsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveOrphanedObjects(ctx, request.(RemoveOrphanedObjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveOrphanedObjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveOrphanedObjectsResponseObject); ok {
+		if err := validResponse.VisitRemoveOrphanedObjectsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

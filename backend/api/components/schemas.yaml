@@ -503,7 +503,7 @@ AuditAction:
     interest, ranked, overridden, asked, answered, booked, voided, locked, uploaded, downloaded,
     exported, deleted, restored, purged, revoked, refused, archived, confidential_set,
     confidential_lifted, expired, logged_in, logged_out, login_failed, unlocked, password_changed,
-    password_reset, deactivated, reactivated, read, merged, closed, reopened]
+    password_reset, deactivated, reactivated, read, merged, closed, reopened, accepted]
 AuditEvent:
   type: object
   required: [id, created_at, actor, entity_type, action]
@@ -1331,6 +1331,92 @@ AttachmentUsage:
       type: [integer, 'null']
       format: int64
       description: COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota
+AttachmentConsistency:
+  type: object
+  description: |
+    The tenant's latest consistency check of its attachments (docs/adr/0059 D4): the files whose
+    metadata is there and whose bytes the bucket lacks — dangling — and the objects under the
+    tenant's prefix that no metadata names — orphans —, with the counts exact and each list at most
+    1000 entries long. `check_id` is null, and everything else empty, while no check has run in the
+    tenant.
+  required: [check_id, checked_at, dangling, accepted, orphans, orphan_bytes, dangling_attachments, orphaned_objects,
+    orphan_removal]
+  properties:
+    check_id:
+      type: [string, 'null']
+      format: uuid
+      description: The check's id, which a removal of its orphans or an acceptance of its missing files names
+    checked_at: {type: [string, 'null'], format: date-time}
+    dangling: {type: integer, description: The files whose bytes are missing and whose loss nobody accepted}
+    accepted: {type: integer, description: The files whose bytes are missing and whose loss an administrator accepted}
+    orphans: {type: integer, description: 'The objects no metadata names; 0 once their removal was confirmed'}
+    orphan_bytes: {type: integer, format: int64, description: "The orphans' sizes, summed"}
+    dangling_attachments:
+      type: array
+      description: The missing files, those nobody accepted first, at most 1000
+      items:
+        $ref: '#/DanglingAttachment'
+    orphaned_objects:
+      type: array
+      description: The orphans in key order, at most 1000; empty once their removal was confirmed
+      items:
+        $ref: '#/OrphanedObject'
+    orphan_removal:
+      description: The removal of this check's orphans an administrator confirmed; null before
+      oneOf:
+        - $ref: '#/OrphanRemovalRecord'
+        - type: 'null'
+DanglingAttachment:
+  type: object
+  description: A file whose metadata is there and whose bytes the bucket lacks; its download answers 404 saying so
+  required: [id, file_name, size, content_type, ticket, ticket_deleted, uploaded_at, accepted]
+  properties:
+    id: {type: string, format: uuid}
+    file_name: {type: string}
+    size: {type: integer, format: int64}
+    content_type: {type: string}
+    ticket: {type: string, description: 'The key of its ticket, tenant/PROJECT-number'}
+    ticket_deleted: {type: boolean, description: The ticket is in the bin; the purge removes the file with it}
+    uploaded_at: {type: string, format: date-time}
+    accepted: {type: boolean, description: An administrator accepted the loss}
+OrphanedObject:
+  type: object
+  description: An object under the tenant's prefix that no metadata names
+  required: [key, size, last_modified]
+  properties:
+    key: {type: string, description: 'The object key in the bucket, <tenant-id>/<attachment-id> where it is one the backend wrote'}
+    size: {type: integer, format: int64}
+    last_modified: {type: string, format: date-time}
+OrphanRemovalRecord:
+  type: object
+  required: [removed_at, removed_by, removed, kept]
+  properties:
+    removed_at: {type: string, format: date-time}
+    removed_by:
+      $ref: '#/Person'
+    removed: {type: integer, description: The orphans whose removal was confirmed and tried}
+    kept: {type: integer, description: The orphans that had gained metadata by then and were kept}
+ConsistencyCheckRef:
+  type: object
+  description: The consistency check whose lists the administrator was shown
+  required: [check_id]
+  additionalProperties: false
+  properties:
+    check_id: {type: string, format: uuid}
+OrphanRemoval:
+  type: object
+  description: What a confirmed removal of the orphans did, object by object
+  required: [removed, kept, failed]
+  properties:
+    removed: {type: integer, description: 'Objects removed, or gone already'}
+    kept: {type: integer, description: 'Objects that had gained metadata since the check: no orphans any more, kept'}
+    failed: {type: integer, description: 'Objects whose removal failed; the log names each, and the next check lists them again'}
+DanglingAcceptance:
+  type: object
+  description: What an acceptance of the missing files did
+  required: [accepted]
+  properties:
+    accepted: {type: integer, description: The files whose loss was accepted now}
 AttachmentList:
   type: object
   required: [items, next_cursor]

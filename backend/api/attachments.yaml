@@ -162,3 +162,109 @@ attachmentUsage:
         $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
+# The consistency check of the tenant's attachments against the bucket
+# (docs/adr/0059 D4), for the tenant's administrators: its latest result, the
+# removal of its orphans and the acceptance of its missing files.
+attachmentConsistency:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: getAttachmentConsistency
+    tags: [attachments]
+    summary: The latest consistency check of the tenant's attachments against the bucket
+    description: |
+      What the daily check found last: the files whose metadata is there and whose bytes the bucket
+      lacks — dangling, after a restore that brought the database back without them; their download
+      answers 404 saying so — and the objects under the tenant's prefix that no metadata names —
+      orphans, after a restore that brought the bucket back from a later point, or a removal that
+      failed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,
+      a token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets
+      they may not see. Before the first check `check_id` is null. An answer the client holds
+      unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+    parameters:
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: The latest result
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/AttachmentConsistency'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+orphanRemoval:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  post:
+    operationId: removeOrphanedObjects
+    tags: [attachments]
+    summary: Remove the orphaned objects of a consistency check, confirmed
+    description: |
+      A tenant administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a
+      browser session only**: nothing brings a removed object back, so a token — an administrator's
+      `admin` token included — answers `403 session_required` (docs/adr/0035 D5). The body names the
+      check whose list the administrator confirms; a newer check, or a removal confirmed already, is
+      `409 consistency_check_stale`. Each orphan of that list is asked again whether an attachment
+      names it now — one that does is kept —, the act is recorded as `purged`, with the counts and no
+      key, and the objects are removed after the commit; a removal that fails is logged with its key
+      and listed again by the next check. A check with no orphans changes nothing and records
+      nothing. Without object storage, `501 uploads_disabled`.
+    security:
+      - sessionCookie: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ConsistencyCheckRef'
+    responses:
+      '200':
+        description: What the removal did
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/OrphanRemoval'
+            example:
+              removed: 2
+              kept: 1
+              failed: 0
+      default:
+        $ref: './components/responses.yaml#/Problem'
+danglingAcceptance:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  post:
+    operationId: acceptDanglingAttachments
+    tags: [attachments]
+    summary: Accept the loss of a consistency check's missing files
+    description: |
+      A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,
+      docs/adr/0043 D3): the missing files of the check's list nobody accepted yet count as accepted
+      from now on — as lost — instead of dangling, and no longer hold the alert. Nothing is removed:
+      the files stay listed on their tickets and their download answers 404 saying the bytes are
+      missing; one whose bytes come back is whole again, and a later loss of it counts once more. The
+      body names the check whose list the administrator was shown; a newer check is
+      `409 consistency_check_stale`. Recorded as `accepted`, with the count. A list with nothing to
+      accept changes nothing and records nothing.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ConsistencyCheckRef'
+    responses:
+      '200':
+        description: What the acceptance did
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/DanglingAcceptance'
+            example:
+              accepted: 3
+      default:
+        $ref: './components/responses.yaml#/Problem'
