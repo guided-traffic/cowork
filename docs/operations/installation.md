@@ -518,9 +518,11 @@ Attachments live in any S3-compatible store
 in a bucket of their own, reached with an access key whose policy covers that bucket only —
 never the store's root credentials
 ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D5).
-The backend writes, reads and deletes objects under `<tenant-id>/<attachment-id>`; it never
-creates, lists or deletes a bucket, so the bucket exists before the first upload. This policy
-was enough against the MinIO of `make minio-up`, with the region left empty:
+The backend writes, reads and deletes objects under `<tenant-id>/<attachment-id>`, and lists the
+objects under each tenant's prefix once a day for the consistency check
+([backups.md](backups.md#the-consistency-check)); it never creates or deletes a bucket, so the
+bucket exists before the first upload. This policy was enough against the MinIO of
+`make minio-up`, with the region left empty:
 
 ```json
 {
@@ -530,10 +532,27 @@ was enough against the MinIO of `make minio-up`, with the region left empty:
       "Effect": "Allow",
       "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
       "Resource": ["arn:aws:s3:::cowork/*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::cowork"]
     }
   ]
 }
 ```
+
+**`s3:ListBucket` is the consistency check's.** Without it every upload and download works and the
+check fails at its listing — the log says `job failed` with `consistency-check` and `Access Denied`,
+and [`CoworkJobFailing`](metrics.md#coworkjobfailing) fires. With it the key can list every
+tenant's object keys, which it could not before: a key that leaks alone then reads every object, not
+only those whose keys the database names
+([attachments.md H-70](../security/attachments.md#h-70)). Checked on 2026-10-07 against that MinIO
+with a key of this policy and with one without its second statement: the listing was refused
+without it and answered with it, another bucket's listing was refused either way, and a missing
+object's `HEAD` and `GET` answered `404` either way. AWS S3 documents a `403` instead of the `404`
+for a missing object to a key without `s3:ListBucket`, which a download of a lost file would then
+answer as `500 internal` instead of the `404` that names the cause — not verified here.
 
 With the MinIO client, against an existing MinIO, by its administrator — cowork never sees the
 administrator's keys (names and secrets are examples):
@@ -1018,6 +1037,10 @@ run against a plugin that enforces policies.
 
 ## Upgrade
 
+The procedure — a backup first, the order the migrations and the pods go in, how to read where
+the schema stands, a rollback and a dirty schema — is [upgrade.md](upgrade.md). Here are the
+commands and what each release changes.
+
 ```bash
 helm repo update cowork
 helm upgrade cowork cowork/cowork --version <new> -n cowork --reset-then-reuse-values
@@ -1138,6 +1161,20 @@ so the new pods answer `/metrics` on 8081 without authentication to every pod th
 upgrade with `--set metrics.enabled=false` until it is in place. Nothing else changes: the
 monitoring resources stay off until they are switched on, and the backend Service keeps its one
 port.
+
+**The release that brings the consistency check**
+([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4) lists the bucket once a day, at the first start and then in the hour after 03:00 UTC:
+
+- **Grant the storage key `s3:ListBucket` on the bucket before the upgrade**
+  ([object storage](#object-storage)). Without it uploads and downloads go on, and the check fails
+  every hour with `job failed` and [`CoworkJobFailing`](metrics.md#coworkjobfailing).
+- **Its migration** adds two tables and two audit actions and lets the job read every tenant;
+  a rollback to the release before serves over it ([upgrade.md](upgrade.md#rolling-back)).
+- **With `metrics.prometheusRule.enabled`** the rule gains `CoworkAttachmentsOutOfStep`, which waits
+  `metrics.prometheusRule.restoreWindow`, a day by default ([metrics.md](metrics.md#coworkattachmentsoutofstep)).
+  The first check may find what a restore or a failed removal left in the past, and the alert then
+  fires a day later — the tenants' administrators settle it on their settings page.
 
 ## Uninstall
 
