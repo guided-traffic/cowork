@@ -38,6 +38,20 @@ func tarGz(t *testing.T, entries ...archived) []byte {
 	return buf.Bytes()
 }
 
+// tarGzOfType is a tar.gz of one entry of the type flag, with its bytes.
+func tarGzOfType(t *testing.T, flag byte, body []byte) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	require.NoError(t, tw.WriteHeader(&tar.Header{Name: "contiguous", Mode: 0o644, Size: int64(len(body)), Typeflag: flag}))
+	_, err := tw.Write(body)
+	require.NoError(t, err)
+	require.NoError(t, tw.Close())
+	require.NoError(t, gz.Close())
+	return buf.Bytes()
+}
+
 func zipped(t *testing.T, entries ...archived) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -124,6 +138,10 @@ func TestReadUploadRefusesWhatItCannotTake(t *testing.T) {
 	}{
 		{"too many bytes", form(t, "file", archived{name: "001-a.md", body: big}), Limits{MaxBytes: 1024}, true, "more than 1024 bytes"},
 		{"a skipped file too large", form(t, "file", archived{name: "t.tar.gz", body: tarGz(t, archived{name: "x.bin", body: big})}),
+			Limits{MaxBytes: 1024}, true, "more than 1024 bytes"},
+		// tar reads through the bytes of an entry that is no regular file, so
+		// they count as well.
+		{"an entry of another type too large", form(t, "file", archived{name: "t.tar.gz", body: tarGzOfType(t, tar.TypeCont, big)}),
 			Limits{MaxBytes: 1024}, true, "more than 1024 bytes"},
 		{"too many files", form(t, "file", archived{name: "001-a.md", body: ticket}, archived{name: "002-b.md", body: ticket}),
 			Limits{MaxFiles: 1}, true, "more than 1 files"},

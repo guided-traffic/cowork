@@ -157,7 +157,8 @@ func (u *upload) tarGz(r io.Reader) error {
 }
 
 // tarEntry records one entry of a tar archive; a file the import does not
-// read counts by the size the archive declares, and tar skips its bytes.
+// read counts by the size the archive declares, since tar reads through its
+// bytes to the next entry — an entry that is no regular file as well.
 func (u *upload) tarEntry(h *tar.Header, tr *tar.Reader) error {
 	switch h.Typeflag {
 	case tar.TypeDir, tar.TypeXGlobalHeader:
@@ -168,7 +169,7 @@ func (u *upload) tarEntry(h *tar.Header, tr *tar.Reader) error {
 		}
 		return u.add(h.Name, tr, false)
 	}
-	return u.skip(h.Name, skipNotRegular, 0)
+	return u.skip(h.Name, skipNotRegular, h.Size)
 }
 
 // zip reads a zip archive, which keeps its directory at its end and is read
