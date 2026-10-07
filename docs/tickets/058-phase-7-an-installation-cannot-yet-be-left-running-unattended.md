@@ -64,6 +64,11 @@ only, which the cluster's arm64 node cannot pull: they were loaded into it and r
 emulation. One further finding of the run, in the CloudNativePG example, is with the owner and not
 described here until he has classified it.
 
+The security pages were read against the code once more on 2026-10-07, after every child had
+landed: what they said otherwise was corrected, and the thirty gaps the code has and no page named
+are H-78 to H-107, each in the page of its mechanism. What the review found beyond hardening was
+handled as its own tickets.
+
 Children:
 
 - T59 — metrics ([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md))
@@ -83,17 +88,15 @@ The tenant Markdown export the plan named here is built with phase 6's export (T
 ## Required changes
 
 1. **The children.**
-2. **The security pages reviewed against the code once more**, after the children landed: every
-   statement of `docs/security/` checked against the tree, every `H-<n>` still true or closed.
-3. **The phase verification.** Done: the release workflow produces a tagged image and a chart index
+2. **The phase verification.** Done: the release workflow produces a tagged image and a chart index
    with every release — the index lists every version from 0.1.0 to 0.9.0, and Docker Hub serves
    both images of 0.8.0 and 0.9.0 (read 2026-10-07); an upgrade from the previous release has run in
    a kind cluster with PostgreSQL and MinIO, the previous release's chart installed and upgraded to
    the new one, in both migration modes — 0.8.0 to 0.9.0 ([Current state](#current-state)). Left:
    every `H-<n>` in `docs/security/` closed or explicitly accepted by the owner — the owner's act,
-   which only he can perform. Not run: an upgrade to a release after 0.9.0, whose migration and chart
-   changes are on `main` and not yet released.
-4. **1.0**, once every question of every open ticket is answered.
+   which only he can perform. Not run: an upgrade from 0.9.0 to the releases after it, 0.10.0 to 0.12.0
+   (migrations 42 to 44).
+3. **1.0**, once every question of every open ticket is answered.
 
 ## Open questions
 
