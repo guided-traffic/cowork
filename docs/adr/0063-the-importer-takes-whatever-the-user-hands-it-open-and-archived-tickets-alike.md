@@ -16,8 +16,9 @@ and the forms of the questions and the mentions (D3); the columns of a record wi
 (D4); and that a `/context` document is an error, not a skipped file, as the records it cites have
 it (D5).
 
-~~**Not built.** No importer.~~ **Built** (phase 6, 2026-10-06, in the API; the UI's import page
-outstanding): D1–D5 — [`internal/importer`](../../backend/internal/importer/) reads a repository's
+~~**Not built.** No importer.~~ **Built** (phase 6, 2026-10-06, in the API; ~~the UI's import page
+outstanding~~ *(built 2026-10-07: the project's import page, where the person excludes or corrects
+each file before the execution as D1 says — [frontend.md](../developer/frontend.md#the-import-and-the-export))*): D1–D5 — [`internal/importer`](../../backend/internal/importer/) reads a repository's
 ticket files and the documents of an export, maps them as D3 says and reports every file of the
 upload with its outcome; the person corrects or excludes a file at the execution
 ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D2). The

@@ -29,7 +29,7 @@ ends (D4); what the round trip compares (D5); who reads a job (D6); the bounds b
 (D7).
 
 ~~**Not built.** No import, no export, no job entity.~~ **Built** (phase 6, 2026-10-06, in the API;
-the UI's import page and export button outstanding): D1–D9 — the routes of
+~~the UI's import page and export button outstanding~~ *(built 2026-10-07, below)*): D1–D9 — the routes of
 [`imports.yaml`](../../backend/api/imports.yaml): `POST …/projects/{project}/imports` (the dry
 run), `GET …/imports/{import}` (the job and its report), `POST …/imports/{import}/execution` (the
 execution with its corrections), `GET …/projects/{project}/export` and
@@ -46,6 +46,19 @@ whole `docs/tickets/` is `TestImportThisRepositorysTickets`. How it works:
 [docs/developer/import-and-export.md](../developer/import-and-export.md); what an administrator
 does: [docs/operations/import-and-export.md](../operations/import-and-export.md); what it lets in
 and out: [docs/security/import-and-export.md](../security/import-and-export.md).
+
+*(2026-10-07.)* The Consequences' import page and export button are built in the UI: a tenant
+administrator's import page of a project at `/t/{slug}/p/{KEY}/imports`, its job at
+`…/imports/{import}` — the report with its summary, what blocks the execution, every file with its
+outcome and the correction fields of D2 (left out, type, state with its block, assignee), the
+execution after a question, its refusals on the files they name —; the export of a project from
+its header for whoever reads it, and of the tenant from its settings for its administrators, each
+saying how many confidential tickets the archive leaves out
+([`project-import.ts`](../../frontend/src/app/features/project/project-import.ts),
+[`imports.service.ts`](../../frontend/src/app/core/imports.service.ts)). How it is built:
+[docs/developer/frontend.md](../developer/frontend.md#the-import-and-the-export). That the UI offers the
+tenant's export to its administrators alone, while the API serves it to every reader of the tenant
+(D6), is the implementer's choice of the same day, open to the owner's objection.
 
 ## Context
 
