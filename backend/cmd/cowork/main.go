@@ -37,10 +37,11 @@ var (
 const usageText = `Usage: cowork <command>
 
 Commands:
-  serve     Apply pending migrations (unless COWORK_MIGRATE_ON_START=false), then serve the API.
-  migrate   Apply pending migrations under the owner role and exit; with
-            COWORK_MIGRATE_BOOTSTRAP=true, run the bootstrap afterwards.
-  version   Print the build version and exit.
+  serve               Apply pending migrations (unless COWORK_MIGRATE_ON_START=false), then serve the API.
+  migrate             Apply pending migrations under the owner role and exit; with
+                      COWORK_MIGRATE_BOOTSTRAP=true, run the bootstrap afterwards.
+  check-consistency   Compare the attachments with the bucket now, print what is out of step and exit.
+  version             Print the build version and exit.
 
 Configuration is read from COWORK_* environment variables; the reference is README.md.
 `
@@ -67,6 +68,8 @@ func run(ctx context.Context, args []string, lookup func(string) (string, bool),
 		return runMigrate(ctx, lookup, stderr)
 	case "serve":
 		return runServe(ctx, lookup, stderr)
+	case "check-consistency":
+		return runCheckConsistency(ctx, lookup, stdout, stderr)
 	default:
 		fmt.Fprintf(stderr, "cowork: unknown command %q\n\n%s", args[0], usageText)
 		return 2
@@ -383,6 +386,100 @@ func requireForServe(cfg config.Config) error {
 	return errors.Join(errs...)
 }
 
+// runCheckConsistency runs the consistency check of the attachments once, now,
+// whatever its schedule says — the step of a restore (docs/adr/0059 D5) —
+// and prints what it found in every tenant. It needs the runtime role's URL
+// and the object storage, as the server has them; in the chart it runs in a
+// backend container (`kubectl exec … -- /app/cowork check-consistency`).
+func runCheckConsistency(ctx context.Context, lookup func(string) (string, bool), stdout, stderr io.Writer) int {
+	cfg, err := config.Load(lookup)
+	if err == nil && cfg.Storage == nil {
+		err = fmt.Errorf("%s is required by cowork check-consistency: it compares the bucket with the database", config.EnvS3Endpoint)
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "cowork: %v\n", err)
+		return 1
+	}
+	logger := newLogger(cfg, stderr)
+	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	db, err := store.Open(ctx, cfg.DatabaseURL, store.Options{Logger: logger})
+	if err != nil {
+		logger.Error("database connection failed", "error", err)
+		return 1
+	}
+	defer db.Close()
+	if err := checkDatabase(ctx, db, logger); err != nil {
+		logger.Error("database check failed", "error", err)
+		return 1
+	}
+	objects, err := storage.New(*cfg.Storage)
+	if err != nil {
+		logger.Error("object storage setup failed", "error", err)
+		return 1
+	}
+	run, err := db.CheckConsistency(ctx, objects, time.Now())
+	if err != nil {
+		logger.Error("consistency check failed", "job", store.JobConsistencyCheck, "error", err)
+		return 1
+	}
+	if !run.Ran {
+		fmt.Fprintln(stderr, "cowork: another replica is running the consistency check; run it again once that is done")
+		return 1
+	}
+	printConsistency(stdout, run)
+	return 0
+}
+
+// printConsistency writes what a run found: the run in all, then every
+// tenant by its slug and id with its counts — never a file name.
+func printConsistency(w io.Writer, run store.ConsistencyRun) {
+	var dangling, accepted, orphans int
+	var bytes int64
+	for _, t := range run.Tenants {
+		dangling, accepted, orphans, bytes = dangling+t.Dangling, accepted+t.Accepted, orphans+t.Orphans, bytes+t.OrphanBytes
+	}
+	fmt.Fprintf(w, "consistency check at %s: %d tenants, %d dangling, %d accepted as lost, %d orphaned objects (%d bytes)\n",
+		run.At.Format(time.RFC3339), len(run.Tenants), dangling, accepted, orphans, bytes)
+	for _, t := range run.Tenants {
+		fmt.Fprintf(w, "tenant %s (%s): %d dangling, %d accepted as lost, %d orphaned objects (%d bytes)\n",
+			t.Slug, t.TenantID, t.Dangling, t.Accepted, t.Orphans, t.OrphanBytes)
+	}
+}
+
+// checkConsistencyWhenDue runs the consistency check of the attachments when
+// it is due (docs/adr/0059 D4, D6): once a day in the hour after 03:00 UTC, and
+// at a start that finds the last run older than that. Without object storage
+// there is nothing to compare, and it never runs.
+func checkConsistencyWhenDue(ctx context.Context, db *store.DB, objects *storage.Client, logger *slog.Logger) error {
+	if objects == nil {
+		return nil
+	}
+	last, checked, err := db.LastConsistencyCheck(ctx)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	if !store.ConsistencyCheckDue(last, checked, now) {
+		return nil
+	}
+	run, err := db.CheckConsistency(ctx, objects, now)
+	if err != nil || !run.Ran {
+		return err
+	}
+	var dangling, orphans int
+	for _, t := range run.Tenants {
+		dangling, orphans = dangling+t.Dangling, orphans+t.Orphans
+		if t.Dangling > 0 || t.Orphans > 0 {
+			logger.Warn("the attachments of a tenant are out of step with the bucket", "job", store.JobConsistencyCheck,
+				"tenant", t.Slug, "dangling", t.Dangling, "accepted", t.Accepted, "orphans", t.Orphans, "orphan_bytes", t.OrphanBytes)
+		}
+	}
+	logger.Info("consistency check done", "job", store.JobConsistencyCheck, "tenants", len(run.Tenants),
+		"dangling", dangling, "orphans", orphans)
+	return nil
+}
+
 // runJobs runs the background jobs on their tickers until ctx ends; each job
 // holds its own advisory lock, so every replica may tick (docs/adr/0027 D5).
 // The sessions and the login's attempts are cleaned up here; neither is
@@ -390,8 +487,10 @@ func requireForServe(cfg config.Config) error {
 // request, a lock that ended holds nothing at the next attempt. The purge of
 // the tickets deleted thirty days ago is here too (docs/adr/0024 D2): their
 // attachment objects go once the purge committed, and each purged key is
-// logged. A job's name in the log is its system actor's, which the metrics
-// name it by too (docs/adr/0060 D4).
+// logged. The consistency check of the attachments is asked every hour whether
+// it is due, and runs once a day (docs/adr/0059 D4, D6). A job's name in the
+// log is its system actor's, which the metrics name it by too
+// (docs/adr/0060 D4).
 func runJobs(ctx context.Context, db *store.DB, objects *storage.Client, logger *slog.Logger, sessionIdle time.Duration) {
 	expiry := time.NewTicker(time.Hour)
 	defer expiry.Stop()
@@ -413,6 +512,9 @@ func runJobs(ctx context.Context, db *store.DB, objects *storage.Client, logger 
 			}
 			api.RemovePurgedObjects(ctx, objects, logger, purged)
 			return int64(len(purged)), err
+		}},
+		{store.JobConsistencyCheck, func(ctx context.Context) (int64, error) {
+			return 0, checkConsistencyWhenDue(ctx, db, objects, logger)
 		}},
 	}
 	for {
