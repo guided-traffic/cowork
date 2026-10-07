@@ -1,6 +1,6 @@
 # The API
 
-How `/api/v1` is built: the document that is the contract, what `make generate` makes of it,
+How `/api/v1` is built: the document that is the contract, its examples, what `make generate` makes of it,
 the pipeline every request runs before its handler, authentication — a token or a session —,
 the CSRF check, the dashboard, the tenant boundary, authorization, errors, idempotency, versions,
 paging, filters, the deprecated names a rename keeps for a release, and the media types beside
@@ -8,7 +8,8 @@ JSON. The decisions are [ADR 0046] (spec first), [ADR 0047] (errors), [ADR 0045]
 [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050] (versions), [ADR 0028] (expand before
 contract), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
-against the tree on 2026-10-05, GitHub's webhook ([below](#githubs-webhook)) on 2026-10-06.
+against the tree on 2026-10-05, GitHub's webhook ([below](#githubs-webhook)) and the examples
+([below](#examples)) on 2026-10-06.
 
 ## The document
 
@@ -34,7 +35,7 @@ into the file of its path family.
 | [`chat.yaml`](../../backend/api/chat.yaml) | `/tenants/{tenant}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose; `/tenants/{tenant}/chat/turns`: stopping the person's running turns ([chat.md](chat.md)) |
 | [`imports.yaml`](../../backend/api/imports.yaml) | a project's import — the dry run (`…/projects/{project}/imports`), its job and report (`…/imports/{import}`), its execution (`…/imports/{import}/execution`) — and the project's and the tenant's export (`…/projects/{project}/export`, `/tenants/{tenant}/export`), with the report, the corrections and the manifests as `Import*` and `Export*` in `components/schemas.yaml` ([import-and-export.md](import-and-export.md)) |
 | [`dashboard.yaml`](../../backend/api/dashboard.yaml) | `/tenants/{tenant}/dashboard`: the tenant's dashboard, each tile defined in its field of `components/schemas.yaml#/Dashboard` ([the dashboard](#the-dashboard)) |
-| `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem` |
+| `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem`, whose three examples its errors share, and a response's example is the one of the schema it names ([examples](#examples)) |
 | `components/problem-codes.yaml` | the `ProblemCode` enum, **generated** from the code catalogue |
 
 `make generate` turns it into code, in this order (the [`Makefile`](../../Makefile)):
@@ -58,6 +59,73 @@ an untracked generated file. [`api/embed.go`](../../backend/api/embed.go) (packa
 embeds `openapi.gen.json`; `api.New` replaces `info.version` with the backend's version — that
 JSON is what `GET /api/v1/openapi.json` serves ([ADR 0046] D5) — and builds the kin-openapi
 router over it with `servers` dropped, so the paths match whatever host a request names.
+
+## Examples
+
+Every request body and every response with a body has an example ([ADR 0046] D6). Where it is
+written is decided once:
+
+- **A response's example is the schema's.** The schema a response body names in
+  [`components/schemas.yaml`](../../backend/api/components/schemas.yaml) carries it as `example:` —
+  the entity, or a list's page, as a typical read answers it — and every operation that answers the
+  schema shows it: `Ticket`'s stands for the answer of every operation that answers a ticket but
+  the filing's, which has its own (below). A list names its entity's example through a YAML anchor
+  of that file, `example: &example-ticket` on `Ticket` and `- *example-ticket` in `TicketList`, so
+  the entity is written once; an anchor holds inside one file only. It is `example`, not the
+  `examples` of JSON Schema 2020-12: kin-openapi validates a
+  schema's `example` — the bundler's validation holds it at `make generate` — and not its
+  `examples`, and oapi-codegen 2.8 writes a 3.1 schema's `examples` into the Go comment of every
+  type and field that names the schema, while it reads no `example`. Neither generated client
+  changes with an example (`make generate-check`, `make frontend-generate-check`).
+- **A request's example is the operation's**, `example:` on its media type in the family file, or
+  `examples:` with a `summary` each where two requests teach two things (`transitionTicket`: a step
+  forward, a done by hand with its note).
+- **An answer has an example of its own** on the operation's media type where the schema's cannot
+  stand for it, because the act is what the answer shows — a ticket just filed, a new tenant's
+  settings, an archived or restricted project, a withdrawn comment or question, an answered
+  question, a voided or corrected time entry, a mapping changed, a grant above the mapped role, the
+  chat's capabilities chosen, the tenant's time list without the ticket's total — and where the body
+  names no schema of `components/schemas`: the CSV answers, the Markdown export and the context, the
+  first lines of the event stream and of a turn of the chat, the two documents of [`meta.yaml`](../../backend/api/meta.yaml).
+- **The errors share the shared response's.** `Problem` in
+  [`components/responses.yaml`](../../backend/api/components/responses.yaml) carries three named
+  examples, the shapes of [the problem body](#problem-details): `notFound`, `validationFailed` with
+  `errors[]` as the validator writes it, `preconditionFailed` with `errors[].current`.
+- **Bytes have none**: a body whose schema is `format: binary`, the download of an attachment. A
+  `multipart/form-data` body without an example names each of its parts in backticks in the request
+  body's `description` — the upload of an attachment does, and ng-openapi-gen writes that
+  description into the comment of the Angular client's function, where oapi-codegen writes nothing.
+
+The examples are one world, so a reader can follow a ticket from one route to the next: the tenant
+`acme` (*Acme*), its project `WEB` (*Website*, bound to `github.com/acme/website`), the ticket
+`acme/WEB-42` with its comment, question Q1, attachment, time and pull request, and four persons —
+Ada Lovelace (the local account `ada`, a global administrator who administers `acme`), Grace Hopper
+and Alan Turing (persons of the identity provider, `grace@acme.example`, `alan@acme.example`) and
+Sam Rivera (the local account `sam`). An id the server makes is a UUIDv7 whose time is the entity's
+creation, one a client makes — the browser's idempotency key, the chat's conversation — a v4; times
+are RFC 3339 in UTC, values the handlers' own — `horizon_set.by` names its person by the id alone,
+as `horizonSetView` answers it. A text the server renders is the renderer's output for the example's
+input, not a hand-written guess: `body_html`, `options_html` and `answer_html` are what
+[`internal/richtext`](../../backend/internal/richtext/richtext.go) makes of the Markdown beside them,
+the export and the context what [`internal/markdown`](../../backend/internal/markdown/markdown.go)
+writes for `acme/WEB-42`. A secret is one no installation accepts: the token
+`cwk_EXAMPLE000…`, a webhook secret of a visible pattern.
+
+**The test.** [`api/examples_test.go`](../../backend/api/examples_test.go) walks the bundled
+document — every operation's request body, every response with a body and the shared problem
+response once —, `TestEveryBodyHasAnExample` names each body without an example by its operation,
+method, path, status and media type, and `TestEveryExampleValidates` validates each example of a
+body, as a request or as a response, and the example of every schema in `components/schemas`,
+under JSON Schema 2020-12 with `format: uuid` checked as the server checks it at the boundary
+(`validate.go`), which the bundler leaves unchecked. An event stream's example is its text, every
+line a comment or one of the fields `event`, `data`, `id` and `retry`, every `data` line JSON.
+`TestTheExamplesWalkReachesEveryKindOfBody` keeps the walk honest: it must reach a body of every
+media type the document has.
+
+**Adding an operation's examples:** give its request body an example on the operation; let its
+answers name schemas that carry one, and give a new schema its `example` — a list an anchor to its
+entity; give an answer its own where the schema's cannot stand for it; then `make generate` and
+`go test ./api/` in `backend/`, whose failures name what is missing or wrong.
 
 ## The pipeline
 

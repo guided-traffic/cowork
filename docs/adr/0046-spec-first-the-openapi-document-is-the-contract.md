@@ -32,9 +32,12 @@ is not a response a strict handler returns; and the rule D8 wants checked is thr
 over the loaded document, which a unit test makes without a Node toolchain in the backend's
 lint.
 
-**Partly built** (phase 2, 2026-10-02): D1, D2, D4 (responses validated in the test tier), D5,
-D7 and D8; D3 since phase 3 (2026-10-03). D6's request and response examples
-exist on a few operations only. The `sessionCookie` scheme is built since phase 3
+**Built** (phase 2, 2026-10-02): D1, D2, D4 (responses validated in the test tier), D5,
+D7 and D8; D3 since phase 3 (2026-10-03); D6's request and response examples on every
+operation since 2026-10-06, held by a unit test over the bundled document
+([`backend/api/examples_test.go`](../../backend/api/examples_test.go)): every request body and
+every response with a body has an example, its own or the one of the schema it names, and every
+example validates against its schema. The `sessionCookie` scheme is built since phase 3
 (2026-10-03): the sessions of [ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) exist,
 and every operation declares which credential it takes.
 
@@ -134,6 +137,16 @@ it, checks no origin, does not run the tenant boundary and does not validate its
 handler reads unparsed until the signature holds; it carries no `x-cowork-origin-check`
 ([ADR 0037](0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md) D5 as
 amended 2026-10-06).
+*(Built 2026-10-06: the examples.)* A response's example is the one of the schema it names in
+`components/schemas`, which every operation that answers the schema shares; a request's is the
+operation's own, and so is an answer the schema's example cannot stand for — a ticket just filed, an
+archived project — and a body that names no schema of `components/schemas` — the first lines of an
+event stream, CSV, Markdown, the served documents. Every operation's errors share the three
+examples of the `Problem` response. Bytes have no example, and the multipart upload describes its
+parts instead. A unit test over the bundled document,
+[`backend/api/examples_test.go`](../../backend/api/examples_test.go), names each body that lacks an
+example and validates every example against its schema; how one is written is
+[docs/developer/api.md](../developer/api.md#examples).
 
 **D7 — Versioning is in the path.** `/api/v1` is the first; a breaking change opens `/api/v2`
 beside it and the old family stays until its clients are gone; there is no version header
@@ -183,8 +196,11 @@ callback alone.)*
 - The generators are dependencies with their own release cadence; Renovate moves them, and
   the drift-check job catches a generator that changes its output.
 - D4's response validation in test builds only means a production handler can still emit a
-  shape the document does not describe if no test reaches it; the integration tier covers
-  every operation by D6's examples.
+  shape the document does not describe if no test reaches it; ~~the integration tier covers
+  every operation by D6's examples~~ *(corrected 2026-10-06, when the examples were built:)* the
+  integration tier does not replay D6's examples, which a unit test holds to the document; what
+  holds a handler to it is the response validation of the integration tests that reach the
+  handler.
 
 ## References
 

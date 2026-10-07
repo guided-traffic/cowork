@@ -26,9 +26,16 @@ the mechanics are [api.md](api.md)).
    ([api.md](api.md#githubs-webhook)). Only the identity provider's callback takes query parameters it does not declare
    (`x-cowork-open-query`). A creating `POST` takes the `IdempotencyKey` parameter, an overwriting
    write `IfMatch`, a list `Cursor` and `Limit`.
-2. **`make generate`.** The build now fails until `Server` implements the new method of
+2. **The examples** ([api.md](api.md#examples)). The request body's on the operation; each answer
+   names a schema that carries an `example` — a new schema gets one, a new list an anchor to its
+   entity's — or, where the schema's example cannot stand for what the operation answers, carries
+   its own; the errors have theirs in the shared `Problem` response already. Bytes need none, and a
+   multipart body names its parts in its description instead. `TestEveryBodyHasAnExample` and
+   `TestEveryExampleValidates` in [`backend/api/examples_test.go`](../../backend/api/examples_test.go)
+   name each body without an example and each example that breaks its schema.
+3. **`make generate`.** The build now fails until `Server` implements the new method of
    `apigen.StrictServerInterface`.
-3. **The handler**, a method of `Server` in the family's file under
+4. **The handler**, a method of `Server` in the family's file under
    [`backend/internal/api/`](../../backend/internal/api/): `tenantFrom(ctx)`; `auth.Authorize`
    with a `Need`; reads in `s.db.InTenant` through `visibleProject` / `visibleTicket`; writes in
    `s.db.Mutate`, every act recorded with `w.Record`; `keyed` and `w.Respond(stored(…))` for a
@@ -44,15 +51,15 @@ the mechanics are [api.md](api.md)).
    D2 names whom it tells in `Event.Notices` — a reason with the persons it names, the ticket's
    watchers, or the watchers of the tickets it blocks — and the store writes the notifications in the
    same transaction ([data-access.md](data-access.md#notifications)).
-4. **New SQL** is a named query in `backend/internal/store/queries/read/` or `write/`, carrying
+5. **New SQL** is a named query in `backend/internal/store/queries/read/` or `write/`, carrying
    the visibility predicate and, for every ticket it reads, `deleted_at IS NULL` — or naming its
    exemption from either ([data-access.md](data-access.md#visibility-in-sql));
    `make generate` again.
-5. A route under `{tenant}` but outside `{project}` is refused to a project-restricted token,
+6. A route under `{tenant}` but outside `{project}` is refused to a project-restricted token,
    unless its operation is in `tenantWideForProjectTokens` in
    [`tenant.go`](../../backend/internal/api/tenant.go) — and then the data layer must narrow it to
    the token's project.
-6. **Tests** in `backend/test/integration/`, through `newAPI` (responses are validated) and the
+7. **Tests** in `backend/test/integration/`, through `newAPI` (responses are validated) and the
    generated client: both tenants, a restricted project and a confidential ticket (the same
    `404` as a missing one), each role and scope, an agent with and without the capability or on
    the hard-off list, `428`/`412` for an overwriting write, replay and mismatch for a keyed one.
@@ -60,7 +67,7 @@ the mechanics are [api.md](api.md)).
    calls with a cookie is tried with a `browser` too (`withLogin`, `withAccounts`), with a token
    beside it, with the CSRF headers taken away, and — if it takes a secret — searched for in the
    log, the answers and the audit rows ([testing.md](testing.md)).
-7. The row in [README.md, API](../../README.md#api-backend); `make generate-check` clean, the
+8. The row in [README.md, API](../../README.md#api-backend); `make generate-check` clean, the
    generated files committed.
 
 ## A table
