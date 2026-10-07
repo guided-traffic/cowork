@@ -2006,6 +2006,12 @@ AuthOptions:
         down (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the
         maximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A
         form that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes
+  example:
+    local: true
+    oidc: true
+    oidc_name: Acme SSO
+    password_min_length: 12
+    token_max_lifetime_days: 365
 LocalLoginRequest:
   type: object
   additionalProperties: false
@@ -2027,6 +2033,8 @@ LocalLoginResult:
     password_change_required:
       type: boolean
       description: The password is temporary and has to be changed before anything else (docs/adr/0033 D4)
+  example:
+    password_change_required: false
 LogoutResult:
   type: object
   required: [end_session_url]
@@ -2037,6 +2045,8 @@ LogoutResult:
         The issuer's `end_session_endpoint` with `client_id` and
         `post_logout_redirect_uri`; the browser navigates there to end its
         session at the identity provider too (docs/adr/0031 D4)
+  example:
+    end_session_url: https://login.acme.example/oidc/logout?client_id=cowork&post_logout_redirect_uri=https%3A%2F%2Fcowork.acme.example%2Flogin
 PasswordChange:
   type: object
   additionalProperties: false
