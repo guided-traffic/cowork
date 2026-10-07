@@ -14,6 +14,11 @@
 // nothing is fetched from elsewhere. bluemonday then holds the HTML to an
 // allow-list of elements and attributes, the same rules again: whatever the
 // first step let through by mistake, the second removes.
+//
+// What the parser reads is bounded (bounds.go): a text longer than the longest
+// the API takes is not parsed at all but shown as written, escaped, in one
+// preformatted block; below that, how deep blocks nest and how many emphasis,
+// link and raw HTML markers are read as such are bounded per text.
 package richtext
 
 import (
@@ -21,12 +26,14 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/microcosm-cc/bluemonday"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
@@ -52,25 +59,37 @@ var attachmentContent = regexp.MustCompile(
 
 var (
 	markdown = goldmark.New(
+		// goldmark's parsers with the bounds of bounds.go; the strikethrough
+		// of GitHub Flavored Markdown is among the inline parsers, so its
+		// renderer is added below rather than by its extension.
+		goldmark.WithParser(parser.NewParser(
+			parser.WithBlockParsers(blockParsers()...),
+			parser.WithInlineParsers(inlineParsers()...),
+			parser.WithParagraphTransformers(paragraphTransformers()...),
+		)),
 		goldmark.WithExtensions(
 			// Tables with their alignment as an attribute, not a style, which
 			// the sanitiser and the browser's own sanitiser keep.
 			extension.NewTable(extension.WithTableCellAlignMethod(extension.TableCellAlignAttribute)),
-			extension.Strikethrough,
 			extension.Linkify,
 		),
 		goldmark.WithRendererOptions(
 			// Raw HTML is shown as text: the renderer's default drops it, and
 			// with it every word between angle brackets, Vec<String> included.
-			renderer.WithNodeRenderers(util.Prioritized(rawAsText{}, 100)),
+			renderer.WithNodeRenderers(util.Prioritized(rawAsText{}, 100),
+				util.Prioritized(extension.NewStrikethroughHTMLRenderer(), 500)),
 		),
 	)
 	policy = newPolicy()
 )
 
 // HTML renders src as Markdown and sanitises the result. A text without
-// visible content renders as the empty string.
+// visible content renders as the empty string, and a text longer than
+// MaxLength as written, as plain text.
 func HTML(src string, images Images) string {
+	if utf8.RuneCountInString(src) > MaxLength {
+		return plain(src)
+	}
 	source := []byte(src)
 	doc := markdown.Parser().Parse(text.NewReader(source))
 	rewrite(doc, source, images)

@@ -6,7 +6,7 @@ and fields that answer it, and the components that show it. The decisions are [A
 Markdown is sanitised on the server) and [ADR 0016] D7 (an image only of the ticket's own raster
 attachments); the security perspective — what it defends against and what it leaves open — is
 [docs/security/rendered-markdown.md](../security/rendered-markdown.md). Read against the tree on
-2026-10-05.
+2026-10-07.
 
 It is not the canonical Markdown of a ticket: that is [`internal/markdown`](../../backend/internal/markdown/),
 which *writes* Markdown for the export and the context ([markdown-grammar.md](markdown-grammar.md));
@@ -19,7 +19,8 @@ function of the text and the images it may show, safe for concurrent use.
 
 | Step | Does |
 |---|---|
-| parse | goldmark with CommonMark, the GFM table (alignment as an `align` attribute, `TableCellAlignAttribute`, which both sanitisers keep), strikethrough and linkify extensions; no task lists (their `<input>` would be one element more on the list), no heading ids |
+| length | a text longer than `MaxLength`, 200,000 characters, is not parsed: `plain` writes it escaped, in one `<pre>` ([below](#the-bounds)) |
+| parse | goldmark with CommonMark, the GFM table (alignment as an `align` attribute, `TableCellAlignAttribute`, which both sanitisers keep), strikethrough and linkify extensions; no task lists (their `<input>` would be one element more on the list), no heading ids; its own parser built from goldmark's parsers with the bounds of [`bounds.go`](../../backend/internal/richtext/bounds.go) |
 | `rewrite` | walks the tree once: an image whose address names a raster attachment of the ticket gets that attachment's path (`attachmentImage`, by the id in `attachmentContent`'s path on any host); any other image becomes a `Link` to its address with the image's text, or — inside a link — its text alone; every link and autolink whose address, its character references resolved as the renderer resolves them, has a scheme other than `http`, `https`, `mailto` is replaced by its text (`unwrap`); every other link gets `rel` `LinkRel` and `target="_blank"` |
 | render | goldmark's HTML renderer, with `rawAsText` registered above it (priority 100 against the renderer's 1000 — the lower number wins) for `RawHTML` and `HTMLBlock`: the source of raw HTML written escaped, a block as one paragraph; the renderer's default would drop it and with it every word in angle brackets, `Vec<String>` included |
 | sanitise | `policy`, a bluemonday policy built once (`newPolicy`): the elements and attributes of the allow-list and nothing else, the URL schemes, relative URLs, `nofollow` and `noreferrer` required, `img` `src` held to `attachmentContent` |
@@ -36,6 +37,32 @@ the tests is checked by parsing it as a browser would (`assertAllowed`). Adding 
 attribute is a change of `newPolicy`, of the fixture and of the security page in the same change, and
 it has to stay inside what Angular's sanitiser keeps (`VALID_ELEMENTS`, `VALID_ATTRS` of
 `@angular/core`), or the browser removes it again.
+
+## The bounds
+
+A text is rendered on every read that answers it, so what goldmark reads of it is bounded
+([`bounds.go`](../../backend/internal/richtext/bounds.go)); the rules and what they leave open are
+[the security page](../security/rendered-markdown.md#what-a-rendering-reads). goldmark has no bounds
+of its own; the parser of `markdown` is built from its default parsers, each one that needs a bound
+wrapped, and its strikethrough parser, so the extension's renderer is added beside `rawAsText`.
+
+| Bound | Constant | Where |
+|---|---|---|
+| The text's length, in characters | `MaxLength`, 200,000 | `HTML`: a longer text goes to `plain` |
+| How deep block quotes and lists nest, in blocks from the document | `maxNesting`, 32 | `nested` wraps the block quote and the list parser; its `Open` refuses a block deeper, and the line is read as if the marker were none |
+| Runs of `*`, `_`, `~` read as delimiters | `maxDelimiters`, 2,000 | `counted` wraps the emphasis and the strikethrough parser under one count, `delimiters` |
+| `[` and `![` read as openers | `maxLinkOpeners`, 1,000 | `links` wraps the link parser and keeps the openers still open by where they start, as goldmark keeps them: a closing bracket takes the last one, made into a link or not |
+| How far a closing bracket may follow its opener | `maxLinkText`, 4,096 bytes | `links`: a closing bracket further away is text, and the opener stays open until its block ends |
+| How far an inline link's destination may reach on its line | `maxDestination`, 4,096 bytes | `destinationEnds` reads it as goldmark's parser does; for one that does not end within the bound, `links` hands goldmark the line through `cutLine`, which ends it right after the `(`, and the link does not parse |
+| Comments, processing instructions, declarations and CDATA sections read as raw HTML | `maxRawHTML`, 250 | `counted` wraps the raw HTML parser and counts the triggers `readsToMarker` names; a tag is not counted, its grammar ends it |
+| Lines of a paragraph read for link reference definitions | `maxDefinitionLines`, 1,000 | `definitions` wraps goldmark's `LinkReferenceParagraphTransformer` |
+
+The counts live in the parser's context, which goldmark makes per text. The wrappers are put in
+place by the identity of goldmark's parsers, which are package values (`blockParsers`,
+`inlineParsers`, `paragraphTransformers`); should goldmark make them anew on every call, nothing
+would be wrapped, and `TestNestingIsBounded` and `TestPathologicalInputRendersQuickly` would fail.
+Changing a bound: the bound in `bounds.go`, the test at the bound, and the security page in the same
+change.
 
 ## The libraries
 
@@ -81,7 +108,7 @@ because `[innerHTML]` content carries no attribute of the component's; every rul
 
 | Test | Holds |
 |---|---|
-| `TestMarkdownRenders`, `TestHostileInputIsDefused`, `TestTheSanitiserHoldsTheAllowList`, `TestEveryOutputKeepsToTheAllowList`, `TestPathologicalInputRendersQuickly` ([`richtext_test.go`](../../backend/internal/richtext/richtext_test.go)) | the Markdown that renders; script tags, handlers, `javascript:`, `data:`, `vbscript:` and `file:` addresses, character-reference tricks, raw HTML, remote and foreign images, attribute break-outs, nested tags — each one's exact output; the policy on its own against HTML the renderer never makes; every output against the allow-list; nesting and delimiter runs in bounded time |
+| `TestMarkdownRenders`, `TestHostileInputIsDefused`, `TestTheSanitiserHoldsTheAllowList`, `TestEveryOutputKeepsToTheAllowList`, `TestPathologicalInputRendersQuickly`, `TestATextBeyondTheLengthIsShownAsWritten`, `TestNestingIsBounded` ([`richtext_test.go`](../../backend/internal/richtext/richtext_test.go)) | the Markdown that renders; script tags, handlers, `javascript:`, `data:`, `vbscript:` and `file:` addresses, character-reference tricks, raw HTML, remote and foreign images, attribute break-outs, nested tags — each one's exact output; the policy on its own against HTML the renderer never makes; every output against the allow-list; 26 texts of `MaxLength` characters — nesting, runs of markers, brackets and destinations left open, raw HTML, reference definitions — each within two seconds and 128 MiB of allocations; a text one character beyond `MaxLength` as written, escaped; the nesting held to `maxNesting` |
 | `TestTextsAreRenderedAndSanitisedOnTheServer` ([`api_rendered_test.go`](../../backend/test/integration/api_rendered_test.go)) | the body's route and `ETag`; the ticket's raster image shown, an SVG, another ticket's image and a remote one as links; a comment's and a question's HTML, `null` once withdrawn and without an answer; the open decisions with the ticket's images; a ticket the caller cannot see `404` |
 | [`rendered-text.spec.ts`](../../frontend/src/app/shared/rendered-text.spec.ts), `ticket-body.spec.ts`, `ticket-relations.spec.ts`, `ticket-detail.spec.ts`, `comment-item.spec.ts` | Angular's sanitiser stays on; the body shows the rendering only of the body shown; the rendering loads for the version and on an upload |
 | [`rendered.spec.ts`](../../frontend/e2e/rendered.spec.ts) (end-to-end) | in Chromium and WebKit, both schemes, behind the shell's content-security policy: a body's heading, table, code and link with its `rel` and `target`, the ticket's own PNG from its attachment's path and loaded, a raw `<img>` with a handler and a `javascript:` link as text with nothing run, and no refusal of the policy ([testing.md](testing.md#end-to-end-tests)) |

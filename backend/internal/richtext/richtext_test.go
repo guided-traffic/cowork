@@ -2,9 +2,11 @@ package richtext
 
 import (
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -164,26 +166,89 @@ func TestEveryOutputKeepsToTheAllowList(t *testing.T) {
 	assert.Contains(t, out, `<img src="`+pngPath+`" alt="i" title="t">`)
 }
 
-// A pathological text renders in bounded time: nesting and delimiter runs do
-// not make the request hang (docs/adr/0039 D1).
+// fit is prefix, unit repeated and suffix, MaxLength characters long: the
+// longest text the API takes.
+func fit(prefix, unit, suffix string) string {
+	n := MaxLength - len(prefix) - len(suffix)
+	return prefix + strings.Repeat(unit, n/len(unit)+1)[:n] + suffix
+}
+
+// docs/adr/0011 D6, docs/adr/0039 D1: a text as long as the longest the API
+// takes renders in bounded time and memory whatever it holds — nesting,
+// delimiter runs, brackets, link texts and destinations, raw HTML, link
+// reference definitions —, so no read of it holds the replica.
 func TestPathologicalInputRendersQuickly(t *testing.T) {
+	var ladder strings.Builder
+	for i := 1; ladder.Len() < MaxLength; i++ {
+		ladder.WriteString("e" + strings.Repeat("`", i))
+	}
+	half, opener := strings.Repeat("[", MaxLength/2), strings.Repeat("[", 1000)
 	for name, in := range map[string]string{
-		"nested quotes":    strings.Repeat(">", 10000) + " x",
-		"nested lists":     strings.Repeat("- ", 5000) + "x",
-		"open brackets":    strings.Repeat("[", 50000),
-		"emphasis runs":    strings.Repeat("*a _b ", 20000),
-		"unclosed tags":    strings.Repeat("<a ", 20000),
-		"backtick runs":    strings.Repeat("`", 50000) + "x",
-		"a long body":      strings.Repeat("word ", 40000),
-		"link definitions": strings.Repeat("[a]: /x\n", 10000) + strings.Repeat("[a] ", 10000),
+		"nested quotes":                fit("", ">", " x"),
+		"nested lists":                 fit("", "- ", "x"),
+		"nested ordered lists":         fit("", "1. ", "x"),
+		"lazy lines in deep quotes":    fit(strings.Repeat(">", 1000)+" x\n", "y\n", ""),
+		"emphasis runs":                fit("", "*a _b ", ""),
+		"mismatched emphasis":          fit("", "*a_ ", ""),
+		"closers in multiples of 3":    fit("a**b", "c* ", ""),
+		"nested emphasis":              fit(strings.Repeat("*", MaxLength/2)+"a", "*", ""),
+		"strikethrough and emphasis":   fit("", "~a* ", ""),
+		"open brackets":                fit("", "[", ""),
+		"nested brackets":              half + "a" + fit("", "]", "")[:MaxLength/2-1],
+		"unclosed links":               fit("", "[a](b", ""),
+		"unclosed angle links":         fit("", "[a](<b", ""),
+		"balanced parentheses":         fit(strings.Repeat("[a](", 1000), "()", ""),
+		"long link texts":              fit(opener, "x", strings.Repeat("]", 2000)),
+		"one opener, many closers":     fit("[a", "](x", ""),
+		"link definitions":             fit(strings.Repeat("[a]: /x\n", 10000)+"\n", "[a] ", ""),
+		"definitions in one paragraph": fit("", "[a]: u\n", ""),
+		"unclosed comments":            fit("</", "<!--", ""),
+		"unclosed declarations":        fit("", "<!A", ""),
+		"unclosed tags":                fit("", "<a ", ""),
+		"backtick runs":                fit("", "`", "x"),
+		"a backtick ladder":            ladder.String()[:MaxLength],
+		"a long body":                  fit("", "word ", ""),
+		"a long table":                 fit("|a|b|\n|-|-|\n", "|x|y|\n", ""),
+		"bare addresses":               fit("", "www.a.com ", ""),
 	} {
 		t.Run(name, func(t *testing.T) {
+			require.Equal(t, MaxLength, utf8.RuneCountInString(in), "the text renders as Markdown")
+			var before, after runtime.MemStats
+			runtime.GC()
+			runtime.ReadMemStats(&before)
 			start := time.Now()
 			out := HTML(in, images)
-			assert.Less(t, time.Since(start), 5*time.Second)
+			elapsed := time.Since(start)
+			runtime.ReadMemStats(&after)
+			assert.Less(t, elapsed, 2*time.Second)
+			assert.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(128<<20), "bytes allocated")
 			assertAllowed(t, out)
 		})
 	}
+}
+
+// docs/adr/0011 D6: a text longer than the longest the API takes is not
+// parsed; it is shown as written, escaped, in one preformatted block.
+func TestATextBeyondTheLengthIsShownAsWritten(t *testing.T) {
+	at := fit("> ", "<b>*x*</b> ", "")
+	assert.True(t, strings.HasPrefix(HTML(at, images), "<blockquote>"), "at the bound the text is Markdown")
+	out := HTML(at+"!", images)
+	assert.True(t, strings.HasPrefix(out, "<pre>&gt; &lt;b&gt;*x*&lt;/b&gt; "), out[:64])
+	assert.True(t, strings.HasSuffix(out, "!</pre>"))
+	assertAllowed(t, out)
+	assert.Empty(t, HTML(strings.Repeat(" \n", MaxLength), images), "without visible content, nothing")
+}
+
+// docs/adr/0011 D6: block quotes and lists nest at most maxNesting blocks
+// deep — a list counts with its item —, and a marker deeper is text.
+func TestNestingIsBounded(t *testing.T) {
+	quotes := HTML(strings.Repeat("> ", 100)+"x", images)
+	assert.Equal(t, maxNesting, strings.Count(quotes, "<blockquote>"))
+	assert.Contains(t, quotes, "<p>"+strings.Repeat("&gt; ", 100-maxNesting)+"x</p>")
+	lists := HTML(strings.Repeat("- ", 100)+"x", images)
+	assert.Equal(t, maxNesting/2, strings.Count(lists, "<ul>"))
+	assertAllowed(t, quotes)
+	assertAllowed(t, lists)
 }
 
 // assertAllowed parses the output as the browser would and fails on any
