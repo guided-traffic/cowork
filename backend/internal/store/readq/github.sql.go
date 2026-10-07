@@ -30,7 +30,7 @@ type GetGitHubWebhookRow struct {
 // GitHub's webhook (docs/adr/0071): the tenant's secret as its
 // administrators and the webhook read it, and a ticket's pull requests.
 // When and by whom the tenant's secret was made, never the secret: the
-// restrictive policy of migration 42 shows the row to the tenant's
+// restrictive policy of migration 41 shows the row to the tenant's
 // administrators and the webhook's job only.
 func (q *Queries) GetGitHubWebhook(ctx context.Context, tenantID uuid.UUID) (GetGitHubWebhookRow, error) {
 	row := q.db.QueryRow(ctx, getGitHubWebhook, tenantID)

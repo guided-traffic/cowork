@@ -16,7 +16,7 @@ const deleteExpiredGitHubDeliveries = `-- name: DeleteExpiredGitHubDeliveries :e
 DELETE FROM github_deliveries WHERE expires_at <= $1::timestamptz
 `
 
-// The expiry job's sweep across the tenants (migration 42).
+// The expiry job's sweep across the tenants (migration 41).
 func (q *Queries) DeleteExpiredGitHubDeliveries(ctx context.Context, now time.Time) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteExpiredGitHubDeliveries, now)
 	if err != nil {
