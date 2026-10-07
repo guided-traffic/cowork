@@ -60,7 +60,12 @@ where one value belongs is an error of the file, so an alias is never expanded (
 vocabulary is an error, never a guess ([ADR 0010](../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md)
 D5). A `/context` document is an error: its read-only sections are no import format
 ([ADR 0044](../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
-D3).
+D3). A text is held to the length the API holds every write of it to, as the execution would write
+it: a body of more than 200,000 characters, and a question's options or its answer of more than
+100,000, is an error of its file ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
+D7, `TestTheImportHoldsTheTextsToTheLengthsOfTheAPI`); the database holds the same lengths
+([migration 44](../../backend/internal/store/migrations/000044_text_length_checks.up.sql)), and what
+a reader's rendering of them costs is [rendered-markdown.md](rendered-markdown.md#what-a-rendering-reads).
 
 ## The bounds
 

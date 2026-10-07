@@ -248,6 +248,14 @@ func plainTitle(base, body string) string {
 // maxTitle is the longest title the column takes.
 const maxTitle = 300
 
+// maxBody and maxQuestionText are the longest body and the longest options or
+// answer of a question, in characters, that the API takes and the database
+// holds (docs/adr/0051 D7).
+const (
+	maxBody         = 200000
+	maxQuestionText = 100000
+)
+
 func clip(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {

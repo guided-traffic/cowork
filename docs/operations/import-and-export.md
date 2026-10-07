@@ -97,7 +97,7 @@ confidential tickets the execution would create and the highest number it brings
 |---|---|---|
 | `create` | the execution creates it as the entry shows | read it: `type` with `type_reason`, `state`, `columns`, `assignee`, `parent`, `note`, `questions`, `links`, `confidential` with `confidential_reason`, `warnings` |
 | `conflict` | the project holds its number already, as `conflict` names, or a purged ticket held it | exclude it; the project's ticket stays as it is |
-| `error` | it cannot be imported as it stands; `errors` name the field and the line | exclude it, or fix the file and make a new dry run |
+| `error` | it cannot be imported as it stands; `errors` name the field and the line — a body longer than 200,000 characters, or a question's options or answer longer than 100,000, as the import would write them, is one | exclude it, or fix the file and make a new dry run |
 | `skip` | it is no ticket file; `reason` says why | nothing: a skipped file never imports |
 
 The report says what it decided, never silently: a type detected from the title and the rule
