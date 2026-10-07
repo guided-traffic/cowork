@@ -509,6 +509,10 @@ backend:
     capabilities:
       drop:
         - ALL
+  # The memory limit is also the backend container's GOMEMLIMIT, the Go
+  # runtime's soft limit, through the downward API: the collector works
+  # harder as the process nears it, before the kernel kills the container
+  # (docs/operations/runtime.md).
   resources:
     limits:
       memory: 256Mi

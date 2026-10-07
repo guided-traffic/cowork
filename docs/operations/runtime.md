@@ -176,6 +176,20 @@ tier on 2026-10-06). With a stream open, the process stopped in well under a sec
 the run of both images; no test measures it. Keep the timeout below the pod's `terminationGracePeriodSeconds` (chart
 default 30s); otherwise the kubelet kills what the server was still draining.
 
+### Memory
+
+The chart sets `GOMEMLIMIT` on the backend container to the container's memory limit, in bytes,
+through the downward API (`resourceFieldRef: limits.memory`): the Go runtime's soft memory limit.
+Without it the collector lets the heap grow to about twice what is live before it collects, and a
+process near the container's limit is killed by the kernel holding garbage it could have freed;
+with it the collector works harder as the process nears the limit, before the kernel kills. It is
+a soft limit: memory the process needs live is still taken, and a backend that needs more than the
+limit is `OOMKilled` as before — the limit is sized in
+[installation.md](installation.md#resources-and-scheduling). A container without a memory limit
+gets the node's allocatable memory from the downward API, which bounds nothing. `cowork
+check-consistency`, run in the container with `kubectl exec`, inherits the variable: the two
+processes then share the container's memory, each with the whole limit as its own.
+
 ### Log
 
 One line per request — `method`, `path`, `status`, `duration` and the `request_id` that the

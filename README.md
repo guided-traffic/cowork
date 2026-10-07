@@ -1359,7 +1359,7 @@ backend:
       drop: [ALL]
   resources:                          # the init container and the Job have the same
     limits:
-      memory: 256Mi
+      memory: 256Mi                   # also the backend container's GOMEMLIMIT (the downward API): the Go runtime's soft limit, the collector working harder before the kernel kills (docs/operations/runtime.md)
     requests:
       cpu: 50m
       memory: 128Mi

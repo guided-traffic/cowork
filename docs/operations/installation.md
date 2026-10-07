@@ -1200,7 +1200,8 @@ revisited once there is a workload. Uploads are what moves the backend's memory:
 held in memory while it is checked and stored, and the backend lets 64 MiB divided by
 `backend.config.attachmentMaxBytes` uploads in at a time, at least one — six with the 10 MiB
 default; the rest wait. From 64 MiB on it is one upload at a time, holding up to the whole
-maximum: raise the memory limit before raising the maximum.
+maximum: raise the memory limit before raising the maximum. The backend's memory limit is also its
+`GOMEMLIMIT`, the Go runtime's soft limit ([runtime.md](runtime.md#memory)).
 
 Each backend replica holds its connection pool to PostgreSQL — pgx's default size is the
 larger of 4 and the number of CPUs the process sees; `pool_max_conns=<n>` in the runtime URL
