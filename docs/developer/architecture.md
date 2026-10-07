@@ -105,10 +105,11 @@ the person's token, like a script — no path to the database, nothing the API d
    ([chat.md](chat.md)).
 10. `api.New` loads the embedded API document and builds the router and the generated server
     (it also makes the dummy hash the login verifies unknown usernames against, and derives from
-    the server key the keys of the cursors, the fingerprints, the two address hashes and the two
-    sealers of the identity provider); `httpserver.New` wraps it with the health endpoints.
-11. `go runJobs` runs the idempotency, session, login and notification expiries and the purge of the
-    tickets deleted thirty days ago at start and every hour
+    the server key the keys of the cursors, the fingerprints, the two address hashes, the two
+    sealers of the identity provider and the sealer of the tenants' GitHub webhook secrets);
+    `httpserver.New` wraps it with the health endpoints.
+11. `go runJobs` runs the idempotency, session, login, notification and GitHub delivery expiries and
+    the purge of the tickets deleted thirty days ago at start and every hour
     ([data-access.md](data-access.md#jobs)).
 12. `serve` binds `COWORK_LISTEN_ADDR` and, unless it is off, `COWORK_METRICS_ADDR` — both before
     either serves, so a taken port refuses the start — and `httpserver.ServeAll` serves the two with
@@ -163,10 +164,15 @@ route in the document ─► authenticate ─► session rules ─► tenant bou
                           (token or         agent_forbidden /              │                                       └─► runChatTurn: serveChat
                            session)         password_change_required       │                                           (the turn's own limits; a stream)
                                                                            └─► streamEvents: validate ─► serveEvents (no timeout, no limit)
+
+receiveGitHubWebhook (public, x-cowork-signed): route ─► webhookTenant (the tenant and its secret; 404) ─► timeout ─► body limit (413)
+                                                ─► validate the headers, not the body ─► serveGitHubWebhook: signature (401) ─► 400 / 415
+                                                ─► the delivery kept a day (200 again) ─► 202
 ```
 
-Each step, and what it answers, is [api.md](api.md#the-pipeline). Every error is an RFC 9457
-problem details body written by `problem.Write` ([ADR 0047]).
+Each step, and what it answers, is [api.md](api.md#the-pipeline) — GitHub's webhook, which takes
+no person's credential and meets no boundary, is [api.md](api.md#githubs-webhook). Every error is an
+RFC 9457 problem details body written by `problem.Write` ([ADR 0047]).
 
 **Authentication may call the identity provider.** For a session of the identity provider whose
 groups are older than `COWORK_OIDC_GROUPS_REFRESH`, `authenticateSession` runs the groups refresh

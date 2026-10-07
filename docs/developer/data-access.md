@@ -3,8 +3,8 @@
 How the backend reaches PostgreSQL: two roles, the transaction wrappers, the settings the
 policies read, the visibility predicates, the deletion filter and the lints that hold every query
 to them, the one place SQL is built at run time, the dashboard's queries, the advisory locks, the
-background jobs, the deletion and the purge of a ticket, the notifications an act writes and the
-publication of acts. The package is [`backend/internal/store/`](../../backend/internal/store/); the decisions
+background jobs, the deletion and the purge of a ticket, the notifications an act writes, GitHub's
+deliveries and the publication of acts. The package is [`backend/internal/store/`](../../backend/internal/store/); the decisions
 are [ADR 0027] (the wrappers), [ADR 0021] (row-level security, the roles), [ADR 0026] (the
 audit record), [ADR 0034] D4 with [ADR 0065] D4 (the visibility predicate), [ADR 0024] (deletion),
 [ADR 0031] (the sessions) and [ADR 0030] (the memberships the identity provider derives). Read
@@ -50,7 +50,9 @@ and `login_locks` — and `DELETE` only on `ticket_links`, `ticket_interest`,
 to an administrator of the tenant, by a restrictive policy — and `notifications` — to its retention job and the purge alone —, and, since migration 32,
 on `tickets`, `questions`, `comments`, `comment_revisions`, `attachments`, `time_entries` and
 `time_entry_revisions`, which restrictive policies hold to the purge of a deleted ticket
-([below](#deletion-and-the-purge)). `audit_events` gets `SELECT, INSERT` and
+([below](#deletion-and-the-purge)) — and, since migration 42, on `github_webhook_secrets` (an
+administrator's revocation), `github_deliveries` (their expiry job) and `ticket_pull_requests`
+(the purge of a deleted ticket alone; a person's removal of a link is an update). `audit_events` gets `SELECT, INSERT` and
 nothing else — append-only is a grant ([ADR 0026] D3). `users`, `tenants`, `memberships` and
 `tokens` are inserted by routes — a person by an account's creation, the bootstrap or a first login
 through the identity provider, a tenant by its creation, a grant by an administrator or the
@@ -96,7 +98,8 @@ last-used date and the idle clock, bookkeeping and not acts, [ADR 0035] D2,
 [ADR 0031] D3), the login's own transactions ([below](#the-login-and-the-sessions)), the identity
 provider's ([below](#the-identity-providers-transactions)), `FindPerson` (the person lookup of a
 member's addition, which sets `app.person_lookup`), `CheckRuntimeRole`, `SchemaState`, `Ping`, and
-`Listen`.
+`Listen`; and GitHub's webhook's `WebhookSecret` and `ReceiveDelivery`
+([below](#githubs-deliveries)).
 
 `Open` registers `timestamptz` to scan in UTC and a tracer that logs a query slower than
 `DefaultSlowQuery` (500 ms) by its sqlc name, never its arguments, and counts a statement that
@@ -118,7 +121,7 @@ wrapper's transaction; an empty value leaves a setting unset.
 | `app.tenant_id` | the wrapper's tenant | `app_tenant_id()`: every `tenant_isolation` policy, the policies of `tenants`, `memberships`, `users`, `audit_events`, the visibility functions |
 | `app.user_id` | `Caller.UserID` | `app_user_id()`: the person's own user row, memberships, tenants, tokens, idempotency keys and installation-level audit rows; the visibility functions |
 | `app.restricted_project_id` | `Caller.RestrictedProjectID` | `app_restricted_project_id()` in `app_project_visible` |
-| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`) | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30 and 32 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry` and `ticket-purge` for the rows those system actors keep (`app_job()`) |
+| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`); `github-webhook` for GitHub's webhook's transactions (`WebhookSecret`, `ReceiveDelivery`) | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30, 32 and 42 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry`, `ticket-purge`, `github-webhook` and `github-delivery-expiry` for the rows those system actors keep (`app_job()`) |
 | `app.token_hash` | `LookupToken`, the hex SHA-256 of the presented token | the `tokens` policy admits exactly that row |
 | `app.session_hash` | `LookupSession`, and `Caller.SessionHash` in every transaction of a session's request: the hex SHA-256 of the presented cookie; in the identity provider's transactions the session a login replaces or a refresh holds | `app_session_hash()`: the `sessions` policies admit exactly that row — to read it, to end it |
 | `app.person_lookup` | `FindPerson` only: the address or username an administrator adds a member by | `app_person_lookup()`: the `users` policy admits the persons it names to an administrator of the current tenant, and no other person of the installation (migration 20) |
@@ -195,6 +198,18 @@ parameters, which a policy cannot see; the queries `UnshareSavedFilter` and `Del
 name `shared` as the policies do, and the unshare runs only through `Writer.UnshareAnothersFilter`
 ([`store/filters.go`](../../backend/internal/store/filters.go)), which names the filter
 (`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`).
+
+GitHub's webhook ([migration 42](../../backend/internal/store/migrations/000042_github_webhook.up.sql),
+[ADR 0071]) adds three tables, each with `tenant_id` and the canonical policy. `github_webhook_secrets`
+— the tenant's sealed secret, one row per tenant — has restrictive policies that hold reading to an
+administrator of the tenant or the job `github-webhook`, and inserting, changing and deleting to an
+administrator; the administrators' route reads its time and maker, never the column.
+`github_deliveries` admits its insert and the update that takes over an expired row to the job
+`github-webhook` alone (restrictive), and its reading and deleting past the tenant to the job
+`github-delivery-expiry`. `ticket_pull_requests` admits its insert to the job `github-webhook` alone —
+no person's request writes a link — and its delete to the purge of a deleted ticket, as migration 32's
+children. The `tenants` policy admits the job `github-webhook` to every tenant's row, so the webhook,
+which names no person, finds the tenant its path names (`GetTenantBySlug`).
 
 ## Mutate: acts, idempotency, publication
 
@@ -279,6 +294,8 @@ the one on the ticket the query reads.
 | `TenantAttachmentUsage` | the bytes of every attachment of the tenant, for the quota and its administrators: a file counts whether or not the caller sees its ticket; it reads no ticket, and names it anyway |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket`, `ListRankKeys` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice, and a rebalancing spreads every key, so every ticket keeps its place ([domain.md](domain.md#rank)) |
 | `GetScoreInputs` | the inputs of the score of a ticket the caller read through the predicate in this transaction, read again after the write that changed one ([domain.md](domain.md#the-score)) |
+| `ResolveTicketKeys` | GitHub's webhook's system actor, who has no person, resolves the keys a signed delivery names; whoever reads a link is held to the ticket's predicate (`ListTicketPullRequests`) |
+| `UpdatePullRequestFacts` | the webhook brings a pull request's facts up to date on every ticket it is linked to; it answers the rows' state before for the acts and shows nobody anything — exempt from the deletion filter too, since a deleted ticket's link keeps the facts, without an act |
 
 The search (`SearchTickets`, [search.md](search.md#the-query)) reads tickets in seven places — the
 ticket's text, a title by trigram, the key, a comment, a question, a file name, the page's hits — and
@@ -489,7 +506,9 @@ limit, an `expired` act on `sessions`) and the login expiry, key `3` (`ExpireLog
 attempts older than the lockout window and the locks of the `window` mode that ended, an
 `expired` act on `login_attempts`) and the notification expiry, key `5` (`ExpireNotifications`: the
 notifications read more than `ReadRetention`, ninety days, ago, an `expired` act on `notifications`;
-an unread one stays) and the ticket purge, key `6` (`PurgeDeletedTickets`,
+an unread one stays) and the delivery expiry, key `7` (`ExpireGitHubDeliveries`: GitHub's deliveries
+past their `DeliveryRetention`, a day, an `expired` act on `github_deliveries`) and the ticket purge,
+key `6` (`PurgeDeletedTickets`,
 [below](#deletion-and-the-purge)), the one job that works in the tenants: it writes each tenant's
 acts there through `Writer.inTenant`, which binds the job's transaction to the tenant for the work
 and its acts and unbinds it after; `RunJob` commits when acts were written that way, too.
@@ -521,7 +540,7 @@ A ticket is deleted into its tenant's bin and purged from it ([ADR 0024] D1–D3
   already — and then, on a ticket it reads `FOR UPDATE` (`GetPurgedTicket`, `deleted_at IS NOT
   NULL`): empties its audit rows through `purge_ticket_audit`; deletes its notifications and those
   whose act is on it, its attachments' rows, its comments' revisions and comments, its questions,
-  its time entries' revisions and entries, its stakes and its links; makes its children roots
+  its time entries' revisions and entries, its stakes, its links and its pull requests; makes its children roots
   (`DetachChildren`, no version: their parent was hidden since the deletion); turns a block that
   waits on it into an external reference to its key (`ReleaseBlocksOn`, an `updated` act on each
   such ticket with its version raised); and deletes the ticket. Its act `purged` counts what went —
@@ -568,6 +587,7 @@ row, writes them:
 | `commented`, the explaining comment of a write included | `commented` | the watchers of the ticket |
 | `commented` with `mentions`; `edited` that adds a person to them | `mentioned`, before `commented` | the persons it mentions, or the persons the edit adds |
 | `interest` that makes a stake `urgent` | `urgent` | the assignee |
+| `merged` — or `linked` of a pull request that is merged —, GitHub's webhook's act | `merged` | the watchers of the ticket, the assignee among them |
 
 The watchers (`ListWatchers`, [ADR 0013] D6) are everyone with a stake, the assignee, the reporter,
 whoever asked or was asked an open question on the ticket, and whoever a comment on it that is not
@@ -586,6 +606,32 @@ The inbox is read per tenant through `ListInbox`, `CountUnread` and `FindNotific
 predicate on both tickets, so a notification of a ticket the person no longer sees counts nowhere;
 it is marked read by `MarkNotificationRead` and `MarkInboxRead`, under the same predicate, as the
 person's act `read`.
+
+## GitHub's deliveries
+
+GitHub's webhook ([api.md](api.md#githubs-webhook), [ADR 0071]) names no person, so its two store
+functions run outside `Mutate`, in [`store/github.go`](../../backend/internal/store/github.go):
+
+- **`WebhookSecret(slug)`** — a read-only transaction of the job `github-webhook` that names no tenant
+  reads the tenant by its slug (`GetTenantBySlug`, which the `tenants` policy admits to the job), binds
+  the transaction to it with `set_config('app.tenant_id', …)` and reads the sealed secret
+  (`GetGitHubWebhookSecret`); `ErrNotFound` for an unknown slug and a tenant without a secret alike.
+- **`ReceiveDelivery(tenant, delivery, now, fn)`** — one read-write transaction of the job
+  `github-webhook`, bound to the tenant and acting as the context's system actor, `system:github`:
+  `RecordGitHubDelivery` keeps the delivery's id until `now + DeliveryRetention` — an insert that
+  takes over an expired row and answers no row while the tenant holds the id unexpired, which is a
+  repetition: `fn` does not run, nothing commits, the caller answers `200` —; then `fn` with a
+  `Writer`, then every act `fn` recorded written as `Mutate` writes them — the audit rows, their
+  notifications, their publication —, each carrying the delivery's id as its idempotency key. Unlike
+  `Mutate` it commits a delivery that recorded no act: the delivery itself is the bookkeeping of D3.
+
+The links are `ticket_pull_requests`, one row per ticket and pull request or commit, the pull
+request's facts repeated on each; `InsertTicketPullRequest` and `InsertTicketCommit` answer no row
+for a link that exists or that a person removed (`removed_at`, which `RemoveTicketPullRequest` sets),
+and `UpdatePullRequestFacts` locks a pull request's rows (`FOR UPDATE OF p`), writes the delivery's
+facts on those whose `source_updated_at` is not newer, and answers each row's state before, its
+ticket's key and whether the ticket is deleted. The reads are `ListTicketPullRequests`, under the
+ticket's predicate, and `GetGitHubWebhook`, the secret's time and maker.
 
 ## Publication
 
@@ -617,3 +663,4 @@ one connection outside the pool on the channel. The rest is [events.md](events.m
 [ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md
+[ADR 0071]: ../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md

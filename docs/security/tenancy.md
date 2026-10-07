@@ -69,6 +69,16 @@ restricted to a tenant reads that tenant only, and one restricted to a project r
 project's bindings only ([`api/repositories.go`](../../backend/internal/api/repositories.go)
 `LookupRepository`, `TestLookingUpARepository`).
 
+**GitHub's webhook meets no boundary**, because no person sends it: the boundary admits persons.
+`POST …/tenants/{tenant}/integrations/github/webhook` reads the tenant by its slug and its sealed secret
+itself, in a transaction of the job `github-webhook` that the `tenants` policy admits to every tenant's
+row and that names no person, and answers an unknown tenant and one without a secret with the same
+`404` — but a tenant with a secret answers a delivery whose signature does not hold `401`, so its
+refusal tells that the tenant exists ([github-webhook.md](github-webhook.md#h-64) H-64). What a
+delivery writes stays in the tenant of its path: the secret is that tenant's, a key of another tenant
+is passed over, and its links are read under each ticket's predicate
+([github-webhook.md](github-webhook.md)).
+
 **A turn of the chat stays in its tenant** on top of the boundary. Its tool calls are the person's
 requests and could reach every tenant the person belongs to; the loopback that sends them refuses
 every path outside the turn's tenant — the person's other tenants and the `/api/v1/me` routes

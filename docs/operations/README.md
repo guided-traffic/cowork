@@ -13,6 +13,7 @@ a setting; it never restates the reference tables, which live in the README and 
 | [chat.md](chat.md) | You give the UI its assistant: the provider inside or outside the installation and the tenants' consent, LM Studio and the context it loads a model with, OpenAI, Anthropic, the chart's `chat` values, the stream behind an Ingress, the limits, the log, and what to check when the assistant does not answer |
 | [metrics.md](metrics.md) | You scrape cowork with Prometheus: the metrics listener, the `PodMonitor` or the `ServiceMonitor`, the alerts and the dashboard, nginx's numbers, the network policy for the port, and what to do when an alert fires |
 | [claude-code.md](claude-code.md) | You set up Claude Code to work from an installation: the `cowork-mcp` binary, the token, the plugin with its hooks and skills or the same by hand, the `CLAUDE.md` block and `.cowork.yaml` of a repository, and what to check when a session starts without its ticket |
+| [github.md](github.md) | A tenant lets GitHub link its pull requests to tickets: what the webhook needs, setting it up per repository at GitHub, what a delivery links, what its answers mean, rotating and revoking the secret, and what a change of the server key does to it |
 
 ## The other documentation
 

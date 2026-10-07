@@ -40,9 +40,9 @@ change.
 - **One resolver, two credentials.** A request is a token's when it carries an `Authorization`
   header and a browser session's when it carries only the cookie; everything after the resolver —
   the tenant boundary, the role, the predicates — is the same code. A session's writes are
-  CSRF-checked, seventeen routes take a session only — what can give access, or outlive a leaked
-  token, the purge of a deleted ticket among them, the chat's turn, its stop and its capabilities,
-  and a global administrator's list of every tenant — and a temporary
+  CSRF-checked, eighteen routes take a session only — what can give access, or outlive a leaked
+  token, the purge of a deleted ticket and the tenant's GitHub webhook secret among them, the chat's
+  turn, its stop and its capabilities, and a global administrator's list of every tenant — and a temporary
   password gates everything but its own change;
   `X-Cowork-Agent` makes a token's or a session's request an agent's and only narrows it, and
   every act made through a token records and shows the token's id and name beside the agent mark
@@ -93,9 +93,9 @@ change.
 | [repository-layout.md](repository-layout.md) | You are new and want the tree |
 | [package-map.md](package-map.md) | You are looking for where something lives and what it is responsible for |
 | [architecture.md](architecture.md) | You want the picture: what runs where, what a request goes through, what happens at start |
-| [api.md](api.md) | You touch the API: the document, generation, the pipeline, authentication, the tenant's dashboard, the tenant boundary, authorization, errors, idempotency, versions, paging, filters, the deprecated names a rename keeps for a release |
-| [data-access.md](data-access.md) | You write SQL or a mutation: the two roles, the wrappers, the settings the policies read, the visibility lint, the list builder, locks, jobs, publication |
-| [domain.md](domain.md) | You change a rule of tickets, links, transitions, questions, comments, interest, progress or time |
+| [api.md](api.md) | You touch the API: the document, generation, the pipeline, authentication, the tenant's dashboard, the tenant boundary, authorization, errors, idempotency, versions, paging, filters, GitHub's webhook, the deprecated names a rename keeps for a release |
+| [data-access.md](data-access.md) | You write SQL or a mutation: the two roles, the wrappers, the settings the policies read, the visibility lint, the list builder, locks, jobs, GitHub's deliveries, publication |
+| [domain.md](domain.md) | You change a rule of tickets, links, transitions, questions, comments, interest, progress, time or the pull requests GitHub's webhook links |
 | [storage.md](storage.md) | You touch attachments or the object storage |
 | [events.md](events.md) | You touch the event stream, from `NOTIFY` to the Ingress |
 | [metrics.md](metrics.md) | You touch the Prometheus metrics: the registry and who records what, the metrics listener, the generated Grafana dashboard; or you add an instrument |
@@ -126,6 +126,7 @@ change.
 | Rendered text | Rendered on every read: goldmark, the tree rewritten — raw HTML as text, links held to their schemes, images only of the ticket's raster attachments —, then bluemonday's allow-list; shown through Angular's sanitiser | [rendered-markdown.md](rendered-markdown.md) |
 | An event | `NOTIFY` at commit, one listener per replica, a hub that filters per stream; a key and a version — for `membership.changed` the ids of what changed — never content | [events.md](events.md) |
 | A deletion | A tenant administrator's act, never an agent's: the ticket keeps everything and answers like a missing one everywhere but the tenant's bin — every query carries `deleted_at IS NULL` beside the visibility predicate, held to it by a lint —; the bin restores it, and the purge, an explicit act or a job thirty days later, removes it and what belongs only to it under restrictive policies, empties its audit rows through an owner function and removes its files after the commit | [data-access.md](data-access.md#deletion-and-the-purge), [domain.md](domain.md#deletion-the-bin-and-the-purge) |
+| A GitHub delivery | Public and signed: the tenant and its sealed secret before the body is read, the HMAC over the raw body in constant time before anything is parsed, the delivery kept a day, then the pull requests and default-branch commits linked to the tickets their texts name, as `system:github`, no state changed; every delivery taken answers `202` | [api.md](api.md#githubs-webhook), [domain.md](domain.md#pull-requests-and-githubs-webhook), [github-webhook](../security/github-webhook.md) |
 | A notification | Written by the act's own transaction for each person the act tells — an active member who sees the ticket, never the actor —, referencing the audit row it renders from; read per tenant, counted on the person-level stream as `inbox.changed` | [data-access.md](data-access.md#notifications), [events.md](events.md#the-person-level-stream) |
 | Frontend request | the Ingress sends `/api/` and `/auth/` to the backend and the rest to nginx: `/healthz` itself, hashed bundles immutable, everything else `index.html` with `no-store`, the shell's content-security policy on all of the UI, and a `404` problem for an `/api/` or `/auth/` path that reaches it by mistake | [architecture.md](architecture.md#frontend-container) |
 | A change on screen | An event names a key and a version; the tickets service refetches what it holds and reloads the open lists once per burst; every view reads the one cache | [frontend.md](frontend.md#how-a-change-reaches-the-screen) |

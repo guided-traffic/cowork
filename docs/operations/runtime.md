@@ -74,9 +74,10 @@ logs. The variables named here are explained one by one in
 
 From then on each replica, at start and once an hour, removes the idempotency records older
 than a day, the sessions past their absolute or their idle limit, the login's failed
-attempts and ended locks older than fifteen minutes, and the notifications read more than ninety
+attempts and ended locks older than fifteen minutes, the notifications read more than ninety
 days ago — an unread one stays ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)
-D6) —, and purges the tickets deleted more than thirty days ago, up to 200 a run, with their
+D6) — and the GitHub webhook's deliveries older than a day ([github.md](github.md#running-it)), and
+purges the tickets deleted more than thirty days ago, up to 200 a run, with their
 attachments' objects once the purge committed
 ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
 D2); each job holds a transaction-level

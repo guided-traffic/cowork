@@ -16,7 +16,7 @@ model, is [chat.md](chat.md); what the metrics port tells whoever reaches it is
 | Component | Trusts | Verified in |
 |---|---|---|
 | The backend process | Its environment: every `COWORK_*` variable — the runtime role's database URL, the server key, the object storage's access key | [`backend/internal/config/config.go`](../../backend/internal/config/config.go) |
-| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the Ingress controller's pods, and every other pod of the cluster that reaches the backend Service, since the chart ships no NetworkPolicy — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
+| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the Ingress controller's pods, and every other pod of the cluster that reaches the backend Service, since the chart ships no NetworkPolicy — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)), and GitHub's webhook, `POST …/tenants/{tenant}/integrations/github/webhook`, which writes only what a body signed with the tenant's secret says and answers everybody else `404` or `401` ([github-webhook.md](github-webhook.md)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
 | The backend process | Every TCP peer that reaches `COWORK_METRICS_ADDR` (`:8081` by default) — every pod of the cluster that reaches the backend pods, which the chart puts on no Service the Ingress routes — for `/metrics`, the one path of that listener, unauthenticated: the installation's activity in counts, nothing of a tenant ([metrics.md](metrics.md), H-62) | [`main.go`](../../backend/cmd/cowork/main.go) `serve`, [`server.go`](../../backend/internal/httpserver/server.go) `NewMetrics` |
 | The backend process | The row of the presented token — its person, scope, restriction, agent flag and capabilities — or of the presented session cookie: its person, who is a global administrator or must change a temporary password, and for a person of the identity provider their groups as of their last login or refresh. It knows nothing else about the caller | [`authn.go`](../../backend/internal/api/authn.go), [`session.go`](../../backend/internal/api/session.go), [`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`, [`store/sessions.go`](../../backend/internal/store/sessions.go) `LookupSession` |
 | The backend process | The identity provider of `COWORK_OIDC_ISSUER`: its discovery document and the endpoints it names, its published keys, and what a verified ID token, a token answer and UserInfo say of a person — the subject, the groups, the name, the address and whether it is verified ([below](#the-identity-provider)) | [`backend/internal/oidc/oidc.go`](../../backend/internal/oidc/oidc.go), [identity-provider.md](identity-provider.md) |
@@ -151,6 +151,7 @@ backend.
 | The issuer's refresh tokens | not in the chart; sealed in `sessions.refresh_token_sealed` under a key derived from the server key ([identity-provider.md](identity-provider.md#what-cowork-keeps-of-the-issuers-tokens)) | the issuer; whoever holds the database, the server key and the client secret ([identity-provider.md](identity-provider.md#h-27) H-27) |
 | A chat provider's API key, `COWORK_CHAT_<ID>_API_KEY` | that provider's `chat.providers[].existingSecret` only — one Secret per provider, there is no inline value — under its `keys.apiKey`; required for kind `anthropic`, optional for `openai` | the serving container, which sends it to that provider's host and to no other ([chat.md](chat.md#what-reaches-a-provider)) |
 | A login's state, nonce and PKCE verifier | not in the chart; the cookie `__Host-cowork-oidc`, sealed under a key derived from the server key, for ten minutes | the browser that began the login |
+| A tenant's GitHub webhook secret | not in the chart; made by a tenant administrator in the UI, sealed in `github_webhook_secrets` under a key derived from the server key and bound to the tenant ([github-webhook.md](github-webhook.md#the-secret-at-rest-and-who-can-open-it)) | GitHub, in every webhook it is set up in, and whoever holds the database and the server key together ([github-webhook.md](github-webhook.md#h-67) H-67) |
 | Personal access tokens | not in the chart; the database holds their SHA-256 ([tokens.md](tokens.md)) | whoever holds one |
 | Session cookies | not in the chart; the database holds their SHA-256 ([sessions.md](sessions.md)) | the browser that logged in, and whoever steals the cookie |
 | Local passwords | not in the chart (but the local administrator's); the database holds Argon2id hashes ([local-accounts.md](local-accounts.md)) | the person, and the administrator who set a temporary one |
@@ -166,7 +167,7 @@ into a release Secret and into `helm get values`; the chart notes warn at instal
 ([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt)). The identity provider's client
 secret and the chat providers' API keys have no inline path at all.
 
-The server key is one secret with six uses, each under a key derived from it by HKDF-SHA256 with a
+The server key is one secret with seven uses, each under a key derived from it by HKDF-SHA256 with a
 label of its own, so no two uses share a key:
 
 | Use | Label | Whoever holds the server key |
@@ -177,12 +178,15 @@ label of its own, so no two uses share a key:
 | hashing a login's client address for the throttle ([`api/login.go`](../../backend/internal/api/login.go) `newAddressKey`) | `cowork login address v1` | tests a guessed address against `login_attempts`, which keeps its rows fifteen minutes |
 | hashing the client address of an audit row (`newSourceKey`) | `cowork audit address v1` | reverses every IPv4 hash in the record ([tokens.md](tokens.md#h-30) H-30) |
 | sealing a login's state cookie and a session's refresh token ([`auth/seal.go`](../../backend/internal/auth/seal.go)) | `cowork oidc login v1`, `cowork oidc refresh token v1` | opens the stored refresh tokens ([identity-provider.md](identity-provider.md#h-27) H-27) |
+| sealing a tenant's GitHub webhook secret, bound to the tenant (`auth/seal.go`, `LabelGitHubWebhookSecret`) | `cowork github webhook secret v1` | opens every tenant's webhook secret and signs deliveries for any of them ([github-webhook.md](github-webhook.md#the-secret-at-rest-and-who-can-open-it)) |
 
 It signs no session: a session is a random value and a row. There is one key and no previous one
 kept beside it, so rotating it invalidates the cursors clients hold and the stored fingerprints,
 fails the logins in flight, gives every address another hash, and ends each session of the identity
 provider that holds a refresh token at its next refresh — a session of the local login, and one
-without a refresh token, stays.
+without a refresh token, stays —, and leaves every tenant's sealed GitHub webhook secret unopenable,
+so each tenant's webhook answers `404` until its administrator rotates the secret
+([github-webhook.md](github-webhook.md#the-secret-at-rest-and-who-can-open-it)).
 
 The backend does not log a credential. An error about a secret variable names the variable,
 never its value ([`config.go`](../../backend/internal/config/config.go) `Load`); the request

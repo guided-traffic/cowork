@@ -4,7 +4,7 @@ How a committed act reaches the clients that may see it: publication in the act'
 one listener per replica, the hub that fans out, the filter per stream, the person-level stream,
 the replay, the heartbeat, the limits, the shutdown, and what the Ingress must do for it. The decision is the one of
 [ADR 0054] — events carry keys and versions, never content, and polling is the fallback. Read
-against the tree on 2026-10-05.
+against the tree on 2026-10-05, `pull_request.changed` on 2026-10-06.
 
 ```
 Mutate ─► audit row ─► pg_notify('cowork_events') ─(at commit)─► DB.Listen (one per replica)
@@ -37,6 +37,13 @@ deletion or a restoration (`changesExistence` in
 carries the facts the ticket had (`Event.Published`), because the row is gone when the act is
 written ([ADR 0024] D1, D2). Saved filters are not published; their list, like the bin, answers
 `304` to the poll of the fallback when nothing changed.
+
+**GitHub's webhook** ([api.md](api.md#githubs-webhook)) publishes its acts as every write does: a
+link of a pull request or a commit, a pull request's change of state or facts, and a person's removal
+of a link are acts of the entity `pull_request` or `commit` on their ticket, written by
+`ReceiveDelivery`'s transaction — or a person's `Mutate` — and published at its commit
+([data-access.md](data-access.md#githubs-deliveries)). They reach whoever may read the ticket, by
+the ticket's facts like any ticket's act, a confidential ticket's included.
 
 **A project's creation** is published as a notification of the entity `project`, with the
 tenant and the project and nothing else (`Event.NewProject`, set by `insertProject` in
@@ -196,7 +203,8 @@ data: {"key":"acme/VKO-12","version":4,"kind":"transitioned"}
 ```
 
 with the audit row's id as `id`, `kind` the act's action, and the name by entity:
-`comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`,
+`comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `pull_request.changed` —
+the entities `pull_request` and `commit`, [ADR 0071] D6 —, `membership.changed`,
 `project.changed`, everything else `ticket.changed` — an upload included (`# example` values above). A membership
 event's `data` is its tenant's slug and the keys of what changed instead, each key only where it
 applies, and no `kind`:
@@ -305,3 +313,4 @@ nothing of another.
 [ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md
+[ADR 0071]: ../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md

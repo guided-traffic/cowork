@@ -65,6 +65,7 @@ flowchart LR
 - 🔎 **Search with snippets** — PostgreSQL full text over titles, bodies, comments, questions and file names, keys by their beginning and titles by trigram, one ranked hit per ticket with the words found marked; a tenant's from its pages, every tenant's of the person from anywhere, each hit held to what the reader may see.
 - 📝 **Markdown rendered on the server** — the body, comments, options and answers rendered with goldmark and held to an allow-list by bluemonday: raw HTML shown as text, links with `rel="noopener noreferrer nofollow"`, images only of the ticket's own raster attachments; Angular's sanitiser runs over it again.
 - 🔔 **An inbox and the lists across tenants** — a notification for an assignment, a mention in a comment (`@` picks the person), a question asked of you, your question answered, a state change or a comment on a ticket you watch, a blocker closed and an urgent need, written with the act and shown from it; a bell with the unread count, live; and "next for me" — the start page —, "assigned to me" and "open decisions" across every tenant of the person, each item beside its tenant.
+- 🔗 **Pull requests on their tickets** — optional per tenant and on trial: a GitHub webhook signed with the tenant's secret links the pull requests and default-branch commits whose titles, bodies and messages name a ticket, tells its watchers of a merge and hints that the work may be ready to move — and never moves a ticket; cowork calls nothing at GitHub.
 - 📊 **A dashboard per tenant** — its front page: nine fixed tiles — open tickets by state and by severity, open security findings, the blocked, their age, done per week, lead time, open decisions, time booked — filtered by project and period, counted only over what the reader may see, and live.
 - 🎯 **Rank is the decision, score is the warning** — each project's backlog is ranked by hand, grouped by horizon; a versioned score of severity, horizon, stakes and age marks where it disagrees, can be adopted in one recorded act, and orders the lists across tenants.
 - 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
@@ -156,7 +157,9 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Event channel | the PostgreSQL `NOTIFY` channel `cowork_events` | — |
 | Metric | `cowork_<subsystem>_<name>_<unit>`, a counter's ending in `_total`, a duration's in `_seconds` ([Metrics](#metrics)) | `cowork_http_requests_total` |
 | Alert | `Cowork<what>`, in the chart's `PrometheusRule`, its section in [docs/operations/metrics.md](docs/operations/metrics.md) | `CoworkSchemaDirty` |
-| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`; on a person-level stream (`?me=true`) also `inbox.changed`; the control events `resync` and `unavailable` | — |
+| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `pull_request.changed`, `membership.changed`; on a person-level stream (`?me=true`) also `inbox.changed`; the control events `resync` and `unavailable` | — |
+| GitHub webhook URL | `<COWORK_BASE_URL>/api/v1/tenants/<slug>/integrations/github/webhook`, one per tenant; its secret 64 hexadecimal characters, made in the tenant's settings | `https://cowork.example.com/api/v1/tenants/acme/integrations/github/webhook` |
+| A pull request's or a commit's page on a ticket | `https://<repository identity>/pull/<number>`, `https://<repository identity>/commit/<sha>` — written from the bound repository, never taken from a delivery | `https://github.com/acme/app/pull/34` |
 
 ### Development environment
 
@@ -225,7 +228,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
 | [docs/developer/development-credentials.md](docs/developer/development-credentials.md) | Every development-only username, password, key and token of `make dev`, its containers and the test tiers, with the file that sets it |
-| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation |
+| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation; [GitHub's webhook](docs/operations/github.md) per repository |
 | [deploy/examples/](deploy/examples/) | A CloudNativePG cluster and a MinIO bucket to copy and adapt — examples checked for syntax against the operators' CRD schemas, not supported deployments |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
@@ -684,8 +687,9 @@ serves it at `/api/v1/openapi.json` with `info.version` set to its own version, 
 every request against it. What this section says in one line per route, the document says in
 full.
 
-- **Authentication.** Every route under `/api/v1/` except `version`, `openapi.json` and
-  `schemas/cowork-yaml.json` takes
+- **Authentication.** Every route under `/api/v1/` except `version`, `openapi.json`,
+  `schemas/cowork-yaml.json` and GitHub's webhook — whose credential is the signature of its body,
+  [below](#integrations) — takes
   one of two credentials, and the document says which per operation (`bearerToken`,
   `sessionCookie`). A personal access token, `Authorization: Bearer cwk_…`, is for scripts and
   agents; the session cookie `__Host-cowork-session` of a browser login — `POST /auth/local`, or
@@ -693,10 +697,11 @@ full.
   `Authorization` header is a token's, whatever cookie it carries. Without a valid credential the
   answer is `401` (`unauthenticated`, `token_expired`, `token_revoked`, and `not_allowed` for a
   token whose person the identity provider's gate no longer admits) with
-  `WWW-Authenticate: Bearer realm="cowork"`. Seventeen routes take a **session only** and answer a
+  `WWW-Authenticate: Bearer realm="cowork"`. Eighteen routes take a **session only** and answer a
   token `403 session_required`: creating a token, a tenant or a local account, resetting or
   changing a password, logging out, a turn of the chat and stopping one, choosing the chat's
-  capabilities, a global administrator's list of every tenant, purging a deleted ticket, and the administration acts that can give access — adding a
+  capabilities, a global administrator's list of every tenant, purging a deleted ticket, making or
+  rotating the tenant's GitHub webhook secret, and the administration acts that can give access — adding a
   member, setting a grant, making or changing a group mapping, restricting or opening a project,
   putting a person on its access list ([ADR 0035](docs/adr/0035-personal-access-tokens.md) D5,
   [ADR 0024](docs/adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7,
@@ -739,7 +744,7 @@ full.
   `page` and `per_page`, up to row 10 000 — not together with `cursor` or `limit`;
   the ticket lists, the projects, the members, the group mappings, a project's access list, the
   lists of a ticket — comments, activity, questions, links, interest, attachments, time entries,
-  the prerequisite tree —, the person's inbox, "next for me", assigned tickets and decisions, the bin of deleted
+  the prerequisite tree, the pull requests —, the person's inbox, "next for me", assigned tickets and decisions, the bin of deleted
   tickets, the saved filters, the tenant's dashboard, the tenant's tokens and the attachments' usage answer
   a weak `ETag`, the caller's page, and `304` without a body to it in `If-None-Match`. A query
   parameter the route does not declare is `400`; a path parameter that cannot name anything is
@@ -779,7 +784,7 @@ full.
 | `GET /api/v1/me/chat` | the capabilities the person gives the chat in the UI: `{"capabilities": [...], "chosen": bool}` — `chosen` false is the default, every capability but `decide`, `close`, `drop` and `record-answer` |
 | `PUT /api/v1/me/chat` | a session only, never an agent-marked one: `{"capabilities": [...]}`, the whole set, unique — empty leaves the chat the baseline; `200` with the set in the catalogue's order; the chat's next request holds it; no `If-Match`; a change is the person's recorded act |
 | `GET /api/v1/me/repositories/lookup` | `remote` (1–10, repeatable, in order of preference) and `path` → `status` `bound`, `ambiguous` or `unbound`; the remotes with their identities (`null` for one that names no host); the bindings of the first remote that has one covering `path`, in the projects the caller sees across the person's tenants — a restricted token's only; for `unbound` a `proposal` (identity, name, the tenant and the reason `only-tenant`, `remote-owner` or `choose`, a free key per tenant) or `proposal_unavailable` saying why not. A remote's credentials are dropped, and a proxy's log may still carry the query |
-| `GET /api/v1/me/inbox` | the person's notifications across their tenants, newest first: `{"items": [...], "next_cursor", "unread"}`, each item `id`, `tenant` `{slug, name}`, `ticket` `{key, title, state}` as it is now, `reason` — `assigned`, `asked`, `answered`, `state_changed`, `blocker_closed`, `commented`, `urgent`, `mentioned` —, `act` (the act it renders from, as the ticket's activity shows it, without its payload where it names a ticket the person cannot see), `blocker` (for `blocker_closed`, the ticket that blocked it, as it is now), `withdrawn` (the comment or question has been withdrawn since), `read`, `created_at`; `unread` counts the unread ones. A notification of a ticket the person no longer sees, or of a tenant they left, is absent and counts nowhere. `tenant`, `limit`, `cursor` |
+| `GET /api/v1/me/inbox` | the person's notifications across their tenants, newest first: `{"items": [...], "next_cursor", "unread"}`, each item `id`, `tenant` `{slug, name}`, `ticket` `{key, title, state}` as it is now, `reason` — `assigned`, `asked`, `answered`, `state_changed`, `blocker_closed`, `commented`, `urgent`, `mentioned`, `merged` (a pull request of the ticket merged at GitHub, told by GitHub's webhook as `system:github`) —, `act` (the act it renders from, as the ticket's activity shows it, without its payload where it names a ticket the person cannot see), `blocker` (for `blocker_closed`, the ticket that blocked it, as it is now), `withdrawn` (the comment or question has been withdrawn since), `read`, `created_at`; `unread` counts the unread ones. A notification of a ticket the person no longer sees, or of a tenant they left, is absent and counts nowhere. `tenant`, `limit`, `cursor` |
 | `PUT /api/v1/me/inbox/read` | `{"through": "<notification id>"}`: every unread notification of the person up to and including that one, read — one that arrived after it stays unread; `tenant` narrows; `write` scope; `200 {"unread"}`; one act `read` per tenant where something changed |
 | `PUT /api/v1/me/inbox/{notification}/read` | one notification read; `write` scope; `200 {"unread"}`; one already read records nothing; another person's, or one of a ticket the person no longer sees, `404 not_found` |
 | `GET /api/v1/me/next` | "next for me": the open tickets — neither `done` nor `dropped` — assigned to the person or to nobody, in the projects they see across their tenants; another person's is not in it: `{"items": [{"tenant": {slug, name}, "ticket": {...}, "place"}], "next_cursor"}`, by the score, highest first — a ticket without one last — then by the ticket's id; `place` is the ticket's place in its project's rank among the open tickets of its horizon the caller sees, 1 for the first; `tenant`, `project` (a project key within `tenant`, which it needs: `400` without), `limit`, `cursor` |
@@ -885,7 +890,7 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 </details>
 
 <details>
-<summary>Tickets — 25 routes</summary>
+<summary>Tickets — 27 routes</summary>
 
 | Method and path | Does |
 |---|---|
@@ -906,6 +911,8 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 | `GET …/{number}/links` | its links in both directions |
 | `PUT …/{number}/links/{type}/{other}` | link it, as the source, to `other` (a short key): `blocks`, `relates-to`, `duplicates`, `found-in`; `201` new, `200` existing; a `blocks` cycle is `409 link_cycle` |
 | `DELETE …/{number}/links/{type}/{other}` | remove the link; `204` also when there was none |
+| `GET …/{number}/pull-requests` | the pull requests and default-branch commits GitHub's webhook linked to it, oldest link first: each `id`, `kind` (`pull_request` or `commit`), `repository` (the identity), `number` or `sha`, `title` as GitHub sent it, `state` (`open`, `closed`, `merged`; a commit is `merged`), `url` (the page at GitHub, written from the repository's identity), `author`, `merged_at`, `found_in` (`trailer`, `body`, `subject`), `first_seen_at`, `last_seen_at`; under the ticket's visibility; a weak `ETag`, `304` to it |
+| `DELETE …/{number}/pull-requests/{pull_request}` | remove a wrong link — a member's act with `write` scope, in the agent baseline; the removal stays, a later delivery does not link it again; `unlinked` recorded; `204` also when it is gone |
 | `GET …/{number}/prerequisites` | its prerequisite tree ([ADR 0012](docs/adr/0012-four-typed-directed-links-within-a-tenant.md) D6): the tickets that block it, what blocks those, and so on, eight levels deep, depth first; `direction=up` reads it upward, its dependents. Each node with its key, title, state, `blocked_from`, assignee, the three progress stages, `depth`, `settled` (done or dropped) and `repeated` — a ticket the tree holds under two others stands in full under the first and as `repeated` under each other; `open` counts the open ones of the whole tree, each once, on every page. A ticket the caller cannot see is absent, and so is what lies only behind it |
 | `GET …/{number}/interest` | who holds a stake in it |
 | `PUT …/{number}/interest` | set the caller's own stake; `201` new, `200` otherwise; the stake carries the agent mark and the token of the write that set it |
@@ -999,6 +1006,24 @@ to a project is refused like an unknown tenant.
 | `GET …/{number}/attachments/{attachment}` | its metadata |
 | `GET …/{number}/attachments/{attachment}/content` | its bytes, with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`; raster images inline, everything else as a download; the `ETag` is the SHA-256 of the bytes; every `200` is recorded |
 | `GET /api/v1/tenants/{tenant}/attachment-usage` | the tenant's administrators, `read` scope: `{"used_bytes","attachments","quota_bytes"}` — every attachment of the tenant summed, confidential tickets' included and a deleted ticket's until the purge, and `COWORK_ATTACHMENT_TENANT_QUOTA` or `null` without one; a weak `ETag`, `304` to it; anybody else `403 forbidden` |
+
+</details>
+
+#### Integrations
+
+<details>
+<summary>GitHub's webhook — 4 routes</summary>
+
+Optional per tenant and on trial ([ADR 0071](docs/adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md));
+setting it up is [docs/operations/github.md](docs/operations/github.md), what it lets in
+[docs/security/github-webhook.md](docs/security/github-webhook.md).
+
+| Method and path | Does |
+|---|---|
+| `GET /api/v1/tenants/{tenant}/integrations/github` | the tenant's administrators, `read` scope: `{"secret": {"created_at", "created_by"} or null, "webhook_path", "events": ["pull_request", "push"]}` — never the secret; anybody else `403 forbidden` |
+| `POST …/integrations/github/secret` | a session only, a tenant administrator, never an agent: draw a new secret — 256 random bits as 64 hexadecimal characters — and replace the one there was at once; `201 {"secret", "created_at", "created_by", "replaced"}`, the secret **once**, kept sealed; no `Idempotency-Key`; recorded `created` without it |
+| `DELETE …/integrations/github/secret` | revoke it — an administrator with `admin` scope, a token too, never an agent; from then on every delivery is `404`; the links stay; `204` also when there is none |
+| `POST …/integrations/github/webhook` | GitHub's deliveries, public: no session, no token — the credential is `X-Hub-Signature-256`, the HMAC-SHA256 of the raw body under the tenant's secret. An unknown tenant and one without a secret `404 not_found`; a body above `COWORK_MAX_JSON_BODY` `413 payload_too_large`; a missing or wrong signature `401 signature_invalid` with `WWW-Authenticate: X-Hub-Signature-256 realm="cowork"` before anything is parsed; `X-GitHub-Delivery` not a UUID `400 validation_failed`, a type other than `application/json` `415 unsupported_media_type`, a `pull_request` or `push` body that is not GitHub's shape `400 validation_failed`; the same delivery within a day `200` without effect; everything else taken `202` with no body: `pull_request` (`opened`, `edited`, `synchronize`, `reopened`, `closed`) and `push` to the default branch of a repository a project of the tenant binds link the tickets their texts name — `Cowork-Ticket:` trailers and full-key lines first, the short keys at the end of a title or subject otherwise —, a merge tells the ticket's assignee and watchers, no state changes; every other delivery is passed over |
 
 </details>
 

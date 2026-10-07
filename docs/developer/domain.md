@@ -3,7 +3,7 @@
 The rules of tickets and what hangs off them, as the code enforces them: where each rule sits
 — the schema, [`internal/domain`](../../backend/internal/domain/), a handler in
 [`internal/api`](../../backend/internal/api/) — and the record that decided it. Read against the
-tree on 2026-10-05.
+tree on 2026-10-05, the pull requests on 2026-10-06.
 
 ## Projects, keys and the counter
 
@@ -446,7 +446,9 @@ A withdrawn question takes no answer; an answered or withdrawn one no edit.
   `explained_by_comment_id` names it, and the comment's `explains` lists the actions it explains
   (D2).
 - **The activity list** is a projection of the ticket's audit rows (`ListTicketActivity`),
-  without time entries and without `downloaded`, `exported`, `booked`, `voided` and `locked`.
+  without time entries, without `downloaded`, `exported`, `booked`, `voided` and `locked`, and
+  without a pull request's `updated` — its title or author changed at GitHub, which its list shows
+  ([pull requests](#pull-requests-and-githubs-webhook)).
   An act whose `refs` name a ticket the reader cannot see is shown with `redacted: true` and no
   `before`, `after`, `reason` or `note` ([ADR 0065] D4).
 
@@ -563,14 +565,62 @@ them; the activity marks their acts ([tokens.md H-50](../security/tokens.md#h-50
 A person's inbox ([ADR 0020]) holds a notification for each act of D2 that concerns them: a ticket
 assigned to them, a question asked of them, a question they asked answered, a state change of a
 ticket they watch — a block's reason comes only with a move into `blocked` —, a comment on one, a
-ticket that blocks one they watch reaching `done` or `dropped`, and an `urgent` stake on a ticket
-assigned to them. The watchers are everyone with a stake of any weight, the assignee, the reporter
+ticket that blocks one they watch reaching `done` or `dropped`, an `urgent` stake on a ticket
+assigned to them, and a pull request of a ticket they watch merged at GitHub
+([pull requests](#pull-requests-and-githubs-webhook)). The watchers are everyone with a stake of any weight, the assignee, the reporter
 and whoever asked or was asked an open question on the ticket, or is mentioned by a comment on it
 that is not withdrawn ([ADR 0013] D6, [ADR 0015] D5), and a comment that mentions a person tells
 them that they are mentioned. A person's own act tells them nothing, nor does their agent's, and a
 person who cannot see the ticket is told nothing of it ([ADR 0065] D5); an act that names a person
 for two reasons — a watcher the comment mentions — tells them once, by the first. The table and the
 store's side are [data-access.md](data-access.md#notifications).
+
+## Pull requests and GitHub's webhook
+
+A ticket gains the pull requests and the commits on a bound repository's default branch whose texts
+name it ([ADR 0071], [`internal/github`](../../backend/internal/github/),
+[`api/github_links.go`](../../backend/internal/api/github_links.go)); the route and its order are
+[api.md](api.md#githubs-webhook), the table [data-access.md](data-access.md#githubs-deliveries).
+
+- **Which deliveries.** `pull_request` with the action `opened`, `edited`, `synchronize`, `reopened`
+  or `closed`, and `push` whose `ref` is `refs/heads/` and the repository's `default_branch`; the
+  repository's `clone_url`, normalised as a binding is ([repositories](#repositories)), must be bound
+  by a project of the tenant — any project, any sub-directory. Every other delivery links nothing.
+- **Which keys** ([ADR 0068] D1, D2, D5; `PullRequestKeys`, `CommitKeys`). A pull request's body is
+  read for `Cowork-Ticket: <key>` trailer lines — the name without regard to case, the key full or
+  short — and for lines that are a full key alone, as ADR 0068 D5 puts the full key on its first
+  line; only where the body names none, the short keys in parentheses that end the title,
+  `(VKO-12)` or `(VKO-12, VKO-13)`, GitHub's `(#34)` after them passed over. A pushed commit is read
+  for its trailers, else its subject's short keys. A key in running text is never read. A full key
+  of another tenant, a key of no ticket or of a deleted one is passed over (`resolveKeys`); a text
+  names at most fifty keys (`github.MaxKeys`), a push at most a hundred commits
+  (`maxPushedCommits`); each ticket is linked once per pull request or commit, by the first place
+  its key was read — `trailer`, `body` or `subject`, which the link keeps as `found_in`.
+- **What a link holds.** A pull request's number, title — cut to 500 characters —, state (`open`,
+  `closed`, or `merged` for a closed one GitHub says was merged), author login, merge time, the
+  repository's identity, and its page, written from the identity — `https://<identity>/pull/<n>` —
+  never taken from the payload; a commit its id, its subject as the title, `merged`, the time it was
+  first seen as its merge time, and `https://<identity>/commit/<sha>`; both the time first and last
+  seen. A pull request's facts are its own: every delivery of it writes them on every ticket it is
+  linked to, from a delivery whose `updated_at` is not older than what a link holds, so a delivery
+  GitHub sent before another, or one sent again, changes nothing.
+- **The acts**, the system actor `system:github`'s with the delivery's id: `linked` when a ticket
+  gains a pull request or a commit; `merged`, `closed` or `reopened` when a pull request's state
+  changes; `updated` when its title, page or author does, which the activity leaves out; a person's
+  `unlinked`. No act carries a title or a body — the payload stays out of the audit record, which
+  cannot forget ([ADR 0026]) —, only the number or the commit, the repository, the state and where
+  the key was read. A deleted ticket's link keeps a pull request's facts and records no act.
+- **No state changes**, ever ([ADR 0009] D5, D6). A merge tells the ticket's watchers, the assignee
+  among them, by the reason `merged` — also when the merge is the first delivery to name the ticket
+  —, and the ticket page hints that the work may be ready to move while the ticket is open; a person
+  or a capable agent moves it. A commit tells nobody.
+- **Who reads them.** A link is a child of its ticket: `GET …/pull-requests` and the context document
+  read it through the ticket's predicate, so a confidential ticket's pull requests exist only for
+  whoever sees the ticket ([ADR 0065] D1), and its notifications reach only them.
+- **A wrong link** — a key that named a ticket it did not mean — is removed by a person like any link
+  (`DELETE …/pull-requests/{pull_request}`, `work` by the project's role, the agent baseline,
+  [ADR 0043] D2): the row stays marked removed, so a later delivery that names the ticket does not
+  bring it back, and the removal answers `204` also when it is gone.
 
 ## Deletion, the bin and the purge
 
@@ -634,3 +684,6 @@ connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md
 [ADR 0066]: ../adr/0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md
+[ADR 0026]: ../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md
+[ADR 0068]: ../adr/0068-commits-carry-a-component-scope-the-short-key-in-the-subject-and-the-full-key-in-a-trailer.md
+[ADR 0071]: ../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md
