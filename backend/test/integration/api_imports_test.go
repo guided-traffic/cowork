@@ -199,6 +199,9 @@ func TestImportADryRunAndItsExecution(t *testing.T) {
 	other, err := e.s.client(t, caller{Token: e.tk.MemberB}).GetImportWithResponse(e.ctx, e.SlugA, "ALPHA", job.Id)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, other.StatusCode(), "another tenant's member does not reach the tenant")
+	agent, err := e.s.client(t, caller{Token: e.tk.AdminA, Agent: "claude-code/opus/s1"}).GetImportWithResponse(e.ctx, e.SlugA, "ALPHA", job.Id)
+	require.NoError(t, err)
+	assertProblemOf(t, agent.HTTPResponse, agent.Body, http.StatusForbidden, "agent_forbidden")
 
 	stream := e.openStream(t, e.s, admin, e.SlugA, "")
 	executed := e.execute(t, admin, "ALPHA", job.Id,

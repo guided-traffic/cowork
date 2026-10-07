@@ -35,6 +35,12 @@ const (
 	opCreateImport = "createImport"
 )
 
+// importRead is reading an import job and its report: the tenant's
+// administrators', never an agent's. An agent never imports (docs/adr/0051
+// D6), and a report holds what the upload's files say, of those the import
+// left out too.
+var importRead = auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeRead, HardOff: auth.HardOffAdministration}
+
 // importSlot holds the replica to one import at a time, a dry run or an
 // execution: an upload is held in memory, unpacked, and kept once more
 // compressed, up to COWORK_MAX_IMPORT_BYTES each (docs/adr/0051 D7).
@@ -156,10 +162,10 @@ func summaryAct(project, status string, s importer.Summary) map[string]any {
 }
 
 // GetImport answers a job with its report; a dry run past its day is gone
-// (docs/adr/0051 D7). For the tenant's administrators.
+// (docs/adr/0051 D7). For the tenant's administrators, never an agent.
 func (s *Server) GetImport(ctx context.Context, req apigen.GetImportRequestObject) (apigen.GetImportResponseObject, error) {
 	t := tenantFrom(ctx)
-	if perr := auth.Authorize(principal(ctx), t.Role, adminRead); perr != nil {
+	if perr := auth.Authorize(principal(ctx), t.Role, importRead); perr != nil {
 		return nil, perr
 	}
 	now := s.h.opts.Now()
