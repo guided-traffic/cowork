@@ -6815,6 +6815,36 @@
         "type": "string"
       },
       "SavedFilter": {
+        "example": {
+          "created_at": "2026-09-10T08:00:00Z",
+          "id": "01a08a54-ac00-7810-8c32-61553065ae1e",
+          "name": "My bugs, now and for the release",
+          "owner": {
+            "display_name": "Ada Lovelace",
+            "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+            "username": "ada"
+          },
+          "parameters": {
+            "assignee": [
+              "me"
+            ],
+            "horizon": [
+              "now",
+              "release"
+            ],
+            "project": [
+              "WEB"
+            ],
+            "type": [
+              "bug"
+            ]
+          },
+          "redacted": false,
+          "shared": true,
+          "updated_at": "2026-09-12T10:00:00Z",
+          "version": 2,
+          "warnings": []
+        },
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -6892,6 +6922,57 @@
         "type": "object"
       },
       "SavedFilterList": {
+        "example": {
+          "items": [
+            {
+              "created_at": "2026-09-10T08:00:00Z",
+              "id": "01a08a54-ac00-7810-8c32-61553065ae1e",
+              "name": "My bugs, now and for the release",
+              "owner": {
+                "display_name": "Ada Lovelace",
+                "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                "username": "ada"
+              },
+              "parameters": {
+                "assignee": [
+                  "me"
+                ],
+                "horizon": [
+                  "now",
+                  "release"
+                ],
+                "project": [
+                  "WEB"
+                ],
+                "type": [
+                  "bug"
+                ]
+              },
+              "redacted": false,
+              "shared": true,
+              "updated_at": "2026-09-12T10:00:00Z",
+              "version": 2,
+              "warnings": []
+            },
+            {
+              "created_at": "2026-09-24T14:30:00Z",
+              "id": "01a0d3d2-c240-76ce-bab6-3f01e5081b32",
+              "name": "Payments, what blocks",
+              "owner": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "parameters": {},
+              "redacted": true,
+              "shared": true,
+              "updated_at": "2026-09-24T14:30:00Z",
+              "version": 1,
+              "warnings": []
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -10739,6 +10820,25 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "name": "My bugs, now and for the release",
+                "parameters": {
+                  "assignee": [
+                    "me"
+                  ],
+                  "horizon": [
+                    "now",
+                    "release"
+                  ],
+                  "project": [
+                    "WEB"
+                  ],
+                  "type": [
+                    "bug"
+                  ]
+                },
+                "shared": true
+              },
               "schema": {
                 "$ref": "#/components/schemas/SavedFilterCreate"
               }
@@ -10839,6 +10939,9 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "shared": true
+              },
               "schema": {
                 "$ref": "#/components/schemas/SavedFilterPatch"
               }
