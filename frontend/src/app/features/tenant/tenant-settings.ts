@@ -23,22 +23,9 @@ import { ProblemService } from '../../core/problem.service';
 import { keepShown, refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
+import { byteSize } from '../../shared/bytes';
+import { AttachmentConsistencySection } from './attachment-consistency';
 import { GitHubWebhook } from './github-webhook';
-
-/** A count of bytes as people read it, in the binary units the configuration takes: `1.5 MiB`. */
-export function byteSize(bytes: number): string {
-  const units = ['bytes', 'KiB', 'MiB', 'GiB', 'TiB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit++;
-  }
-  if (unit === 0) {
-    return `${value} ${value === 1 ? 'byte' : 'bytes'}`;
-  }
-  return `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
-}
 
 /**
  * Whether an event may have moved what the tenant's attachments hold: an upload or a purge in the
@@ -69,12 +56,14 @@ export function quotaShare(usage: AttachmentUsage): number | null {
  * (docs/adr/0034 D9) and whether members see each other's time (docs/adr/0017), written with
  * the version read (docs/adr/0050 D3); what the tenant's attachments hold against the quota
  * of the installation (docs/adr/0016 D6), read when the page opens and again on an upload or a
- * purge in the tenant; and GitHub's webhook with its secret (docs/adr/0071, {@link GitHubWebhook}).
+ * purge in the tenant; the latest consistency check of the attachments against the bucket
+ * (docs/adr/0059 D4), {@link AttachmentConsistencySection}; and GitHub's webhook with its secret
+ * (docs/adr/0071, {@link GitHubWebhook}).
  */
 @Component({
   selector: 'app-tenant-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, FormsModule, GitHubWebhook, InputText, ToggleSwitch],
+  imports: [AttachmentConsistencySection, ButtonDirective, FormsModule, GitHubWebhook, InputText, ToggleSwitch],
   template: `
     <section class="page">
       <h1>Settings</h1>
@@ -171,6 +160,7 @@ export function quotaShare(usage: AttachmentUsage): number | null {
             <p class="muted" data-testid="attachment-usage-failure">{{ failure }}</p>
           }
         </section>
+        <app-attachment-consistency />
         <app-github-webhook />
       }
     </section>

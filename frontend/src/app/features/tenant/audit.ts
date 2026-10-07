@@ -35,6 +35,7 @@ export const entityTypes = [
   'link',
   'interest',
   'attachment',
+  'attachment_consistency',
   'time_entry',
   'project',
   'repository',

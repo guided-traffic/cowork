@@ -43,6 +43,7 @@ export const PROBLEM_CODE: ProblemCode[] = [
   'period_locked',
   'attachment_limit',
   'attachment_quota',
+  'consistency_check_stale',
   'uploads_disabled',
   'chat_unavailable',
   'precondition_failed',

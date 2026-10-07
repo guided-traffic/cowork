@@ -91,6 +91,12 @@ export type { ResetAccountPassword$Params as ResetAccountPassword$Params } from 
 export { resetAccountPassword as resetAccountPassword } from './fn/accounts/reset-account-password';
 export type { EndAccountSessions$Params as EndAccountSessions$Params } from './fn/accounts/end-account-sessions';
 export { endAccountSessions as endAccountSessions } from './fn/accounts/end-account-sessions';
+export type { GetAttachmentConsistency$Params as GetAttachmentConsistency$Params } from './fn/attachments/get-attachment-consistency';
+export { getAttachmentConsistency as getAttachmentConsistency } from './fn/attachments/get-attachment-consistency';
+export type { AcceptDanglingAttachments$Params as AcceptDanglingAttachments$Params } from './fn/attachments/accept-dangling-attachments';
+export { acceptDanglingAttachments as acceptDanglingAttachments } from './fn/attachments/accept-dangling-attachments';
+export type { RemoveOrphanedObjects$Params as RemoveOrphanedObjects$Params } from './fn/attachments/remove-orphaned-objects';
+export { removeOrphanedObjects as removeOrphanedObjects } from './fn/attachments/remove-orphaned-objects';
 export type { GetAttachmentUsage$Params as GetAttachmentUsage$Params } from './fn/attachments/get-attachment-usage';
 export { getAttachmentUsage as getAttachmentUsage } from './fn/attachments/get-attachment-usage';
 export type { ListAttachments$Params as ListAttachments$Params } from './fn/attachments/list-attachments';

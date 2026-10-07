@@ -1,0 +1,170 @@
+<app-confirm-dialog />
+
+<section
+  class="card consistency"
+  data-testid="attachment-consistency"
+  aria-labelledby="consistency-heading"
+>
+  <h2 id="consistency-heading">Files and the bucket</h2>
+  @if (result(); as c) {
+    @if (c.check_id === null || c.checked_at === null) {
+      <p class="muted" data-testid="consistency-never">
+        Not checked yet. Once a day, after 03:00 UTC, cowork compares the tenant's files with the
+        bucket that holds their bytes.
+      </p>
+    } @else {
+      <p data-testid="consistency-summary">
+        <span class="muted"
+          >Checked
+          <span [pTooltip]="dateTime(c.checked_at)" [showDelay]="400">{{ ago(c.checked_at) }}</span
+          >:
+        </span>
+        {{ summary(c) }}
+      </p>
+
+      @if (c.dangling_attachments.length > 0) {
+        <h3>Files whose bytes are missing</h3>
+        <p class="muted small">
+          A restore brought these files back without their bytes, and their download says so. Ask
+          whoever runs the bucket to restore the bytes, or have the file uploaded again and accept
+          the loss.
+        </p>
+        <div class="panel">
+          <p-table [value]="c.dangling_attachments" size="small" data-testid="consistency-dangling">
+            <ng-template #header>
+              <tr>
+                <th>File</th>
+                <th class="col-key">Ticket</th>
+                <th class="col-size">Size</th>
+                <th>Uploaded</th>
+                <th class="col-state">State</th>
+              </tr>
+            </ng-template>
+            <ng-template #body let-file>
+              <tr [attr.data-testid]="'dangling-' + file.id">
+                <td class="name">{{ file.file_name }}</td>
+                <td class="col-key tabular">
+                  @if (file.ticket_deleted) {
+                    <span
+                      pTooltip="In the bin: the purge removes the file with its ticket"
+                      [showDelay]="400"
+                      >{{ shortKey(file.ticket) }}
+                      <i class="pi pi-trash muted" aria-label="In the bin"></i
+                    ></span>
+                  } @else {
+                    <a [routerLink]="['/t', session.tenant(), 'tickets', shortKey(file.ticket)]">{{
+                      shortKey(file.ticket)
+                    }}</a>
+                  }
+                </td>
+                <td class="col-size tabular">{{ byteSize(file.size) }}</td>
+                <td>
+                  <span [pTooltip]="dateTime(file.uploaded_at)" [showDelay]="400">{{
+                    ago(file.uploaded_at)
+                  }}</span>
+                </td>
+                <td class="col-state">
+                  @if (file.accepted) {
+                    <span class="muted">Accepted as lost</span>
+                  } @else {
+                    <span class="missing">Missing</span>
+                  }
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+        @if (c.dangling > 0) {
+          <div class="actions">
+            <button
+              pButton
+              type="button"
+              size="small"
+              severity="secondary"
+              [outlined]="true"
+              [disabled]="busy() !== null"
+              data-testid="consistency-accept"
+              (click)="accept(c)"
+            >
+              @if (busy() === 'accept') {
+                <i class="pi pi-spinner pi-spin"></i>
+              }
+              Accept the loss…
+            </button>
+          </div>
+        }
+      }
+
+      @if (c.orphaned_objects.length > 0) {
+        <h3>Objects no file names</h3>
+        <p class="muted small">
+          The bucket holds these under the tenant's prefix, and no file of any ticket names them —
+          files uploaded between the snapshots a restore brought back, or bytes a removal left
+          behind. Nobody can download them through cowork.
+        </p>
+        <div class="panel">
+          <p-table [value]="c.orphaned_objects" size="small" data-testid="consistency-orphans">
+            <ng-template #header>
+              <tr>
+                <th>Object key</th>
+                <th class="col-size">Size</th>
+                <th>Last changed</th>
+              </tr>
+            </ng-template>
+            <ng-template #body let-object>
+              <tr data-testid="orphan">
+                <td>
+                  <code class="key">{{ object.key }}</code>
+                </td>
+                <td class="col-size tabular">{{ byteSize(object.size) }}</td>
+                <td>
+                  <span [pTooltip]="dateTime(object.last_modified)" [showDelay]="400">{{
+                    ago(object.last_modified)
+                  }}</span>
+                </td>
+              </tr>
+            </ng-template>
+          </p-table>
+        </div>
+        <div class="actions">
+          <button
+            pButton
+            type="button"
+            size="small"
+            severity="danger"
+            [outlined]="true"
+            [disabled]="busy() !== null"
+            data-testid="consistency-remove"
+            (click)="remove(c)"
+          >
+            @if (busy() === 'remove') {
+              <i class="pi pi-spinner pi-spin"></i>
+            } @else {
+              <i class="pi pi-trash"></i>
+            }
+            Remove the objects…
+          </button>
+        </div>
+      }
+
+      @if (c.orphan_removal; as removal) {
+        <p
+          class="muted small"
+          data-testid="consistency-removal"
+          [pTooltip]="dateTime(removal.removed_at)"
+          [showDelay]="400"
+        >
+          {{ removalNote(removal) }}
+        </p>
+      }
+
+      @if (cut(c)) {
+        <p class="muted small" data-testid="consistency-cut">
+          The lists show the first thousand entries; the next check lists the rest.
+        </p>
+      }
+    }
+  } @else if (failure(); as message) {
+    <p class="muted" data-testid="consistency-failure">{{ message }}</p>
+  }
+</section>
