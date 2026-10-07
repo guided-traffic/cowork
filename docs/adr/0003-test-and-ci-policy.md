@@ -23,7 +23,8 @@ server since attachments exist). Re-verified on 2026-10-02 for the backend tiers
 the images after phase 2. Amended 2026-10-03 (this Status, D2's unit row and the residual
 risks: the runners and secrets are verified, the backend has no SPA fallback). Amended 2026-10-04
 (D2's integration row and D3: the integration tier needs an OpenID Connect issuer, the Dex of
-`make dex-up`, since the login through the identity provider exists).
+`make dex-up`, since the login through the identity provider exists). Amended 2026-10-07 (D9: 1.0 waits until no question of an open ticket is
+unanswered, the owner's rule of 2026-10-06; no rule of the tests changes).
 ~~**Not verified:** that the `self-hosted` runner pool of the sibling project serves this
 repository, and that the repository secrets the workflows name exist (D9); both are open
 questions in the planning catalog.~~ *(Amended 2026-10-03: verified for this repository in
@@ -93,7 +94,11 @@ scanned like the backend's.** `frontend/dist/` is never committed; `make fronten
 **D9 — Releases are cut by semantic-release from `main` with conventional commits,** with a
 GitHub App token so the release event starts the image and chart workflow. Renovate keeps the
 dependencies moving with the automerge rules in [`renovate.json`](../../renovate.json): minor
-and patch after CI, major by hand except GitHub Actions.
+and patch after CI, major by hand except GitHub Actions. *(Amended 2026-10-07, the owner's rule of
+2026-10-06:)* cowork stays at 0.x until no question of an open ticket is unanswered: 1.0 is cut
+only then, by the owner's word. Semantic-release leaves 0.x only for a commit marked as breaking —
+a `!` after the type, or a `BREAKING CHANGE` footer —, so until then no commit carries that mark,
+and a change that breaks a contract says so in its body without it.
 
 **D10 — A fix comes with the test that failed without it.** Where a defect could not be
 reproduced in a tier, the ticket says so and the ADR or page that describes the behaviour
