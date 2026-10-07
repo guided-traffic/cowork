@@ -107,9 +107,10 @@ which no other job uses: `release-mcp` and `release-helm-gh` declare their own. 
 third-party steps can therefore replace an asset of the release with `contents: write`, and can ask
 for an OIDC token of the release workflow — the identity `release-mcp` attests the `cowork-mcp`
 binaries under — and store an attestation with `attestations: write`: a compromised step could
-attest a binary it did not build, and `gh attestation verify --repo guided-traffic/cowork` would
-then not tell it apart ([agent-client.md](agent-client.md#h-35) H-35). That such an attestation
-passes the check is inferred from the shared workflow and ref, not tried. A step of `build` uses
+attest a binary it did not build, and the attestation check of the binaries, which names this
+workflow and the release's tag, would then not tell it apart ([agent-client.md](agent-client.md#h-35)
+H-35). That such an attestation passes the check is inferred from the shared workflow and ref, not
+tried. A step of `build` uses
 `contents` for the SBOM's upload to the release; whether one uses `pages`, `attestations`,
 `id-token` or `actions` is not traced through the actions' code. Narrowing the job's block would
 close this; the owner keeps it.

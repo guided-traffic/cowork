@@ -43,13 +43,19 @@ OS=darwin ARCH=arm64               # example
 curl -fsSLO https://github.com/guided-traffic/cowork/releases/download/v$VERSION/cowork-mcp-$VERSION-$OS-$ARCH
 curl -fsSLO https://github.com/guided-traffic/cowork/releases/download/v$VERSION/cowork-mcp-$VERSION-$OS-$ARCH.sha256
 shasum -a 256 -c cowork-mcp-$VERSION-$OS-$ARCH.sha256
-gh attestation verify cowork-mcp-$VERSION-$OS-$ARCH --repo guided-traffic/cowork   # built by the release workflow of this repository
+gh attestation verify cowork-mcp-$VERSION-$OS-$ARCH --repo guided-traffic/cowork \
+  --signer-workflow guided-traffic/cowork/.github/workflows/build.yml \
+  --source-ref refs/tags/v$VERSION   # attested by the release workflow, in its run for this tag
 install -m 0755 cowork-mcp-$VERSION-$OS-$ARCH ~/.local/bin/cowork-mcp   # any directory on the PATH
 cowork-mcp version
 ```
 
-The checksum detects a damaged download; the attestation proves that the release workflow of this
-repository built the file from the tagged commit, which a replaced release cannot fake. On macOS the
+The checksum detects a damaged download. The attestation check names the workflow that signs the
+binaries and the tag: it passes only for an attestation the release workflow, `build.yml`, made in
+its run for `v$VERSION`, so a replaced release, or a binary attested by any other workflow or for
+any other ref, fails it — checked against the 0.11.0 binaries on 2026-10-07 with gh 2.98.0, where
+another tag and another workflow failed. What it does not prove is
+[docs/security/agent-client.md](../security/agent-client.md#h-35) H-35. On macOS the
 binary is not notarised, and the first start of a downloaded file is refused by Gatekeeper; after
 the attestation is verified, `xattr -d com.apple.quarantine ~/.local/bin/cowork-mcp` lifts that once. Updates
 are the same steps with the next release. `make build-mcp` builds the binary from a checkout

@@ -70,7 +70,10 @@ windows on amd64 and arm64 — `cowork-mcp-<version>-<os>-<arch>`, `.exe` on win
 `actions/attest-build-provenance` (their checksums as its subjects; `id-token` and `attestations`
 on the job) and attaches all twelve files to the release
 ([ADR 0041](../adr/0041-the-mcp-server-speaks-stdio-and-ships-as-a-release-binary-per-platform.md)
-D2). The binaries are not signed for an operating system and not notarized. It runs after the release exists, so it is
+D2). The attestation check a person runs names this workflow by its path and the release's tag
+([claude-code.md](../operations/claude-code.md#1-the-binary), the README's naming table): moving or
+renaming `build.yml`, or attesting in another workflow, changes that command in the same change.
+The binaries are not signed for an operating system and not notarized. It runs after the release exists, so it is
 no check of a pull request: a build that breaks on one platform shows only there; `make
 build-mcp` with `GOOS=` and `GOARCH=` reproduces it locally.
 

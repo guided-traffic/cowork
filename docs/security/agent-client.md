@@ -151,15 +151,25 @@ into the same projects, restricted tokens, and the timeline.
 ### H-35 — The binaries are attested, not signed for the operating system
 
 Live today. A release attaches the six binaries, a SHA-256 file each and a build provenance
-attestation for each binary, which the release workflow makes with its own identity; `gh attestation
-verify` proves the file was built by that workflow of this repository from the tagged commit, so a
-release replaced by whoever can write releases fails it — unless a compromised step of that
-workflow made the attestation itself ([release-pipeline.md](release-pipeline.md#h-61) H-61). The check is the person's step, and nothing
-makes them take it: the checksum beside the binary comes from the same release, macOS refuses the
-unnotarised file at first start until the person lifts the quarantine, and Windows sees no
-Authenticode signature (ADR 0041 Residual risks). Mitigation: the verification step of
-[claude-code.md](../operations/claude-code.md), the repository's release protection — tags written
-only by the release App ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)) —
+attestation for each binary, which the release workflow makes with its own identity. The check of
+[claude-code.md](../operations/claude-code.md) names that identity — the repository, the signing
+workflow `.github/workflows/build.yml` and the source ref `refs/tags/v$VERSION` — and so proves
+that a run of `build.yml` for that tag attested the file: a binary replaced in the release fails
+it, and so does one attested by any other workflow or in a run for any other ref (tried against the
+0.11.0 binaries with gh 2.98.0 on 2026-10-07). gh matches the workflow by the start of its path, so
+the tag is what names the run; a run for the tag reads the workflows of the commit the tag names
+(GitHub's documentation of the release event, not tried), the tags are written only by the release
+App, and an administrator may bypass the ruleset
+([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)).
+What the check does not prove is what that run did — a compromised step of `build.yml` can attest a
+binary it did not build ([release-pipeline.md](release-pipeline.md#h-61) H-61) —, nor the machine it
+ran on: the project's self-hosted runner, which the attestation names and does not vouch for. The
+check is the person's step, and nothing makes them take it: the checksum beside the binary comes
+from the same release, macOS refuses the unnotarised file at first start until the person lifts the
+quarantine, and Windows sees no Authenticode signature (ADR 0041 Residual risks). Mitigation: the
+verification step of [claude-code.md](../operations/claude-code.md), the repository's release
+protection — tags written only by the release App
+([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)) —
 and building from a checkout with `make build-mcp`.
 
 <a id="h-36"></a>
