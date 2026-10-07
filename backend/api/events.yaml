@@ -16,10 +16,11 @@ events:
       project the caller cannot see, or of a confidential ticket they may not read, never
       arrives (D3).
 
-      `project.changed` says that a project's rank was set as a whole — the sort by the score
-      (docs/adr/0014 D3) — with `data: {"key": "<tenant>/<PROJECT>", "kind": "ranked"}`; `id:` is
-      the act's id. It reaches whoever sees the project, and the client reloads the lists it
-      shows.
+      `project.changed` says that a project's tickets changed as a whole — its rank set by the
+      score (docs/adr/0014 D3), `kind` `ranked`, or an import executed into it (docs/adr/0051 D3),
+      `kind` `imported`, whose tickets announce no event of their own — with
+      `data: {"key": "<tenant>/<PROJECT>", "kind": …}`; `id:` is the act's id. It reaches whoever
+      sees the project, and the client reloads the lists it shows.
 
       `membership.changed` says that who belongs to the tenant, or who sees a project, changed —
       by an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its
