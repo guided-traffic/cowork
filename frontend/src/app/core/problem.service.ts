@@ -101,6 +101,26 @@ export class ProblemService {
   }
 
   /**
+   * The problem's `errors[]` as the API names them, in their order, each pointer as it came: for a
+   * page whose pointers name no field of a form — an import's refusal names each file as
+   * `file:<path>` (docs/adr/0051 D2), and a path's slashes are no field path. Empty where the error
+   * carries no problem body.
+   */
+  entries(error: unknown): { pointer: string; message: string }[] {
+    if (
+      !(error instanceof HttpErrorResponse) &&
+      error instanceof Error &&
+      error.cause !== undefined
+    ) {
+      return this.entries(error.cause);
+    }
+    if (!(error instanceof HttpErrorResponse) || !isProblem(error.error)) {
+      return [];
+    }
+    return (error.error.errors ?? []).map(({ pointer, message }) => ({ pointer, message }));
+  }
+
+  /**
    * Shows the problem as a toast and returns it. A form passes `fields: true` and shows the field
    * errors itself; the toast is then left out when there are any.
    */
