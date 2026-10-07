@@ -275,9 +275,9 @@ export class TicketsService {
     if (event.name === 'membership.changed' || event.name === 'inbox.changed') {
       return;
     }
-    // A project's rank set as a whole — the sort by the score — is the project's act, with no
-    // event of the tickets it moved: the lists, which hold the order and bring their new versions,
-    // load again (docs/adr/0014 D3).
+    // A project's rank set as a whole — the sort by the score — and an import's execution are the
+    // project's acts, with no event of the tickets they moved or created: the lists, which hold the
+    // order and bring the new tickets and versions, load again (docs/adr/0014 D3, docs/adr/0051 D3).
     if (event.name === 'project.changed') {
       this.reloadLists();
       return;
