@@ -2,7 +2,10 @@
 # Written against CloudNativePG 1.30.1 (its Cluster API, postgresql.cnpg.io/v1)
 # and that release's default image, PostgreSQL 18.6. `make examples-lint` checks
 # this file against the Cluster schema of CloudNativePG 1.30.1 and proves no more
-# than that it parses: it has not been applied to a cluster in this repository.
+# than that it parses. Applied on 2026-10-07 to a kind cluster with CloudNativePG
+# 1.30.1, with only the password changed, for the upgrade of cowork from 0.8.0 to
+# 0.9.0 in both migration modes: the roles, the extensions and CONNECT were as
+# described below.
 # What cowork needs of a database is docs/operations/installation.md, "The
 # database and its two roles"; cowork's start refuses a runtime role that could
 # bypass row-level security, whatever made it.
@@ -15,7 +18,12 @@
 #   - the runtime role cowork_app the server connects as: LOGIN, no superuser,
 #     no BYPASSRLS, no CREATEDB, no CREATEROLE, a member of no role, owning
 #     nothing; its password comes from the Secret cowork-db-runtime below and
-#     follows it when the Secret changes;
+#     follows it when the Secret changes: the Secret carries the label
+#     cnpg.io/reload, without which CloudNativePG applies a changed password
+#     only at a later reconciliation and the old one stays valid meanwhile
+#     (measured on 2026-10-07: two minutes after a change the old password still
+#     opened a connection; with the label the change reached the database in
+#     two seconds);
 #   - the extensions unaccent, pg_trgm and btree_gin, created by the superuser,
 #     so the migration that needs them finds them;
 #   - CONNECT on the database for the two roles only: every role that can
@@ -54,6 +62,8 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: cowork-db-runtime
+  labels:
+    cnpg.io/reload: "true"                # a changed password reaches the role at once
 type: kubernetes.io/basic-auth
 stringData:
   username: cowork_app
