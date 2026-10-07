@@ -185,7 +185,7 @@ func (r *frontReader) scalar(p pair) (string, bool) {
 		r.f.fail(p.key, p.line, "%s takes one value, not a list or a mapping", p.key)
 		return "", false
 	}
-	if p.value.Tag == "!!null" {
+	if p.value.Tag == yamlNull {
 		return "", true
 	}
 	return strings.TrimSpace(p.value.Value), true
@@ -264,7 +264,7 @@ func (r *frontReader) confidential(p pair, v string) {
 // attachments reads an export's list of attachment names
 // (docs/adr/0044 D6).
 func (r *frontReader) attachments(p pair) {
-	if p.value.Kind == yaml.ScalarNode && p.value.Tag == "!!null" {
+	if p.value.Kind == yaml.ScalarNode && p.value.Tag == yamlNull {
 		return
 	}
 	if p.value.Kind != yaml.SequenceNode {

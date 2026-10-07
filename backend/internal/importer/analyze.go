@@ -103,8 +103,9 @@ type Needs struct {
 // ticket.
 func (u *Upload) Needs(issuer string) Needs {
 	var n Needs
-	values := []string{}
-	for _, f := range u.sortedFiles() {
+	files := u.sortedFiles()
+	values := make([]string, 0, 3*len(files)+2*len(u.links))
+	for _, f := range files {
 		if f.Number != 0 {
 			n.Numbers = append(n.Numbers, f.Number)
 		}

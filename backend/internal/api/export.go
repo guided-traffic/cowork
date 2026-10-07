@@ -56,7 +56,7 @@ func (s *Server) ExportTicket(ctx context.Context, req apigen.ExportTicketReques
 	}
 	_, err = s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		w.Record(store.Event{EntityType: entityTicket, EntityID: tc.row.ID, TicketID: tc.row.ID, TicketKey: doc.Key,
-			Action: "exported", After: map[string]any{"format": "markdown v1", fieldVersion: tc.row.Version}})
+			Action: actionExported, After: map[string]any{fieldFormat: "markdown v1", fieldVersion: tc.row.Version}})
 		return nil
 	})
 	if err != nil {

@@ -202,7 +202,7 @@ func (s *Server) AskQuestion(ctx context.Context, req apigen.AskQuestionRequestO
 			return fmt.Errorf("insert the question: %w", err)
 		}
 		w.Record(store.Event{EntityType: entityQuestion, EntityID: id, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
-			Action: "asked", After: map[string]any{"number": n, "question": body.Question, "asked_of": body.AskedOf},
+			Action: "asked", After: map[string]any{fieldNumber: n, fieldQuestion: body.Question, "asked_of": body.AskedOf},
 			Notices: told(store.NoticeAsked, body.AskedOf)})
 		if asked, images, err = writtenQuestion(ctx, w.Reader, t, tc, n); err != nil {
 			return err
@@ -465,7 +465,7 @@ func (s *Server) WithdrawQuestion(ctx context.Context, req apigen.WithdrawQuesti
 			_, err = w.WithdrawQuestion(ctx, writeq.WithdrawQuestionParams{TenantID: t.ID, ID: q.ID, WithdrawnBy: &p.PersonID})
 			if err == nil {
 				w.Record(store.Event{EntityType: entityQuestion, EntityID: q.ID, TicketID: tc.row.ID, TicketKey: ticketKey(t, tc.row),
-					Action: questionWithdrawn, After: map[string]any{"number": q.Number}})
+					Action: questionWithdrawn, After: map[string]any{fieldNumber: q.Number}})
 				out, err = w.GetQuestion(ctx, readq.GetQuestionParams{TenantID: t.ID, TicketID: tc.row.ID, Number: q.Number})
 				return err
 			}

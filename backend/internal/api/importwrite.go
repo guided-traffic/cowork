@@ -150,7 +150,7 @@ func (ex *execution) ticketParams(pt *importer.PlannedTicket) writeq.InsertImpor
 	params := writeq.InsertImportedTicketParams{TenantID: ex.t.ID, ProjectID: ex.p.ID, Number: pt.Number, Type: pt.Type,
 		Title: pt.Title, Body: pt.Body, State: pt.State, Severity: pt.Severity, Security: pt.Security,
 		UrgencyDerived: domain.UrgencyDefault, UrgencyRule: domain.UrgencyRuleDefault, Effort: pt.Effort,
-		ProgressRefinement: int16(pt.Stages[0]), Progress: int16(pt.Stages[1]), ProgressReview: int16(pt.Stages[2]),
+		ProgressRefinement: stage(pt.Stages[0]), Progress: stage(pt.Stages[1]), ProgressReview: stage(pt.Stages[2]),
 		ReporterID: ex.caller.PersonID, AssigneeID: pt.Assignee, Confidential: pt.Confidential,
 		OpenedAt: pt.Opened, DecidedAt: pt.Decided, DoneAt: pt.Done, DoneByHand: pt.DoneByHand,
 		ImportedFromFile: &path, ImportedFromJob: &ex.job}
@@ -181,6 +181,15 @@ func (ex *execution) ticketParams(pt *importer.PlannedTicket) writeq.InsertImpor
 	return params
 }
 
+// stage is a progress stage as its column holds it; the import read it as 0
+// to 100 in steps of five (docs/adr/0017 D2), and anything else is none.
+func stage(v int) int16 {
+	if v < 0 || v > 100 {
+		return 0
+	}
+	return int16(v)
+}
+
 // ticketActs records the ticket's creation, its flag where the source set it
 // (docs/adr/0065 D7), and the act that holds a done ticket's note or a
 // dropped one's reason, which the export reads back (docs/adr/0009 D5,
@@ -191,11 +200,11 @@ func (ex *execution) ticketActs(id uuid.UUID, pt *importer.PlannedTicket) {
 		e.EntityType, e.EntityID, e.TicketID, e.TicketKey, e.Quiet = entityTicket, id, id, key, true
 		ex.w.Record(e)
 	}
-	act(store.Event{Action: actionCreated, After: map[string]any{fieldType: pt.Type, "title": pt.Title, "severity": pt.Severity,
-		"security": pt.Security, "effort": pt.Effort, "urgency": pt.Horizon, fieldState: pt.State,
+	act(store.Event{Action: actionCreated, After: map[string]any{fieldType: pt.Type, fieldTitle: pt.Title, fieldSeverity: pt.Severity,
+		fieldSecurity: pt.Security, fieldEffort: pt.Effort, "urgency": pt.Horizon, fieldState: pt.State,
 		fieldImportJob: ex.job, fieldFileName: pt.Path}})
 	if pt.Confidential {
-		act(store.Event{Action: "confidential_set", Reason: pt.ConfidentialReason})
+		act(store.Event{Action: actionConfidentialSet, Reason: pt.ConfidentialReason})
 	}
 	switch pt.State {
 	case domain.StateDone:
@@ -220,7 +229,7 @@ func (ex *execution) questions(ctx context.Context, ticket uuid.UUID, pt *import
 			return fmt.Errorf("insert Q%d: %w", q.Number, err)
 		}
 		ex.w.Record(store.Event{EntityType: entityQuestion, EntityID: id, TicketID: ticket, TicketKey: ex.key(pt.Number),
-			Action: "asked", After: map[string]any{"number": q.Number, "question": q.Question, "status": q.Status,
+			Action: "asked", After: map[string]any{fieldNumber: q.Number, fieldQuestion: q.Question, "status": q.Status,
 				fieldImportJob: ex.job}, Quiet: true})
 	}
 	return nil

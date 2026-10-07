@@ -137,8 +137,8 @@ func (s *Server) ExportTenant(ctx context.Context, _ apigen.ExportTenantRequestO
 // what was exported (docs/adr/0059 D3, docs/adr/0026 D5); never published.
 func (s *Server) recordExport(ctx context.Context, t tenantScope, entity string, id uuid.UUID, m apigen.ExportManifest) error {
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
-		w.Record(store.Event{EntityType: entity, EntityID: id, Action: "exported", After: map[string]any{
-			"format": string(m.Format), "tickets": m.Tickets, "projects": len(m.Projects),
+		w.Record(store.Event{EntityType: entity, EntityID: id, Action: actionExported, After: map[string]any{
+			fieldFormat: string(m.Format), "tickets": m.Tickets, "projects": len(m.Projects),
 			"confidential_not_included": m.ConfidentialNotIncluded}})
 		return nil
 	})

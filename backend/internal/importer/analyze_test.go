@@ -366,7 +366,7 @@ func TestAnalyzeAnExport(t *testing.T) {
 	for _, p := range []string{"acme/VKO-5.md", "acme/VKO-6.md"} {
 		assert.Equal(t, OutcomeError, file(t, r, p).Outcome, p)
 	}
-	numbers := []int32{}
+	numbers := make([]int32, 0, len(r.Plan.Tickets))
 	for _, p := range r.Plan.Tickets {
 		numbers = append(numbers, p.Number)
 	}

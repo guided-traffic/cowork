@@ -320,6 +320,12 @@ func yamlError(err error) (int, string) {
 	return 0, strings.TrimPrefix(err.Error(), "yaml: ")
 }
 
+// The tags of a YAML scalar the reader tells apart: an empty value, and text.
+const (
+	yamlNull   = "!!null"
+	yamlString = "!!str"
+)
+
 // The lines of a frontmatter read line by line: `key: value`, and a list's
 // `  - item` under a key without a value.
 var (
@@ -342,7 +348,7 @@ func linePairs(front string) ([]pair, bool) {
 		}
 		if m := flatItemLine.FindStringSubmatch(l); m != nil && len(out) > 0 {
 			last := &out[len(out)-1]
-			if last.value.Kind == yaml.ScalarNode && last.value.Tag == "!!null" {
+			if last.value.Kind == yaml.ScalarNode && last.value.Tag == yamlNull {
 				last.value = &yaml.Node{Kind: yaml.SequenceNode}
 			}
 			if last.value.Kind != yaml.SequenceNode {
@@ -370,9 +376,9 @@ func flatValue(raw string) *yaml.Node {
 	}
 	v := strings.TrimSpace(flatComment.ReplaceAllString(raw, ""))
 	if v == "" {
-		return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!null"}
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: yamlNull}
 	}
-	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v}
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: yamlString, Value: v}
 }
 
 // pair is one key of the frontmatter with its value and line.

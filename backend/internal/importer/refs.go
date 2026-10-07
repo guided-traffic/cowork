@@ -344,7 +344,7 @@ func refKey(r Ref) string {
 func (a *analysis) planLinks(candidates []linkPlan) []PlannedLink {
 	seen := map[string]bool{}
 	blocks := map[string][]string{}
-	var out []PlannedLink
+	out := make([]PlannedLink, 0, len(candidates))
 	for _, c := range candidates {
 		k := linkKey(c.PlannedLink)
 		s, t := refKey(c.Source), refKey(c.Target)
