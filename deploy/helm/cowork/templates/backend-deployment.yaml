@@ -166,6 +166,8 @@ spec:
               value: {{ .Values.backend.config.attachmentMaxPerTicket | int64 | toString | quote }}
             - name: COWORK_ATTACHMENT_TENANT_QUOTA
               value: {{ .Values.backend.config.attachmentTenantQuota | int64 | toString | quote }}
+            - name: COWORK_MAX_IMPORT_BYTES
+              value: {{ .Values.backend.config.maxImportBytes | int64 | toString | quote }}
             - name: COWORK_REQUEST_TIMEOUT
               value: {{ printf "%ds" (.Values.backend.config.requestTimeout | int64) | quote }}
             - name: COWORK_MAX_PAGE_SIZE

@@ -39,6 +39,7 @@ const (
 	EnvRequestTimeout   = "COWORK_REQUEST_TIMEOUT"
 	EnvMaxPageSize      = "COWORK_MAX_PAGE_SIZE"
 	EnvMaxQueryLength   = "COWORK_MAX_QUERY_LENGTH"
+	EnvMaxImportBytes   = "COWORK_MAX_IMPORT_BYTES"
 
 	EnvS3Endpoint             = "COWORK_S3_ENDPOINT"
 	EnvS3Bucket               = "COWORK_S3_BUCKET"
@@ -91,6 +92,9 @@ const (
 	DefaultRequestTimeout  = 30 * time.Second
 	DefaultMaxPageSize     = 200
 	DefaultMaxQueryLength  = 256
+	// DefaultMaxImportBytes bounds an import's upload, and what its files
+	// hold unpacked (docs/adr/0051 D7).
+	DefaultMaxImportBytes = 50 << 20 // 50MiB
 	// DefaultAttachmentMaxBytes is the per-file maximum (docs/adr/0016 D6).
 	DefaultAttachmentMaxBytes = 10 << 20 // 10MiB
 	// DefaultAttachmentMaxPerTicket is the per-ticket count (docs/adr/0016 D6).
@@ -180,6 +184,9 @@ type Config struct {
 	MaxPageSize int
 	// MaxQueryLength bounds a search query; 0 disables the limit.
 	MaxQueryLength int
+	// MaxImportBytes bounds an import's upload, and what its files hold
+	// unpacked; 0 disables the limit (docs/adr/0051 D7, docs/adr/0039 D2).
+	MaxImportBytes int64
 	// Storage is the S3-compatible object storage of the attachments
 	// (docs/adr/0016 D1); nil when none is configured, and uploads are
 	// refused.
@@ -325,6 +332,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		RequestTimeout:  DefaultRequestTimeout,
 		MaxPageSize:     DefaultMaxPageSize,
 		MaxQueryLength:  DefaultMaxQueryLength,
+		MaxImportBytes:  DefaultMaxImportBytes,
 
 		AttachmentMaxBytes:     DefaultAttachmentMaxBytes,
 		AttachmentMaxPerTicket: DefaultAttachmentMaxPerTicket,
@@ -473,12 +481,17 @@ func (l *loader) sessionKey(cfg *Config) {
 }
 
 func (l *loader) limits(cfg *Config) {
-	if v, ok := l.get(EnvMaxJSONBody); ok {
-		n, err := parseSize(v)
-		if err != nil {
-			l.fail("%s: %q is not a size such as 1MiB or 0", EnvMaxJSONBody, v)
-		} else {
-			cfg.MaxJSONBody = n
+	for _, c := range []struct {
+		env, example string
+		dst          *int64
+	}{{EnvMaxJSONBody, "1MiB", &cfg.MaxJSONBody}, {EnvMaxImportBytes, "50MiB", &cfg.MaxImportBytes}} {
+		if v, ok := l.get(c.env); ok {
+			n, err := parseSize(v)
+			if err != nil {
+				l.fail("%s: %q is not a size such as %s or 0", c.env, v, c.example)
+			} else {
+				*c.dst = n
+			}
 		}
 	}
 	if v, ok := l.get(EnvRequestTimeout); ok {

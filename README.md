@@ -554,6 +554,7 @@ refuses the start, naming itself. Chart values are `auth.oidc.*` in
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` `# default` | a size; `0` disables | The largest upload; above it `413`, before anything is stored. Uploads are buffered in memory: with `0` one upload at a time is read whole, whatever its size ([docs/security/attachments.md](docs/security/attachments.md#h-12)) |
 | `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` `# default` | a count; `0` disables | The attachments one ticket takes; one more is `409 attachment_limit` |
 | `COWORK_ATTACHMENT_TENANT_QUOTA` | `0` `# default` | a size such as `10GiB`; `0` sets none | The bytes one tenant's attachments hold together — every ticket's, confidential ones included, and a deleted ticket's until the purge; an upload that would go above it is `409 attachment_quota` before anything is stored. Off by default: an installation of several tenants sets it, or one tenant can fill the storage all of them share ([docs/security/attachments.md](docs/security/attachments.md#h-10)) |
+| `COWORK_MAX_IMPORT_BYTES` | `50MiB` `# default` | a size; `0` disables | An import's upload — a `tar.gz`, a `zip` or Markdown files — and what its files hold unpacked, the ones it skips by the size their archive declares; above it `413 payload_too_large`, and so above 10 000 files. An import is read in memory, one at a time per replica ([ADR 0051](docs/adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D7, [docs/security/import-and-export.md](docs/security/import-and-export.md)) |
 
 **Object storage** ([ADR 0016](docs/adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)) —
 the endpoint, the bucket and both keys together, or none of them. Without them uploads answer
@@ -1303,6 +1304,7 @@ backend:
     attachmentMaxBytes: 10485760      # COWORK_ATTACHMENT_MAX_BYTES, bytes; 0 disables (the notes then ask the controller for no body limit either)
     attachmentMaxPerTicket: 100       # COWORK_ATTACHMENT_MAX_PER_TICKET; 0 disables
     attachmentTenantQuota: 0          # COWORK_ATTACHMENT_TENANT_QUOTA, bytes a tenant's attachments hold together; 0, the default, sets none — set it with several tenants
+    maxImportBytes: 52428800          # COWORK_MAX_IMPORT_BYTES, bytes of an import's upload and of its files unpacked; 0 disables (the notes then ask the controller for no body limit either)
     requestTimeout: 30                # COWORK_REQUEST_TIMEOUT, seconds; 0 disables; the event stream is exempt
     maxPageSize: 200                  # COWORK_MAX_PAGE_SIZE; 0 disables
     maxQueryLength: 256               # COWORK_MAX_QUERY_LENGTH, characters; 0 disables

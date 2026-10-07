@@ -474,6 +474,11 @@ backend:
     # tenants sets one, so that no tenant fills the storage all of them share
     # (docs/adr/0016 D6, docs/security/attachments.md H-10).
     attachmentTenantQuota: 0
+    # COWORK_MAX_IMPORT_BYTES, in bytes: an import's upload — a tar.gz, a zip
+    # or Markdown files — and what its files hold unpacked; 0 for no bound
+    # (docs/adr/0051 D7). An import is read in memory, one at a time per
+    # replica: keep the backend's memory limit well above it.
+    maxImportBytes: 52428800
     # COWORK_REQUEST_TIMEOUT, in seconds; the event stream is exempt.
     requestTimeout: 30
     # COWORK_MAX_PAGE_SIZE: the largest page a list returns.

@@ -327,18 +327,20 @@ The Secret that holds the server key; there is no inline path.
 
 {{/*
 The smallest body limit the Ingress controller may have, for the notes: the
-larger backend limit rounded up to MiB plus one MiB of headroom, so the backend
-answers its own 413; "0", no limit, when a backend limit is off
-(docs/adr/0039 D3). The chart sets no controller's limit: it does not know the
+largest backend limit — a JSON body, an attachment, an import's upload —
+rounded up to MiB plus one MiB of headroom, so the backend answers its own
+413; "0", no limit, when a backend limit is off (docs/adr/0039 D3,
+docs/adr/0051 D7). The chart sets no controller's limit: it does not know the
 controller.
 */}}
 {{- define "cowork.ingressBodySize" -}}
 {{- $json := int64 .Values.backend.config.maxJsonBody }}
 {{- $upload := int64 .Values.backend.config.attachmentMaxBytes }}
-{{- if or (eq $json 0) (eq $upload 0) }}
+{{- $import := int64 .Values.backend.config.maxImportBytes }}
+{{- if or (eq $json 0) (eq $upload 0) (eq $import 0) }}
 {{- "0" }}
 {{- else }}
-{{- $max := max $json $upload }}
+{{- $max := max $json $upload $import }}
 {{- printf "%dm" (add1 (div (add $max 1048575) 1048576)) }}
 {{- end }}
 {{- end }}
