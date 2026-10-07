@@ -148,6 +148,9 @@ func (w *Writer) removeWhatBelongsTo(ctx context.Context, tenantID, ticketID uui
 		{"links", func() (int64, error) {
 			return w.DeleteTicketLinks(ctx, writeq.DeleteTicketLinksParams{TenantID: tenantID, TicketID: ticketID})
 		}},
+		{"pull_requests", func() (int64, error) {
+			return w.DeleteTicketPullRequests(ctx, writeq.DeleteTicketPullRequestsParams{TenantID: tenantID, TicketID: ticketID})
+		}},
 		{"children", func() (int64, error) {
 			return w.DetachChildren(ctx, writeq.DetachChildrenParams{TenantID: tenantID, TicketID: ticketID})
 		}},

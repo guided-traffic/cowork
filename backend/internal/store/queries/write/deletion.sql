@@ -89,6 +89,11 @@ DELETE FROM ticket_interest WHERE tenant_id = sqlc.arg(tenant_id) AND ticket_id 
 DELETE FROM ticket_links
 WHERE tenant_id = sqlc.arg(tenant_id) AND (source_id = sqlc.arg(ticket_id) OR target_id = sqlc.arg(ticket_id));
 
+-- name: DeleteTicketPullRequests :execrows
+-- The pull requests and commits GitHub's webhook linked to the ticket
+-- (docs/adr/0071 D6), the removed links among them.
+DELETE FROM ticket_pull_requests WHERE tenant_id = sqlc.arg(tenant_id) AND ticket_id = sqlc.arg(ticket_id);
+
 -- name: DetachChildren :execrows
 -- The children of a purged ticket become roots. Their parent was hidden since
 -- the deletion — nobody saw it any more — so nothing they show changes, and
