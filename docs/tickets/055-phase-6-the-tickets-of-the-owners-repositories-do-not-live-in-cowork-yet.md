@@ -8,7 +8,7 @@ threat:
 urgency: next         # rule 3: severity high, live — every repository still keeps its backlog in Markdown files
 effort: M
 blocked-by:
-filed-from: docs/planning/project-plan.md phase 6, converted by ADR 0074 D2
+filed-from: phase 6 of the project plan, converted by ADR 0074 D2
 opened: 2026-10-06
 decided: 2026-10-06
 done:
