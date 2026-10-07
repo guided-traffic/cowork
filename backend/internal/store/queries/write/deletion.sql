@@ -49,7 +49,7 @@ FOR UPDATE OF t;
 -- of the job that created it, which would keep the title, the threat, the
 -- note and the questions the purge removes (docs/adr/0024 D2,
 -- docs/adr/0051 D3); the report's summary still counts it. The policies of
--- migration 41 admit the purge to the update.
+-- migration 43 admit the purge to the update.
 UPDATE import_jobs j
 SET report = jsonb_set(j.report, '{files}', coalesce((
         SELECT jsonb_agg(e.f ORDER BY e.n)

@@ -1,5 +1,5 @@
 -- The writes of an import job (docs/adr/0051 D1–D3, D7). The policies of
--- migration 41 hold every row of import_jobs to a tenant's administrators,
+-- migration 43 hold every row of import_jobs to a tenant's administrators,
 -- and its deletion to the expiry job.
 
 -- name: InsertImportJob :exec

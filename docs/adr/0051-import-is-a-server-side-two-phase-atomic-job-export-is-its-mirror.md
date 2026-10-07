@@ -35,7 +35,7 @@ run), `GET …/imports/{import}` (the job and its report), `POST …/imports/{im
 execution with its corrections), `GET …/projects/{project}/export` and
 `GET /api/v1/tenants/{tenant}/export`; the table `import_jobs` and the ticket's
 `imported_from_file` and `imported_from_job`
-([migration 41](../../backend/internal/store/migrations/000041_import_jobs.up.sql)); the reading
+([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql)); the reading
 and the analysis in [`internal/importer`](../../backend/internal/importer/); the handlers
 [`imports.go`](../../backend/internal/api/imports.go),
 [`importwrite.go`](../../backend/internal/api/importwrite.go) and

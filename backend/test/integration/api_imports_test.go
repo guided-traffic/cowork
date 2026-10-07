@@ -450,7 +450,7 @@ func TestImportBoundsAndExpiry(t *testing.T) {
 	assertProblem(t, rawImport(t, e, admin, ticketFile(3, "")), http.StatusConflict, "project_archived")
 }
 
-// docs/adr/0021 D6, docs/adr/0051 D6, D7: the policies of migration 41 hold an
+// docs/adr/0021 D6, docs/adr/0051 D6, D7: the policies of migration 43 hold an
 // import job to the tenant's administrators — a member of the tenant reads,
 // changes and makes none, even through a query that names no person —, and
 // its deletion to the expiry job, which no administrator is.

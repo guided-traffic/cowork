@@ -10,11 +10,11 @@ import (
 const ImportValidity = 24 * time.Hour
 
 // importExpiryLock is the key of the import expiry's job lock.
-const importExpiryLock = 7
+const importExpiryLock = 9
 
 // ExpireImportJobs deletes the dry runs whose twenty-four hours have passed,
 // in every tenant, with the files they hold (docs/adr/0051 D7), and records
-// one act per run that removed any. The policies of migration 41 admit the
+// one act per run that removed any. The policies of migration 43 admit the
 // job, named import-expiry, to dry runs alone; an executed job stays.
 func (db *DB) ExpireImportJobs(ctx context.Context, now time.Time) (removed int64, err error) {
 	_, err = db.RunJob(ctx, "import-expiry", importExpiryLock, func(w *Writer) error {

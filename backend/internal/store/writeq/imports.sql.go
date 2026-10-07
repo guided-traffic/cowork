@@ -96,7 +96,7 @@ type InsertImportJobParams struct {
 }
 
 // The writes of an import job (docs/adr/0051 D1–D3, D7). The policies of
-// migration 41 hold every row of import_jobs to a tenant's administrators,
+// migration 43 hold every row of import_jobs to a tenant's administrators,
 // and its deletion to the expiry job.
 // A dry run: its report and the files it read, valid until expires_at.
 func (q *Queries) InsertImportJob(ctx context.Context, arg InsertImportJobParams) error {

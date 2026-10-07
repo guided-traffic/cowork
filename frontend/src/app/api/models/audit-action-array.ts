@@ -45,5 +45,9 @@ export const AUDIT_ACTION: AuditAction[] = [
   'deactivated',
   'reactivated',
   'read',
+  'merged',
+  'closed',
+  'reopened',
+  'accepted',
   'imported'
 ];

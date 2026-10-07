@@ -260,7 +260,7 @@ type ForgetPurgedImportFileParams struct {
 // of the job that created it, which would keep the title, the threat, the
 // note and the questions the purge removes (docs/adr/0024 D2,
 // docs/adr/0051 D3); the report's summary still counts it. The policies of
-// migration 41 admit the purge to the update.
+// migration 43 admit the purge to the update.
 func (q *Queries) ForgetPurgedImportFile(ctx context.Context, arg ForgetPurgedImportFileParams) (int64, error) {
 	result, err := q.db.Exec(ctx, forgetPurgedImportFile, arg.TicketKey, arg.TenantID, arg.ID)
 	if err != nil {

@@ -206,7 +206,7 @@ the administrator, and changing to the administrator and the purge — which tak
 file out of its job's report —, and a restrictive delete that admits only the expiry job and only a
 dry run; the expiry job's own permissive read and delete reach the dry runs of every tenant with no
 tenant set
-([migration 41](../../backend/internal/store/migrations/000041_import_jobs.up.sql);
+([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql);
 `TestTheImportJobPoliciesAdmitTheTenantsAdministratorsOnly`). A dry run holds the content of the files
 it read, an embargoed finding's among them, so a query that forgot its caller's role must show a
 member nothing ([import-and-export.md](import-and-export.md)).

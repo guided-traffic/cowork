@@ -1,6 +1,6 @@
 -- The import job and what its analysis reads of the project (docs/adr/0051,
 -- docs/adr/0063, docs/adr/0064 D3). Only a tenant's administrators reach an
--- import job: the policies of migration 41 hold every row to them.
+-- import job: the policies of migration 43 hold every row to them.
 
 -- name: GetImportJob :one
 -- A job of the project with its report; a dry run past its day is gone

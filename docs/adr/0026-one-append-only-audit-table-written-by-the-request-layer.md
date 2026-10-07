@@ -61,7 +61,7 @@ that update to the owner role. The purge's own act is written by D2's wrapper in
 facts handed in, and would trust them no more than the wrapper does. The tenant deletion's function is not built.
 
 *(2026-10-06.)* D1's action `imported` is built with the import of
-[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) ([migration 41](../../backend/internal/store/migrations/000041_import_jobs.up.sql)):
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) ([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql)):
 the act on an import job that executes it, beside `created` for its dry run; every ticket, question
 and link the execution creates has an act that names the job as `import_job`. D5's exports grow by two: the project and the
 tenant export each record `exported` on the project or the tenant, with the format and the counts.

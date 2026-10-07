@@ -18,7 +18,7 @@ Read against the tree on 2026-10-06, the browser's part on 2026-10-07.
 | The routes | [`backend/api/imports.yaml`](../../backend/api/imports.yaml); the report, the corrections and the manifests are `Import*` and `Export*` in [`components/schemas.yaml`](../../backend/api/components/schemas.yaml) |
 | The reading and the analysis | [`internal/importer`](../../backend/internal/importer/), a package of its own: pure, no database — what it needs of the project comes in as a `Target` |
 | The handlers | [`api/imports.go`](../../backend/internal/api/imports.go) (the dry run, the read, the execution's checks), [`api/importwrite.go`](../../backend/internal/api/importwrite.go) (the execution's writes), [`api/exports.go`](../../backend/internal/api/exports.go) (the project and the tenant export) |
-| The data | [migration 41](../../backend/internal/store/migrations/000041_import_jobs.up.sql) (`import_jobs`, `tickets.imported_from_file` and `imported_from_job`, the action `imported`); [`queries/read/imports.sql`](../../backend/internal/store/queries/read/imports.sql), [`queries/write/imports.sql`](../../backend/internal/store/queries/write/imports.sql), the export's reads in [`queries/read/export.sql`](../../backend/internal/store/queries/read/export.sql); the expiry job in [`store/imports.go`](../../backend/internal/store/imports.go) |
+| The data | [migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql) (`import_jobs`, `tickets.imported_from_file` and `imported_from_job`, the action `imported`); [`queries/read/imports.sql`](../../backend/internal/store/queries/read/imports.sql), [`queries/write/imports.sql`](../../backend/internal/store/queries/write/imports.sql), the export's reads in [`queries/read/export.sql`](../../backend/internal/store/queries/read/export.sql); the expiry job in [`store/imports.go`](../../backend/internal/store/imports.go) |
 | The command line | `cowork-mcp export` in [`mcpcli/export.go`](../../backend/internal/mcpcli/export.go) |
 | The browser | the import page, [`features/project/project-import.ts`](../../frontend/src/app/features/project/project-import.ts) with [`import-model.ts`](../../frontend/src/app/features/project/import-model.ts); the requests and the archive in [`core/imports.service.ts`](../../frontend/src/app/core/imports.service.ts) and [`core/export-archive.ts`](../../frontend/src/app/core/export-archive.ts) ([frontend.md](frontend.md#the-import-and-the-export)) |
 
@@ -125,7 +125,7 @@ their files and records one `expired` act on `import_jobs` per run that removed 
 [`main.go`](../../backend/cmd/cowork/main.go) runs it hourly with the others. An executed job stays:
 its tickets name it.
 
-**The policies** of `import_jobs` ([migration 41](../../backend/internal/store/migrations/000041_import_jobs.up.sql)):
+**The policies** of `import_jobs` ([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql)):
 the canonical `tenant_isolation`; restrictive policies that admit reading to a tenant's
 administrator (`app_is_tenant_admin()`), the job `import-expiry` and the purge (`ticket-purge`),
 inserting to the administrator, and changing to the administrator and the purge; the expiry job's own
