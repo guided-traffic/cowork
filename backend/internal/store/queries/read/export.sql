@@ -73,13 +73,14 @@ ORDER BY p.key, t.number, a.id;
 -- leaves out because the caller may not read them — the manifest's "n
 -- confidential tickets not included" (docs/adr/0065 D5). A count per project,
 -- never a ticket; a restricted project the caller cannot see is not counted,
--- the export leaves it out altogether.
+-- the export leaves it out altogether. The predicate answers NULL, not false,
+-- for a ticket without an assignee, so the count asks IS NOT TRUE.
 -- visibility: exempt (the count of the confidential tickets an export leaves out, docs/adr/0065 D5)
 SELECT t.project_id, count(*)::integer AS hidden
 FROM tickets t
 WHERE t.tenant_id = sqlc.arg(tenant_id)
   AND (sqlc.narg(project_id)::uuid IS NULL OR t.project_id = sqlc.narg(project_id)::uuid)
   AND t.deleted_at IS NULL AND t.confidential AND app_project_visible(t.project_id)
-  AND NOT app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id) IS NOT TRUE
 GROUP BY t.project_id
 ORDER BY t.project_id;

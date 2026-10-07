@@ -107,7 +107,7 @@ FROM tickets t
 WHERE t.tenant_id = $1
   AND ($2::uuid IS NULL OR t.project_id = $2::uuid)
   AND t.deleted_at IS NULL AND t.confidential AND app_project_visible(t.project_id)
-  AND NOT app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)
+  AND app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id) IS NOT TRUE
 GROUP BY t.project_id
 ORDER BY t.project_id
 `
@@ -126,7 +126,8 @@ type ExportHiddenConfidentialRow struct {
 // leaves out because the caller may not read them — the manifest's "n
 // confidential tickets not included" (docs/adr/0065 D5). A count per project,
 // never a ticket; a restricted project the caller cannot see is not counted,
-// the export leaves it out altogether.
+// the export leaves it out altogether. The predicate answers NULL, not false,
+// for a ticket without an assignee, so the count asks IS NOT TRUE.
 // visibility: exempt (the count of the confidential tickets an export leaves out, docs/adr/0065 D5)
 func (q *Queries) ExportHiddenConfidential(ctx context.Context, arg ExportHiddenConfidentialParams) ([]ExportHiddenConfidentialRow, error) {
 	rows, err := q.db.Query(ctx, exportHiddenConfidential, arg.TenantID, arg.ProjectID)
