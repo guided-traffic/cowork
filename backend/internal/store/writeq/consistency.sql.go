@@ -57,7 +57,7 @@ func (q *Queries) ForgetWholeAcceptances(ctx context.Context, arg ForgetWholeAcc
 }
 
 const getConsistencyCheckForUpdate = `-- name: GetConsistencyCheckForUpdate :one
-SELECT id, dangling, accepted, orphans, dangling_items, orphan_items, orphans_removed_at
+SELECT id, dangling, accepted, orphans, orphan_bytes, dangling_items, orphan_items, orphans_removed_at
 FROM consistency_checks
 WHERE tenant_id = $1 AND id = $2
 FOR UPDATE
@@ -73,6 +73,7 @@ type GetConsistencyCheckForUpdateRow struct {
 	Dangling         int32
 	Accepted         int32
 	Orphans          int32
+	OrphanBytes      int64
 	DanglingItems    []byte
 	OrphanItems      []byte
 	OrphansRemovedAt *time.Time
@@ -88,6 +89,7 @@ func (q *Queries) GetConsistencyCheckForUpdate(ctx context.Context, arg GetConsi
 		&i.Dangling,
 		&i.Accepted,
 		&i.Orphans,
+		&i.OrphanBytes,
 		&i.DanglingItems,
 		&i.OrphanItems,
 		&i.OrphansRemovedAt,
@@ -300,25 +302,32 @@ func (q *Queries) RecordDanglingAcceptance(ctx context.Context, arg RecordDangli
 
 const recordOrphanRemoval = `-- name: RecordOrphanRemoval :exec
 UPDATE consistency_checks
-SET orphans = 0, orphan_bytes = 0, orphan_items = '[]', orphans_removed_at = $1::timestamptz,
-    orphans_removed_by = $2::uuid, orphans_removed = $3::integer,
-    orphans_kept = $4::integer
-WHERE tenant_id = $5 AND id = $6
+SET orphans = $1::integer, orphan_bytes = $2::bigint, orphan_items = '[]',
+    orphans_removed_at = $3::timestamptz,
+    orphans_removed_by = $4::uuid, orphans_removed = $5::integer,
+    orphans_kept = $6::integer
+WHERE tenant_id = $7 AND id = $8
 `
 
 type RecordOrphanRemovalParams struct {
-	RemovedAt time.Time
-	RemovedBy uuid.UUID
-	Removed   int32
-	Kept      int32
-	TenantID  uuid.UUID
-	ID        uuid.UUID
+	Orphans     int32
+	OrphanBytes int64
+	RemovedAt   time.Time
+	RemovedBy   uuid.UUID
+	Removed     int32
+	Kept        int32
+	TenantID    uuid.UUID
+	ID          uuid.UUID
 }
 
-// The administrator's confirmed removal of the result's orphans: none is left
-// on the result, and it says how many went and how many were kept.
+// The administrator's confirmed removal of the listed orphans: the list is
+// empty, the counts keep the orphans a list cut at its bound did not show —
+// the next check lists them —, and it says how many went and how many were
+// kept.
 func (q *Queries) RecordOrphanRemoval(ctx context.Context, arg RecordOrphanRemovalParams) error {
 	_, err := q.db.Exec(ctx, recordOrphanRemoval,
+		arg.Orphans,
+		arg.OrphanBytes,
 		arg.RemovedAt,
 		arg.RemovedBy,
 		arg.Removed,

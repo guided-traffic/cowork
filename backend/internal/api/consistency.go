@@ -173,8 +173,9 @@ func (s *Server) RemoveOrphanedObjects(ctx context.Context, req apigen.RemoveOrp
 		if plan, err = planRemoval(ctx, w, t.ID, orphans); err != nil {
 			return err
 		}
+		unlisted, unlistedBytes := unlistedOrphans(check, orphans)
 		if err := w.RecordOrphanRemoval(ctx, writeq.RecordOrphanRemovalParams{TenantID: t.ID, ID: check.ID,
-			RemovedAt: s.h.opts.Now(), RemovedBy: principal(ctx).PersonID,
+			Orphans: unlisted, OrphanBytes: unlistedBytes, RemovedAt: s.h.opts.Now(), RemovedBy: principal(ctx).PersonID,
 			Removed: store.CountColumn(len(plan.remove)), Kept: store.CountColumn(plan.kept)}); err != nil {
 			return fmt.Errorf("record the removal: %w", err)
 		}
@@ -191,6 +192,17 @@ func (s *Server) RemoveOrphanedObjects(ctx context.Context, req apigen.RemoveOrp
 	out := s.removeObjects(context.WithoutCancel(ctx), t, plan.remove)
 	out.Kept = plan.kept
 	return apigen.RemoveOrphanedObjects200JSONResponse(out), nil
+}
+
+// unlistedOrphans are the orphans a result counts and its list, cut at its
+// bound, does not show: a removal leaves them counted, and the next check lists
+// them.
+func unlistedOrphans(check writeq.GetConsistencyCheckForUpdateRow, listed []store.OrphanedObject) (int32, int64) {
+	bytes := check.OrphanBytes
+	for _, o := range listed {
+		bytes -= o.Size
+	}
+	return store.CountColumn(int(check.Orphans) - len(listed)), max(bytes, 0)
 }
 
 // planRemoval asks again which of the listed orphans an attachment names now.

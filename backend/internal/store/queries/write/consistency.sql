@@ -52,7 +52,7 @@ SET id = EXCLUDED.id, checked_at = EXCLUDED.checked_at, dangling = EXCLUDED.dang
 -- name: GetConsistencyCheckForUpdate :one
 -- The tenant's latest result, if it is the one a confirmation names, held for
 -- the confirmation's transaction.
-SELECT id, dangling, accepted, orphans, dangling_items, orphan_items, orphans_removed_at
+SELECT id, dangling, accepted, orphans, orphan_bytes, dangling_items, orphan_items, orphans_removed_at
 FROM consistency_checks
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id)
 FOR UPDATE;
@@ -63,10 +63,13 @@ FOR UPDATE;
 SELECT id FROM attachments WHERE tenant_id = sqlc.arg(tenant_id) AND id = ANY(sqlc.arg(ids)::uuid[]) ORDER BY id;
 
 -- name: RecordOrphanRemoval :exec
--- The administrator's confirmed removal of the result's orphans: none is left
--- on the result, and it says how many went and how many were kept.
+-- The administrator's confirmed removal of the listed orphans: the list is
+-- empty, the counts keep the orphans a list cut at its bound did not show —
+-- the next check lists them —, and it says how many went and how many were
+-- kept.
 UPDATE consistency_checks
-SET orphans = 0, orphan_bytes = 0, orphan_items = '[]', orphans_removed_at = sqlc.arg(removed_at)::timestamptz,
+SET orphans = sqlc.arg(orphans)::integer, orphan_bytes = sqlc.arg(orphan_bytes)::bigint, orphan_items = '[]',
+    orphans_removed_at = sqlc.arg(removed_at)::timestamptz,
     orphans_removed_by = sqlc.arg(removed_by)::uuid, orphans_removed = sqlc.arg(removed)::integer,
     orphans_kept = sqlc.arg(kept)::integer
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
