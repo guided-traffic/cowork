@@ -1,0 +1,41 @@
+{{- /*
+The PodMonitor of docs/adr/0060 D3: the backend pods' `metrics` port and, with
+frontend.metrics.exporter.enabled, the frontend pods' `nginx-metrics` port
+(D7). A PodMonitor, because the metrics port is on no Service (D2). Needs the
+Prometheus Operator's CRDs.
+*/}}
+{{- if .Values.metrics.podMonitor.enabled }}
+{{- $backend := include "cowork.metricsEnabled" . }}
+{{- if not (or $backend .Values.frontend.metrics.exporter.enabled) }}
+{{- fail "metrics.podMonitor.enabled scrapes nothing: set metrics.enabled or frontend.metrics.exporter.enabled" }}
+{{- end }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "cowork.fullname" . }}
+  labels:
+    {{- include "cowork.labels" . | nindent 4 }}
+    {{- with .Values.metrics.podMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "cowork.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  podMetricsEndpoints:
+    {{- if $backend }}
+    # The backend's metrics listener (COWORK_METRICS_ADDR), no authentication.
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.metrics.podMonitor.interval }}
+      scrapeTimeout: {{ .Values.metrics.podMonitor.scrapeTimeout }}
+    {{- end }}
+    {{- if .Values.frontend.metrics.exporter.enabled }}
+    # The nginx exporter sidecar of the frontend pods (docs/adr/0060 D7).
+    - port: nginx-metrics
+      path: /metrics
+      interval: {{ .Values.metrics.podMonitor.interval }}
+      scrapeTimeout: {{ .Values.metrics.podMonitor.scrapeTimeout }}
+    {{- end }}
+{{- end }}

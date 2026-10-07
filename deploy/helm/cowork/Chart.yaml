@@ -1,3 +1,8 @@
+# An optional dependency, never a hard one: metrics.podMonitor,
+# metrics.serviceMonitor and metrics.prometheusRule render resources of the
+# Prometheus Operator, whose CRDs (monitoring.coreos.com/v1) the cluster must
+# have; each is off by default, and the install notes name them when they are
+# on (docs/adr/0060 D3).
 apiVersion: v2
 name: cowork
 description: Multi-tenant backlog and kanban board for people and LLM agents working across many projects

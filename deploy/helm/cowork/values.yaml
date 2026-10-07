@@ -353,6 +353,62 @@ ingress:
   #    hosts:
   #      - cowork.example.com
 
+# The backend's Prometheus metrics (docs/adr/0060): Prometheus text at
+# /metrics on a listener of their own, COWORK_METRICS_ADDR, without
+# authentication. The port is on the backend pods — the container port
+# `metrics` — and never on the backend Service, so the Ingress never reaches
+# it. The chart ships no NetworkPolicy: admitting only the monitoring
+# namespace to the port is a policy of the cluster's
+# (docs/operations/metrics.md). The resources below need the Prometheus
+# Operator's CRDs (monitoring.coreos.com/v1) or the Grafana sidecar; each is
+# off by default.
+metrics:
+  # COWORK_METRICS_ADDR=":<port>" and the container port `metrics`. false
+  # renders COWORK_METRICS_ADDR="", which switches the backend's listener off.
+  enabled: true
+  # The port of the listener; it must differ from backend.containerPort.
+  port: 8081
+  # A PodMonitor that scrapes the `metrics` port of the backend pods and, with
+  # frontend.metrics.exporter.enabled, the `nginx-metrics` port of the
+  # frontend pods.
+  podMonitor:
+    enabled: false
+    # Labels on the PodMonitor: what your Prometheus's podMonitorSelector
+    # matches, e.g. release: kube-prometheus-stack.
+    labels: {}
+    interval: 30s
+    scrapeTimeout: 10s
+  # For a Prometheus that discovers Services only: a ServiceMonitor and a
+  # headless Service <fullname>-backend-metrics with the metrics port alone,
+  # so the backend Service still never carries it. The nginx exporter is
+  # scraped through the PodMonitor only.
+  serviceMonitor:
+    enabled: false
+    # Labels on the ServiceMonitor: what your Prometheus's
+    # serviceMonitorSelector matches.
+    labels: {}
+    interval: 30s
+    scrapeTimeout: 10s
+  # A PrometheusRule with the alerts of docs/operations/metrics.md, each
+  # linking its section there.
+  prometheusRule:
+    enabled: false
+    # Labels on the PrometheusRule: what your Prometheus's ruleSelector
+    # matches.
+    labels: {}
+    # Labels added to every alert, for Alertmanager's routing, e.g.
+    # team: platform; a severity here replaces the alert's own.
+    alertLabels: {}
+  # A ConfigMap with the Grafana dashboard of the backend's metrics, for the
+  # Grafana sidecar that loads labelled ConfigMaps.
+  grafanaDashboard:
+    enabled: false
+    # The label the sidecar looks for; kube-prometheus-stack's default.
+    labels:
+      grafana_dashboard: "1"
+    # e.g. the folder annotation your sidecar reads.
+    annotations: {}
+
 backend:
   replicaCount: 1
   image:
@@ -514,3 +570,23 @@ frontend:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # nginx's counts for Prometheus (docs/adr/0060 D7). The configuration in the
+  # image always serves stub_status on 127.0.0.1:8082 inside the pod, which
+  # nothing outside the pod reaches; the exporter sidecar reads it and serves
+  # Prometheus text on the container port `nginx-metrics`, which
+  # metrics.podMonitor scrapes. Like nginx it runs as 101 with a read-only root
+  # filesystem.
+  metrics:
+    exporter:
+      enabled: false
+      image:
+        repository: nginx/nginx-prometheus-exporter
+        tag: "1.5.3"
+        pullPolicy: IfNotPresent
+      port: 9113
+      resources:
+        limits:
+          memory: 32Mi
+        requests:
+          cpu: 5m
+          memory: 16Mi

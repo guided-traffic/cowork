@@ -78,6 +78,34 @@ Chat:     on, {{ len .Values.chat.providers }} provider(s), the first the defaul
 {{- else }}
 Chat:     off (chat.providers is empty)
 {{- end }}
+{{- if include "cowork.metricsEnabled" . }}
+Metrics:  Prometheus text at /metrics on port {{ .Values.metrics.port }} of the backend pods (container port metrics), without
+          authentication, on no Service{{ if .Values.metrics.serviceMonitor.enabled }} but the headless {{ include "cowork.metrics.fullname" . }}{{ end }}
+  NOTE: the chart ships no NetworkPolicy. Admit only your monitoring namespace to port {{ .Values.metrics.port }} of the
+  backend pods, beside the policy that admits the Ingress controller (docs/operations/metrics.md).
+{{- else }}
+Metrics:  off (metrics.enabled is false, so COWORK_METRICS_ADDR is empty)
+{{- end }}
+{{- $monitors := list }}
+{{- if .Values.metrics.podMonitor.enabled }}{{ $monitors = append $monitors "PodMonitor" }}{{ end }}
+{{- if .Values.metrics.serviceMonitor.enabled }}{{ $monitors = append $monitors "ServiceMonitor" }}{{ end }}
+{{- if .Values.metrics.prometheusRule.enabled }}{{ $monitors = append $monitors "PrometheusRule" }}{{ end }}
+{{- if $monitors }}
+          {{ join ", " $monitors }} {{ include "cowork.fullname" . }}: needs the Prometheus Operator's CRDs (monitoring.coreos.com/v1)
+{{- end }}
+{{- if and .Values.metrics.podMonitor.enabled .Values.metrics.serviceMonitor.enabled }}
+  NOTE: metrics.podMonitor and metrics.serviceMonitor are both on, and a Prometheus that reads both scrapes the
+  backend twice; keep one.
+{{- end }}
+{{- if .Values.metrics.grafanaDashboard.enabled }}
+          the Grafana dashboard in ConfigMap {{ printf "%s-dashboard" (include "cowork.fullname" .) | trunc 63 | trimSuffix "-" }}, for a Grafana sidecar that loads labelled ConfigMaps
+{{- end }}
+{{- if .Values.frontend.metrics.exporter.enabled }}
+          nginx's counts: the exporter sidecar of the frontend pods, port {{ .Values.frontend.metrics.exporter.port }} (container port nginx-metrics)
+{{- if not .Values.metrics.podMonitor.enabled }}
+  NOTE: the nginx exporter is scraped through metrics.podMonitor only, which is off.
+{{- end }}
+{{- end }}
 
 Reach the UI:
 {{- if .Values.ingress.enabled }}
@@ -103,3 +131,7 @@ Reach the API directly (for tokens and scripts):
 
 Check the health:
   kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}
+{{- if include "cowork.metricsEnabled" . }}
+  kubectl -n {{ .Release.Namespace }} port-forward deploy/{{ include "cowork.backend.fullname" . }} {{ .Values.metrics.port }}:{{ .Values.metrics.port }}
+  curl -s http://localhost:{{ .Values.metrics.port }}/metrics | grep '^cowork_migrations'
+{{- end }}

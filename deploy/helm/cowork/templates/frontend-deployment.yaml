@@ -64,6 +64,29 @@ spec:
             # would hide it.
             - name: tmp
               mountPath: /tmp
+        {{- with .Values.frontend.metrics.exporter }}
+        {{- if .enabled }}
+        # nginx's counts for Prometheus (docs/adr/0060 D7): the exporter reads
+        # stub_status on the pod's loopback address, which the configuration in
+        # the image serves there, and answers a scrape on nginx-metrics. It runs
+        # as the pod's user, writes nothing, and has no probe of its own.
+        - name: nginx-exporter
+          image: "{{ .image.repository }}:{{ .image.tag }}"
+          imagePullPolicy: {{ .image.pullPolicy }}
+          args:
+            - --nginx.scrape-uri=http://127.0.0.1:8082/stub_status
+            - --web.listen-address=:{{ .port }}
+            - --web.telemetry-path=/metrics
+          securityContext:
+            {{- toYaml $.Values.frontend.securityContext | nindent 12 }}
+          ports:
+            - name: nginx-metrics
+              containerPort: {{ .port }}
+              protocol: TCP
+          resources:
+            {{- toYaml .resources | nindent 12 }}
+        {{- end }}
+        {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}

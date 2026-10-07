@@ -1,0 +1,48 @@
+{{- /*
+The ServiceMonitor variant of docs/adr/0060 D3, for a Prometheus that
+discovers Services only: a headless Service with the backend's metrics port
+alone — the backend Service never carries it (D2) — and the ServiceMonitor
+that selects it. Needs the Prometheus Operator's CRDs.
+*/}}
+{{- if .Values.metrics.serviceMonitor.enabled }}
+{{- if not (include "cowork.metricsEnabled" .) }}
+{{- fail "metrics.serviceMonitor.enabled needs metrics.enabled: its Service carries the backend's metrics port" }}
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cowork.metrics.fullname" . }}
+  labels:
+    {{- include "cowork.labels" . | nindent 4 }}
+    app.kubernetes.io/component: metrics
+spec:
+  # Headless: the endpoints are the backend pods themselves, each scraped on
+  # its own; no cluster address forwards to the port.
+  clusterIP: None
+  ports:
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    {{- include "cowork.componentSelectorLabels" (dict "root" . "component" "backend") | nindent 4 }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "cowork.fullname" . }}
+  labels:
+    {{- include "cowork.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "cowork.componentSelectorLabels" (dict "root" . "component" "metrics") | nindent 6 }}
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout }}
+{{- end }}

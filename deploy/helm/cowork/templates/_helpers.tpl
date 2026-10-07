@@ -33,6 +33,35 @@ Component names: <fullname>-backend and <fullname>-frontend.
 {{- end }}
 
 {{/*
+The headless Service of the backend's metrics port: <fullname>-backend-metrics.
+*/}}
+{{- define "cowork.metrics.fullname" -}}
+{{- printf "%s-backend-metrics" (include "cowork.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{/*
+Whether the backend's metrics listener is on (docs/adr/0060 D1): metrics.enabled,
+on a port of its own. A monitoring resource that needs the listener fails
+rendering without it.
+*/}}
+{{- define "cowork.metricsEnabled" -}}
+{{- if .Values.metrics.enabled -}}
+{{- if eq (int .Values.metrics.port) (int .Values.backend.containerPort) -}}
+{{- fail "metrics.port must differ from backend.containerPort: the metrics are never served on the API's listener (docs/adr/0060 D1)" -}}
+{{- end -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+The labels of one alert: its severity, under metrics.prometheusRule.alertLabels,
+which win. Call with (dict "root" . "severity" "warning").
+*/}}
+{{- define "cowork.alertLabels" -}}
+{{- toYaml (merge (dict) (deepCopy (.root.Values.metrics.prometheusRule.alertLabels | default dict)) (dict "severity" .severity)) }}
+{{- end }}
+
+{{/*
 Create chart name and version as used by the chart label.
 */}}
 {{- define "cowork.chart" -}}
