@@ -23,7 +23,7 @@ the schema stands. The commands, the two Helm flags for the values and what each
    kubectl -n cowork port-forward deploy/cowork-backend 18081:8081 &   # example namespace and release
    curl -s localhost:18081/metrics | grep '^cowork_migrations'
    # cowork_migrations_schema_dirty 0
-   # cowork_migrations_schema_version 43
+   # cowork_migrations_schema_version 42
    ```
 
    or, as the owner role, `SELECT version, dirty FROM schema_migrations;`.
@@ -31,9 +31,11 @@ the schema stands. The commands, the two Helm flags for the values and what each
 ## The order of an upgrade
 
 **The new release's migrations run before its servers start**, in the init container of each new
-backend pod — or in the chart's migration Job, where the installation runs the migrations as a Job
-([installation.md](installation.md#how-the-schema-is-migrated)). Pods that migrate together take turns
-on an advisory lock; the first applies, the others find the schema current.
+backend pod (`migrations.mode: onStart`, the default) — or, with `migrations.mode: job`, in the
+chart's migration Job, a `pre-upgrade` hook that migrates and then runs the bootstrap before any new
+pod starts, and fails the release when it fails ([installation.md](installation.md#job-mode)). Pods
+that migrate together take turns on an advisory lock; the first applies, the others find the schema
+current.
 
 **The old pods keep serving the newer schema** while the rollout lasts, and that is safe for one
 release: a migration of a release never drops, renames or narrows what the release before it reads —
