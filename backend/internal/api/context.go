@@ -20,11 +20,12 @@ import (
 // document shows, the attachments it lists, and the comments and acts a
 // request may ask for (the document's maximum, docs/adr/0044 D2).
 const (
-	contextDefault    = 10
-	maxContextLinks   = 200
-	maxContextNodes   = 200
-	maxContextFiles   = 200
-	maxContextEntries = 100
+	contextDefault         = 10
+	maxContextLinks        = 200
+	maxContextNodes        = 200
+	maxContextFiles        = 200
+	maxContextPullRequests = 200
+	maxContextEntries      = 100
 )
 
 // contextResponse answers the context as UTF-8 Markdown, without an ETag: it
@@ -69,6 +70,9 @@ func (s *Server) ExportTicketContext(ctx context.Context, req apigen.ExportTicke
 			return err
 		}
 		if err := contextAttachments(ctx, r, t, tc, &doc); err != nil {
+			return err
+		}
+		if err := contextPullRequests(ctx, r, t, tc, &doc); err != nil {
 			return err
 		}
 		if err := contextComments(ctx, r, t, tc, comments, &doc); err != nil {
@@ -138,6 +142,31 @@ func contextAttachments(ctx context.Context, r *store.Reader, t tenantScope, tc 
 			Size: v.Size, URL: v.ContentUrl})
 	}
 	return err
+}
+
+// contextPullRequests reads what GitHub's webhook linked to the ticket
+// (docs/adr/0071 D6), oldest link first, under the ticket's predicate.
+func contextPullRequests(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx, doc *markdown.Context) error {
+	rows, err := r.ListTicketPullRequests(ctx, readq.ListTicketPullRequestsParams{TenantID: t.ID, TicketID: tc.row.ID,
+		PageSize: maxContextPullRequests})
+	for _, p := range rows {
+		pr := markdown.PullRequest{Repository: p.Repository, Title: p.Title, State: p.State, Author: deref(p.Author),
+			URL: p.Url, From: foundInWord(p.Kind, p.FoundIn), MergedAt: p.MergedAt, SHA: deref(p.Sha)}
+		if p.Number != nil {
+			pr.Number = int(*p.Number)
+		}
+		doc.PullRequests = append(doc.PullRequests, pr)
+	}
+	return err
+}
+
+// foundInWord says where a key was read as a reader names it: the title of a
+// pull request, the subject of a commit.
+func foundInWord(kind, foundIn string) string {
+	if foundIn == "subject" && kind == entityPullRequest {
+		return "title"
+	}
+	return foundIn
 }
 
 // contextComments reads the last n comments and shows them oldest first.

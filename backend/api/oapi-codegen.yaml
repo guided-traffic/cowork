@@ -12,8 +12,10 @@ output-options:
   nullable-type: true
   # The event stream and a chat turn are served outside the generated server
   # (internal/api/events.go, chat.go): a stream is not a response a handler
-  # returns.
-  exclude-operation-ids: [streamEvents, runChatTurn]
+  # returns. So is GitHub's webhook (internal/api/github.go): its handler reads
+  # the raw body to verify its signature before anything parses it
+  # (docs/adr/0071 D3).
+  exclude-operation-ids: [streamEvents, runChatTurn, receiveGitHubWebhook]
   # Keep the models nothing generated refers to: the chat turn's body, which
   # only the excluded operation takes, and the data of its events, which only
   # the document's components name. The server reads and writes those types.

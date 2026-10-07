@@ -1,0 +1,136 @@
+# The integrations of a tenant: GitHub's inbound webhook, optional per tenant
+# and on trial (docs/adr/0071). cowork holds no GitHub credential and calls
+# nothing at GitHub; it is called.
+github:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: getGitHubIntegration
+    tags: [integrations]
+    summary: Whether the tenant takes GitHub's webhook, and where
+    description: |
+      For the tenant's administrators (`read` scope): whether a webhook secret exists, when and by
+      whom it was made — never the secret, which is shown once, when it is made — and the path of
+      the endpoint, which GitHub posts to under the installation's `COWORK_BASE_URL`
+      (docs/adr/0071 D1, D7). Until a secret exists the endpoint answers every delivery like an
+      unknown tenant.
+    responses:
+      '200':
+        description: The integration
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/GitHubIntegration'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+githubSecret:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  post:
+    operationId: createGitHubSecret
+    tags: [integrations]
+    summary: Make the tenant's webhook secret, or rotate it
+    description: |
+      A tenant administrator's act in a browser session (docs/adr/0071 D1, docs/adr/0035 D5): the
+      secret lets whoever holds it write links into the tenant, which outlives a leaked token's
+      revocation, so a token cannot call this (`403 session_required`), and never an agent
+      (docs/adr/0043 D3). The server draws 256 random bits and answers them as 64 hexadecimal
+      characters in `secret`, once; it keeps them sealed with a key derived from
+      `COWORK_SESSION_KEY`, never in a form it could show again. A secret that exists is replaced
+      at once — a delivery signed with the old one is refused from this answer on — which is the
+      rotation. No `Idempotency-Key`: a stored answer could not carry the secret
+      (docs/adr/0045 D6), and a repetition after a lost answer makes a new secret, which is the
+      one to give GitHub. Recorded as `created` on `github_webhook_secret`, without the secret.
+    security:
+      - sessionCookie: []
+    responses:
+      '201':
+        description: The new secret, shown once
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/GitHubSecretCreated'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: revokeGitHubSecret
+    tags: [integrations]
+    summary: Revoke the tenant's webhook secret
+    description: |
+      A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0043 D3). It only
+      takes access away, so a token may (docs/adr/0035 D5). From this answer on the endpoint answers
+      every delivery like an unknown tenant; the links made stay. `204` also when there is none.
+      Recorded as `revoked` on `github_webhook_secret`.
+    responses:
+      '204':
+        description: The tenant takes no webhook
+      default:
+        $ref: './components/responses.yaml#/Problem'
+githubWebhook:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  post:
+    operationId: receiveGitHubWebhook
+    tags: [integrations]
+    summary: GitHub's webhook deliveries for the tenant
+    description: |
+      Public: no session and no token — a cookie or an `Authorization` header is ignored — and no
+      origin check, because GitHub sends no `Origin`; the credential is the signature
+      (docs/adr/0071 D2, D3). The pipeline hands the request to its handler before the tenant
+      boundary, and the handler goes in this order:
+
+      1. The tenant and its secret: an unknown tenant, and one without a secret, are the same
+         `404 not_found`.
+      2. The body, bounded by `COWORK_MAX_JSON_BODY` (docs/adr/0039 D2): `413 payload_too_large`.
+      3. `X-Hub-Signature-256`, `sha256=` and the HMAC-SHA256 of the raw body under the secret,
+         compared in constant time before anything is parsed: missing or wrong is
+         `401 signature_invalid`, and nothing is read or written.
+      4. `X-GitHub-Delivery`, a UUID (`400 validation_failed` otherwise), and the body's type,
+         `application/json` (`415 unsupported_media_type` otherwise). A delivery the tenant took
+         in the last twenty-four hours answers `200` without effect.
+      5. `X-GitHub-Event`: `pull_request` with the action `opened`, `edited`, `synchronize`,
+         `reopened` or `closed`, and `push` to the repository's default branch, are read; the
+         repository (`repository.clone_url`, normalised as docs/adr/0066 D1 says) must be bound to
+         a project of the tenant. Every delivery taken answers `202`, whether it linked anything,
+         named a repository the tenant does not bind, or was another event — the answer says
+         nothing about what is bound or which keys exist.
+
+      A pull request is linked by its title and body: a `Cowork-Ticket: <tenant>/<KEY>-<n>`
+      trailer line or a line that is a full key alone, else the short keys in parentheses at the
+      end of the title (docs/adr/0068 D1, D2, D5). Its commits are not fetched — cowork calls
+      nothing at GitHub — and are linked by the push to the default branch, each commit by its
+      message's trailers, else its subject's short keys. A key of another tenant, or of no ticket,
+      is passed over. Nothing changes a ticket's state (docs/adr/0071 D6).
+    security: []
+    x-cowork-signed: github
+    parameters:
+      - name: X-Hub-Signature-256
+        in: header
+        description: '`sha256=` and the hex HMAC-SHA256 of the body under the tenant''s secret'
+        schema: {type: string}
+      - name: X-GitHub-Event
+        in: header
+        description: The event, such as `pull_request`, `push` or `ping`
+        schema: {type: string}
+      - name: X-GitHub-Delivery
+        in: header
+        description: The delivery's id, a UUID that a redelivery repeats
+        schema: {type: string}
+    requestBody:
+      required: true
+      description: |
+        GitHub's payload, read only after its signature: of `pull_request` the action, the pull
+        request's number, title, body, state, `merged`, `merged_at`, `updated_at`, `html_url` and
+        `user.login`; of `push` the `ref` and the commits' `id`, `message`, `url` and author; of
+        both `repository.clone_url` and `repository.default_branch`. Everything else is passed over.
+      content:
+        application/json:
+          schema:
+            type: object
+    responses:
+      '200':
+        description: The tenant took this delivery before; nothing happened again
+      '202':
+        description: The delivery is taken; what it changed, if anything, is not said
+      default:
+        $ref: './components/responses.yaml#/Problem'

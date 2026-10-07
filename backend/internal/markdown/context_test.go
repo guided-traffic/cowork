@@ -63,6 +63,32 @@ func TestRenderContext(t *testing.T) {
 			Exported: *at("2026-10-04T09:12:00Z"), By: "Sam",
 			Comments: []Comment{}, Activity: nil,
 		},
+		// What GitHub's webhook linked (docs/adr/0071 D6): the section after the
+		// attachments, a title quoted as text from outside the tenant, and the
+		// acts on a pull request and a commit by what they name.
+		"context-pull-requests": {
+			Ticket: Ticket{Key: "acme/VKO-14", Title: "Guard the failover gate", Type: "task", State: "review", Severity: "medium",
+				Security: "none", Horizon: "now", Effort: "S", Opened: *at("2026-10-01T00:00:00Z")},
+			Exported: *at("2026-10-06T09:12:00Z"), By: "Sam", Comments: []Comment{},
+			PullRequests: []PullRequest{
+				{Number: 34, Repository: "github.com/acme/app", Title: "fix(controller): guard the gate (VKO-14)\n## Links",
+					State: "merged", Author: "octocat", URL: "https://github.com/acme/app/pull/34", From: "title",
+					MergedAt: at("2026-10-06T09:00:00Z")},
+				{SHA: "0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c", Repository: "github.com/acme/app",
+					Title: "docs: name the gate (VKO-14)", State: "merged", URL: "https://github.com/acme/app/commit/0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c",
+					From: "subject", MergedAt: at("2026-10-06T09:05:00Z")},
+			},
+			Activity: []Act{
+				{At: *at("2026-10-05T08:00:00Z"), Actor: "system:github", Action: "linked",
+					After: map[string]any{"number": float64(34), "repository": "github.com/acme/app", "state": "open", "found_in": "subject"}},
+				{At: *at("2026-10-06T09:00:00Z"), Actor: "system:github", Action: "merged",
+					Before: map[string]any{"state": "open"}, After: map[string]any{"number": 34, "repository": "github.com/acme/app", "state": "merged"}},
+				{At: *at("2026-10-06T09:05:00Z"), Actor: "system:github", Action: "linked",
+					After: map[string]any{"sha": "0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c", "repository": "github.com/acme/app", "found_in": "subject"}},
+				{At: *at("2026-10-06T09:10:00Z"), Actor: "Sam", Action: "unlinked",
+					Before: map[string]any{"sha": "0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c", "repository": "github.com/acme/app"}},
+			},
+		},
 	} {
 		got := RenderContext(c)
 		path := filepath.Join("testdata", name+".md")

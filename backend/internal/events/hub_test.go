@@ -57,6 +57,23 @@ func TestFilter(t *testing.T) {
 	assert.True(t, flt.Admits(e), "an administrator")
 }
 
+// docs/adr/0071 D6, docs/adr/0054 D2: what GitHub's webhook links to a
+// ticket, or a person removes, is pull_request.changed — a pull request's or a
+// commit's act —, judged as the ticket's other acts: a confidential ticket's
+// reaches whoever may read the ticket only.
+func TestPullRequestEvents(t *testing.T) {
+	f := newFixtures()
+	for _, entity := range []string{"pull_request", "commit"} {
+		e := Event{Notification: f.note(f.project)}
+		e.Entity, e.Action = entity, "linked"
+		assert.Equal(t, "pull_request.changed", e.Name(), entity)
+		assert.True(t, f.filter().Admits(e), entity)
+		e.Confidential = true
+		assert.False(t, f.filter().Admits(e), "%s of a confidential ticket the person cannot read", entity)
+		assert.False(t, e.ChangesAdmission(), entity)
+	}
+}
+
 // docs/adr/0014 D3, docs/adr/0054 D2: an act on a project as a whole — the
 // sort by the score — is project.changed, and reaches whoever sees the project.
 func TestProjectEvents(t *testing.T) {

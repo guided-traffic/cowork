@@ -69,6 +69,10 @@ func (e Event) Name() string {
 		return "link.changed"
 	case "interest":
 		return "interest.changed"
+	case "pull_request", "commit":
+		// What GitHub's webhook linked to the ticket, or a person removed
+		// (docs/adr/0071 D6): the ticket's own fields and version stay.
+		return "pull_request.changed"
 	case store.EntityMembership:
 		return "membership.changed"
 	case store.EntityInbox:

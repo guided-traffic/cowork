@@ -168,8 +168,9 @@ type handler struct {
 	sourceKey []byte
 	// loginSealer seals the state of a login through the identity provider
 	// into its cookie, refreshSealer a session's refresh token
-	// (docs/adr/0031 D1).
-	loginSealer, refreshSealer auth.Sealer
+	// (docs/adr/0031 D1), webhookSealer a tenant's GitHub webhook secret
+	// (docs/adr/0071 D1).
+	loginSealer, refreshSealer, webhookSealer auth.Sealer
 	// noRefreshToken and noGroups warn once per process: an issuer that gives
 	// no refresh token leaves a session on its login's groups, and one whose
 	// refresh carries no groups claim makes the refresh read nothing
@@ -221,6 +222,7 @@ func New(opts Options) (http.Handler, error) {
 		sourceKey:      newSourceKey(opts.SessionKey),
 		loginSealer:    auth.NewSealer(opts.SessionKey, auth.LabelOIDCLogin),
 		refreshSealer:  auth.NewSealer(opts.SessionKey, auth.LabelRefreshToken),
+		webhookSealer:  auth.NewSealer(opts.SessionKey, auth.LabelGitHubWebhookSecret),
 	}
 	h.server = &Server{h: h, db: opts.DB, cursors: newCursorCodec(opts.SessionKey), storage: opts.Storage,
 		uploads: make(chan struct{}, uploadSlots(opts.AttachmentMaxBytes))}
@@ -325,12 +327,11 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if slug, ok := pathParams["tenant"]; ok {
-		scope, perr := h.boundary(ctx, slug, route.Path, route.Operation.OperationID)
-		if perr != nil {
+		var perr *problem.Error
+		if ctx, perr = h.admitTenant(ctx, route, slug); perr != nil {
 			problem.Write(w, r, perr)
 			return
 		}
-		ctx = withTenant(ctx, scope)
 	}
 	if route.Operation.OperationID == opStreamEvents {
 		// A stream lives longer than any request timeout (docs/adr/0039 D2).
@@ -345,9 +346,25 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.serveOperation(w, r.WithContext(ctx), route, pathParams)
 }
 
+// admitTenant admits a request to the tenant its path names: a person's
+// request through the tenant boundary (docs/adr/0023 D5), a signed delivery of
+// GitHub's webhook through its tenant's secret, which no person holds
+// (docs/adr/0071 D2).
+func (h *handler) admitTenant(ctx context.Context, route *routers.Route, slug string) (context.Context, *problem.Error) {
+	if signed(route.Operation) {
+		return h.webhookTenant(ctx, slug)
+	}
+	scope, perr := h.boundary(ctx, slug, route.Path, route.Operation.OperationID)
+	if perr != nil {
+		return ctx, perr
+	}
+	return withTenant(ctx, scope), nil
+}
+
 // serveOperation holds an admitted request to the request timeout, the body
-// limit and the document, and serves it: a turn of the chat by serveChat,
-// every other operation by the generated server.
+// limit and the document, and serves it: a turn of the chat by serveChat, a
+// delivery of GitHub's webhook by serveGitHubWebhook, every other operation by
+// the generated server.
 func (h *handler) serveOperation(w http.ResponseWriter, r *http.Request, route *routers.Route, pathParams map[string]string) {
 	ctx := r.Context()
 	unlimited := ctx
@@ -371,6 +388,8 @@ func (h *handler) serveOperation(w http.ResponseWriter, r *http.Request, route *
 		// The request timeout bounded reading the body; a turn has a limit
 		// of its own and streams (docs/adr/0039 D2).
 		h.serveChat(w, r.WithContext(unlimited))
+	case route.Operation.OperationID == opReceiveGitHubWebhook:
+		h.serveGitHubWebhook(w, r)
 	case h.opts.ValidateResponses:
 		h.serveValidated(w, r, route, pathParams)
 	default:

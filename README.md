@@ -1019,6 +1019,7 @@ every error body carries one of these as `code`.
 | `token_revoked` | 401 | The token was revoked, or its person deactivated (docs/adr/0035 D6) |
 | `not_allowed` | 401 | The token's person is outside the identity provider's gate: none of their groups, as of their last login or groups refresh, is in COWORK_OIDC_ALLOWED_GROUPS or is COWORK_ADMIN_GROUP, or the person belongs to another issuer than the configured one, or their groups were read longer ago than COWORK_OIDC_GROUPS_MAX_AGE, until a sign-in in the browser reads them again. The token is refused, not revoked, and works again once the person is back inside (docs/adr/0035 D8) |
 | `invalid_credentials` | 401 | The local login failed: the same answer, in the same time, for an unknown username, a wrong password, a locked or a deactivated account (docs/adr/0033 D6) |
+| `signature_invalid` | 401 | A GitHub webhook delivery's `X-Hub-Signature-256` is missing or is not the HMAC of its body under the tenant's secret; nothing was read or written (docs/adr/0071 D3) |
 | `forbidden` | 403 | The person's role does not allow the act (docs/adr/0034) |
 | `insufficient_scope` | 403 | The token's scope does not reach the act (docs/adr/0035 D3) |
 | `agent_forbidden` | 403 | The act is on the agent hard-off list, needs a capability the token lacks, or lies outside what the capability grants — `close` closes from in-progress and review only; `detail` names which (docs/adr/0043 D4, D5) |

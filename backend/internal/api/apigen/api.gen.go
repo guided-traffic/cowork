@@ -63,6 +63,7 @@ const (
 	AuditActionAsked              AuditAction = "asked"
 	AuditActionAssigned           AuditAction = "assigned"
 	AuditActionBooked             AuditAction = "booked"
+	AuditActionClosed             AuditAction = "closed"
 	AuditActionCommented          AuditAction = "commented"
 	AuditActionConfidentialLifted AuditAction = "confidential_lifted"
 	AuditActionConfidentialSet    AuditAction = "confidential_set"
@@ -79,6 +80,7 @@ const (
 	AuditActionLoggedIn           AuditAction = "logged_in"
 	AuditActionLoggedOut          AuditAction = "logged_out"
 	AuditActionLoginFailed        AuditAction = "login_failed"
+	AuditActionMerged             AuditAction = "merged"
 	AuditActionOverridden         AuditAction = "overridden"
 	AuditActionPasswordChanged    AuditAction = "password_changed"
 	AuditActionPasswordReset      AuditAction = "password_reset"
@@ -87,6 +89,7 @@ const (
 	AuditActionReactivated        AuditAction = "reactivated"
 	AuditActionRead               AuditAction = "read"
 	AuditActionRefused            AuditAction = "refused"
+	AuditActionReopened           AuditAction = "reopened"
 	AuditActionRestored           AuditAction = "restored"
 	AuditActionRevoked            AuditAction = "revoked"
 	AuditActionTransitioned       AuditAction = "transitioned"
@@ -110,6 +113,8 @@ func (e AuditAction) Valid() bool {
 	case AuditActionAssigned:
 		return true
 	case AuditActionBooked:
+		return true
+	case AuditActionClosed:
 		return true
 	case AuditActionCommented:
 		return true
@@ -143,6 +148,8 @@ func (e AuditAction) Valid() bool {
 		return true
 	case AuditActionLoginFailed:
 		return true
+	case AuditActionMerged:
+		return true
 	case AuditActionOverridden:
 		return true
 	case AuditActionPasswordChanged:
@@ -158,6 +165,8 @@ func (e AuditAction) Valid() bool {
 	case AuditActionRead:
 		return true
 	case AuditActionRefused:
+		return true
+	case AuditActionReopened:
 		return true
 	case AuditActionRestored:
 		return true
@@ -403,6 +412,7 @@ const (
 	InboxReasonBlockerClosed InboxReason = "blocker_closed"
 	InboxReasonCommented     InboxReason = "commented"
 	InboxReasonMentioned     InboxReason = "mentioned"
+	InboxReasonMerged        InboxReason = "merged"
 	InboxReasonStateChanged  InboxReason = "state_changed"
 	InboxReasonUrgent        InboxReason = "urgent"
 )
@@ -421,6 +431,8 @@ func (e InboxReason) Valid() bool {
 	case InboxReasonCommented:
 		return true
 	case InboxReasonMentioned:
+		return true
+	case InboxReasonMerged:
 		return true
 	case InboxReasonStateChanged:
 		return true
@@ -551,6 +563,7 @@ const (
 	ProblemCodeProjectKeyTaken        ProblemCode = "project_key_taken"
 	ProblemCodeRepositoryBound        ProblemCode = "repository_bound"
 	ProblemCodeSessionRequired        ProblemCode = "session_required"
+	ProblemCodeSignatureInvalid       ProblemCode = "signature_invalid"
 	ProblemCodeStateConflict          ProblemCode = "state_conflict"
 	ProblemCodeTenantSlugTaken        ProblemCode = "tenant_slug_taken"
 	ProblemCodeTimeout                ProblemCode = "timeout"
@@ -641,6 +654,8 @@ func (e ProblemCode) Valid() bool {
 		return true
 	case ProblemCodeSessionRequired:
 		return true
+	case ProblemCodeSignatureInvalid:
+		return true
 	case ProblemCodeStateConflict:
 		return true
 	case ProblemCodeTenantSlugTaken:
@@ -695,6 +710,66 @@ const (
 func (e ProjectRankSortBy) Valid() bool {
 	switch e {
 	case ProjectRankSortByScore:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PullRequestFoundIn.
+const (
+	PullRequestFoundInBody    PullRequestFoundIn = "body"
+	PullRequestFoundInSubject PullRequestFoundIn = "subject"
+	PullRequestFoundInTrailer PullRequestFoundIn = "trailer"
+)
+
+// Valid indicates whether the value is a known member of the PullRequestFoundIn enum.
+func (e PullRequestFoundIn) Valid() bool {
+	switch e {
+	case PullRequestFoundInBody:
+		return true
+	case PullRequestFoundInSubject:
+		return true
+	case PullRequestFoundInTrailer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PullRequestKind.
+const (
+	PullRequestKindCommit      PullRequestKind = "commit"
+	PullRequestKindPullRequest PullRequestKind = "pull_request"
+)
+
+// Valid indicates whether the value is a known member of the PullRequestKind enum.
+func (e PullRequestKind) Valid() bool {
+	switch e {
+	case PullRequestKindCommit:
+		return true
+	case PullRequestKindPullRequest:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PullRequestState.
+const (
+	PullRequestStateClosed PullRequestState = "closed"
+	PullRequestStateMerged PullRequestState = "merged"
+	PullRequestStateOpen   PullRequestState = "open"
+)
+
+// Valid indicates whether the value is a known member of the PullRequestState enum.
+func (e PullRequestState) Valid() bool {
+	switch e {
+	case PullRequestStateClosed:
+		return true
+	case PullRequestStateMerged:
+		return true
+	case PullRequestStateOpen:
 		return true
 	default:
 		return false
@@ -2104,6 +2179,38 @@ type FieldError struct {
 	Pointer string `json:"pointer"`
 }
 
+// GitHubIntegration defines model for GitHubIntegration.
+type GitHubIntegration struct {
+	// Events The events to choose in GitHub's webhook settings; every other is taken and passed over
+	Events []string `json:"events"`
+
+	// Secret The secret's metadata; null while the tenant has none, and then the endpoint answers like an unknown tenant
+	Secret nullable.Nullable[GitHubSecret] `json:"secret"`
+
+	// WebhookPath The endpoint's path, which GitHub posts to under the installation's `COWORK_BASE_URL`
+	WebhookPath string `json:"webhook_path"`
+}
+
+// GitHubSecret The tenant's GitHub webhook secret as its administrators read it — never the secret itself
+type GitHubSecret struct {
+	// CreatedAt When it was made or last rotated
+	CreatedAt time.Time `json:"created_at"`
+	CreatedBy Person    `json:"created_by"`
+}
+
+// GitHubSecretCreated defines model for GitHubSecretCreated.
+type GitHubSecretCreated struct {
+	CreatedAt time.Time `json:"created_at"`
+	CreatedBy Person    `json:"created_by"`
+
+	// Replaced A secret existed and is replaced; a delivery signed with it is refused from now on
+	Replaced bool `json:"replaced"`
+
+	// Secret The new secret, 64 hexadecimal characters, shown in this answer only: give it to GitHub as the
+	// webhook's secret. cowork keeps it sealed and never shows it again (docs/adr/0071 D1)
+	Secret string `json:"secret"`
+}
+
 // GroupMapping defines model for GroupMapping.
 type GroupMapping struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -2192,7 +2299,8 @@ type InboxEntry struct {
 	// Reason Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
 	// question they asked answered, a ticket they watch changed state or got a comment, a ticket that
 	// blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a
-	// comment that mentions them (docs/adr/0015 D5)
+	// comment that mentions them (docs/adr/0015 D5), a pull request of a ticket they watch or that is
+	// assigned to them merged (docs/adr/0071 D6) — its state unchanged, the move a person's
 	Reason InboxReason `json:"reason"`
 	Tenant TenantRef   `json:"tenant"`
 	Ticket TicketRef   `json:"ticket"`
@@ -2219,7 +2327,8 @@ type InboxReadThrough struct {
 // InboxReason Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
 // question they asked answered, a ticket they watch changed state or got a comment, a ticket that
 // blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a
-// comment that mentions them (docs/adr/0015 D5)
+// comment that mentions them (docs/adr/0015 D5), a pull request of a ticket they watch or that is
+// assigned to them merged (docs/adr/0071 D6) — its state unchanged, the move a person's
 type InboxReason string
 
 // InboxState defines model for InboxState.
@@ -2674,6 +2783,67 @@ type ProposalTenant struct {
 	Name string `json:"name"`
 	Slug string `json:"slug"`
 }
+
+// PullRequest A pull request or a default-branch commit GitHub's webhook linked to the ticket (docs/adr/0071 D6)
+type PullRequest struct {
+	// Author The author's GitHub login, where GitHub named one
+	Author nullable.Nullable[string] `json:"author"`
+
+	// FirstSeenAt When a delivery first linked it to the ticket
+	FirstSeenAt time.Time `json:"first_seen_at"`
+
+	// FoundIn Where the key was read (docs/adr/0068 D1, D2, D5): a `Cowork-Ticket:` trailer line, a line of a pull
+	// request's body that is a full key alone, or the short keys in parentheses at the end of a pull
+	// request's title or a commit's subject
+	FoundIn PullRequestFoundIn `json:"found_in"`
+
+	// Id The link's id
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind A pull request, or a commit on the repository's default branch (docs/adr/0071 D6)
+	Kind PullRequestKind `json:"kind"`
+
+	// LastSeenAt When a delivery last told of it
+	LastSeenAt time.Time `json:"last_seen_at"`
+
+	// MergedAt When the pull request was merged, or the commit reached the default branch; null otherwise
+	MergedAt nullable.Nullable[time.Time] `json:"merged_at"`
+
+	// Number The pull request's number; null for a commit
+	Number nullable.Nullable[int] `json:"number"`
+
+	// Repository The repository's identity, host/path (docs/adr/0066 D1)
+	Repository string `json:"repository"`
+
+	// Sha The commit's id; null for a pull request
+	Sha nullable.Nullable[string] `json:"sha"`
+
+	// State The pull request's state as GitHub last told it; a commit on the default branch is merged
+	State PullRequestState `json:"state"`
+
+	// Title The pull request's title, or the commit's subject, as GitHub sent it
+	Title string `json:"title"`
+
+	// Url The pull request's or the commit's page at GitHub
+	Url string `json:"url"`
+}
+
+// PullRequestFoundIn Where the key was read (docs/adr/0068 D1, D2, D5): a `Cowork-Ticket:` trailer line, a line of a pull
+// request's body that is a full key alone, or the short keys in parentheses at the end of a pull
+// request's title or a commit's subject
+type PullRequestFoundIn string
+
+// PullRequestKind A pull request, or a commit on the repository's default branch (docs/adr/0071 D6)
+type PullRequestKind string
+
+// PullRequestList defines model for PullRequestList.
+type PullRequestList struct {
+	Items      []PullRequest             `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
+
+// PullRequestState The pull request's state as GitHub last told it; a commit on the default branch is merged
+type PullRequestState string
 
 // Question defines model for Question.
 type Question struct {
@@ -3626,6 +3796,9 @@ type ProgressMin = int
 // ProjectKey defines model for ProjectKey.
 type ProjectKey = string
 
+// PullRequestID defines model for PullRequestID.
+type PullRequestID = openapi_types.UUID
+
 // Query defines model for Query.
 type Query = string
 
@@ -4289,6 +4462,18 @@ type ListPrerequisitesParams struct {
 
 // ListPrerequisitesParamsDirection defines parameters for ListPrerequisites.
 type ListPrerequisitesParamsDirection string
+
+// ListTicketPullRequestsParams defines parameters for ListTicketPullRequests.
+type ListTicketPullRequestsParams struct {
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
+}
 
 // ListQuestionsParams defines parameters for ListQuestions.
 type ListQuestionsParams struct {
@@ -5507,6 +5692,43 @@ type ClientInterface interface {
 	// Corresponds with PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `UpdateGroupMapping` operationId).
 	UpdateGroupMapping(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, body UpdateGroupMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetGitHubIntegration Whether the tenant takes GitHub's webhook, and where
+	//
+	// For the tenant's administrators (`read` scope): whether a webhook secret exists, when and by
+	// whom it was made — never the secret, which is shown once, when it is made — and the path of
+	// the endpoint, which GitHub posts to under the installation's `COWORK_BASE_URL`
+	// (docs/adr/0071 D1, D7). Until a secret exists the endpoint answers every delivery like an
+	// unknown tenant.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/integrations/github (the `GetGitHubIntegration` operationId).
+	GetGitHubIntegration(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeGitHubSecret Revoke the tenant's webhook secret
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0043 D3). It only
+	// takes access away, so a token may (docs/adr/0035 D5). From this answer on the endpoint answers
+	// every delivery like an unknown tenant; the links made stay. `204` also when there is none.
+	// Recorded as `revoked` on `github_webhook_secret`.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/integrations/github/secret (the `RevokeGitHubSecret` operationId).
+	RevokeGitHubSecret(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateGitHubSecret Make the tenant's webhook secret, or rotate it
+	//
+	// A tenant administrator's act in a browser session (docs/adr/0071 D1, docs/adr/0035 D5): the
+	// secret lets whoever holds it write links into the tenant, which outlives a leaked token's
+	// revocation, so a token cannot call this (`403 session_required`), and never an agent
+	// (docs/adr/0043 D3). The server draws 256 random bits and answers them as 64 hexadecimal
+	// characters in `secret`, once; it keeps them sealed with a key derived from
+	// `COWORK_SESSION_KEY`, never in a form it could show again. A secret that exists is replaced
+	// at once — a delivery signed with the old one is refused from this answer on — which is the
+	// rotation. No `Idempotency-Key`: a stored answer could not carry the secret
+	// (docs/adr/0045 D6), and a repetition after a lost answer makes a new secret, which is the
+	// one to give GitHub. Recorded as `created` on `github_webhook_secret`, without the secret.
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/integrations/github/secret (the `CreateGitHubSecret` operationId).
+	CreateGitHubSecret(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListMembers The tenant's members and their roles (docs/adr/0034 D7)
 	//
 	// Each member with the effective role — the higher of the mapped and the
@@ -6147,7 +6369,10 @@ type ClientInterface interface {
 	// implementation stage, and the count of open ones), `## Recent comments`
 	// (the last `comments`, oldest of them first, each quoted under its author,
 	// agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
-	// (name, type, size and URL, never content) and `## Recent activity` (the
+	// (name, type, size and URL, never content), `## Pull requests` (each pull
+	// request and default-branch commit GitHub's webhook linked, with its state,
+	// author and URL, its title quoted — written only when the ticket has one,
+	// docs/adr/0071 D6) and `## Recent activity` (the
 	// last `activity`). `comments=0` or `activity=0` leaves its section out. What
 	// the caller cannot see is absent. The document carries no `ETag`: it is not
 	// one entity. Every call is recorded: data left the system (D5). It is no
@@ -6272,6 +6497,28 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites (the `ListPrerequisites` operationId).
 	ListPrerequisites(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTicketPullRequests The pull requests and default-branch commits that name the ticket
+	//
+	// What GitHub's webhook linked to the ticket (docs/adr/0071 D6): each pull request whose title
+	// or body names it, and each commit on a bound repository's default branch whose message names
+	// it, with where the key was found, oldest link first. Read under the ticket's predicate, like
+	// its other children: a confidential ticket's pull requests exist only for whoever sees the
+	// ticket (docs/adr/0065 D1). A link a person removed is absent.
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests (the `ListTicketPullRequests` operationId).
+	ListTicketPullRequests(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListTicketPullRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveTicketPullRequest Remove a wrong link of a pull request or a commit
+	//
+	// A key read from a title or a message can name a ticket it did not mean (docs/adr/0071
+	// Residual risks); a person removes the link like any link — a member's act with `write`
+	// scope, in the agent baseline (docs/adr/0043 D2). The removal stays: a later delivery that
+	// names the ticket again does not bring the link back. Recorded as `unlinked`. Idempotent:
+	// `204` also when the link is gone.
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests/{pull_request} (the `RemoveTicketPullRequest` operationId).
+	RemoveTicketPullRequest(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, pullRequest PullRequestID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListQuestions The ticket's questions by number
 	//
@@ -8133,6 +8380,73 @@ func (c *Client) UpdateGroupMapping(ctx context.Context, tenant TenantSlug, mapp
 	return c.Client.Do(req)
 }
 
+// GetGitHubIntegration Whether the tenant takes GitHub's webhook, and where
+//
+// For the tenant's administrators (`read` scope): whether a webhook secret exists, when and by
+// whom it was made — never the secret, which is shown once, when it is made — and the path of
+// the endpoint, which GitHub posts to under the installation's `COWORK_BASE_URL`
+// (docs/adr/0071 D1, D7). Until a secret exists the endpoint answers every delivery like an
+// unknown tenant.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/integrations/github (the `GetGitHubIntegration` operationId).
+func (c *Client) GetGitHubIntegration(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetGitHubIntegrationRequest(c.Server, tenant)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RevokeGitHubSecret Revoke the tenant's webhook secret
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0043 D3). It only
+// takes access away, so a token may (docs/adr/0035 D5). From this answer on the endpoint answers
+// every delivery like an unknown tenant; the links made stay. `204` also when there is none.
+// Recorded as `revoked` on `github_webhook_secret`.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/integrations/github/secret (the `RevokeGitHubSecret` operationId).
+func (c *Client) RevokeGitHubSecret(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeGitHubSecretRequest(c.Server, tenant)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// CreateGitHubSecret Make the tenant's webhook secret, or rotate it
+//
+// A tenant administrator's act in a browser session (docs/adr/0071 D1, docs/adr/0035 D5): the
+// secret lets whoever holds it write links into the tenant, which outlives a leaked token's
+// revocation, so a token cannot call this (`403 session_required`), and never an agent
+// (docs/adr/0043 D3). The server draws 256 random bits and answers them as 64 hexadecimal
+// characters in `secret`, once; it keeps them sealed with a key derived from
+// `COWORK_SESSION_KEY`, never in a form it could show again. A secret that exists is replaced
+// at once — a delivery signed with the old one is refused from this answer on — which is the
+// rotation. No `Idempotency-Key`: a stored answer could not carry the secret
+// (docs/adr/0045 D6), and a repetition after a lost answer makes a new secret, which is the
+// one to give GitHub. Recorded as `created` on `github_webhook_secret`, without the secret.
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/integrations/github/secret (the `CreateGitHubSecret` operationId).
+func (c *Client) CreateGitHubSecret(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateGitHubSecretRequest(c.Server, tenant)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // ListMembers The tenant's members and their roles (docs/adr/0034 D7)
 //
 // Each member with the effective role — the higher of the mapped and the
@@ -9273,7 +9587,10 @@ func (c *Client) SetConfidential(ctx context.Context, tenant TenantSlug, project
 // implementation stage, and the count of open ones), `## Recent comments`
 // (the last `comments`, oldest of them first, each quoted under its author,
 // agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
-// (name, type, size and URL, never content) and `## Recent activity` (the
+// (name, type, size and URL, never content), `## Pull requests` (each pull
+// request and default-branch commit GitHub's webhook linked, with its state,
+// author and URL, its title quoted — written only when the ticket has one,
+// docs/adr/0071 D6) and `## Recent activity` (the
 // last `activity`). `comments=0` or `activity=0` leaves its section out. What
 // the caller cannot see is absent. The document carries no `ETag`: it is not
 // one entity. Every call is recorded: data left the system (D5). It is no
@@ -9509,6 +9826,48 @@ func (c *Client) ExportTicket(ctx context.Context, tenant TenantSlug, project Pr
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites (the `ListPrerequisites` operationId).
 func (c *Client) ListPrerequisites(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListPrerequisitesRequest(c.Server, tenant, project, number, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListTicketPullRequests The pull requests and default-branch commits that name the ticket
+//
+// What GitHub's webhook linked to the ticket (docs/adr/0071 D6): each pull request whose title
+// or body names it, and each commit on a bound repository's default branch whose message names
+// it, with where the key was found, oldest link first. Read under the ticket's predicate, like
+// its other children: a confidential ticket's pull requests exist only for whoever sees the
+// ticket (docs/adr/0065 D1). A link a person removed is absent.
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests (the `ListTicketPullRequests` operationId).
+func (c *Client) ListTicketPullRequests(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListTicketPullRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTicketPullRequestsRequest(c.Server, tenant, project, number, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveTicketPullRequest Remove a wrong link of a pull request or a commit
+//
+// A key read from a title or a message can name a ticket it did not mean (docs/adr/0071
+// Residual risks); a person removes the link like any link — a member's act with `write`
+// scope, in the agent baseline (docs/adr/0043 D2). The removal stays: a later delivery that
+// names the ticket again does not bring the link back. Recorded as `unlinked`. Idempotent:
+// `204` also when the link is gone.
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests/{pull_request} (the `RemoveTicketPullRequest` operationId).
+func (c *Client) RemoveTicketPullRequest(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, pullRequest PullRequestID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveTicketPullRequestRequest(c.Server, tenant, project, number, pullRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -13046,6 +13405,108 @@ func NewUpdateGroupMappingRequestWithBody(server string, tenant TenantSlug, mapp
 			req.Header.Set("If-Match", headerParam0)
 		}
 
+	}
+
+	return req, nil
+}
+
+// NewGetGitHubIntegrationRequest constructs an http.Request for the GetGitHubIntegration method
+func NewGetGitHubIntegrationRequest(server string, tenant TenantSlug) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/integrations/github", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRevokeGitHubSecretRequest constructs an http.Request for the RevokeGitHubSecret method
+func NewRevokeGitHubSecretRequest(server string, tenant TenantSlug) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/integrations/github/secret", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateGitHubSecretRequest constructs an http.Request for the CreateGitHubSecret method
+func NewCreateGitHubSecretRequest(server string, tenant TenantSlug) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/integrations/github/secret", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
 	}
 
 	return req, nil
@@ -16638,6 +17099,163 @@ func NewListPrerequisitesRequest(server string, tenant TenantSlug, project Proje
 	return req, nil
 }
 
+// NewListTicketPullRequestsRequest constructs an http.Request for the ListTicketPullRequests method
+func NewListTicketPullRequestsRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListTicketPullRequestsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s/pull-requests", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
+
+	return req, nil
+}
+
+// NewRemoveTicketPullRequestRequest constructs an http.Request for the RemoveTicketPullRequest method
+func NewRemoveTicketPullRequestRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, pullRequest PullRequestID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "tenant", tenant, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam3 string
+
+	pathParam3, err = runtime.StyleParamWithOptions("simple", false, "pull_request", pullRequest, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/tenants/%s/projects/%s/tickets/%s/pull-requests/%s", pathParam0, pathParam1, pathParam2, pathParam3)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListQuestionsRequest constructs an http.Request for the ListQuestions method
 func NewListQuestionsRequest(server string, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListQuestionsParams) (*http.Request, error) {
 	var err error
@@ -19794,6 +20412,49 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id} (the `UpdateGroupMapping` operationId).
 	UpdateGroupMappingWithResponse(ctx context.Context, tenant TenantSlug, mappingId GroupMappingID, params *UpdateGroupMappingParams, body UpdateGroupMappingJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateGroupMappingResponse, error)
 
+	// GetGitHubIntegrationWithResponse Whether the tenant takes GitHub's webhook, and where
+	//
+	// For the tenant's administrators (`read` scope): whether a webhook secret exists, when and by
+	// whom it was made — never the secret, which is shown once, when it is made — and the path of
+	// the endpoint, which GitHub posts to under the installation's `COWORK_BASE_URL`
+	// (docs/adr/0071 D1, D7). Until a secret exists the endpoint answers every delivery like an
+	// unknown tenant.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/integrations/github (the `GetGitHubIntegration` operationId).
+	GetGitHubIntegrationWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*GetGitHubIntegrationResponse, error)
+
+	// RevokeGitHubSecretWithResponse Revoke the tenant's webhook secret
+	//
+	// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0043 D3). It only
+	// takes access away, so a token may (docs/adr/0035 D5). From this answer on the endpoint answers
+	// every delivery like an unknown tenant; the links made stay. `204` also when there is none.
+	// Recorded as `revoked` on `github_webhook_secret`.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/integrations/github/secret (the `RevokeGitHubSecret` operationId).
+	RevokeGitHubSecretWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*RevokeGitHubSecretResponse, error)
+
+	// CreateGitHubSecretWithResponse Make the tenant's webhook secret, or rotate it
+	//
+	// A tenant administrator's act in a browser session (docs/adr/0071 D1, docs/adr/0035 D5): the
+	// secret lets whoever holds it write links into the tenant, which outlives a leaked token's
+	// revocation, so a token cannot call this (`403 session_required`), and never an agent
+	// (docs/adr/0043 D3). The server draws 256 random bits and answers them as 64 hexadecimal
+	// characters in `secret`, once; it keeps them sealed with a key derived from
+	// `COWORK_SESSION_KEY`, never in a form it could show again. A secret that exists is replaced
+	// at once — a delivery signed with the old one is refused from this answer on — which is the
+	// rotation. No `Idempotency-Key`: a stored answer could not carry the secret
+	// (docs/adr/0045 D6), and a repetition after a lost answer makes a new secret, which is the
+	// one to give GitHub. Recorded as `created` on `github_webhook_secret`, without the secret.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /api/v1/tenants/{tenant}/integrations/github/secret (the `CreateGitHubSecret` operationId).
+	CreateGitHubSecretWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*CreateGitHubSecretResponse, error)
+
 	// ListMembersWithResponse The tenant's members and their roles (docs/adr/0034 D7)
 	//
 	// Each member with the effective role — the higher of the mapped and the
@@ -20476,7 +21137,10 @@ type ClientWithResponsesInterface interface {
 	// implementation stage, and the count of open ones), `## Recent comments`
 	// (the last `comments`, oldest of them first, each quoted under its author,
 	// agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
-	// (name, type, size and URL, never content) and `## Recent activity` (the
+	// (name, type, size and URL, never content), `## Pull requests` (each pull
+	// request and default-branch commit GitHub's webhook linked, with its state,
+	// author and URL, its title quoted — written only when the ticket has one,
+	// docs/adr/0071 D6) and `## Recent activity` (the
 	// last `activity`). `comments=0` or `activity=0` leaves its section out. What
 	// the caller cannot see is absent. The document carries no `ETag`: it is not
 	// one entity. Every call is recorded: data left the system (D5). It is no
@@ -20617,6 +21281,32 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites (the `ListPrerequisites` operationId).
 	ListPrerequisitesWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams, reqEditors ...RequestEditorFn) (*ListPrerequisitesResponse, error)
+
+	// ListTicketPullRequestsWithResponse The pull requests and default-branch commits that name the ticket
+	//
+	// What GitHub's webhook linked to the ticket (docs/adr/0071 D6): each pull request whose title
+	// or body names it, and each commit on a bound repository's default branch whose message names
+	// it, with where the key was found, oldest link first. Read under the ticket's predicate, like
+	// its other children: a confidential ticket's pull requests exist only for whoever sees the
+	// ticket (docs/adr/0065 D1). A link a person removed is absent.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests (the `ListTicketPullRequests` operationId).
+	ListTicketPullRequestsWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListTicketPullRequestsParams, reqEditors ...RequestEditorFn) (*ListTicketPullRequestsResponse, error)
+
+	// RemoveTicketPullRequestWithResponse Remove a wrong link of a pull request or a commit
+	//
+	// A key read from a title or a message can name a ticket it did not mean (docs/adr/0071
+	// Residual risks); a person removes the link like any link — a member's act with `write`
+	// scope, in the agent baseline (docs/adr/0043 D2). The removal stays: a later delivery that
+	// names the ticket again does not bring the link back. Recorded as `unlinked`. Idempotent:
+	// `204` also when the link is gone.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests/{pull_request} (the `RemoveTicketPullRequest` operationId).
+	RemoveTicketPullRequestWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, pullRequest PullRequestID, reqEditors ...RequestEditorFn) (*RemoveTicketPullRequestResponse, error)
 
 	// ListQuestionsWithResponse The ticket's questions by number
 	//
@@ -23759,6 +24449,164 @@ func (r UpdateGroupMappingResponse) ContentType() string {
 	return ""
 }
 
+// GetGitHubIntegrationResponseDefaultHeaders the declared response headers of an HTTP default response for GetGitHubIntegration
+type GetGitHubIntegrationResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type GetGitHubIntegrationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *GitHubIntegration
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *GetGitHubIntegrationResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetGitHubIntegrationResponse) GetJSON200() *GitHubIntegration {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetGitHubIntegrationResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r GetGitHubIntegrationResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetGitHubIntegrationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetGitHubIntegrationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetGitHubIntegrationResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// RevokeGitHubSecretResponseDefaultHeaders the declared response headers of an HTTP default response for RevokeGitHubSecret
+type RevokeGitHubSecretResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type RevokeGitHubSecretResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *RevokeGitHubSecretResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RevokeGitHubSecretResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RevokeGitHubSecretResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeGitHubSecretResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeGitHubSecretResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RevokeGitHubSecretResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// CreateGitHubSecretResponseDefaultHeaders the declared response headers of an HTTP default response for CreateGitHubSecret
+type CreateGitHubSecretResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type CreateGitHubSecretResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *GitHubSecretCreated
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *CreateGitHubSecretResponseDefaultHeaders
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r CreateGitHubSecretResponse) GetJSON201() *GitHubSecretCreated {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateGitHubSecretResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r CreateGitHubSecretResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateGitHubSecretResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateGitHubSecretResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateGitHubSecretResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListMembersResponse200Headers the declared response headers of an HTTP 200 response for ListMembers
 type ListMembersResponse200Headers struct {
 	ETag *string
@@ -26549,6 +27397,123 @@ func (r ListPrerequisitesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ListPrerequisitesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListTicketPullRequestsResponse200Headers the declared response headers of an HTTP 200 response for ListTicketPullRequests
+type ListTicketPullRequestsResponse200Headers struct {
+	ETag *string
+}
+
+// ListTicketPullRequestsResponse304Headers the declared response headers of an HTTP 304 response for ListTicketPullRequests
+type ListTicketPullRequestsResponse304Headers struct {
+	ETag *string
+}
+
+// ListTicketPullRequestsResponseDefaultHeaders the declared response headers of an HTTP default response for ListTicketPullRequests
+type ListTicketPullRequestsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListTicketPullRequestsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PullRequestList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListTicketPullRequestsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListTicketPullRequestsResponse304Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListTicketPullRequestsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTicketPullRequestsResponse) GetJSON200() *PullRequestList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListTicketPullRequestsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTicketPullRequestsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTicketPullRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTicketPullRequestsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTicketPullRequestsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// RemoveTicketPullRequestResponseDefaultHeaders the declared response headers of an HTTP default response for RemoveTicketPullRequest
+type RemoveTicketPullRequestResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type RemoveTicketPullRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *RemoveTicketPullRequestResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RemoveTicketPullRequestResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveTicketPullRequestResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveTicketPullRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveTicketPullRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveTicketPullRequestResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -29397,6 +30362,67 @@ func (c *ClientWithResponses) UpdateGroupMappingWithResponse(ctx context.Context
 	return ParseUpdateGroupMappingResponse(rsp)
 }
 
+// GetGitHubIntegrationWithResponse Whether the tenant takes GitHub's webhook, and where
+//
+// For the tenant's administrators (`read` scope): whether a webhook secret exists, when and by
+// whom it was made — never the secret, which is shown once, when it is made — and the path of
+// the endpoint, which GitHub posts to under the installation's `COWORK_BASE_URL`
+// (docs/adr/0071 D1, D7). Until a secret exists the endpoint answers every delivery like an
+// unknown tenant.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/integrations/github (the `GetGitHubIntegration` operationId).
+func (c *ClientWithResponses) GetGitHubIntegrationWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*GetGitHubIntegrationResponse, error) {
+	rsp, err := c.GetGitHubIntegration(ctx, tenant, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetGitHubIntegrationResponse(rsp)
+}
+
+// RevokeGitHubSecretWithResponse Revoke the tenant's webhook secret
+//
+// A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0043 D3). It only
+// takes access away, so a token may (docs/adr/0035 D5). From this answer on the endpoint answers
+// every delivery like an unknown tenant; the links made stay. `204` also when there is none.
+// Recorded as `revoked` on `github_webhook_secret`.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/integrations/github/secret (the `RevokeGitHubSecret` operationId).
+func (c *ClientWithResponses) RevokeGitHubSecretWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*RevokeGitHubSecretResponse, error) {
+	rsp, err := c.RevokeGitHubSecret(ctx, tenant, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeGitHubSecretResponse(rsp)
+}
+
+// CreateGitHubSecretWithResponse Make the tenant's webhook secret, or rotate it
+//
+// A tenant administrator's act in a browser session (docs/adr/0071 D1, docs/adr/0035 D5): the
+// secret lets whoever holds it write links into the tenant, which outlives a leaked token's
+// revocation, so a token cannot call this (`403 session_required`), and never an agent
+// (docs/adr/0043 D3). The server draws 256 random bits and answers them as 64 hexadecimal
+// characters in `secret`, once; it keeps them sealed with a key derived from
+// `COWORK_SESSION_KEY`, never in a form it could show again. A secret that exists is replaced
+// at once — a delivery signed with the old one is refused from this answer on — which is the
+// rotation. No `Idempotency-Key`: a stored answer could not carry the secret
+// (docs/adr/0045 D6), and a repetition after a lost answer makes a new secret, which is the
+// one to give GitHub. Recorded as `created` on `github_webhook_secret`, without the secret.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /api/v1/tenants/{tenant}/integrations/github/secret (the `CreateGitHubSecret` operationId).
+func (c *ClientWithResponses) CreateGitHubSecretWithResponse(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*CreateGitHubSecretResponse, error) {
+	rsp, err := c.CreateGitHubSecret(ctx, tenant, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateGitHubSecretResponse(rsp)
+}
+
 // ListMembersWithResponse The tenant's members and their roles (docs/adr/0034 D7)
 //
 // Each member with the effective role — the higher of the mapped and the
@@ -30379,7 +31405,10 @@ func (c *ClientWithResponses) SetConfidentialWithResponse(ctx context.Context, t
 // implementation stage, and the count of open ones), `## Recent comments`
 // (the last `comments`, oldest of them first, each quoted under its author,
 // agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
-// (name, type, size and URL, never content) and `## Recent activity` (the
+// (name, type, size and URL, never content), `## Pull requests` (each pull
+// request and default-branch commit GitHub's webhook linked, with its state,
+// author and URL, its title quoted — written only when the ticket has one,
+// docs/adr/0071 D6) and `## Recent activity` (the
 // last `activity`). `comments=0` or `activity=0` leaves its section out. What
 // the caller cannot see is absent. The document carries no `ETag`: it is not
 // one entity. Every call is recorded: data left the system (D5). It is no
@@ -30591,6 +31620,44 @@ func (c *ClientWithResponses) ListPrerequisitesWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseListPrerequisitesResponse(rsp)
+}
+
+// ListTicketPullRequestsWithResponse The pull requests and default-branch commits that name the ticket
+//
+// What GitHub's webhook linked to the ticket (docs/adr/0071 D6): each pull request whose title
+// or body names it, and each commit on a bound repository's default branch whose message names
+// it, with where the key was found, oldest link first. Read under the ticket's predicate, like
+// its other children: a confidential ticket's pull requests exist only for whoever sees the
+// ticket (docs/adr/0065 D1). A link a person removed is absent.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests (the `ListTicketPullRequests` operationId).
+func (c *ClientWithResponses) ListTicketPullRequestsWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ListTicketPullRequestsParams, reqEditors ...RequestEditorFn) (*ListTicketPullRequestsResponse, error) {
+	rsp, err := c.ListTicketPullRequests(ctx, tenant, project, number, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTicketPullRequestsResponse(rsp)
+}
+
+// RemoveTicketPullRequestWithResponse Remove a wrong link of a pull request or a commit
+//
+// A key read from a title or a message can name a ticket it did not mean (docs/adr/0071
+// Residual risks); a person removes the link like any link — a member's act with `write`
+// scope, in the agent baseline (docs/adr/0043 D2). The removal stays: a later delivery that
+// names the ticket again does not bring the link back. Recorded as `unlinked`. Idempotent:
+// `204` also when the link is gone.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests/{pull_request} (the `RemoveTicketPullRequest` operationId).
+func (c *ClientWithResponses) RemoveTicketPullRequestWithResponse(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, pullRequest PullRequestID, reqEditors ...RequestEditorFn) (*RemoveTicketPullRequestResponse, error) {
+	rsp, err := c.RemoveTicketPullRequest(ctx, tenant, project, number, pullRequest, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveTicketPullRequestResponse(rsp)
 }
 
 // ListQuestionsWithResponse The ticket's questions by number
@@ -33697,6 +34764,140 @@ func ParseUpdateGroupMappingResponse(rsp *http.Response) (*UpdateGroupMappingRes
 	return response, nil
 }
 
+// ParseGetGitHubIntegrationResponse parses an HTTP response from a GetGitHubIntegrationWithResponse call
+func ParseGetGitHubIntegrationResponse(rsp *http.Response) (*GetGitHubIntegrationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetGitHubIntegrationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest GitHubIntegration
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers GetGitHubIntegrationResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseRevokeGitHubSecretResponse parses an HTTP response from a RevokeGitHubSecretWithResponse call
+func ParseRevokeGitHubSecretResponse(rsp *http.Response) (*RevokeGitHubSecretResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeGitHubSecretResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers RevokeGitHubSecretResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseCreateGitHubSecretResponse parses an HTTP response from a CreateGitHubSecretWithResponse call
+func ParseCreateGitHubSecretResponse(rsp *http.Response) (*CreateGitHubSecretResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateGitHubSecretResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest GitHubSecretCreated
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers CreateGitHubSecretResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListMembersResponse parses an HTTP response from a ListMembersWithResponse call
 func ParseListMembersResponse(rsp *http.Response) (*ListMembersResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -36298,6 +37499,117 @@ func ParseListPrerequisitesResponse(rsp *http.Response) (*ListPrerequisitesRespo
 	return response, nil
 }
 
+// ParseListTicketPullRequestsResponse parses an HTTP response from a ListTicketPullRequestsWithResponse call
+func ParseListTicketPullRequestsResponse(rsp *http.Response) (*ListTicketPullRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTicketPullRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PullRequestList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListTicketPullRequestsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListTicketPullRequestsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
+	case true:
+		var headers ListTicketPullRequestsResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseRemoveTicketPullRequestResponse parses an HTTP response from a RemoveTicketPullRequestWithResponse call
+func ParseRemoveTicketPullRequestResponse(rsp *http.Response) (*RemoveTicketPullRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveTicketPullRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers RemoveTicketPullRequestResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListQuestionsResponse parses an HTTP response from a ListQuestionsWithResponse call
 func ParseListQuestionsResponse(rsp *http.Response) (*ListQuestionsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -37977,6 +39289,15 @@ type ServerInterface interface {
 	// UpdateGroupMapping Change a mapping's role
 	// (PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id})
 	UpdateGroupMapping(w http.ResponseWriter, r *http.Request, tenant TenantSlug, mappingId GroupMappingID, params UpdateGroupMappingParams)
+	// GetGitHubIntegration Whether the tenant takes GitHub's webhook, and where
+	// (GET /api/v1/tenants/{tenant}/integrations/github)
+	GetGitHubIntegration(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// RevokeGitHubSecret Revoke the tenant's webhook secret
+	// (DELETE /api/v1/tenants/{tenant}/integrations/github/secret)
+	RevokeGitHubSecret(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
+	// CreateGitHubSecret Make the tenant's webhook secret, or rotate it
+	// (POST /api/v1/tenants/{tenant}/integrations/github/secret)
+	CreateGitHubSecret(w http.ResponseWriter, r *http.Request, tenant TenantSlug)
 	// ListMembers The tenant's members and their roles (docs/adr/0034 D7)
 	// (GET /api/v1/tenants/{tenant}/members)
 	ListMembers(w http.ResponseWriter, r *http.Request, tenant TenantSlug, params ListMembersParams)
@@ -38115,6 +39436,12 @@ type ServerInterface interface {
 	// ListPrerequisites The ticket's prerequisite tree, or read upward its dependents
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites)
 	ListPrerequisites(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ListPrerequisitesParams)
+	// ListTicketPullRequests The pull requests and default-branch commits that name the ticket
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests)
+	ListTicketPullRequests(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ListTicketPullRequestsParams)
+	// RemoveTicketPullRequest Remove a wrong link of a pull request or a commit
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests/{pull_request})
+	RemoveTicketPullRequest(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, pullRequest PullRequestID)
 	// ListQuestions The ticket's questions by number
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions)
 	ListQuestions(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ListQuestionsParams)
@@ -40324,6 +41651,84 @@ func (siw *ServerInterfaceWrapper) UpdateGroupMapping(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateGroupMapping(w, r, tenant, mappingId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGitHubIntegration operation middleware
+func (siw *ServerInterfaceWrapper) GetGitHubIntegration(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGitHubIntegration(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeGitHubSecret operation middleware
+func (siw *ServerInterfaceWrapper) RevokeGitHubSecret(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeGitHubSecret(w, r, tenant)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateGitHubSecret operation middleware
+func (siw *ServerInterfaceWrapper) CreateGitHubSecret(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateGitHubSecret(w, r, tenant)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -43593,6 +44998,153 @@ func (siw *ServerInterfaceWrapper) ListPrerequisites(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// ListTicketPullRequests operation middleware
+func (siw *ServerInterfaceWrapper) ListTicketPullRequests(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTicketPullRequestsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTicketPullRequests(w, r, tenant, project, number, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveTicketPullRequest operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTicketPullRequest(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tenant" -------------
+	var tenant TenantSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tenant", r.PathValue("tenant"), &tenant, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tenant", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "pull_request" -------------
+	var pullRequest PullRequestID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "pull_request", r.PathValue("pull_request"), &pullRequest, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "pull_request", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTicketPullRequest(w, r, tenant, project, number, pullRequest)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListQuestions operation middleware
 func (siw *ServerInterfaceWrapper) ListQuestions(w http.ResponseWriter, r *http.Request) {
 
@@ -45774,6 +47326,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings", wrapper.CreateGroupMapping)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings/{mapping_id}", wrapper.DeleteGroupMapping)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/v1/tenants/{tenant}/group-mappings/{mapping_id}", wrapper.UpdateGroupMapping)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/integrations/github", wrapper.GetGitHubIntegration)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/integrations/github/secret", wrapper.RevokeGitHubSecret)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/integrations/github/secret", wrapper.CreateGitHubSecret)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/members", wrapper.ListMembers)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/members", wrapper.AddMember)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/members/{person_id}/grant", wrapper.RemoveMemberGrant)
@@ -45820,6 +47375,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}", wrapper.LinkTickets)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown", wrapper.ExportTicket)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites", wrapper.ListPrerequisites)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests", wrapper.ListTicketPullRequests)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests/{pull_request}", wrapper.RemoveTicketPullRequest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions", wrapper.ListQuestions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions", wrapper.AskQuestion)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}", wrapper.GetQuestion)
@@ -48059,6 +49616,129 @@ type UpdateGroupMappingdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response UpdateGroupMappingdefaultApplicationProblemPlusJSONResponse) VisitUpdateGroupMappingResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGitHubIntegrationRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type GetGitHubIntegrationResponseObject interface {
+	VisitGetGitHubIntegrationResponse(w http.ResponseWriter) error
+}
+
+type GetGitHubIntegration200JSONResponse GitHubIntegration
+
+func (response GetGitHubIntegration200JSONResponse) VisitGetGitHubIntegrationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGitHubIntegrationdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetGitHubIntegrationdefaultApplicationProblemPlusJSONResponse) VisitGetGitHubIntegrationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RevokeGitHubSecretRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type RevokeGitHubSecretResponseObject interface {
+	VisitRevokeGitHubSecretResponse(w http.ResponseWriter) error
+}
+
+type RevokeGitHubSecret204Response struct {
+}
+
+func (response RevokeGitHubSecret204Response) VisitRevokeGitHubSecretResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RevokeGitHubSecretdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RevokeGitHubSecretdefaultApplicationProblemPlusJSONResponse) VisitRevokeGitHubSecretResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateGitHubSecretRequestObject struct {
+	Tenant TenantSlug `json:"tenant"`
+}
+
+type CreateGitHubSecretResponseObject interface {
+	VisitCreateGitHubSecretResponse(w http.ResponseWriter) error
+}
+
+type CreateGitHubSecret201JSONResponse GitHubSecretCreated
+
+func (response CreateGitHubSecret201JSONResponse) VisitCreateGitHubSecretResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateGitHubSecretdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response CreateGitHubSecretdefaultApplicationProblemPlusJSONResponse) VisitCreateGitHubSecretResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -50672,6 +52352,112 @@ func (response ListPrerequisitesdefaultApplicationProblemPlusJSONResponse) Visit
 	return err
 }
 
+type ListTicketPullRequestsRequestObject struct {
+	Tenant  TenantSlug   `json:"tenant"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+	Params  ListTicketPullRequestsParams
+}
+
+type ListTicketPullRequestsResponseObject interface {
+	VisitListTicketPullRequestsResponse(w http.ResponseWriter) error
+}
+
+type ListTicketPullRequests200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListTicketPullRequests200JSONResponse struct {
+	Body    PullRequestList
+	Headers ListTicketPullRequests200ResponseHeaders
+}
+
+func (response ListTicketPullRequests200JSONResponse) VisitListTicketPullRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTicketPullRequests304Response = NotModifiedResponse
+
+func (response ListTicketPullRequests304Response) VisitListTicketPullRequestsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type ListTicketPullRequestsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListTicketPullRequestsdefaultApplicationProblemPlusJSONResponse) VisitListTicketPullRequestsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveTicketPullRequestRequestObject struct {
+	Tenant      TenantSlug    `json:"tenant"`
+	Project     ProjectKey    `json:"project"`
+	Number      TicketNumber  `json:"number"`
+	PullRequest PullRequestID `json:"pull_request"`
+}
+
+type RemoveTicketPullRequestResponseObject interface {
+	VisitRemoveTicketPullRequestResponse(w http.ResponseWriter) error
+}
+
+type RemoveTicketPullRequest204Response struct {
+}
+
+func (response RemoveTicketPullRequest204Response) VisitRemoveTicketPullRequestResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveTicketPullRequestdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RemoveTicketPullRequestdefaultApplicationProblemPlusJSONResponse) VisitRemoveTicketPullRequestResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListQuestionsRequestObject struct {
 	Tenant  TenantSlug   `json:"tenant"`
 	Project ProjectKey   `json:"project"`
@@ -52332,6 +54118,15 @@ type StrictServerInterface interface {
 	// UpdateGroupMapping Change a mapping's role
 	// (PATCH /api/v1/tenants/{tenant}/group-mappings/{mapping_id})
 	UpdateGroupMapping(ctx context.Context, request UpdateGroupMappingRequestObject) (UpdateGroupMappingResponseObject, error)
+	// GetGitHubIntegration Whether the tenant takes GitHub's webhook, and where
+	// (GET /api/v1/tenants/{tenant}/integrations/github)
+	GetGitHubIntegration(ctx context.Context, request GetGitHubIntegrationRequestObject) (GetGitHubIntegrationResponseObject, error)
+	// RevokeGitHubSecret Revoke the tenant's webhook secret
+	// (DELETE /api/v1/tenants/{tenant}/integrations/github/secret)
+	RevokeGitHubSecret(ctx context.Context, request RevokeGitHubSecretRequestObject) (RevokeGitHubSecretResponseObject, error)
+	// CreateGitHubSecret Make the tenant's webhook secret, or rotate it
+	// (POST /api/v1/tenants/{tenant}/integrations/github/secret)
+	CreateGitHubSecret(ctx context.Context, request CreateGitHubSecretRequestObject) (CreateGitHubSecretResponseObject, error)
 	// ListMembers The tenant's members and their roles (docs/adr/0034 D7)
 	// (GET /api/v1/tenants/{tenant}/members)
 	ListMembers(ctx context.Context, request ListMembersRequestObject) (ListMembersResponseObject, error)
@@ -52470,6 +54265,12 @@ type StrictServerInterface interface {
 	// ListPrerequisites The ticket's prerequisite tree, or read upward its dependents
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites)
 	ListPrerequisites(ctx context.Context, request ListPrerequisitesRequestObject) (ListPrerequisitesResponseObject, error)
+	// ListTicketPullRequests The pull requests and default-branch commits that name the ticket
+	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests)
+	ListTicketPullRequests(ctx context.Context, request ListTicketPullRequestsRequestObject) (ListTicketPullRequestsResponseObject, error)
+	// RemoveTicketPullRequest Remove a wrong link of a pull request or a commit
+	// (DELETE /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests/{pull_request})
+	RemoveTicketPullRequest(ctx context.Context, request RemoveTicketPullRequestRequestObject) (RemoveTicketPullRequestResponseObject, error)
 	// ListQuestions The ticket's questions by number
 	// (GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions)
 	ListQuestions(ctx context.Context, request ListQuestionsRequestObject) (ListQuestionsResponseObject, error)
@@ -53849,6 +55650,84 @@ func (sh *strictHandler) UpdateGroupMapping(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateGroupMappingResponseObject); ok {
 		if err := validResponse.VisitUpdateGroupMappingResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGitHubIntegration operation middleware
+func (sh *strictHandler) GetGitHubIntegration(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request GetGitHubIntegrationRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGitHubIntegration(ctx, request.(GetGitHubIntegrationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGitHubIntegration")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGitHubIntegrationResponseObject); ok {
+		if err := validResponse.VisitGetGitHubIntegrationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevokeGitHubSecret operation middleware
+func (sh *strictHandler) RevokeGitHubSecret(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request RevokeGitHubSecretRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevokeGitHubSecret(ctx, request.(RevokeGitHubSecretRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevokeGitHubSecret")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevokeGitHubSecretResponseObject); ok {
+		if err := validResponse.VisitRevokeGitHubSecretResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateGitHubSecret operation middleware
+func (sh *strictHandler) CreateGitHubSecret(w http.ResponseWriter, r *http.Request, tenant TenantSlug) {
+	var request CreateGitHubSecretRequestObject
+
+	request.Tenant = tenant
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateGitHubSecret(ctx, request.(CreateGitHubSecretRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateGitHubSecret")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateGitHubSecretResponseObject); ok {
+		if err := validResponse.VisitCreateGitHubSecretResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -55273,6 +57152,64 @@ func (sh *strictHandler) ListPrerequisites(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListPrerequisitesResponseObject); ok {
 		if err := validResponse.VisitListPrerequisitesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTicketPullRequests operation middleware
+func (sh *strictHandler) ListTicketPullRequests(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, params ListTicketPullRequestsParams) {
+	var request ListTicketPullRequestsRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Number = number
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTicketPullRequests(ctx, request.(ListTicketPullRequestsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTicketPullRequests")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTicketPullRequestsResponseObject); ok {
+		if err := validResponse.VisitListTicketPullRequestsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveTicketPullRequest operation middleware
+func (sh *strictHandler) RemoveTicketPullRequest(w http.ResponseWriter, r *http.Request, tenant TenantSlug, project ProjectKey, number TicketNumber, pullRequest PullRequestID) {
+	var request RemoveTicketPullRequestRequestObject
+
+	request.Tenant = tenant
+	request.Project = project
+	request.Number = number
+	request.PullRequest = pullRequest
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveTicketPullRequest(ctx, request.(RemoveTicketPullRequestRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveTicketPullRequest")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveTicketPullRequestResponseObject); ok {
+		if err := validResponse.VisitRemoveTicketPullRequestResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
