@@ -447,6 +447,33 @@ func TestImportBoundsAndExpiry(t *testing.T) {
 	assertProblem(t, rawImport(t, e, admin, ticketFile(3, "")), http.StatusConflict, "project_archived")
 }
 
+// docs/adr/0021 D6, docs/adr/0051 D6, D7: the policies of migration 41 hold an
+// import job to the tenant's administrators — a member of the tenant reads,
+// changes and makes none, even through a query that names no person —, and
+// its deletion to the expiry job, which no administrator is.
+func TestTheImportJobPoliciesAdmitTheTenantsAdministratorsOnly(t *testing.T) {
+	e := newTicketEnv(t)
+	created := e.dryRun(t, caller{Token: e.tk.AdminA}, "ALPHA", ticketFile(1, ""))
+	require.Equal(t, http.StatusCreated, created.StatusCode(), string(created.Body))
+
+	n, err := e.runAs(t, e.A, e.AdminA, uuid.Nil, `SELECT id FROM import_jobs`)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, n, "the tenant's administrator reads the job")
+	n, err = e.runAs(t, e.A, e.MemberA, uuid.Nil, `SELECT id FROM import_jobs`)
+	require.NoError(t, err)
+	assert.Zero(t, n, "a member of the tenant reads no job")
+	n, err = e.runAs(t, e.A, e.MemberA, uuid.Nil, `UPDATE import_jobs SET report = '{}'`)
+	require.NoError(t, err)
+	assert.Zero(t, n, "a member of the tenant changes no job")
+	_, err = e.runAs(t, e.A, e.MemberA, uuid.Nil, fmt.Sprintf(`INSERT INTO import_jobs
+		(tenant_id, project_id, created_by, expires_at, report, source)
+		VALUES ('%s', '%s', '%s', now() + interval '1 day', '{}', '\x')`, e.A, e.ProjectA, e.MemberA))
+	assert.ErrorContains(t, err, "row-level security", "a member of the tenant makes no job")
+	n, err = e.runAs(t, e.A, e.AdminA, uuid.Nil, `DELETE FROM import_jobs`)
+	require.NoError(t, err)
+	assert.Zero(t, n, "an administrator deletes no job: the expiry job does")
+}
+
 // stateLine is a ticket file's frontmatter state, as the grep of
 // docs/tickets/README.md reads it.
 var stateLine = regexp.MustCompile(`(?m)^state:[ \t]*([a-z-]+)`)
