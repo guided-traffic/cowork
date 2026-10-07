@@ -9,8 +9,9 @@ person's machine for Claude Code.
 **Status: phases 6 (import and cut-over) and 7 (hardening and 1.0), the plan's last, started on
 2026-10-06 and are worked as tickets; phase 3 (UI v1) awaits the owner's reviews; the sign-in
 without a click is released as `0.8.0`, metrics, the chart's references with the migration Job and
-the GitHub webhook as `0.9.0`; 1.0 waits until every open question is answered, by the owner's
-rule of 2026-10-06** — the work lists, each open phase a family ticket with its children, are in
+the GitHub webhook as `0.9.0`, the consistency check as `0.10.0`, the import and the export as
+`0.11.0`; 1.0 waits until every open question is answered, by the owner's rule of 2026-10-06
+(ADR 0003 D9)** — the work lists, each open phase a family ticket with its children, are in
 [docs/tickets/](docs/tickets/README.md). Every founding decision is an ADR, and the project plan
 was consumed into the phase tickets (ADR 0074).
 
@@ -100,20 +101,26 @@ unanswered question.
   `make run` and `make migrate`; `serve` connects as the runtime role and refuses a dirty
   schema or pending migrations.
 - The chart is `deploy/helm/cowork/`: `backend.*`, `frontend.*`, `database.*` (with
-  `database.owner.*`), `session.*`, `storage.*`, `localAdmin.*`, `bootstrap.*`, `auth.*`,
-  `chat.*`, `ingress.*` (per host `/api/` and `/auth/` to the backend Service, `/` to the frontend
+  `database.owner.*`; a URL or its components, ADR 0058), `migrations.*` (`onStart`, or `job` — a
+  pre-install/pre-upgrade hook Job, ADR 0057), `session.*`, `storage.*`, `localAdmin.*`,
+  `bootstrap.*`, `auth.*`, `chat.*`, `metrics.*` (the metrics port on the pods, never on a Service;
+  the monitors off by default, ADR 0060), `ingress.*` (per host `/api/` and `/auth/` to the backend Service, `/` to the frontend
   Service; the controller's limits are annotations the installation sets). No NetworkPolicy:
   network policies are the cluster administrator's. The runtime and the owner URL each come from an
   `existingSecret` (preferred) or a `url` (throw-away only, plain text in the release); the owner
-  URL reaches only the `migrate` init container; the session key, the storage key, the identity
+  URL reaches only the migration run — the `migrate` init container, or the migration Job in job mode,
+which takes `existingSecret` references only; the session key, the storage key, the identity
   provider's client secret and the chat's API key come from Secrets only, the local
   administrator's password from an `existingSecret` (preferred) or inline values with the same
   warning as `database.url`.
 - Login (phase 3): server-side sessions in the `__Host-cowork-session` cookie, the local
   administrator from configuration, local accounts made by administrators, CSRF by origin and
   `X-Requested-With: cowork`; token creation, password changes, tenant creation, creating or
-  resetting a local account, the acts that give access and a turn of the chat are session-only —
-  a token gets `403` (ADR 0031–0033, 0035, 0037).
+  resetting a local account, the acts that give access, a turn of the chat, the purge of a ticket,
+  the GitHub webhook secret and the removal of orphaned objects are session-only — nineteen
+  operations, held by a unit test; a token gets `403` (ADR 0031–0033, 0035, 0037). A session's idle
+  clock moves only on a write or the browser's keep-alive read, and the login page signs a person
+  of the identity provider in again with `prompt=none` without a click (ADR 0029 D6, 0031 D3).
 - `cowork-mcp` (`backend/cmd/cowork-mcp` over `internal/mcpcli`, `internal/mcpserver`,
   `internal/tools`): the MCP server and hooks for Claude Code, a client of `/api/v1` through the
   generated client and nothing else — it imports no store and no API handler, and a unit test
