@@ -206,7 +206,8 @@ func eventStream(t *testing.T, where string, example any) {
 
 // The two tests above are not vacuous: their walk reaches the bodies of every
 // kind the document has — requests of JSON and a multipart upload; responses
-// of JSON, the shared problem, an event stream, CSV, Markdown and bytes.
+// of JSON, the shared problem, an event stream, CSV, Markdown, the bytes of a
+// download and the archive of an export.
 func TestTheExamplesWalkReachesEveryKindOfBody(t *testing.T) {
 	type kind struct {
 		response  bool
@@ -220,7 +221,7 @@ func TestTheExamplesWalkReachesEveryKindOfBody(t *testing.T) {
 		assert.True(t, seen[kind{false, mediaType}], "the walk reaches a request body of %s", mediaType)
 	}
 	for _, mediaType := range []string{"application/json", "application/problem+json", "text/event-stream", "text/csv",
-		"text/markdown", "*/*"} {
+		"text/markdown", "*/*", "application/gzip"} {
 		assert.True(t, seen[kind{true, mediaType}], "the walk reaches a response body of %s", mediaType)
 	}
 }
