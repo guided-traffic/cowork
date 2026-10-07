@@ -1,7 +1,9 @@
 import { DOCUMENT } from '@angular/common';
+import { HttpContext } from '@angular/common/http';
 import { DestroyRef, inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
 import { getMe } from '../api/fn/me/get-me';
+import { PERSON_ACTIVITY } from './http';
 
 /** How often the keep-alive may ask, at most: every five minutes (docs/adr/0031 D3). */
 export const keepAliveEvery = 5 * 60_000;
@@ -10,15 +12,17 @@ export const keepAliveEvery = 5 * 60_000;
 export const workInputs = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
 
 /**
- * Keeps the session's idle clock moving while a person works in the page (docs/adr/0031 D3).
- * Reading a ticket, scrolling a board or writing a long comment makes no request, and the backend
- * moves the clock only on a request, so the idle limit would end the session under the person's
- * hands. This notes the time of the person's last input — {@link workInputs}, through passive
- * listeners that only note it — and every five minutes, while the document is visible and there was
- * input since it last asked, asks `GET /api/v1/me` once, which moves the clock as any request of the
- * session does. A tab nobody works in asks nothing, and the event stream moves no clock: an
- * unattended tab still reaches the idle limit. A `401` goes to the login page as any `401` does
- * (`signInOnUnauthorised`); the shell starts this and stops it with itself.
+ * Keeps the session's idle clock moving while a person works in the page (docs/adr/0031 D3). The
+ * backend moves the clock only for the person's activity — a write, or a read that carries
+ * `X-Cowork-Activity: input` —, and reading a ticket, scrolling a board or writing a long comment
+ * sends neither, so the idle limit would end the session under the person's hands. This notes the
+ * time of the person's last input — {@link workInputs}, through passive listeners that only note it —
+ * and every five minutes, while the document is visible and there was input since it last asked,
+ * asks `GET /api/v1/me` once with {@link PERSON_ACTIVITY}, which `personActivity` turns into that
+ * header: the one read that moves the clock. A tab nobody works in asks nothing, and no other read
+ * moves it — not the event stream, not the reloads, not the polling fallback —, so an unattended tab
+ * reaches the idle limit. A `401` goes to the login page as any `401` does (`signInOnUnauthorised`);
+ * the shell starts this and stops it with itself.
  */
 @Injectable({ providedIn: 'root' })
 export class KeepAliveService {
@@ -72,6 +76,8 @@ export class KeepAliveService {
     // The answer is not needed, the request was: it moved the idle clock. A failure is no news —
     // a 401 has sent the browser to the login page already, and an outage meets the request of
     // the next interval with input.
-    this.api.invoke(getMe).catch(() => undefined);
+    this.api
+      .invoke(getMe, undefined, new HttpContext().set(PERSON_ACTIVITY, true))
+      .catch(() => undefined);
   }
 }

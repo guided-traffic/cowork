@@ -14,10 +14,11 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/store/writeq"
 )
 
-// SessionTouchInterval is how often a session's idle clock moves: a request
-// moves it only when the last move is older than this, so a busy page costs one
-// write a minute, not one per request, and the idle limit is exact to the
-// minute (docs/adr/0031 D3).
+// SessionTouchInterval is how often a session's idle clock moves: a request of
+// the person's activity — a write, or a read the keep-alive marks
+// (docs/adr/0031 D3) — moves it only when the last move is older than this, so
+// a busy page costs one write a minute, not one per request, and the idle limit
+// is exact to the minute.
 const SessionTouchInterval = time.Minute
 
 // SessionRecord is a presented session and its person, as the resolver needs

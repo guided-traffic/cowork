@@ -459,20 +459,22 @@ func TestAuthRoutesKnowTheirMethods(t *testing.T) {
 	assertProblem(t, long, http.StatusBadRequest, "validation_failed")
 }
 
-// docs/adr/0031 D3: an absolute limit and an idle limit, and a request within
-// the idle window extends the session up to the absolute one.
+// docs/adr/0031 D3: an absolute limit and an idle limit, and the person's
+// activity within the idle window — here the keep-alive's read, which carries
+// X-Cowork-Activity: input — extends the session up to the absolute one.
 func TestSessionLifetimes(t *testing.T) {
 	w := newWorld(t)
 	names := withAccounts(t, w)
 	c := newClock()
 	s := newAPI(t, withLogin, withClock(c))
+	input := withHeader(api.ActivityHeader, api.ActivityInput)
 
 	idle := s.browser(t)
 	idle.mustLogin(names["memberA"], testPassword)
 	c.Advance(119 * time.Minute)
-	require.Equal(t, http.StatusOK, idle.get("/api/v1/me").StatusCode, "inside the idle window")
+	require.Equal(t, http.StatusOK, idle.get("/api/v1/me", input).StatusCode, "inside the idle window")
 	c.Advance(90 * time.Minute)
-	require.Equal(t, http.StatusOK, idle.get("/api/v1/me").StatusCode, "a use extended the session")
+	require.Equal(t, http.StatusOK, idle.get("/api/v1/me", input).StatusCode, "the person's activity extended the session")
 	c.Advance(2*time.Hour + time.Minute)
 	res := idle.get("/api/v1/me")
 	assertProblem(t, res, http.StatusUnauthorized, "unauthenticated")
@@ -487,13 +489,73 @@ func TestSessionLifetimes(t *testing.T) {
 	absolute.mustLogin(names["viewerA"], testPassword)
 	for range 11 {
 		c.Advance(time.Hour)
-		require.Equal(t, http.StatusOK, absolute.get("/api/v1/me").StatusCode)
+		require.Equal(t, http.StatusOK, absolute.get("/api/v1/me", input).StatusCode)
 	}
 	c.Advance(59 * time.Minute)
-	require.Equal(t, http.StatusOK, absolute.get("/api/v1/me").StatusCode, "just inside the twelve hours")
+	require.Equal(t, http.StatusOK, absolute.get("/api/v1/me", input).StatusCode, "just inside the twelve hours")
 	c.Advance(2 * time.Minute)
-	assertProblem(t, absolute.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
+	assertProblem(t, absolute.get("/api/v1/me", input), http.StatusUnauthorized, "unauthenticated")
 	assert.Equal(t, http.StatusOK, idle.login(names["memberA"], testPassword).StatusCode, "a new login starts a new session")
+}
+
+// docs/adr/0031 D3 as amended 2026-10-06: only the person's activity moves
+// the idle clock — a write that passes the CSRF check, or a read that carries
+// X-Cowork-Activity: input, as the browser's keep-alive sends it after the
+// person's input — and at most once a minute. A read without the header, a
+// read with another value, the event stream's connection and a write the CSRF
+// check refuses leave it alone, so a session that is only read ends at the
+// idle limit.
+func TestOnlyThePersonsActivityMovesTheIdleClock(t *testing.T) {
+	w := newWorld(t)
+	names := withAccounts(t, w)
+	c := newClock()
+	s := newAPI(t, withLogin, withClock(c))
+	b := s.browser(t)
+	b.mustLogin(names["memberA"], testPassword)
+	hash := auth.HashSession(b.Cookie)
+	seen := func() time.Time {
+		t.Helper()
+		return scalar[time.Time](t, `SELECT last_seen_at FROM sessions WHERE token_hash = $1`, hash[:])
+	}
+	token := map[string]any{"name": "script", "scope": "read"}
+	login := seen()
+
+	c.Advance(2 * time.Minute)
+	require.Equal(t, http.StatusOK, b.get("/api/v1/me").StatusCode)
+	assert.Equal(t, login, seen(), "a read without the header")
+	for _, value := range []string{"yes", "INPUT", "input, more", ""} {
+		require.Equal(t, http.StatusOK, b.get("/api/v1/me", withHeader(api.ActivityHeader, value)).StatusCode)
+		assert.Equal(t, login, seen(), "a read with the value %q", value)
+	}
+	stream := b.get("/api/v1/tenants/" + w.SlugA + "/events")
+	require.Equal(t, http.StatusOK, stream.StatusCode)
+	require.NoError(t, stream.Body.Close())
+	assert.Equal(t, login, seen(), "the event stream's connection")
+	assertProblem(t, b.request(http.MethodPost, "/api/v1/me/tokens", token, without("X-Requested-With")), http.StatusForbidden, "csrf")
+	assert.Equal(t, login, seen(), "a write the CSRF check refuses")
+
+	require.Equal(t, http.StatusOK, b.get("/api/v1/me", withHeader(api.ActivityHeader, api.ActivityInput)).StatusCode)
+	moved := seen()
+	assert.WithinDuration(t, c.Now(), moved, time.Millisecond, "the keep-alive's read")
+
+	c.Advance(30 * time.Second)
+	require.Equal(t, http.StatusOK, b.get("/api/v1/me", withHeader(api.ActivityHeader, api.ActivityInput)).StatusCode)
+	require.Equal(t, http.StatusCreated, b.request(http.MethodPost, "/api/v1/me/tokens", token).StatusCode)
+	assert.Equal(t, moved, seen(), "at most once a minute")
+
+	c.Advance(31 * time.Second)
+	require.Equal(t, http.StatusCreated, b.request(http.MethodPost, "/api/v1/me/tokens", token).StatusCode)
+	moved = seen()
+	assert.WithinDuration(t, c.Now(), moved, time.Millisecond, "a write")
+
+	c.Advance(119 * time.Minute)
+	require.Equal(t, http.StatusOK, b.get("/api/v1/me").StatusCode, "inside the idle window")
+	stream = b.get("/api/v1/tenants/" + w.SlugA + "/events")
+	require.Equal(t, http.StatusOK, stream.StatusCode)
+	require.NoError(t, stream.Body.Close())
+	assert.Equal(t, moved, seen(), "reads and the stream kept nothing")
+	c.Advance(2 * time.Minute)
+	assertProblem(t, b.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
 }
 
 // docs/adr/0031 D4, D6, docs/adr/0027 D5: a session lives in the database, so

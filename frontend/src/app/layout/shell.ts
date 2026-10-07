@@ -229,8 +229,8 @@ export class Shell {
         void this.router.navigate(['/password'], { queryParams: { return: this.router.url } });
       }
     });
-    // The person's input keeps the session's idle clock moving while they work without a request of
-    // their own (docs/adr/0031 D3); it stops with the shell, on the way to the login page.
+    // The person's input keeps the session's idle clock moving, which no read does by itself
+    // (docs/adr/0031 D3); it stops with the shell, on the way to the login page.
     const keepAlive = inject(KeepAliveService);
     keepAlive.start();
     inject(DestroyRef).onDestroy(() => keepAlive.stop());

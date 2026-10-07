@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideApiConfiguration } from '../api/api-configuration';
+import { PERSON_ACTIVITY } from './http';
 import { keepAliveEvery, KeepAliveService, workInputs } from './keep-alive.service';
 
 function setVisibility(state: DocumentVisibilityState): void {
@@ -21,6 +22,7 @@ describe('KeepAliveService (docs/adr/0031 D3)', () => {
   const asked = () => {
     const request = http.expectOne('/api/v1/me');
     expect(request.request.method).toBe('GET');
+    expect(request.request.context.get(PERSON_ACTIVITY)).toBe(true);
     request.flush({});
   };
 
@@ -96,6 +98,16 @@ describe('KeepAliveService (docs/adr/0031 D3)', () => {
     await minutes(5);
 
     asked();
+  });
+
+  it("marks its request as the person's activity, the one read that moves the idle clock", async () => {
+    service.start();
+    work();
+    await minutes(5);
+
+    const request = http.expectOne('/api/v1/me');
+    expect(request.request.context.get(PERSON_ACTIVITY)).toBe(true);
+    request.flush({});
   });
 
   it('takes a pointer that only moves for no work', async () => {
