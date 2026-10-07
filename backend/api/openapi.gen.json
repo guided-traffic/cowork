@@ -1788,6 +1788,24 @@
         "type": "string"
       },
       "ChatAvailability": {
+        "example": {
+          "available": true,
+          "providers": [
+            {
+              "id": "lmstudio",
+              "kind": "openai",
+              "model": "qwen/qwen3-30b-a3b-2507",
+              "name": "LM Studio"
+            },
+            {
+              "id": "claude",
+              "kind": "anthropic",
+              "model": "claude-sonnet-4-5",
+              "name": "Claude"
+            }
+          ],
+          "reason": null
+        },
         "properties": {
           "available": {
             "description": "The members of the tenant may hold a conversation (POST …/chat)",
@@ -10435,24 +10453,6 @@
           "200": {
             "content": {
               "application/json": {
-                "example": {
-                  "available": true,
-                  "providers": [
-                    {
-                      "id": "lmstudio",
-                      "kind": "openai",
-                      "model": "qwen/qwen3-30b-a3b-2507",
-                      "name": "LM Studio"
-                    },
-                    {
-                      "id": "claude",
-                      "kind": "anthropic",
-                      "model": "claude-sonnet-4-5",
-                      "name": "Claude"
-                    }
-                  ],
-                  "reason": null
-                },
                 "schema": {
                   "$ref": "#/components/schemas/ChatAvailability"
                 }
@@ -10482,14 +10482,14 @@
             "application/json": {
               "example": {
                 "context": {
-                  "path": "/t/acme/p/COW/board",
-                  "project": "COW"
+                  "path": "/t/acme/p/WEB/board",
+                  "project": "WEB"
                 },
-                "conversation": "0199a3c2-1d2e-7f00-8000-000000000042",
+                "conversation": "8b34dbc2-c05e-44d7-a25d-48efeace8245",
                 "messages": [
                   {
                     "role": "user",
-                    "text": "File a bug for the login that fails in Safari, and rank it to now."
+                    "text": "Open WEB-42."
                   }
                 ],
                 "provider": "lmstudio"
@@ -10505,6 +10505,7 @@
           "200": {
             "content": {
               "text/event-stream": {
+                "example": "event: tool_call\ndata: {\"arguments\":{\"key\":\"WEB-42\"},\"id\":\"call_1\",\"name\":\"open_ticket\"}\n\nevent: ui\ndata: {\"action\":\"navigate\",\"path\":\"/t/acme/tickets/WEB-42\"}\n\nevent: tool_result\ndata: {\"id\":\"call_1\",\"ok\":true,\"summary\":\"Opened acme/WEB-42 — Sign-in fails in Safari when the password contains a space on the person's screen.\"}\n\nevent: text\ndata: {\"delta\":\"WEB-42 is open\"}\n\nevent: text\ndata: {\"delta\":\" on your screen.\"}\n\nevent: done\ndata: {\"messages\":[{\"role\":\"assistant\",\"tool_calls\":[{\"arguments\":{\"key\":\"WEB-42\"},\"id\":\"call_1\",\"name\":\"open_ticket\"}]},{\"ok\":true,\"role\":\"tool\",\"text\":\"Opened acme/WEB-42 — Sign-in fails in Safari when the password contains a space on the person's screen.\",\"tool_call_id\":\"call_1\"},{\"role\":\"assistant\",\"text\":\"WEB-42 is open on your screen.\"}],\"reason\":\"answered\"}\n",
                 "schema": {
                   "type": "string"
                 }
