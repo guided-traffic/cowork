@@ -697,7 +697,7 @@ full.
   `Authorization` header is a token's, whatever cookie it carries. Without a valid credential the
   answer is `401` (`unauthenticated`, `token_expired`, `token_revoked`, and `not_allowed` for a
   token whose person the identity provider's gate no longer admits) with
-  `WWW-Authenticate: Bearer realm="cowork"`. Eighteen routes take a **session only** and answer a
+  `WWW-Authenticate: Bearer realm="cowork"`. Nineteen routes take a **session only** and answer a
   token `403 session_required`: creating a token, a tenant or a local account, resetting or
   changing a password, logging out, a turn of the chat and stopping one, choosing the chat's
   capabilities, a global administrator's list of every tenant, purging a deleted ticket, making or
