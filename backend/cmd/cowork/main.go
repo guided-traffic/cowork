@@ -505,6 +505,7 @@ func runJobs(ctx context.Context, db *store.DB, objects *storage.Client, logger 
 		}},
 		{"notification-expiry", func(ctx context.Context) (int64, error) { return db.ExpireNotifications(ctx, time.Now()) }},
 		{"github-delivery-expiry", func(ctx context.Context) (int64, error) { return db.ExpireGitHubDeliveries(ctx, time.Now()) }},
+		{"import-expiry", func(ctx context.Context) (int64, error) { return db.ExpireImportJobs(ctx, time.Now()) }},
 		{"ticket-purge", func(ctx context.Context) (int64, error) {
 			purged, err := db.PurgeDeletedTickets(ctx, time.Now())
 			for _, p := range purged {

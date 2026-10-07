@@ -70,13 +70,15 @@ type MembershipChange struct {
 }
 
 // EntityProjectRank is the entity of the notification of a project's rank set
-// as a whole — the sort by the score (docs/adr/0014 D3) —, whose stream event
-// is project.changed (docs/adr/0054 D2).
+// as a whole — the sort by the score (docs/adr/0014 D3), and an import's
+// tickets joining it (docs/adr/0051 D3) —, whose stream event is
+// project.changed (docs/adr/0054 D2).
 const EntityProjectRank = "project-rank"
 
-// ProjectChange is what an act on a project's rank as a whole announces: the
-// project, which the streams filter by as they filter its tickets' acts, and
-// its key, <tenant>/<PROJECT>.
+// ProjectChange is what an act on a project's tickets as a whole announces —
+// the sort of its rank by the score, an import: the project, which the
+// streams filter by as they filter its tickets' acts, and its key,
+// <tenant>/<PROJECT>.
 type ProjectChange struct {
 	ID  uuid.UUID
 	Key string

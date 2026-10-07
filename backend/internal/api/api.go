@@ -63,6 +63,9 @@ type Options struct {
 	AttachmentMaxBytes     int64
 	AttachmentMaxPerTicket int
 	AttachmentTenantQuota  int64
+	// MaxImportBytes bounds an import's upload, and what its files hold
+	// unpacked; 0 for no bound (docs/adr/0051 D7).
+	MaxImportBytes int64
 	// Events fans the published acts out to the event streams; nil serves
 	// no stream (docs/adr/0054).
 	Events *events.Hub
@@ -225,7 +228,7 @@ func New(opts Options) (http.Handler, error) {
 		webhookSealer:  auth.NewSealer(opts.SessionKey, auth.LabelGitHubWebhookSecret),
 	}
 	h.server = &Server{h: h, db: opts.DB, cursors: newCursorCodec(opts.SessionKey), storage: opts.Storage,
-		uploads: make(chan struct{}, uploadSlots(opts.AttachmentMaxBytes))}
+		uploads: make(chan struct{}, uploadSlots(opts.AttachmentMaxBytes)), imports: make(chan struct{}, 1)}
 	strict := apigen.NewStrictHandlerWithOptions(h.server, nil, apigen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			problem.Write(w, r, &problem.Error{Code: problem.ValidationFailed, Detail: "the request body is not valid JSON for this route"})
@@ -375,7 +378,7 @@ func (h *handler) serveOperation(w http.ResponseWriter, r *http.Request, route *
 	}
 	r = r.WithContext(ctx)
 	bodyDeadline(w, r)
-	if perr := h.limitBody(w, r); perr != nil {
+	if perr := h.limitBody(w, r, route.Operation.OperationID); perr != nil {
 		problem.Write(w, r, perr)
 		return
 	}

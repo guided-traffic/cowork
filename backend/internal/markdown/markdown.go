@@ -120,6 +120,9 @@ func Render(t Ticket) []byte {
 	return b.Bytes()
 }
 
+// String is the person as the document writes them.
+func (p Person) String() string { return person(p) }
+
 // person writes a person the way git writes an author, `Name <identity>`:
 // local:<username> for a local account, oidc:<issuer>#<subject> for a person
 // of the identity provider — an issuer has no fragment, so the first # ends

@@ -127,6 +127,11 @@ type Event struct {
 	// ticket is gone by the time the act is written — a purge's; nil reads the
 	// ticket's facts at publication.
 	Published *TicketFacts
+	// Quiet is an act another act of the transaction announces for it: an
+	// import's acts on the tickets it creates, which its one project.changed
+	// tells the streams of (docs/adr/0051 D3). A quiet act is written and
+	// never published.
+	Quiet bool
 }
 
 // TicketFacts are what a published act carries of its ticket: the project,
@@ -368,6 +373,9 @@ func (w *Writer) writeEvents(ctx context.Context, tenantID uuid.UUID, caller Cal
 		w.written = append(w.written, writtenAct{action: e.Action, actor: actorOf(caller, e)})
 		if err := w.deliver(ctx, tenantID, id, caller, e); err != nil {
 			return err
+		}
+		if e.Quiet {
+			continue
 		}
 		if err := w.publish(ctx, tenantID, id, e); err != nil {
 			return err

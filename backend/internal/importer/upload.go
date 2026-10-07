@@ -63,6 +63,9 @@ const (
 	zipMagic         = "PK\x03\x04"
 	zipEmptyMagic    = "PK\x05\x06"
 	maxPartNameBytes = 1024
+	// maxPathBytes is the longest path a ticket records as the file it came
+	// from (docs/adr/0051 D3), and a correction names.
+	maxPathBytes = 1024
 )
 
 // UploadError is an upload the import refuses as a whole: TooLarge for one
@@ -281,6 +284,9 @@ func (u *upload) grow(n int64) error {
 // count holds the upload to MaxFiles and refuses a path two files share: a
 // correction names a file by its path.
 func (u *upload) count(p string) error {
+	if len(p) > maxPathBytes {
+		return malformed("the upload holds a path longer than %d bytes", maxPathBytes)
+	}
 	u.entries++
 	if u.lim.MaxFiles > 0 && u.entries > u.lim.MaxFiles {
 		return &UploadError{TooLarge: true, Message: fmt.Sprintf("the upload holds more than %d files", u.lim.MaxFiles)}

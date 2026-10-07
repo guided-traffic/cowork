@@ -103,46 +103,65 @@ func (a *analysis) unresolvedBlock(e *entry) bool {
 	return true
 }
 
-// parentCycles makes every file of a parent chain that loops within the
-// upload an error (docs/adr/0008 D2); true when it found one.
+// parentCycles makes every file of a chain that loops within the upload an
+// error: a ticket's parent, and the ticket a block waits on, must exist before
+// it (docs/adr/0008 D2, docs/adr/0009 D2); true when it found one.
 func (a *analysis) parentCycles() bool {
 	var loop []*entry
 	for _, e := range a.entries {
-		if !e.creates() || e.f.Parent == "" {
-			continue
-		}
-		var path []*entry
-		at := map[*entry]int{}
-		for cur := e; cur != nil && cur.creates(); cur = a.parentEntry(cur) {
-			if i, seen := at[cur]; seen {
-				loop = append(loop, path[i:]...)
-				break
-			}
-			at[cur] = len(path)
-			path = append(path, cur)
+		if e.creates() {
+			loop = append(loop, a.loopFrom(e, []*entry{}, map[*entry]int{})...)
 		}
 	}
 	failed := map[*entry]bool{}
 	for _, e := range loop {
 		if !failed[e] {
 			failed[e] = true
-			e.f.fail(keyParent, e.f.line(keyParent), "the parent chain loops back to this ticket (docs/adr/0008 D2)")
+			e.f.fail(keyParent, e.f.line(keyParent), "the parent chain, or the tickets the blocks wait on, loop back to this ticket (docs/adr/0008 D2)")
 		}
 	}
 	return len(loop) > 0
 }
 
-// parentEntry is the file a file's parent names, nil for none or for a ticket
-// of the project.
-func (a *analysis) parentEntry(e *entry) *entry {
-	if e.f.Parent == "" {
-		return nil
+// loopFrom walks the files a file needs before it and returns the first loop
+// it closes, none when it closes none.
+func (a *analysis) loopFrom(e *entry, path []*entry, at map[*entry]int) []*entry {
+	if i, seen := at[e]; seen {
+		return path[i:]
 	}
-	ref, _ := a.resolve(e.f.Parent)
-	if ref == nil || ref.Number == 0 {
-		return nil
+	at[e] = len(path)
+	path = append(path, e)
+	for _, next := range a.dependencies(e) {
+		if loop := a.loopFrom(next, path, at); loop != nil {
+			return loop
+		}
 	}
-	return a.byNumber[ref.Number][0]
+	delete(at, e)
+	return nil
+}
+
+// dependencies are the files of the upload the execution creates before a
+// file: its parent, and the ticket its block waits on.
+func (a *analysis) dependencies(e *entry) []*entry {
+	var out []*entry
+	for _, v := range []string{e.f.Parent, a.blockWaitsOn(e)} {
+		if v == "" {
+			continue
+		}
+		if ref, _ := a.resolve(v); ref != nil && ref.Number != 0 {
+			out = append(out, a.byNumber[ref.Number][0])
+		}
+	}
+	return out
+}
+
+// blockWaitsOn is what a block of kind ticket waits on, "" for none.
+func (a *analysis) blockWaitsOn(e *entry) string {
+	if b := e.plan.Block; b == nil || b.Kind != domain.BlockTicket {
+		return ""
+	}
+	v, _ := a.waitsOnOf(e)
+	return v
 }
 
 // linkPlan is a link to plan, with the file it was read from.
@@ -459,8 +478,8 @@ func (a *analysis) plan() Plan {
 			return
 		}
 		done[e] = true
-		if par := e.plan.Parent; par != nil && par.Number != 0 {
-			visit(a.byNumber[par.Number][0])
+		for _, before := range a.dependencies(e) {
+			visit(before)
 		}
 		order = append(order, e)
 	}

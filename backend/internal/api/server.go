@@ -73,8 +73,10 @@ type Server struct {
 	cursors cursorCodec
 	// storage holds the attachments' bytes; nil without object storage.
 	storage *storage.Client
-	// uploads bounds the uploads buffered at once against the memory limit.
+	// uploads bounds the uploads buffered at once against the memory limit;
+	// imports holds the replica to one import at a time (importSlot).
 	uploads chan struct{}
+	imports chan struct{}
 }
 
 var _ apigen.StrictServerInterface = (*Server)(nil)
