@@ -285,6 +285,14 @@ spec:
             - name: COWORK_TRUSTED_PROXIES
               value: {{ .Values.backend.config.trustedProxies | quote }}
             {{- end }}
+            {{- /* The Go runtime's soft memory limit is the container's memory
+            limit, in bytes: the collector works harder as the heap nears it,
+            before the kernel kills the container. Without a limit the
+            downward API gives the node's allocatable memory. */}}
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.memory
             {{- with .Values.backend.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

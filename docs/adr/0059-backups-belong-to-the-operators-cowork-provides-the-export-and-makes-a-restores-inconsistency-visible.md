@@ -47,6 +47,20 @@ implementer, open to the owner's objection:
   specs. Not run: the check against a store other than the MinIO of the tests, and a restore of a
   real installation.
 
+**Amended** (2026-10-07): the comparison holds a bounded memory. D4's check compares the listing and
+the rows as two ordered streams — the listing in the byte order of its keys, a thousand objects at a
+time, and after each batch the rows its keys can name, read once the listing has passed them, so the
+listing still comes before the rows — and keeps of a tenant the counts and the bytes, the first
+thousand orphans and the files the listing did not show, whatever the number of its objects; a store
+that lists out of byte order fails the run. What the check finds, keeps and shows is unchanged.
+Verified by the unit tests of the comparison — held at several batch sizes to what the check found
+when it read the whole listing and every row, and run over a synthetic tenant of a million objects
+with the growth of the live heap below 8 MiB, where the whole listing and every row had taken
+145 MiB —, by the tests of the check of both tiers, which pass unchanged, and by the integration
+tier reading both orders back from PostgreSQL and MinIO. Not run: a tenant of that size against a
+real store. The job lock D4 names was wrong when it was made
+concrete: the code has held `(cowk, 8)` since the check was built.
+
 ## Context
 
 cowork's state lives in two external systems — PostgreSQL and an S3-compatible store
@@ -86,12 +100,16 @@ tenant's administration page. A download of a dangling attachment answers `404` 
 problem whose `detail` says the object is missing, never a bare `404`. Orphans are removed by
 the purge job only after an administrator confirms the list. *(Made concrete 2026-10-06 by the
 implementer, open to the owner's objection:)* the job is `consistency-check`, under the job lock
-`(cowk, 7)`, in one transaction: for every tenant it lists the objects under `<tenant-id>/` —
-which takes `s3:ListBucket` on the bucket beside reading, writing and deleting objects — then
-reads the tenant's attachments, asks the bucket for each attachment the listing missed, and
-judges an object no metadata names an orphan unless the time in its key's UUIDv7, or the last
-change of a key the backend does not write, lies within the last hour: an upload puts its object
-before its row commits. The tenant's result replaces its last one under a new id — the counts
+~~`(cowk, 7)`~~ `(cowk, 8)`, in one transaction: for every tenant it lists the objects under
+`<tenant-id>/` — which takes `s3:ListBucket` on the bucket beside reading, writing and deleting
+objects — then reads the tenant's attachments, asks the bucket for each attachment the listing
+missed, and judges an object no metadata names an orphan unless the time in its key's UUIDv7, or
+the last change of a key the backend does not write, lies within the last hour: an upload puts its
+object before its row commits. *(Amended 2026-10-07:)* The listing and the attachments are
+compared as two streams in the byte order of the keys, a thousand listed objects at a time, the
+attachments a batch's keys can name read once the listing has passed them; the check holds a
+bounded memory whatever the number of objects, and a store that lists out of that order fails the
+run. The tenant's result replaces its last one under a new id — the counts
 exact, each list at most a thousand entries, the dangling files with their names and tickets — and
 is readable by the tenant's administrators and the job alone, under row-level security. The
 installation-level act is `checked`, with the counts in all and per tenant by id, never a file
@@ -161,7 +179,9 @@ D6), not of the backend.
   expected sizes it is seconds, and the job is bounded by the per-tenant prefix of
   [ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
   D1. *(Added 2026-10-06:)* The run holds one database transaction open for every tenant's
-  listing; not measured on a large bucket.
+  listing; not measured on a large bucket. *(Added 2026-10-07:)* Its memory no longer grows with a
+  tenant's objects; its time does — a listing request and a read of the attachments per thousand
+  objects —, and the transaction stays open for all of it.
 - *(Added 2026-10-06:)* The listing needs `s3:ListBucket`, so the access key can enumerate every
   tenant's object keys, which it could not before; a key that leaks alone then reads every object,
   not only those whose keys the database names

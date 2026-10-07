@@ -1273,8 +1273,7 @@ Ticket:
     horizon_set:
       value: now
       reason: Customers cannot sign in
-      # The handler names the person who set it by the id alone (tickets.go, horizonSetView).
-      by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: null, display_name: ''}
+      by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
       at: '2026-10-02T09:14:00Z'
     effort: S
     progress: 60

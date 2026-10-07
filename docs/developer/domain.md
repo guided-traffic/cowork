@@ -40,9 +40,11 @@ and [`api/repositories.go`](../../backend/internal/api/repositories.go):
 - **The binding** (`project_repositories`, migration 23) holds the identity, an optional
   sub-directory of a monorepo (`NormaliseRepositoryPath`: relative, no `..`, `""` for the whole
   repository) and the remote as it was last given, without credentials (`SanitiseRemote`: an
-  HTTP(S) URL loses its user information, another URL its password). The identity and the
-  sub-directory are unique in the tenant: a repository is in at most one project of a tenant
-  ([ADR 0066] D6). Across tenants nothing holds it to one; the lookup reports several.
+  HTTP(S) URL loses its user information, another URL its password, and a URL `url.Parse` refuses
+  everything between its `://` and the last `@` of its authority, which ends at the first `/`, `?`
+  or `#` — such a remote is kept, cut, so it is still shown, and it binds once it parses). The
+  identity and the sub-directory are unique in the tenant: a repository is in at most one project
+  of a tenant ([ADR 0066] D6). Across tenants nothing holds it to one; the lookup reports several.
 - **Binding and unbinding** (`POST`, `DELETE …/projects/{project}/repositories`) are the act of
   creating a project (`creating`): an administrator, or a member while the tenant lets members
   create projects, judged by the role in the project; `write`; an agent with `create-project`
@@ -583,9 +585,12 @@ name it ([ADR 0071], [`internal/github`](../../backend/internal/github/),
 [api.md](api.md#githubs-webhook), the table [data-access.md](data-access.md#githubs-deliveries).
 
 - **Which deliveries.** `pull_request` with the action `opened`, `edited`, `synchronize`, `reopened`
-  or `closed`, and `push` whose `ref` is `refs/heads/` and the repository's `default_branch`; the
-  repository's `clone_url`, normalised as a binding is ([repositories](#repositories)), must be bound
-  by a project of the tenant — any project, any sub-directory. Every other delivery links nothing.
+  or `closed` whose `author_association` is `OWNER`, `MEMBER` or `COLLABORATOR` — the repository's
+  owner, a member of the organisation that owns it, a collaborator (`linkedAuthors`, ADR 0071 D4 as
+  made concrete 2026-10-07) —, and `push` whose `ref` is `refs/heads/` and the repository's
+  `default_branch`; the repository's `clone_url`, normalised as a binding is
+  ([repositories](#repositories)), must be bound by a project of the tenant — any project, any
+  sub-directory. Every other delivery links nothing.
 - **Which keys** ([ADR 0068] D1, D2, D5; `PullRequestKeys`, `CommitKeys`). A pull request's body is
   read for `Cowork-Ticket: <key>` trailer lines — the name without regard to case, the key full or
   short — and for lines that are a full key alone, as ADR 0068 D5 puts the full key on its first

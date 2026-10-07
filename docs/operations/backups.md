@@ -106,7 +106,12 @@ attachments, and asks the bucket again for each attachment the listing did not s
 attachment names is an orphan unless its attachment id was made within the last hour — an upload
 puts its bytes before its row commits. The result replaces the tenant's last one; the run is one
 database transaction, under a lock that keeps the replicas from running it twice. The storage key
-needs `s3:ListBucket` for the listing ([installation.md](installation.md#object-storage)).
+needs `s3:ListBucket` for the listing ([installation.md](installation.md#object-storage)). The
+listing and the attachments are compared a thousand objects at a time, in the order of their keys,
+so what the check holds does not grow with the number of a tenant's objects; it relies on the store
+listing the keys in byte order, as S3 does, and a store that lists them otherwise fails the run —
+the job's log says `job failed` with `consistency-check` and `the comparison needs the keys in byte
+order`, and `cowork check-consistency` logs `consistency check failed` with that error and exits `1`.
 
 **Running it at once** — after a restore, or after putting lost bytes back:
 

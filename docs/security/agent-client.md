@@ -52,7 +52,7 @@ status, is never retried; a refusal reaches the model as the API's code and mess
 | The plugin's option `cowork_token` | Marked sensitive: Claude Code keeps it in the system's credential store, not in a settings file, and hands it to the MCP server in `COWORK_TOKEN` and to the hooks in `CLAUDE_PLUGIN_OPTION_COWORK_TOKEN`, which the hook command copies into `COWORK_TOKEN` ([`claude/cowork/`](../../claude/cowork/)) |
 | Configured by hand | In the environment Claude Code starts with, or written into `~/.claude.json`, or a repository's `.mcp.json` — the last two are files ([docs/operations/claude-code.md](../operations/claude-code.md)) |
 | The process | `COWORK_TOKEN` is read once, held in memory, and set as `Authorization: Bearer` on each request. No log line, error or tool answer carries it: a configuration error names the variable and the token page ([`mcpcli/config.go`](../../backend/internal/mcpcli/config.go), `TestConfiguration`) |
-| On disk | Nothing of the token. The client writes two kinds of file under the user's cache directory, `0600` in a `0700` directory ([`tools.FileMemory`](../../backend/internal/tools/memory.go)): the time of the last session per installation and binding, timestamps only, and, from the `SessionStart` and `PostModelSwitch` hooks, the model of the last session started or switched per project directory, with that directory's path |
+| On disk | Nothing of the token. The client writes two kinds of file under the user's cache directory, on POSIX systems `0600` in a `0700` directory ([`tools.FileMemory`](../../backend/internal/tools/memory.go)); Windows applies no such mode, and they take the access list of the cache directory, `%LocalAppData%` under the person's profile: the time of the last session per installation and binding, timestamps only, and, from the `SessionStart` and `PostModelSwitch` hooks, the model of the last session started or switched per project directory, with that directory's path. An export the person asks for is written where they say ([import-and-export.md](import-and-export.md#cowork-mcp-export-on-a-persons-machine)) |
 
 **The token goes to `COWORK_URL` and nowhere else.** Every tool calls the generated client,
 which addresses the installation's `/api/v1/` routes; the `api` escape hatch takes a path, not a
@@ -76,9 +76,11 @@ the root and the sub-directory, the nearest `.cowork.yaml`, and for the Stop hoo
 
 - **The remotes' URLs**, at most ten, without credentials: an HTTP(S) URL loses its user
   information — where a token such as `https://ghp_…@github.com/…` would sit — and any other URL
-  its password, before the request is built ([`domain.SanitiseRemote`](../../backend/internal/domain/repository.go));
-  the server sanitises once more before it stores the last form of a bound remote, and normalises
-  every remote to its identity, `host/path` (ADR 0066 D1).
+  its password, and a URL that does not parse, whatever its scheme, everything up to the last `@`
+  of its authority, before the request is built
+  ([`domain.SanitiseRemote`](../../backend/internal/domain/repository.go), `TestSanitiseRemote`);
+  the server sanitises once more before it stores the last form of a bound remote or answers it in
+  the lookup, and normalises every remote to its identity, `host/path` (ADR 0066 D1).
 - **The sub-directory** of the working directory relative to the repository's root, for a
   monorepo's bindings.
 
@@ -132,7 +134,10 @@ revocation on the token page when a machine is in doubt.
 ### H-34 — Text in the backlog can steer the agent within its token
 
 Live by design. Anyone who may write a ticket, a comment or an answer that a person's session
-reads can write instructions into it; a model may follow them. Quoting and the instructions make
+reads can write instructions into it; a model may follow them. Where a tenant takes GitHub's webhook,
+so can the author of a pull request or a commit it links, whose title a ticket's context carries: of
+a pull request the repository's owner, a member of its organisation or a collaborator only, of a
+commit whoever wrote one that reached the default branch ([github-webhook.md](github-webhook.md#whose-pull-requests-are-linked)). Quoting and the instructions make
 that less likely, not impossible. What follows is bounded by the token and nothing else: a
 "full" agent token closes tickets in progress, decides, ranks, overrides urgencies, creates
 projects, binds and unbinds repositories, records answers, and the `api` tool reaches every route the token reaches,
@@ -146,15 +151,25 @@ into the same projects, restricted tokens, and the timeline.
 ### H-35 — The binaries are attested, not signed for the operating system
 
 Live today. A release attaches the six binaries, a SHA-256 file each and a build provenance
-attestation for each binary, which the release workflow makes with its own identity; `gh attestation
-verify` proves the file was built by that workflow of this repository from the tagged commit, so a
-release replaced by whoever can write releases fails it — unless a compromised step of that
-workflow made the attestation itself ([release-pipeline.md](release-pipeline.md#h-61) H-61). The check is the person's step, and nothing
-makes them take it: the checksum beside the binary comes from the same release, macOS refuses the
-unnotarised file at first start until the person lifts the quarantine, and Windows sees no
-Authenticode signature (ADR 0041 Residual risks). Mitigation: the verification step of
-[claude-code.md](../operations/claude-code.md), the repository's release protection — tags written
-only by the release App ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)) —
+attestation for each binary, which the release workflow makes with its own identity. The check of
+[claude-code.md](../operations/claude-code.md) names that identity — the repository, the signing
+workflow `.github/workflows/build.yml` and the source ref `refs/tags/v$VERSION` — and so proves
+that a run of `build.yml` for that tag attested the file: a binary replaced in the release fails
+it, and so does one attested by any other workflow or in a run for any other ref (tried against the
+0.11.0 binaries with gh 2.98.0 on 2026-10-07). gh matches the workflow by the start of its path, so
+the tag is what names the run; a run for the tag reads the workflows of the commit the tag names
+(GitHub's documentation of the release event, not tried), the tags are written only by the release
+App, and an administrator may bypass the ruleset
+([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)).
+What the check does not prove is what that run did — a compromised step of `build.yml` can attest a
+binary it did not build ([release-pipeline.md](release-pipeline.md#h-61) H-61) —, nor the machine it
+ran on: the project's self-hosted runner, which the attestation names and does not vouch for. The
+check is the person's step, and nothing makes them take it: the checksum beside the binary comes
+from the same release, macOS refuses the unnotarised file at first start until the person lifts the
+quarantine, and Windows sees no Authenticode signature (ADR 0041 Residual risks). Mitigation: the
+verification step of [claude-code.md](../operations/claude-code.md), the repository's release
+protection — tags written only by the release App
+([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)) —
 and building from a checkout with `make build-mcp`.
 
 <a id="h-36"></a>

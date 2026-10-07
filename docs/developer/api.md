@@ -9,7 +9,8 @@ JSON. The decisions are [ADR 0046] (spec first), [ADR 0047] (errors), [ADR 0045]
 contract), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
 against the tree on 2026-10-05, GitHub's webhook ([below](#githubs-webhook)) and the examples
-([below](#examples)) on 2026-10-06, the examples of the import and the export on 2026-10-07.
+([below](#examples)) on 2026-10-06, the examples of the import and the export, the person of a
+horizon set and a parameter's failure on 2026-10-07.
 
 ## The document
 
@@ -35,7 +36,7 @@ into the file of its path family.
 | [`chat.yaml`](../../backend/api/chat.yaml) | `/tenants/{tenant}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose; `/tenants/{tenant}/chat/turns`: stopping the person's running turns ([chat.md](chat.md)) |
 | [`imports.yaml`](../../backend/api/imports.yaml) | a project's import — the dry run (`…/projects/{project}/imports`), its job and report (`…/imports/{import}`), its execution (`…/imports/{import}/execution`) — and the project's and the tenant's export (`…/projects/{project}/export`, `/tenants/{tenant}/export`), with the report, the corrections and the manifests as `Import*` and `Export*` in `components/schemas.yaml` ([import-and-export.md](import-and-export.md)) |
 | [`dashboard.yaml`](../../backend/api/dashboard.yaml) | `/tenants/{tenant}/dashboard`: the tenant's dashboard, each tile defined in its field of `components/schemas.yaml#/Dashboard` ([the dashboard](#the-dashboard)) |
-| `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem`, whose three examples its errors share, and a response's example is the one of the schema it names ([examples](#examples)) |
+| `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem`, whose four examples its errors share, and a response's example is the one of the schema it names ([examples](#examples)) |
 | `components/problem-codes.yaml` | the `ProblemCode` enum, **generated** from the code catalogue |
 
 `make generate` turns it into code, in this order (the [`Makefile`](../../Makefile)):
@@ -89,9 +90,10 @@ Where it is written is decided once:
   names no schema of `components/schemas`: the CSV answers, the Markdown export and the context, the
   first lines of the event stream and of a turn of the chat, the two documents of [`meta.yaml`](../../backend/api/meta.yaml).
 - **The errors share the shared response's.** `Problem` in
-  [`components/responses.yaml`](../../backend/api/components/responses.yaml) carries three named
+  [`components/responses.yaml`](../../backend/api/components/responses.yaml) carries four named
   examples, the shapes of [the problem body](#problem-details): `notFound`, `validationFailed` with
-  `errors[]` as the validator writes it, `preconditionFailed` with `errors[].current`.
+  `errors[]` as the validator writes a body's failures, `invalidParameter` with a query parameter's
+  at `query:<name>`, `preconditionFailed` with `errors[].current`.
 - **Bytes have none**: a body whose schema is `format: binary`, the download of an attachment and
   the archive of an export; what the archive holds is the examples of `ExportManifest`, `ExportLink`
   and `ExportAttachment`. A `multipart/form-data` body without an example names each of its parts in
@@ -106,9 +108,8 @@ Ada Lovelace (the local account `ada`, a global administrator who administers `a
 and Alan Turing (persons of the identity provider, `grace@acme.example`, `alan@acme.example`) and
 Sam Rivera (the local account `sam`). An id the server makes is a UUIDv7 whose time is the entity's
 creation, one a client makes — the browser's idempotency key, the chat's conversation — a v4; times
-are RFC 3339 in UTC, values the handlers' own — `horizon_set.by` names its person by the id alone,
-as `horizonSetView` answers it. A text the server renders is the renderer's output for the example's
-input, not a hand-written guess: `body_html`, `options_html` and `answer_html` are what
+are RFC 3339 in UTC, values the handlers' own. A text the server renders is the renderer's output
+for the example's input, not a hand-written guess: `body_html`, `options_html` and `answer_html` are what
 [`internal/richtext`](../../backend/internal/richtext/richtext.go) makes of the Markdown beside them,
 the export and the context what [`internal/markdown`](../../backend/internal/markdown/markdown.go)
 writes for `acme/WEB-42`, and the two reports of `ImportJob` what
@@ -177,8 +178,14 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    (`createImport`) `COWORK_MAX_IMPORT_BYTES` plus the same — (0 disables). A declared length above it is
    `413 payload_too_large` before anything is read; a longer body fails while it is read.
 9. **Request validation** against the document (kin-openapi `openapi3filter`): every error is an
-   `errors[]` entry of `400 validation_failed`; a query parameter the operation does not declare
-   is refused (the validator would let it pass) — except on an operation marked
+   `errors[]` entry of `400 validation_failed` — a body's failure at its field, a parameter at
+   `query:<name>` or `header:<name>`, one entry whose message holds the failures of a repeated
+   one's values —, each message the failure alone (`minimum: got 0, want 1` at `query:limit`):
+   where the JSON Schema 2020-12 validator a 3.1 document uses writes the resource it compiles a
+   schema under and the location in the value before the failure, `bodyErrors` and
+   `parameterError` in [`validate.go`](../../backend/internal/api/validate.go) take both out; a
+   query parameter the operation does not declare is refused (the validator would let it pass) —
+   except on an operation marked
    `x-cowork-open-query`, the identity provider's callback, to which an issuer may add its own; a
    path parameter that breaks its schema is
    `404`, because it names nothing that can exist; `format: uuid` accepts any UUID version (the
@@ -686,7 +693,8 @@ concrete:
    then `202` with no body, whatever it linked.
 
 `applyDelivery` reads a `pull_request` of the actions `opened`, `edited`, `synchronize`, `reopened`
-and `closed`, and a `push` whose `ref` is the default branch's; `boundIdentity` normalises
+and `closed` whose author is the repository's owner, a member or a collaborator (`PullRequest.Read`,
+by `author_association`), and a `push` whose `ref` is the default branch's; `boundIdentity` normalises
 `repository.clone_url` and asks `RepositoryBoundInTenant`, any project and sub-directory; the keys of
 `internal/github` resolve through `ResolveTicketKeys` (`resolveKeys`, `targetsOf`: a key of another
 tenant, of no ticket or of a deleted one passed over, each ticket once by the first place its key

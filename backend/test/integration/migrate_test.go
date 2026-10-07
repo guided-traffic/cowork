@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -870,4 +871,76 @@ func TestTheNarrowingMigrationRewritesAgainAndRefusesTheOldName(t *testing.T) {
 		require.NoError(t, f.QueryRow(ctx, "SELECT relforcerowsecurity FROM pg_class WHERE oid = $1::regclass", table).Scan(&forced))
 		assert.True(t, forced, "row-level security is forced on %s again", table)
 	}
+}
+
+// docs/adr/0011 D6, docs/adr/0051 D7, docs/adr/0028 D3: migration 44 holds a
+// ticket's body to 200,000 characters and a question's options and its
+// answer to 100,000 each. A row longer than that fails the migration, which
+// leaves nothing behind; once the row is shortened and the version set back,
+// as the operations pages say, the migration applies, the rows at the bounds
+// pass its validation, and a longer write is refused whoever makes it.
+func TestTheLengthMigrationHoldsTheTextsToTheLengthsOfTheAPI(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	name := fmt.Sprintf("cowork_it_lengths_%d", time.Now().UnixNano())
+	require.NoError(t, createDatabase(ctx, env.AdminURL, name))
+	t.Cleanup(func() {
+		dropCtx, dropCancel := context.WithTimeout(context.Background(), time.Minute)
+		defer dropCancel()
+		assert.NoError(t, dropDatabase(dropCtx, env.AdminURL, name))
+	})
+	adminURL, err := withUserAndDatabase(env.AdminURL, "", "", name)
+	require.NoError(t, err)
+	ownerURL, err := withUserAndDatabase(env.AdminURL, ownerRole, ownerRole, name)
+	require.NoError(t, err)
+
+	migrateTo(t, ownerURL, 43)
+	f, err := fixture.Connect(ctx, adminURL)
+	require.NoError(t, err)
+	t.Cleanup(f.Close)
+	person, err := f.Person(ctx, uniqueSlug("lengths"), "Lengths")
+	require.NoError(t, err)
+	tenant, err := f.Tenant(ctx, uniqueSlug("lengths"), "Lengths")
+	require.NoError(t, err)
+	project, err := f.Project(ctx, tenant, "LEN", "Lengths")
+	require.NoError(t, err)
+	long := func(n int) string { return strings.Repeat("ä", n) }
+	at, _, err := f.Ticket(ctx, tenant, project, person, "at the bounds")
+	require.NoError(t, err)
+	require.NoError(t, f.Exec(ctx, `UPDATE tickets SET body = $1 WHERE id = $2`, long(200000), at))
+	require.NoError(t, f.Exec(ctx, `INSERT INTO questions (tenant_id, ticket_id, number, question, options, answer, status,
+		answered_by, answered_at, asked_by) VALUES ($1, $2, 1, 'which?', $3, $3, 'answered', $4, now(), $4)`,
+		tenant, at, long(100000), person))
+	beyond, _, err := f.Ticket(ctx, tenant, project, person, "beyond the bound")
+	require.NoError(t, err)
+	require.NoError(t, f.Exec(ctx, `UPDATE tickets SET body = $1 WHERE id = $2`, long(200001), beyond))
+
+	_, err = store.Migrate(ctx, ownerURL, runtimeRole)
+	require.ErrorContains(t, err, "tickets_body_length_check", "the validation reads every row")
+	left, err := f.QueryCount(ctx, `SELECT count(*) FROM pg_constraint WHERE conname LIKE '%\_length\_check'`)
+	require.NoError(t, err)
+	assert.Zero(t, left, "the failed file left no check behind")
+
+	require.NoError(t, f.Exec(ctx, `UPDATE tickets SET body = left(body, 200000) WHERE id = $1`, beyond))
+	require.NoError(t, f.Exec(ctx, `UPDATE `+store.MigrationsTable+` SET version = 43, dirty = false`))
+	res, err := store.Migrate(ctx, ownerURL, runtimeRole)
+	require.NoError(t, err)
+	embedded, err := store.EmbeddedVersion()
+	require.NoError(t, err)
+	assert.EqualValues(t, embedded-43, res.Applied, "migration 44 and every later one")
+
+	for check, write := range map[string]string{
+		"tickets_body_length_check":      `UPDATE tickets SET body = body || 'x' WHERE id = $1`,
+		"questions_options_length_check": `UPDATE questions SET options = options || 'x' WHERE ticket_id = $1`,
+		"questions_answer_length_check":  `UPDATE questions SET answer = answer || 'x' WHERE ticket_id = $1`,
+	} {
+		var pgErr *pgconn.PgError
+		if assert.ErrorAs(t, f.Exec(ctx, write, at), &pgErr, check) {
+			assert.Equal(t, "23514", pgErr.Code, check)
+			assert.Equal(t, check, pgErr.ConstraintName)
+		}
+	}
+	n, err := f.QueryCount(ctx, `SELECT count(*) FROM tickets WHERE length(body) = 200000`)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, n, "the rows at the bound stay as they were")
 }

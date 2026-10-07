@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
@@ -519,6 +520,28 @@ func (a *analysis) finishPlan(e *entry, creates map[int32]bool, hasChildren bool
 	}
 	full := p.Stages == [3]int{100, 100, 100}
 	p.DoneByHand = p.State == domain.StateDone && (hasChildren || !full)
+	bounded(e)
+}
+
+// bounded holds the texts the execution writes to the lengths the API holds
+// every write to (docs/adr/0051 D7): the body, and each question's options
+// and answer, as the execution writes them — with the lines and the keys the
+// import adds. A longer one is an error of the file, which refuses the
+// execution.
+func bounded(e *entry) {
+	p := e.plan
+	if n := utf8.RuneCountInString(p.Body); n > maxBody {
+		e.f.fail(fieldBody, 0, "the body as the import writes it has %d characters, more than the %d a ticket's body holds", n, maxBody)
+	}
+	for _, q := range p.Questions {
+		field := questionField(q.Number)
+		if n := utf8.RuneCountInString(q.Options); n > maxQuestionText {
+			e.f.fail(field, q.Line, "Q%d's options have %d characters, more than the %d a question's options hold", q.Number, n, maxQuestionText)
+		}
+		if n := utf8.RuneCountInString(q.Answer); n > maxQuestionText {
+			e.f.fail(field, q.Line, "Q%d's answer has %d characters, more than the %d an answer holds", q.Number, n, maxQuestionText)
+		}
+	}
 }
 
 // withRelated appends lines to the body's `## Related` section, or adds the

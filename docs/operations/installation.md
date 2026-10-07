@@ -1179,6 +1179,26 @@ D4) lists the bucket once a day, at the first start and then in the hour after 0
   The first check may find what a restore or a failed removal left in the past, and the alert then
   fires a day later — the tenants' administrators settle it on their settings page.
 
+**The release whose database holds the lengths of a body, the options and an answer**
+([ADR 0011](../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6,
+[migration 44](../../backend/internal/store/migrations/000044_text_length_checks.up.sql)) reads every
+ticket and every question as it adds the checks: a body longer than 200,000 characters, or a
+question's options or answer longer than 100,000, fails the migration, which leaves nothing behind
+but the schema's version dirty at 44 ([upgrade.md, a dirty schema](upgrade.md#a-dirty-schema)). No
+write of the API makes one; an import of 0.11.0 held no such length. Before the upgrade, ask the
+database as the owner role:
+
+```sql
+SELECT 'ticket' AS kind, id FROM tickets WHERE length(body) > 200000
+UNION ALL
+SELECT 'question', id FROM questions WHERE length(options) > 100000 OR length(answer) > 100000;
+```
+
+No row, nothing to do. A row it names is shortened — a ticket's body replaced, a question's options
+or answer edited, through the API or as the owner role in the database — before the upgrade, or
+before the version is set back after a failed run. A rollback to the release before serves over the
+checks: everything it writes keeps to them but an import's longer text, which the database refuses.
+
 ## Uninstall
 
 ```bash
@@ -1200,7 +1220,8 @@ revisited once there is a workload. Uploads are what moves the backend's memory:
 held in memory while it is checked and stored, and the backend lets 64 MiB divided by
 `backend.config.attachmentMaxBytes` uploads in at a time, at least one — six with the 10 MiB
 default; the rest wait. From 64 MiB on it is one upload at a time, holding up to the whole
-maximum: raise the memory limit before raising the maximum.
+maximum: raise the memory limit before raising the maximum. The backend's memory limit is also its
+`GOMEMLIMIT`, the Go runtime's soft limit ([runtime.md](runtime.md#memory)).
 
 Each backend replica holds its connection pool to PostgreSQL — pgx's default size is the
 larger of 4 and the number of CPUs the process sees; `pool_max_conns=<n>` in the runtime URL

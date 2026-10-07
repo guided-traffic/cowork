@@ -186,7 +186,11 @@ one import at a time per replica, a dry run or an execution, since each holds it
 the request timeout ([ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
 D2) bounds both. A dry run past its day answers `404` to a read and to an execution, and the job
 `import-expiry` deletes it with its files within the hour; an executed job stays, its report
-without the files, because its tickets name it.
+without the files, because its tickets name it. *(Made concrete 2026-10-07 by the implementer, open
+to the owner's objection:)* the texts an execution writes are held to the lengths the API holds
+every write of them to — a body of at most 200,000 characters, a question's options and its answer
+of at most 100,000 each, counted as the execution writes them, with the lines and the keys the
+import adds —; a longer one is an error of its file, which refuses the execution (D2).
 
 **D8 — No generic batch API.** No `POST …/tickets:batch`, no transactional operation list.
 A bulk need beyond import is a question of its own.

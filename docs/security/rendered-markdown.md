@@ -2,7 +2,7 @@
 
 How the Markdown that people and agents write — a ticket's body, a comment, a question's options and
 its answer — becomes HTML in another person's browser, which rules hold it there, and what that
-leaves open, as built on 2026-10-05
+leaves open, as built on 2026-10-07
 ([ADR 0011](../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6,
 [ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
 D7). The files those texts may show are [attachments.md](attachments.md); the policy the shell sends
@@ -99,6 +99,35 @@ admits it), and a `GET` changes nothing: every write of a session is another met
 CSRF check ([csrf.md](csrf.md)). A `GET` of the API that a link names is read with the reader's
 rights, and one of an attachment's bytes is recorded as the reader's download.
 
+## What a rendering reads
+
+A text is rendered on every read that answers it — the body on its own route, never in a list, and a
+comment or a question on every page of them —, so what the renderer reads of a text is bounded
+([`richtext/bounds.go`](../../backend/internal/richtext/bounds.go), ADR 0011 D6):
+
+- **Its length.** A text renders as Markdown up to 200,000 characters, the longest the API takes —
+  a body; a comment, the options and an answer take 100,000. The database holds the same lengths, a
+  comment's since migration 11, a body's and a question's options and answer since
+  [migration 44](../../backend/internal/store/migrations/000044_text_length_checks.up.sql), and the
+  import refuses a longer text as an error of its file ([import-and-export.md](import-and-export.md)).
+  A longer text, which none of them lets in, is not parsed: it is shown as written, escaped, in one
+  preformatted block.
+- **Its nesting.** Block quotes and lists nest at most 32 blocks deep, a list counted with its item;
+  a deeper marker is text.
+- **Its markers.** Per text, at most 2,000 runs of `*`, `_` and `~` are read as emphasis and
+  strikethrough, at most 1,000 `[` and `![` as the openers of links and images, and at most 250
+  comments, processing instructions, declarations and CDATA sections as raw HTML. A closing bracket
+  is read only within 4,096 bytes of its opener, an inline link's destination only when it ends
+  within 4,096 bytes on its line, and the link reference definitions at the start of a paragraph
+  only in a paragraph of at most 1,000 lines. Beyond each bound the marker is text.
+
+Below the bounds a text renders as CommonMark does: the 219 Markdown files of this repository and
+13,873 of the Go modules on the development machine, each under 200,000 characters, render the
+same with the bounds and without them (compared once on 2026-10-07; no test holds it). At the
+bound, `TestPathologicalInputRendersQuickly` renders 26 texts of 200,000 characters built to nest,
+to repeat markers and to leave them open, each held to two seconds and 128 MiB of allocations; on
+the development machine each took less than a tenth of a second.
+
 ## What this does not cover
 
 <a id="h-51"></a>
@@ -124,11 +153,11 @@ Mitigation for whoever builds such a client: render the `…_html` fields, not t
 
 ### What the rendering costs
 
-A text is rendered on every read that answers it — the body on its own route, never in a list, and a
-comment or a question on every page of them. A text is at most 200,000 characters (a body) or
-100,000 (a comment, the options, an answer), and the unit tests hold pathological nesting and
-delimiter runs to a bounded time; beyond that, `COWORK_REQUEST_TIMEOUT` ends a request that renders
-too long. No cache keeps a rendering.
+The bounds hold one rendering to a cost the length of its text sets, not to none: a page of comments
+renders each of them, and no cache keeps a rendering. `COWORK_REQUEST_TIMEOUT` is a deadline for the
+database and the calls a request makes; it does not interrupt a rendering in progress, which is why
+the rendering is bounded itself. Not measured: the time a rendering at the bound takes on a replica
+of the chart's default size.
 
 ### The libraries' own flaws
 

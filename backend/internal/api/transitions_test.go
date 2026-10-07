@@ -373,11 +373,18 @@ func TestTicketViewAnswersTheHorizon(t *testing.T) {
 	next, by, reason := domain.UrgencyNext, uuid.New(), "after the import"
 	at := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
 	row.UrgencyOverride, row.UrgencyOverrideAt, row.UrgencyOverrideBy, row.UrgencyOverrideReason = &next, &at, &by, &reason
+	row.UrgencyOverrideByUsername, row.UrgencyOverrideByName = ptr("ada"), ptr("Ada Lovelace")
 	v = ticketView(ts, row, time.Time{})
 	assert.Equal(t, apigen.Horizon("next"), v.Horizon)
 	set := v.HorizonSet.MustGet()
 	assert.Equal(t, apigen.Horizon("next"), set.Value)
 	assert.Equal(t, reason, set.Reason.MustGet())
-	assert.Equal(t, by, set.By.MustGet().Id)
+	assert.Equal(t, apigen.Person{Id: by, Username: nullableOf(ptr("ada")), DisplayName: "Ada Lovelace"}, set.By.MustGet(),
+		"the person who set it is named as the reporter is")
 	assert.Equal(t, at, set.At)
+
+	row.UrgencyOverrideByUsername, row.UrgencyOverrideByName = nil, nil
+	gone := ticketView(ts, row, time.Time{}).HorizonSet.MustGet().By.MustGet()
+	assert.Equal(t, apigen.Person{Id: by, Username: nullableOf[string](nil)}, gone,
+		"a person the caller can no longer read keeps the id alone")
 }

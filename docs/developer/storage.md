@@ -26,7 +26,7 @@ the bytes leave only through the backend, so nothing signs a URL (D4).
 | `Put(ctx, key, r, size, contentType)` | stores the bytes |
 | `Get(ctx, key)` | opens the object for streaming with its size; `ErrMissing` when the bucket does not hold it |
 | `Delete(ctx, key)` | removes the object; a missing one is no error |
-| `List(ctx, prefix)` | every object whose key begins with the prefix — current versions only — with its size and last change (`Object`); takes `s3:ListBucket`, the consistency check's alone |
+| `List(ctx, prefix)` | every object whose key begins with the prefix — current versions only — with its size and last change (`Object`), handed on one at a time in the order the store lists them, the byte order of the keys for S3, and none kept; a listing the store refuses or whose context ends ends with the error; takes `s3:ListBucket`, the consistency check's alone |
 | `Exists(ctx, key)` | whether the bucket holds the object, a `HEAD` |
 | `ParseKey(tenantID, key)` | the attachment id a key names under the tenant's prefix, when the key is exactly what `Key` writes; any other key names none |
 | `EnsureBucket(ctx)` | creates the bucket; only the tests call it — the operator provides the bucket ([ADR 0058] D5) |
@@ -133,11 +133,13 @@ the jobs are [data-access.md](data-access.md#jobs); its tables and policies
 [data-access.md](data-access.md#the-consistency-checks-tables).
 
 ```
-CheckConsistency(objects, now) ── RunJob(consistency-check, lock 7) ─┬─ ListTenantsToCheck
+CheckConsistency(objects, now) ── RunJob(consistency-check, lock 8) ─┬─ ListTenantsToCheck
                                                                      └─ per tenant, inTenant:
-   1 objects.List(<tenant-id>/)              the listing first
-   2 ListTenantAttachmentIDs                 then the rows: an upload puts its object before its row commits
-   3 judge                                   orphans: listed, no row, older than OrphanGrace; unlisted rows
+   comparison.run, a batch of the listing at a time:
+   1 objects.List(<tenant-id>/)              the listing first, in key order, a thousand objects to a batch
+   2 ListTenantAttachmentIDs(after, upto)    then the rows the batch's keys can name: an upload puts its object before its row commits
+   3 judge                                   the batch: orphans listed, no row, older than OrphanGrace; unlisted rows
+     … until the listing ends; then the rows left, which no object was listed for
    4 objects.Exists, per unlisted row        a put after the listing passed its key is no loss
    5 ListAcceptedAttachments, ForgetWholeAcceptances
    6 ListCheckedAttachments (at most 1000)   the missing files' names and tickets
@@ -145,15 +147,31 @@ CheckConsistency(objects, now) ── RunJob(consistency-check, lock 7) ─┬�
 then one installation-level act `checked`, counts per tenant id
 ```
 
+- **The comparison** ([ADR 0059] D4 as amended 2026-10-07) holds a bounded memory whatever the
+  number of objects. `comparison.run` takes the listing a batch of `consistencyBatch`, a thousand
+  objects, at a time, and fails the run when a key does not follow the one before it in byte order —
+  S3 lists in that order, and the comparison relies on it. A key the backend writes is the tenant's
+  prefix and the id in lowercase hexadecimal, which sorts as PostgreSQL sorts a `uuid`, by its
+  sixteen bytes (`TestTheKeysSortAsTheirIDs`; the integration tier reads the order back from the
+  database), so the rows a batch's keys can name are those above the last batch's last attachment id
+  and up to its own — `ListTenantAttachmentIDs` reads that range —, and at the end of the listing the
+  rows above the last range are read. `judge` matches a batch with its rows through a set of the
+  batch's ids. Of a tenant the check keeps the counts and the bytes, the first `ConsistencyListBound`
+  orphans in key order and the attachments the listing did not show, which step 4 asks for: what it
+  holds grows with the files whose bytes are missing, never with the objects
+  (`TestTheComparisonHoldsABoundedMemoryWhateverTheNumberOfObjects`, a million objects).
+  `TestTheComparisonFindsBatchByBatchWhatTheWholeListingShowed` holds it, at several batch sizes, to
+  what the check found when it read the whole listing and every row at once.
 - **The grace.** An object no row names is judged only when its key's UUIDv7 was made more than
   `OrphanGrace`, an hour, before the run — a restore that rewrote the object keeps its key and with it
   that time —, or, under a key the backend does not write, when it last changed that long ago
   (`judge`, `young`). An object under any other key than `storage.Key`'s is an orphan: no row can
   name it.
-- **The order.** The rows are read after the listing, so a row the read finds has its object in the
-  listing unless the object was put after the listing passed its key, which `Exists` answers. A purge
-  that committed between the listing and the read leaves its object as a short-lived orphan, which
-  the purge's own removal ends.
+- **The order.** The rows are read after the listing — each range once the listing has handed on the
+  batch whose keys reach its end —, so a row the read finds has its object in the listing unless the
+  object was put after the listing passed its key, which `Exists` answers. A purge that committed
+  between the listing and the read leaves its object as a short-lived orphan, which the purge's own
+  removal ends.
 - **The lists.** At most `ConsistencyListBound`, a thousand, of each; the counts are exact. The
   missing files are listed with the ones nobody accepted first. An acceptance whose attachment is
   whole again is forgotten (`ForgetWholeAcceptances`), so a later loss counts once more.

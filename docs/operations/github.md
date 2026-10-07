@@ -1,8 +1,9 @@
 # GitHub's webhook
 
 How a tenant lets GitHub tell cowork about its pull requests: GitHub posts each delivery to the
-tenant's endpoint, signed with the tenant's secret, and cowork links the pull requests and the
-commits on a repository's default branch to the tickets their texts name, and tells a ticket's
+tenant's endpoint, signed with the tenant's secret, and cowork links the pull requests of the
+repository's owner, members and collaborators and the commits on its default branch to the tickets
+their texts name, and tells a ticket's
 assignee and watchers when one merges. cowork calls nothing at GitHub and changes no ticket's state
 ([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)).
 It is optional per tenant and on trial: a tenant without a secret takes no webhook. The routes are
@@ -70,8 +71,19 @@ puts them ([`internal/github/keys.go`](../../backend/internal/github/keys.go)):
 
 | Delivery | Read | Only when the first names no key |
 |---|---|---|
-| `pull_request`, the actions `opened`, `edited`, `synchronize`, `reopened`, `closed` | the pull request's body: a `Cowork-Ticket: <tenant>/<KEY>-<n>` trailer line, or a line that is a full key alone, as the body's first line is | the short keys in parentheses at the end of its title, `(VKO-12)` or `(VKO-12, VKO-13)`, GitHub's `(#34)` after them passed over |
+| `pull_request`, the actions `opened`, `edited`, `synchronize`, `reopened`, `closed`, of an author GitHub names the repository's owner, a member of its organisation or a collaborator | the pull request's body: a `Cowork-Ticket: <tenant>/<KEY>-<n>` trailer line, or a line that is a full key alone, as the body's first line is | the short keys in parentheses at the end of its title, `(VKO-12)` or `(VKO-12, VKO-13)`, GitHub's `(#34)` after them passed over |
 | `push` to the repository's default branch | each commit's `Cowork-Ticket:` trailers | the short keys at the end of its subject |
+
+**Whose pull requests link.** Only the pull requests of the repository's owner, of the members of
+the organisation that owns it and of its collaborators — GitHub's `author_association` `OWNER`,
+`MEMBER` or `COLLABORATOR` in the delivery
+([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+D4). The pull request of anybody else — a fork's from outside, a first-time contributor's — is taken
+and passed over, whatever it names; its commits reach a ticket once a member merges them to the
+default branch. To have a person's pull requests linked, make them a collaborator of the repository.
+Not verified: whether GitHub names a member whose membership of the organisation is private
+`MEMBER` in a delivery; the delivery's payload in *Recent Deliveries* shows the
+`author_association` GitHub sent.
 
 A key in running text links nothing, a key of another tenant or of no ticket is passed over, and a
 pull request's own commits are not fetched — cowork calls nothing at GitHub —: they reach a ticket
@@ -88,7 +100,7 @@ again from there.
 
 | Answer | Means | Do |
 |---|---|---|
-| `202` | taken: linked what it named, or passed over a repository the tenant does not bind, an event or an action cowork does not read | nothing; a link missing on the ticket means the repository is not bound, or no key sat where the table above reads keys |
+| `202` | taken: linked what it named, or passed over a repository the tenant does not bind, a pull request of an author outside the repository, an event or an action cowork does not read | nothing; a link missing on the ticket means the repository is not bound, the pull request's author is not the repository's owner, member or collaborator, or no key sat where the table above reads keys |
 | `200` | the tenant took the same delivery in the last twenty-four hours; nothing happened again | nothing |
 | `404 not_found` | no such tenant, or the tenant has no secret — or the server key changed since the secret was made (the backend's log says so) | check the slug in the payload URL; make the secret, or rotate it after a change of the server key |
 | `401 signature_invalid` | the signature is not the tenant's secret's | set the secret at GitHub again, or rotate it and set the new one |

@@ -2,7 +2,7 @@
 
 What the inbound webhook of
 [ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
-lets into a tenant and what keeps everything else out, as built on 2026-10-06: the boundary of a
+lets into a tenant and what keeps everything else out, as built on 2026-10-07: the boundary of a
 route that takes no person's credential, what somebody without the tenant's secret can do, what a
 holder of it can do, the replay window, and the secret at rest and who can open it. How a person's
 request is authenticated is [trust-boundaries.md](trust-boundaries.md) and
@@ -55,6 +55,22 @@ Somebody who does not hold a tenant's secret gets `404`, `413` or `401` and noth
 is written before the signature holds — not the delivery, not an audit row —, and nothing of the
 payload is parsed (`TestASignatureThatDoesNotHoldIsRefusedAndWritesNothing`). What the three
 answers tell is [H-64](#h-64).
+
+## Whose pull requests are linked
+
+GitHub delivers every pull request of a bound repository, whoever opened it, from a fork as well.
+cowork links only the pull requests of the repository's owner, of the members of the organisation
+that owns it and of its collaborators, as the delivery's
+`pull_request.author_association` names them — `OWNER`, `MEMBER`, `COLLABORATOR`
+([`internal/github`](../../backend/internal/github/payload.go) `linkedAuthors`,
+[ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+D4 as made concrete 2026-10-07). The pull request of any other author, and one whose payload names
+no association, is taken with the same `202` and changes nothing: no link, no fact of a link, no act,
+nobody told (`TestAPullRequestOfAnAuthorOutsideTheRepositoryLinksNothing`). So the title a ticket's
+list and its context document show for a pull request is one a person of the repository wrote, and
+the subject shown for a commit is one that reached the default branch, which only somebody who may
+write the repository puts there. The association is GitHub's word in a signed delivery: a holder of
+the secret writes it as they like ([H-66](#h-66)).
 
 ## With the secret
 

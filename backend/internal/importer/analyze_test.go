@@ -399,3 +399,42 @@ func TestAnalyzeRefusesWhatABlockCannotBe(t *testing.T) {
 	assert.Equal(t, OutcomeError, d.Outcome)
 	assert.Contains(t, d.Errors[0].Message, "needs its blocked-reason")
 }
+
+// docs/adr/0051 D7: the execution writes no text longer than the API takes —
+// a body of 200,000 characters, a question's options and its answer of
+// 100,000 each, counted in characters as the execution writes them, with the
+// keys the import puts in place of a mention —; a longer one is an error of
+// its file, which refuses the execution.
+func TestTheImportHoldsTheTextsToTheLengthsOfTheAPI(t *testing.T) {
+	src := func(name, text string) Source {
+		return Source{Path: "docs/tickets/" + name, Content: []byte("---\nid: T" + strings.TrimLeft(name[:3], "0") +
+			"\ntitle: x\nstate: filed\nseverity: low\nsecurity: none\neffort: S\nopened: 2026-10-07\n---\n\n" + text + "\n")}
+	}
+	question := func(options, answer string) string {
+		return "## Open questions\n\n### Q1: which?\n\n" + options + "\n\n**Answer:** " + answer
+	}
+	long := func(n int) string { return strings.Repeat("ä", n) }
+	r := Analyze(Read([]Source{
+		src("001-a.md", long(maxBody)),
+		src("002-b.md", long(maxBody+1)),
+		src("003-c.md", question(long(maxQuestionText), long(maxQuestionText))),
+		src("004-d.md", question(long(maxQuestionText+1), "a")),
+		src("005-e.md", question("a", long(maxQuestionText+1))),
+		src("006-f.md", long(maxBody-9)+" T1 T1 T1"),
+	}), target(), nil)
+
+	for _, name := range []string{"001-a.md", "003-c.md"} {
+		assert.Equal(t, OutcomeCreate, file(t, r, name).Outcome, "%s is at the bounds", name)
+	}
+	for name, want := range map[string]MessageReport{
+		"002-b.md": {Field: ptr(fieldBody), Message: "the body as the import writes it has 200001 characters, more than the 200000 a ticket's body holds"},
+		"004-d.md": {Field: ptr("Q1"), Line: ptr(13), Message: "Q1's options have 100001 characters, more than the 100000 a question's options hold"},
+		"005-e.md": {Field: ptr("Q1"), Line: ptr(13), Message: "Q1's answer has 100001 characters, more than the 100000 an answer holds"},
+		"006-f.md": {Field: ptr(fieldBody), Message: "the body as the import writes it has 200024 characters, more than the 200000 a ticket's body holds"},
+	} {
+		f := file(t, r, name)
+		assert.Equal(t, OutcomeError, f.Outcome, name)
+		assert.Equal(t, []MessageReport{want}, f.Errors, name)
+	}
+	assert.Len(t, r.Blocking(), 4, "the execution is refused while they are in it")
+}

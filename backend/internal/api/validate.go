@@ -194,10 +194,7 @@ func (h *handler) validationProblem(err error) *problem.Error {
 			if reqErr.Parameter.In == openapi3.ParameterInPath {
 				return problem.New(problem.NotFound, "")
 			}
-			fields = append(fields, problem.FieldError{
-				Pointer: reqErr.Parameter.In + ":" + reqErr.Parameter.Name,
-				Message: reasonOf(reqErr),
-			})
+			fields = append(fields, parameterError(reqErr))
 			continue
 		}
 		fields = append(fields, bodyErrors(reqErr)...)
@@ -205,6 +202,23 @@ func (h *handler) validationProblem(err error) *problem.Error {
 	return &problem.Error{Code: problem.ValidationFailed, Detail: "the request does not match the API document", Errors: fields}
 }
 
+// parameterError names a parameter at in:name, one entry for the parameter
+// (docs/adr/0047 D2), its failures read as a body's are: each the failure
+// alone. The JSON Schema 2020-12 validator a 3.1 document uses writes the
+// resource it compiles every schema under and the location in the value
+// before the failure; the parameter is the location the client knows, and
+// the failures of a repeated one's values share its message.
+func parameterError(reqErr *openapi3filter.RequestError) problem.FieldError {
+	failures := bodyErrors(reqErr)
+	messages := make([]string, 0, len(failures))
+	for _, f := range failures {
+		messages = append(messages, f.Message)
+	}
+	return problem.FieldError{Pointer: reqErr.Parameter.In + ":" + reqErr.Parameter.Name, Message: strings.Join(messages, "; ")}
+}
+
+// bodyErrors returns a request error's failures, each at its field in the
+// body.
 func bodyErrors(reqErr *openapi3filter.RequestError) []problem.FieldError {
 	var out []problem.FieldError
 	for _, e := range flatten(reqErr.Err) {
@@ -267,12 +281,10 @@ func locateReason(reason string) (string, string) {
 	return pointer, message
 }
 
+// reasonOf is the reason of a request error that carries no failure to walk:
+// a schema's failures are read by bodyErrors.
 func reasonOf(e *openapi3filter.RequestError) string {
 	if e.Err != nil {
-		var schemaErr *openapi3.SchemaError
-		if errors.As(e.Err, &schemaErr) {
-			return schemaErr.Reason
-		}
 		return e.Err.Error()
 	}
 	return e.Reason

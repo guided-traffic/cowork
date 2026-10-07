@@ -244,7 +244,10 @@ included, may go to it ([docs/operations/chat.md](../operations/chat.md#adding-a
 ### H-38 — A model steered by injected text does at once whatever the chosen capabilities allow
 
 Live by design. Text in a ticket, a comment, a question or an answer can carry instructions, and a
-model may follow them; the person may not even have read that text. Nothing waits for the person:
+model may follow them; the person may not even have read that text. So can the title of a pull
+request or a commit GitHub's webhook linked, which a ticket's context carries — written, of a pull
+request, by the repository's owner, a member of its organisation or a collaborator only
+([agent-client.md](agent-client.md#h-34) H-34). Nothing waits for the person:
 within the API's rules the chat can, at once, file a ticket in any project of the tenant the person
 may file in, replace a ticket's body, comment, ask a question of anyone in the tenant, link two
 tickets, watch a ticket, move a ticket forward or out of `blocked`, set a progress stage short of

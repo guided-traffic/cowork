@@ -87,7 +87,7 @@ func ticketView(t tenantScope, r store.TicketRow, now time.Time) apigen.Ticket {
 
 // horizonSetView is the horizon a person or an agent set on the ticket, null
 // where none is set (docs/adr/0010 D3); the columns keep the name urgency
-// override (docs/adr/0010 D1).
+// override (docs/adr/0010 D1). Its person is named as the reporter is.
 func horizonSetView(r store.TicketRow) nullable.Nullable[apigen.HorizonSet] {
 	if r.UrgencyOverride == nil || r.UrgencyOverrideAt == nil {
 		return nullableOf[apigen.HorizonSet](nil)
@@ -95,7 +95,7 @@ func horizonSetView(r store.TicketRow) nullable.Nullable[apigen.HorizonSet] {
 	set := apigen.HorizonSet{Value: apigen.Horizon(*r.UrgencyOverride), At: *r.UrgencyOverrideAt,
 		By: nullableOf[apigen.Person](nil), Reason: nullableOf(r.UrgencyOverrideReason)}
 	if r.UrgencyOverrideBy != nil {
-		p := apigen.Person{Id: *r.UrgencyOverrideBy, Username: nullableOf[string](nil)}
+		p := personView(*r.UrgencyOverrideBy, r.UrgencyOverrideByUsername, r.UrgencyOverrideByName)
 		set.By = nullableOf(&p)
 	}
 	return nullableOf(&set)

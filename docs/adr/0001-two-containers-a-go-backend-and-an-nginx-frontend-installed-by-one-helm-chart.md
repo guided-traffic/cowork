@@ -16,7 +16,8 @@ cluster administrator's; D7: the frontend takes no configuration; D8: its one `e
 the path routing this record had rejected is the decision now, and the nginx proxy the rejected
 alternative, because it was an extra hop behind the reverse proxy the Ingress already is), amended
 2026-10-06 by the owner (D3, the Alternatives and the Residual risks: the chart offers the Ingress
-only and no route of the Gateway API; an installation on a Gateway writes its own `HTTPRoute`).
+only and no route of the Gateway API; an installation on a Gateway writes its own `HTTPRoute`),
+amended 2026-10-07 (D8: the backend container's `GOMEMLIMIT` is its memory limit).
 Date: 2026-09-29. The stack was set by the owner in the founding brief; the cut into
 two containers and the "latest release" policy (D2, D9) are the owner's explicit instructions
 of the same day, given after a first skeleton had embedded the UI into the Go binary — that
@@ -200,7 +201,11 @@ service account token; ~~the frontend gets `emptyDir` volumes at `/tmp` and
 `/etc/nginx/conf.d`, which is all nginx writes~~ *(amended 2026-10-04: the frontend gets an
 `emptyDir` at `/tmp`, which is all nginx writes; its configuration is part of the image, which a
 volume at `/etc/nginx/conf.d` would hide)*. There is no RBAC: neither container talks to
-the Kubernetes API.
+the Kubernetes API. *(Amended 2026-10-07: the backend container's `GOMEMLIMIT` is its memory
+limit, in bytes, through the downward API — the Go runtime's soft limit, so that the collector works
+harder as the process nears the limit, before the kernel kills the container
+([docs/operations/runtime.md](../operations/runtime.md#memory)). It is no `COWORK_*` variable of
+D7: the Go runtime reads it, not the configuration.)*
 
 **D9 — Both toolchains track the newest stable release.** Go 1.27.1 and Angular 22.2 at the
 time of writing; Renovate moves the Go version as one grouped change across `backend/go.mod`,
