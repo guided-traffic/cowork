@@ -133,13 +133,13 @@ func TestTheConsistencyCheckFindsWhatARestoreLeftAndTheAdministratorSettlesIt(t 
 	assert.Equal(t, tk.Key, missing.Ticket)
 	assert.False(t, missing.Accepted)
 	assert.Equal(t, 3, got.Orphans)
-	keys := []string{}
+	keys := make([]string, 0, len(got.OrphanedObjects))
 	for _, o := range got.OrphanedObjects {
 		keys = append(keys, o.Key)
 	}
 	assert.ElementsMatch(t, []string{storage.Key(e.A, orphan), storage.Key(e.A, gains), e.A.String() + "/stray.bin"}, keys)
 	assert.NotContains(t, keys, storage.Key(e.A, whole.Id))
-	quiet := e.consistencyOf(t, caller{Token: adminOf(t, e.world, e.B)}, e.SlugB)
+	quiet := e.consistencyOf(t, caller{Token: adminOf(t, e.B)}, e.SlugB)
 	assert.Zero(t, quiet.Dangling+quiet.Orphans+quiet.Accepted, "tenant B's own result is clean")
 
 	// The download of the lost file says why (D4).
@@ -244,7 +244,7 @@ func requireOK(t *testing.T, res *http.Response) {
 
 // adminOf makes an administrator of the tenant and returns an admin token of
 // theirs.
-func adminOf(t *testing.T, w world, tenant uuid.UUID) string {
+func adminOf(t *testing.T, tenant uuid.UUID) string {
 	t.Helper()
 	ctx := context.Background()
 	f := fixtures(t)
@@ -271,7 +271,7 @@ func TestTheConsistencyCheckIsTheTenantAdministratorsAndNoAgents(t *testing.T) {
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberA}, http.MethodGet, consistencyPath(e.SlugA, ""), nil),
 		http.StatusForbidden, "forbidden")
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberA}, http.MethodPost, acceptance, check), http.StatusForbidden, "forbidden")
-	stranger := caller{Token: adminOf(t, e.world, e.B)}
+	stranger := caller{Token: adminOf(t, e.B)}
 	assertProblem(t, e.s.do(t, stranger, http.MethodGet, consistencyPath(e.SlugA, ""), nil), http.StatusNotFound, "not_found")
 	assertProblem(t, e.s.do(t, stranger, http.MethodPost, acceptance, check), http.StatusNotFound, "not_found")
 	require.NoError(t, fixtures(t).Member(ctx, e.B, e.MemberB, domain.RoleAdmin))
