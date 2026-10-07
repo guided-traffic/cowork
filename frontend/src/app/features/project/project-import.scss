@@ -95,9 +95,9 @@
   display: none;
 }
 
-.chosen {
+.card ul.chosen {
   margin: 0;
-  padding: 0 !important;
+  padding: 0;
   list-style: none;
 
   li {
@@ -222,9 +222,9 @@
   }
 }
 
-.col-exclude {
+.files .col-exclude {
   width: 4.5rem;
-  text-align: center !important;
+  text-align: center;
 }
 
 .col-outcome {
@@ -240,9 +240,9 @@
   width: 11rem;
 }
 
-.col-questions {
+.files .col-questions {
   width: 5.5rem;
-  text-align: right !important;
+  text-align: right;
 }
 
 .line {
