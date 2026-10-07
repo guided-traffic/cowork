@@ -186,6 +186,12 @@ func TestValidationRefusesWhatTheDocumentDoesNotDescribe(t *testing.T) {
 	body := assertProblem(t, s.do(t, c, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/projects?sort=key", nil), http.StatusBadRequest, "validation_failed")
 	assert.Equal(t, "query:sort", body["errors"].([]any)[0].(map[string]any)["pointer"], "an unknown parameter is refused (docs/adr/0049 D4)")
 
+	body = assertProblem(t, s.do(t, c, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/projects?page=0&per_page=7", nil), http.StatusBadRequest, "validation_failed")
+	assert.Equal(t, []any{
+		map[string]any{"pointer": "query:page", "message": "minimum: got 0, want 1"},
+		map[string]any{"pointer": "query:per_page", "message": "value must be one of 25, 50, 100"},
+	}, body["errors"], "a parameter is named by its failure alone, as a body's field is")
+
 	body = assertProblem(t, s.do(t, c, http.MethodPost, "/api/v1/tenants/"+w.SlugA+"/projects", map[string]any{"key": "lower", "name": "x", "extra": 1}), http.StatusBadRequest, "validation_failed")
 	pointers := map[string]bool{}
 	for _, e := range body["errors"].([]any) {
