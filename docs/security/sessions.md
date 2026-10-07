@@ -2,7 +2,7 @@
 
 What a browser session is, how a request is resolved to one, how a session of the identity
 provider keeps up with the person's groups, what a session may do, how it ends, what keeps it and
-what brings a person back after it ended, and what is recorded, as built on 2026-10-06. How a
+what brings a person back after it ended, and what is recorded, as built on 2026-10-07. How a
 password becomes a session — the login, the lockout, the accounts — is
 [local-accounts.md](local-accounts.md); how a login through the identity provider
 does, and what its groups decide, is [identity-provider.md](identity-provider.md); what keeps
@@ -41,7 +41,8 @@ random value of 256 bits, stores its SHA-256 and sends the value once, as the co
   the groups of its login or last refresh and when they were read (`groups`,
   `groups_refreshed_at`), the issuer's refresh token sealed for this session alone
   (`refresh_token_sealed`, [identity-provider.md](identity-provider.md#what-cowork-keeps-of-the-issuers-tokens)),
-  and the earliest next refresh after the issuer could not be reached (`refresh_retry_at`). No
+  and the earliest next refresh — a minute after the issuer could not be reached, or thirty seconds
+  ahead while a refresh is under way, its lease (`refresh_retry_at`). No
   token of the issuer reaches the browser.
 
 ## One resolver for a cookie and a token
@@ -86,9 +87,10 @@ A session the identity provider's login made reads the person's groups again eve
 `COWORK_OIDC_GROUPS_REFRESH` (fifteen minutes)
 ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
 D5, [ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1, D3): on its first
-request after the interval, inside the resolver, before the request is served — the resolver then
-reads the session and its person again, because the refresh may have changed the person's
-administrator flag — and at an open event stream's heartbeat, which does not move the idle clock
+request after the interval, inside the resolver, before the request is served — and the resolver
+reads the session and its person again after that check, refresh or not, because a refresh may have
+changed the person's administrator flag, so a request of a session of the identity provider costs two
+lookups — and at an open event stream's heartbeat, which does not move the idle clock
 ([`api/session.go`](../../backend/internal/api/session.go) `authenticateSession`,
 [`api/identity.go`](../../backend/internal/api/identity.go) `checkProviderSession`,
 `refreshSession`, `streamStillAdmitted`). One request claims the refresh with a thirty-second lease
@@ -119,8 +121,10 @@ A session acts as its person with no agent flag and with the person's whole role
 scope of its own, which the pipeline writes as the scope `admin`, the one that leaves every
 decision to the person's role in the tenant ([ADR 0035](../adr/0035-personal-access-tokens.md)
 D3, [tokens.md](tokens.md)). No agent rule applies to it — unless its request carries
-`X-Cowork-Agent`: the header marks that request as an agent's, with every capability and every
-agent rule, and only narrows it; a malformed one is `400`
+`X-Cowork-Agent`: the header marks that request as an agent's, with every agent rule and the
+capabilities the person chose for the chat, read anew for each such request — every capability is
+what the header gives a plain token's request, never a session's —, and only narrows it; a malformed
+one is `400`
 ([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
 D3 as amended; `authenticateSession` in [`api/session.go`](../../backend/internal/api/session.go)).
 The chat in the UI marks its tool calls so ([chat.md](chat.md)); a request without the header is the
@@ -138,15 +142,16 @@ person's.
   capabilities (`PUT /api/v1/me/chat`), a global administrator's list of every tenant
   (`GET /api/v1/tenants`), purging a deleted ticket (`DELETE …/deleted-tickets/{key}`,
   [ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
-  
   D7), making or rotating the tenant's GitHub webhook secret (`POST …/integrations/github/secret`,
   [ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
   D1), and removing the orphaned objects of a consistency check
   (`POST …/attachment-consistency/orphan-removal`,
   [ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-  D4). What the first twelve, the chat's capabilities and the webhook secret make, and what a purge or a removal
-  destroys, would outlive the revocation of a leaked token, a turn acts with the person's session and its stop ends the session's
-  person's turns, and the list shows a global administrator's view across the installation's
+  D4). What creating a token, a tenant or an account, the two password acts, the six administration
+  acts, choosing the chat's capabilities and making the webhook secret leave behind, and what a purge
+  or a removal destroys, would outlive the revocation of a leaked token; a logout has no session of a
+  token's to end, a turn acts with the person's session and its stop ends the session's person's
+  turns, and the list shows a global administrator's view across the installation's
   clients, which a token of theirs does not get; the table and the rule are
   [tokens.md](tokens.md#what-only-a-session-does). The API document declares them with
   `sessionCookie` alone, and a unit test over the document holds the set to exactly these nineteen
@@ -181,7 +186,8 @@ Revocation is a delete and is immediate: the next request with the cookie is `40
 ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D4). In the browser, a
 sign-in and a sign-out replace the document, so nothing the previous person loaded — their tokens,
 a tenant's accounts, cached tickets — stays in memory for the next person in the same tab
-([frontend.md](../developer/frontend.md#where-state-lives)).
+([frontend.md](../developer/frontend.md#where-state-lives)). A session that a limit or another end
+takes away is not one of them: the page goes to the login page by a route change ([H-92](#h-92)).
 
 | What | Which sessions | Where |
 |---|---|---|
@@ -231,18 +237,20 @@ D6; [identity-provider.md](identity-provider.md#signing-in-again-without-a-click
 
 | Case | What happens | What ends access |
 |---|---|---|
-| A session of the identity provider reaches the idle or the absolute limit | cowork's session ends as before — refused at its next request, the row gone with the job. The login page that follows, in a browser that remembers the provider, waits for a sign of a person and then signs them in again with `prompt=none`, without a click, while the provider's own session lives | **The provider's session policy.** An unattended, unlocked browser is one input away from cowork's content, where it was one click away — the click passed without a password too ([H-62](identity-provider.md#h-62)). An open tab nobody touches does not sign itself in |
+| A session of the identity provider reaches the idle or the absolute limit | cowork's session ends as before — refused at its next request, the row gone with the job. The login page that follows, in a browser that remembers the provider, waits for a sign of a person and then signs them in again with `prompt=none`, without a click, while the provider's own session lives | **The provider's session policy.** An unattended, unlocked browser is one sign of a person away from cowork's content — an input, the window taking the focus, the tab coming back into view —, where it was one click away — the click passed without a password too ([H-62](identity-provider.md#h-62)). An open tab nobody touches does not sign itself in |
 | A person signs out | the session ends, and the browser forgets that the person signs in through the provider — before the backend is asked — so the login page never signs them in again by itself | the sign-out, as before; the provider's own session ends only where its end-session endpoint is followed ([H-28](identity-provider.md#h-28)) |
 | A local session reaches a limit | it ends; the login page waits for the form: a local sign-in forgets the provider, and the page signs in by itself only for the provider | the limits, as before; the keep-alive needs the person's input |
 | Another end of the table above — a revocation, a password change, the gate | the session ends; for a session of the provider, the login page's own sign-in meets the issuer and the gate again like any login | what ended it, as before, and the issuer and the gate at the next sign-in |
 
 ## What is recorded
 
-Login, logout and each of the ends above are audit rows with the person and the cause —
+Login, logout and the ends above are audit rows with the person and the cause —
 `logged_in` (with the note `oidc` for the identity provider's), `logged_out`, `password_changed`,
 `password_reset`, `revoked` with the count of sessions ended — by `system:identity-provider` with
-the cause `gate` or `identity-provider` for the ends it decides —, `deactivated`, and the job's
-`expired` ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D7). They are
+the cause `gate` or `identity-provider` for the ends it decides —, and `deactivated`
+([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D7). A session a login replaces
+is recorded only by the new `logged_in`, and the sessions past a limit by the job's `expired`, which
+counts the rows it removed and names no person. They are
 installation-level rows with no `token_id`, the mark of a browser session
 ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D1); a
 tenant administrator's act on a managed account is a row of the tenant. Each row written for a
@@ -278,12 +286,14 @@ a browser extension — presents it from anywhere and acts as the person until t
 the cookie can send), the absolute limit (twelve hours) or an end. The row holds the
 SHA-256 of the `User-Agent` it was made with (`sessions.user_agent_hash`) and nothing compares
 it. A person cannot list their sessions, and ends the others only by changing their password;
-an administrator ends a managed account's through `DELETE …/accounts/{username}/sessions`, and
-no one but the operator ends the local administrator's — by rotating its Secret and
-restarting. A person of the identity provider has no password to change (`403 forbidden`) and no
+an administrator ends a managed account's through `DELETE …/accounts/{username}/sessions` — their
+own as well, all of them, when their own account is one their tenant manages —, and no one but the
+operator ends the local administrator's — by rotating its Secret and restarting. A person of the identity provider has no password to change (`403 forbidden`) and no
 account an administrator manages: their other sessions end only at their limits, or at a refresh,
 when the issuer refuses the refresh token or the gate no longer admits them — at the issuer,
-disabling the person or taking them out of the allowed groups is the way. Shorter limits (`COWORK_SESSION_LIFETIME`, `COWORK_SESSION_IDLE`) shrink the
+disabling the person or taking them out of the allowed groups is the way; the operator ends each
+session of the provider that holds a refresh token, at its next refresh, by changing
+`COWORK_SESSION_KEY` ([identity-provider.md](identity-provider.md#h-27) H-27). Shorter limits (`COWORK_SESSION_LIFETIME`, `COWORK_SESSION_IDLE`) shrink the
 window; a TLS-terminating proxy that does not log headers keeps the cookie off its disk.
 
 The gaps of the identity provider's sessions — stale groups while the issuer cannot be reached, a
@@ -295,3 +305,27 @@ the lifetimes are the installation's, not a tenant's. Which browser stores a `Se
 ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D2, with Playwright on
 2026-10-03); Firefox was not measured. The integration tier tests the rule and sets the cookie by
 hand; it runs no browser.
+
+<a id="h-92"></a>
+### H-92 — A session a limit ended leaves the tab's memory as it was
+
+Live in every tab whose session ends while it is open. A `401` of the API sends the page to the login
+page by a route change, not a new document
+([`core/http.ts`](../../frontend/src/app/core/http.ts) `toSignIn`), so the services of the page keep
+what they had loaded — tickets, a tenant's accounts, the person's tokens' metadata — until the next
+sign-in or sign-out replaces the document. Whoever sits at the tab meanwhile reaches that state with
+the browser's tools, and a page the router opens from it before a request of its own fails may show
+it. Not verified in a browser: which pages show loaded state without asking the API first. A full
+navigation on the first `401` would close it. Mitigation: a locked screen; close the tab.
+
+<a id="h-93"></a>
+### H-93 — The way back after a sign-in may be a read that records an act
+
+Live today. The path a sign-in returns to is any path of the installation
+([identity-provider.md](identity-provider.md#the-login) `safeReturnTo`, and the login page's
+`safeReturn`), the API's included: a link of another site that leads to the login with a way back to an
+attachment's bytes or a ticket's export or context makes the browser of the person who signs in fetch
+that path with their new session — a read recorded in their name, as [csrf.md](csrf.md#h-22) H-22
+describes for a plain link, and here also after a silent sign-in ([identity-provider.md](identity-provider.md#h-81)
+H-81). Nothing of the answer reaches the other site. Refusing a way back under `/api/` and `/auth/`
+in both functions would close it.

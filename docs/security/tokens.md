@@ -4,7 +4,7 @@ What a personal access token is, how a request presenting one is checked, what i
 — through its scope, its person's role, its restriction and, for an agent, the capabilities
 and the hard-off list — what only a browser session may do instead, how a dead token and a token
 of a person outside the identity provider's gate are answered, and what is recorded, as built on
-2026-10-05. Which tenants, projects and tickets a person can see at all is
+2026-10-07. Which tenants, projects and tickets a person can see at all is
 [tenancy.md](tenancy.md); how a token comes to exist — its person, in a browser session — is
 below and in [sessions.md](sessions.md); the identity provider whose groups a token's person is
 held to is [identity-provider.md](identity-provider.md); the chat in the UI, an agent that holds no
@@ -23,7 +23,7 @@ token, is [chat.md](chat.md).
   likely tokens to precompute. Nothing limits the rate of failed attempts
   ([ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
   D1); at 256 bits, guessing is not a practical attack.
-- **In the browser.** Every API answer is `Cache-Control: no-store`, the creation's too
+- **In the browser.** Every API answer but the event stream's is `Cache-Control: no-store`, the creation's too
   ([`api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`). The tokens page holds the
   plaintext in one signal and shows it in
   [`SecretDialog`](../../frontend/src/app/shared/secret-dialog.ts) in a read-only field; every
@@ -33,7 +33,8 @@ token, is [chat.md](chat.md).
   clipboard; what the person does with it from there is outside cowork.
 - **Transport.** Only `Authorization: Bearer cwk_…`; a value of another shape is refused
   before the database is asked. A token is never read from a query parameter or a cookie, and
-  an unknown query parameter is refused anyway (ADR 0035 D7).
+  an unknown query parameter is refused anyway (ADR 0035 D7;
+  [ADR 0049](../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md) D4).
 - **Lookup.** The resolver's transaction names the presented hash in `app.token_hash`, and
   the tokens policy admits that one row and no other; the person is read once the row names
   it ([`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`;
@@ -46,9 +47,9 @@ token, is [chat.md](chat.md).
   SHA-256, and no audit row, stored answer or list holds the plaintext
   (`TestOnlyASessionCreatesATokenAndShowsItOnce`). A retried creation with an
   `Idempotency-Key` creates nothing twice and answers without the plaintext, which the stored
-  answer never held. The lifetime is `COWORK_TOKEN_DEFAULT_LIFETIME` (90 days) unless the
-  request asks for fewer days, and never more than `COWORK_TOKEN_MAX_LIFETIME` (one year): a
-  longer request is shortened and the answer says what the token got
+  answer never held. The lifetime is the request's `lifetime_days`, or
+  `COWORK_TOKEN_DEFAULT_LIFETIME` (90 days) when it names none, and never more than
+  `COWORK_TOKEN_MAX_LIFETIME` (one year): a longer request is shortened and the answer says what the token got
   (`TestATokensLifetimeIsClampedToTheMaximum`); the token form knows the bound before it asks, from
   `GET /auth/options`, which names it in whole days — public, like the password policy beside it:
   it tells an anonymous reader how long a token of the installation can live at most, and nothing
@@ -60,7 +61,9 @@ token, is [chat.md](chat.md).
   `make dev-seed` write tokens over an administrative connection, which is how `make dev` gets
   the token for its demo data (below). Whatever writes a token, the schema holds it to its rules:
   an expiry later than its creation, no `admin` scope on an agent token, capabilities only on an
-  agent token and only the nine names, a project restriction only together with the tenant
+  agent token and only the nine names (the check
+  [migration 40](../../backend/internal/store/migrations/000040_capability_checks_set_horizon_only.up.sql)
+  put in place), a project restriction only together with the tenant
   restriction and only for a project of that tenant
   ([migration 4](../../backend/internal/store/migrations/000004_tokens.up.sql)). The runtime
   role may insert a token for its own person alone (the policy of
@@ -113,19 +116,21 @@ list, capability — and answers `403` with `forbidden`, `insufficient_scope` or
 ADR 0035 D3,
 [ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
 D5). The role is the person's membership role in the tenant — in a restricted project the
-lower of it and their entry on the project's list — read on every request, so a token never
+lower of it and their entry on the project's list, while a tenant administrator keeps `admin`
+there — read on every request, so a token never
 reaches further than its person does at that moment.
 
 | Scope | Reaches |
 |---|---|
-| `read` | every read of what the person may see, the tenant's member list included; for a tenant administrator also the tenant's audit view, its group mappings, a project's access list ([`api/members.go`](../../backend/internal/api/members.go) `adminRead`), the tokens that can act in the tenant, the attachments' usage and their consistency check with the names of the missing files |
-| `write` | additionally what a member does: filing and editing tickets, transitions, links, comments, questions and answers, stakes, progress, uploads, booking time; creating a project where the person may ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D9); revoking another of the person's tokens |
-| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, revoking the tenant's GitHub webhook secret ([github-webhook.md](github-webhook.md)) — never making or rotating it, which takes a session —, archiving a project, setting or lifting the confidential flag, deleting a ticket and restoring it, which the bin undoes for thirty days ([tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one), [H-54](tenancy.md#h-54)) — never purging it, which takes a session —, accepting the loss of the files a consistency check found missing ([attachments.md](attachments.md#the-consistency-check)) — never removing its orphaned objects, which takes a session —, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`), unsharing or deleting another person's shared saved filter ([`api/filters.go`](../../backend/internal/api/filters.go) `mayChangeFilter`, [tenancy.md](tenancy.md#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw)); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); revoking a member's token that can act in the tenant — never the acts that only a session makes ([below](#what-only-a-session-does)) |
+| `read` | every read of what the person may see, the tenant's member list and the project's and the tenant's export included ([import-and-export.md](import-and-export.md)); for a tenant administrator also the tenant's audit view, its group mappings, a project's access list ([`api/members.go`](../../backend/internal/api/members.go) `adminRead`), the tokens that can act in the tenant, the bin of deleted tickets, the state of the GitHub webhook secret, the attachments' usage and their consistency check with the names of the missing files, and an import's job — never an agent's ([import-and-export.md](import-and-export.md#who-may-import-and-who-may-export)) |
+| `write` | additionally what a member does: filing and editing tickets, transitions, links, comments, questions and answers, stakes, progress, uploads, booking time; creating a project, and binding a repository to one, where the person may ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D9); saving, changing and sharing saved filters; marking notifications read; removing a pull request's link from a ticket; revoking another of the person's tokens |
+| `admin` | additionally the administration acts a token may make: the tenant's settings including the time lock, revoking the tenant's GitHub webhook secret ([github-webhook.md](github-webhook.md)) — never making or rotating it, which takes a session —, archiving a project, setting or lifting the confidential flag, deleting a ticket and restoring it, which the bin undoes for thirty days ([tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one), [H-54](tenancy.md#h-54)) — never purging it, which takes a session —, accepting the loss of the files a consistency check found missing ([attachments.md](attachments.md#the-consistency-check)) — never removing its orphaned objects, which takes a session —, withdrawing another person's comment ([`api/comments.go`](../../backend/internal/api/comments.go) `mayChangeComment`), unsharing or deleting another person's shared saved filter ([`api/filters.go`](../../backend/internal/api/filters.go) `mayChangeFilter`, [tenancy.md](tenancy.md#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw)); for the local accounts the tenant manages, listing them, unlocking, deactivating and ending their sessions ([local-accounts.md](local-accounts.md)); removing a member's grant, a group mapping, or a person from a project's access list ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); revoking a member's token that can act in the tenant; an import's dry run and its execution ([import-and-export.md](import-and-export.md#who-may-import-and-who-may-export)) — never the acts that only a session makes ([below](#what-only-a-session-does)) |
 
 ## What only a session does
 
 Nineteen operations take a browser session only, and answer a token — whatever its scope, an
-administrator's `admin` token included — `403 session_required` before anything is written. The API
+administrator's `admin` token included — `403 session_required` before anything of the act is
+written; the token's own bookkeeping — its gate check and its last-used day — comes first. The API
 document declares them with the session cookie alone, and a unit test over the document holds the
 set to exactly these nineteen ([`backend/api/document_test.go`](../../backend/api/document_test.go)
 `sessionOnly`; [ADR 0035](../adr/0035-personal-access-tokens.md) D5):
@@ -188,7 +193,7 @@ administrator reads no client of the installation the person is not a member of.
   unknown slug ([`api/tenant.go`](../../backend/internal/api/tenant.go) `boundary`).
 - A token restricted to a project — always inside its tenant restriction — carries the
   project into the visibility predicate. It reaches its project's routes, the project list,
-  the tenant-wide ticket list, the key resolver and the event stream, each narrowed to the
+  the tenant-wide ticket list, the tenant's search, the key resolver and the event stream, each narrowed to the
   project — the stream's `membership.changed` to the events that name the project, or the token's
   own person and no project
   ([tenancy.md](tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)) —
@@ -237,14 +242,15 @@ administrator reads no client of the installation the person is not a member of.
   rule "administration"). **Revoking an unrestricted token ends it in every tenant of its person**
   — the page asks first and says so — and the record of it is in this tenant's audit alone
   ([H-57](#h-57)). A person's deactivation revokes every token they hold — an administrator's
-  `PUT …/accounts/{username}/deactivation` on an account their tenant manages, and the
-  start-up synchronisation for the local administrator — a `NULL` `revoked_by` meaning a
-  system act ([local-accounts.md](local-accounts.md)); a password reset does not. No route
+  `PUT …/accounts/{username}/deactivation` on an account their tenant manages, which names the
+  administrator in `revoked_by`, and the start-up synchronisation for the local administrator,
+  whose `NULL` `revoked_by` marks a system act ([local-accounts.md](local-accounts.md)); a password reset does not. No route
   deactivates a person of the identity provider.
 - **Last use.** The last-used day is written at most once per token and UTC day — a note per
   replica and a conditional update — as bookkeeping, not as an act (ADR 0035 D2).
 - **Open streams.** An event stream is not a next request: at every heartbeat it checks the
-  token again — not revoked, not expired, its person not deactivated — or, for a stream opened
+  token again — not revoked, not expired, its person not deactivated, and for a person of the
+  identity provider inside the gate — or, for a stream opened
   with a session cookie, the session ([sessions.md](sessions.md)), and the tenant boundary,
   and ends when either fails ([`api/events.go`](../../backend/internal/api/events.go)
   `stillAdmitted`; [ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
@@ -289,7 +295,8 @@ can be, is [identity-provider.md](identity-provider.md#the-token-gate) and its H
   set (`agent`, `token_*`, set or cleared by every write of it;
   [migration 28](../../backend/internal/store/migrations/000028_filing_and_stake_marks.up.sql);
   `actAgent`, `actToken` in [`api/tickets.go`](../../backend/internal/api/tickets.go)). The name is copied: the
-  tokens policy shows a person their own tokens only, and the token's name never changes — the
+  tokens policy shows a person their own tokens, and a tenant's administrators the tokens that can
+  act in their tenant ([above](#a-token-is-a-bearer-secret-stored-as-a-hash)), and the token's name never changes — the
   runtime role may update a token's revocation and last-used day and nothing else — so a revoked
   token's acts keep it. The API answers such an act with `token`, `{id, name}`, `null` for a browser
   session; no route answers a token's hash, its plaintext or a part of it, and the integration test
@@ -316,8 +323,8 @@ the columns released before keep their places. The mark tells, it does not bind:
   address is the client's under the rule of the trusted proxies
   ([local-accounts.md](local-accounts.md#the-client-address)), in its canonical form and whole —
   an IPv6 address too, where the login throttle counts its /64. The acts of a session and of a
-  token carry it, and so do the rows of the login, of a token's refusal and of the identity
-  provider's decisions in a request; the rows of the jobs and of the start-up, and every row
+  token carry it, and so do the rows of the login, of a token's refusal, of the identity
+  provider's decisions in a request and of GitHub's deliveries; the rows of the jobs and of the start-up, and every row
   written before this release, carry none. No route shows it — the tenant's audit view leaves it
   out — and the address itself is in no row (`TestAuditRowsCarryTheSourceHash`: two acts of one
   client, one hash; a job's rows, none). It tells one client's rows apart from another's under one
@@ -328,7 +335,9 @@ the columns released before keep their places. The mark tells, it does not bind:
 - Reads are not recorded, with the exceptions that mean data left the system (ADR 0026 D5):
   every download of an attachment's bytes — a `304` is not one —, every Markdown export of
   a ticket, which is never answered with `304`
-  ([`api/export.go`](../../backend/internal/api/export.go)), and every project and tenant export
+  ([`api/export.go`](../../backend/internal/api/export.go)), every read of its context document,
+  recorded as `exported` with the format `context v1`
+  ([`api/context.go`](../../backend/internal/api/context.go)), and every project and tenant export
   ([`api/exports.go`](../../backend/internal/api/exports.go), [import-and-export.md](import-and-export.md)). The CSV forms of the time lists,
   the time report and the audit view are reads like any other.
 - The answer to an abused token is the record and revocation (ADR 0039 D4): an administrator
@@ -381,7 +390,7 @@ the columns released before keep their places. The mark tells, it does not bind:
 | `set-horizon` | setting a ticket's horizon, `later` included, and naming one other than `later` at a filing. Named `override-urgency` until 2026-10-05 ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D4 as amended that day and 2026-10-06): a set sent with the old name is `400`, and the checks of `tokens.capabilities` and `chat_capabilities` refuse it, so no stored set holds it: migration 38 rewrote every stored set to the new name, and migration 40 rewrote what an image rollback to 0.5 wrote in between before it took the old name out of both checks |
 | `interest` | a `need` or `urgent` stake |
 | `upload` | uploading an attachment |
-| `create-project` | creating a project |
+| `create-project` | creating a project, and binding a repository to one |
 | `record-answer` | answering a question, which for an agent writes its person's answer down: the answer is marked `recorded_by_agent`, and an agent changes only an answer an agent recorded |
 | `rank` | a move in the rank (`moveTicketRank`), a filing's place, and adopting the score — the sort of a project's rank by it (`sortProjectRank`) |
 
@@ -396,12 +405,12 @@ its person's saved filter ([H-6](#h-6); ADR 0043 D2 as amended 2026-10-06). An a
 
 | Hard-off rule ([`auth/authorize.go`](../../backend/internal/auth/authorize.go)) | Refuses |
 |---|---|
-| administration | the tenant's settings, archiving a project, the tenant's local accounts, its members' grants, its group mappings, a project's restriction and access list, unsharing another person's shared saved filter — deleting one meets the deletion rule first |
+| administration | the tenant's settings, archiving a project, the tenant's local accounts, its members' grants, its group mappings, a project's restriction and access list, unsharing another person's shared saved filter — deleting one meets the deletion rule first —, revoking a member's token in the tenant, the tenant's GitHub webhook secret, accepting the loss of the files a consistency check found missing, and an import: its dry run, its execution and reading its job ([import-and-export.md](import-and-export.md#who-may-import-and-who-may-export)) |
 | booking time | booking, editing and voiding time entries — refused before the `Idempotency-Key` is looked at |
 | overriding the prerequisite refusal | `override_prerequisites` on the done act: a transition to `done`, or the `PATCH` that fills the last progress stage |
 | setting or lifting the confidential flag | `PUT …/confidential` |
 | token administration | revoking another token of the person |
-| deleting, restoring or purging | `DELETE …/{number}`, `PUT …/deleted-tickets/{key}/restore`, `DELETE …/deleted-tickets/{key}` ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7) — the purge refuses an agent before this rule is reached: a token by `session_required`, a marked session as [above](#what-only-a-session-does); `DELETE …/filters/{filter}`, a saved filter's deletion, its person's own included, before the filter is read ([`api/filters.go`](../../backend/internal/api/filters.go) `filterDeletion`; ADR 0043 D3 as amended 2026-10-06) |
+| deleting, restoring or purging | `DELETE …/{number}`, `PUT …/deleted-tickets/{key}/restore`, `DELETE …/deleted-tickets/{key}` ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7) — the purge refuses an agent before this rule is reached: a token by `session_required`, a marked session as [above](#what-only-a-session-does), and so does the removal of a consistency check's orphaned objects, `POST …/attachment-consistency/orphan-removal`, which this rule holds too; `DELETE …/filters/{filter}`, a saved filter's deletion, its person's own included, before the filter is read ([`api/filters.go`](../../backend/internal/api/filters.go) `filterDeletion`; ADR 0043 D3 as amended 2026-10-06) |
 | assigning a confidential ticket to anyone but the agent's person | a filing, or a `PATCH`, that leaves a ticket confidential with an assignee who is neither the agent's person nor the one it had — the `PATCH` that makes the ticket confidential in the same write included ([`api/tickets.go`](../../backend/internal/api/tickets.go) `mayAssign`; ADR 0043 D3, [ADR 0065](../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md) D9). Assignment admits the assignee to the ticket; assigning nobody, the agent's own person or the assignee as it was admits nobody new and passes |
 
 Four rules live in the handlers and answer `agent_forbidden` with their own detail: an agent
@@ -415,12 +424,13 @@ for `decide` (ADR 0043 D4).
 
 Every `POST` of an agent except a transition must carry an `Idempotency-Key`, or it is refused
 with `400 idempotency_key_required` ([`api/server.go`](../../backend/internal/api/server.go)
-`keyed`): filing a ticket, creating a project, a comment, a question, an upload — and booking
+`keyed`): filing a ticket, creating a project, a comment, a question, an upload, saving a filter,
+binding a repository — and booking
 time, which is refused earlier. A transition is idempotent by the state it names as `from`; a
 key sent with one is recorded on the act and not stored
 ([ADR 0045](../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md)
 D2, D7). The key belongs to the token and is bound to a fingerprint — an HMAC under a key derived from
-the server key — of the operation, its path and its body — for an upload the file's SHA-256, its name and its comment. The response is
+the server key — of the operation, its scope and its body — for an upload the file's SHA-256, its name and its comment. The response is
 stored with the act in the same transaction for twenty-four hours; a repetition replays it,
 and the same key with a different request answers `422 idempotency_mismatch` (ADR 0045 D3,
 D4). A person's `POST` may carry a key and need not. A key sent in a browser session has no
@@ -525,8 +535,10 @@ Live by design, the owner's choice
 ([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
 D6). Until it, a token's name was its person's alone: the tokens policy shows a person their own
 tokens. Now every act made through a token carries its name, and whoever reads the act reads it —
-every member who can see the ticket, a viewer included, the tenant's administrators, and the agent
-of any of them that reads the ticket's parts through the API. A name that says more than what the
+every member who can see the ticket, a viewer included, the tenant's administrators, who also read it
+in the tenant's list of tokens ([H-57](#h-57)), the agent of any of them that reads the ticket's parts
+through the API, and the chat's provider a person's turn sends a ticket's context to, whose recent
+activity names a plain token's acts `through the token <name>` ([chat.md](chat.md#h-37)). A name that says more than what the
 token is for — a client, a host, a project nobody else is meant to know of — says it to all of
 them, and keeps saying it after the token is revoked, because the acts keep the name. The token's
 form says so under the name, and the token page says that what a token does is marked with it.
@@ -540,10 +552,11 @@ names its token's id and not its name, so the activity shows the act as made thr
 cannot name; a comment, a file, a question, a time entry, a filing or a stake of that time carries
 no mark, and a plain token's act there reads as its person's — the activity still marks the act,
 except a booking, which the activity leaves out, and the tenant's audit view filters the record by
-token. Nothing is backfilled. **Two fields of the API**: a link's `created_by` and a set
-horizon's `by` (`horizon_set.by`) name the
-person whether the person, an agent or a plain token made it; no view of the UI shows either, and
-the act behind each — `linked`, `overridden` — is marked in the activity.
+token. Nothing is backfilled. **Fields of the API and of an export**: a link's `created_by`, a
+set horizon's `by` (`horizon_set.by`), a deleted ticket's `deleted_by` in the bin, an import job's
+`created_by` and `executed_by`, the questions an import made, and an export manifest's
+`exported_by` name the person whether the person, an agent or a plain token acted; the act behind
+each is marked in the activity or the tenant's audit view.
 An image rolled back to the release before migration 27 writes no mark on any of these rows.
 Mitigation: the activity, and the tenant's audit view by token.
 
@@ -557,10 +570,30 @@ of it is the person's across their tenants**: the token's name — free text, wh
 a host or a project of another tenant ([H-49](#h-49)) — and its last-used day, which may be a day it
 was used only in another tenant, so an administrator learns that the person worked with it
 somewhere that day. **What its administrators do to it reaches the person's other tenants**: a
-revocation ends it there too, and is recorded in the revoking tenant's audit alone; the other
-tenants' administrators see their requests with it refused, and their own token list shows it
-revoked, but not by whom or why. A token restricted to a tenant shows in that tenant's list only.
+revocation ends it there too, and is recorded in the revoking tenant's audit alone; the person's
+requests with it are refused in the other tenants as well, and those tenants' token lists show it
+revoked, with its time, but not by whom or why. A token restricted to a tenant shows in that tenant's list only.
 Mitigation: a token for one tenant's work is restricted to that tenant, and named for its use; a
 person who works for several clients keeps an unrestricted token for nothing a client's
 administrator should not see or end.
 
+<a id="h-103"></a>
+### H-103 — An agent removes a pull request's link from a ticket for good
+
+Live where a tenant takes GitHub's webhook. Removing a wrong link of a pull request or a commit is a
+member's act with `write` scope and no capability, in the agent baseline
+([`api/pullrequests.go`](../../backend/internal/api/pullrequests.go) `RemoveTicketPullRequest`), and a
+removed link stays removed: a later delivery does not bring it back, and no route restores it
+([github-webhook.md](github-webhook.md)). A steered agent of any capability set can so take a pull
+request off a ticket, and the merge hint with it. The act `unlinked` is on the ticket's activity with
+the agent's mark. Mitigation: the activity, and a `read` token where an agent needs no writes.
+
+<a id="h-104"></a>
+### H-104 — An agent marks its person's notifications read
+
+Live today. Marking notifications read takes `write` scope and no capability
+([`api/inbox.go`](../../backend/internal/api/inbox.go) `markRead`), so every agent with `write` scope
+can mark what tells its person of a question, a mention or a merge as read, and the person's unread
+count no longer shows it; the notifications stay in the inbox, and each mark is the person's act
+`read` in the tenant, with the agent's mark. Mitigation: a `read` token where an agent needs no
+writes; the inbox itself, which keeps what was marked read.

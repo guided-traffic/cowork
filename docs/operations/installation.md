@@ -221,6 +221,9 @@ once:
   from the server key, and is refused with `422 idempotency_mismatch`, neither replayed nor run a
   second time. A client that retries a creation across a rotation reads the list to see whether it
   happened.
+- **Every tenant's GitHub webhook secret no longer opens**: its webhook answers `404` and the log
+  says to rotate the secret, until the tenant's administrators make a new one and set it at GitHub
+  ([github.md](github.md)).
 - **The sessions of the local login survive**, and so does every personal access token: a session
   row and a token are found by the SHA-256 of their value, which no key enters.
 

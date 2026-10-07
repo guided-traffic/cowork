@@ -356,8 +356,10 @@ during the outage does not start at all, its discovery failing. The local admini
 local accounts log in meanwhile, on the pods that run.
 
 **Logout** sends the browser on to the issuer's end-session endpoint where its discovery names one
-that passed the endpoint rule. Dex names none, so a person who logs out of cowork stays logged in at
-Dex ([H-28](../security/identity-provider.md#h-28)).
+that passed the endpoint rule. Dex names none, and keeps no session of its own — v2.45.1, measured
+on 2026-10-06 —, so its next sign-in asks for the password; an issuer that keeps a session and names
+no endpoint keeps the person signed in there after a logout of cowork
+([H-28](../security/identity-provider.md#h-28)).
 
 **The record.** A refused login is an installation-level `login_refused` row of
 `system:identity-provider`; so are the persons it makes and changes and the sessions it ends. The

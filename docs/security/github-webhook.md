@@ -37,24 +37,27 @@ one). For it, the pipeline ([`api.go`](../../backend/internal/api/api.go) `Serve
 - **No validation of the body.** Validating parses it; the body is read whole and unparsed until
   its signature holds.
 
-The handler ([`github.go`](../../backend/internal/api/github.go)) then goes in this order: the
-tenant and its secret — an unknown tenant, one without a secret and a secret that no longer opens
-are one `404 not_found`, the boundary's answer —; the body, bounded by `COWORK_MAX_JSON_BODY`
-(`413 payload_too_large`); `X-Hub-Signature-256`, the HMAC-SHA256 of the raw body under the
-secret, compared with `hmac.Equal`, which takes the same time wherever two values differ
-(`401 signature_invalid`, nothing read, nothing written —
+The request then goes in this order ([`github.go`](../../backend/internal/api/github.go)): the
+tenant and its secret, before the request timeout and the body's bound — an unknown tenant, one
+without a secret and a secret that no longer opens are one `404 not_found`, the boundary's answer —;
+the body's bound, `COWORK_MAX_JSON_BODY` (`413 payload_too_large`), and the query, where a parameter
+the document does not declare is `400`; the body, read whole — one that cannot be read is `400`, one
+above the bound `413`; `X-Hub-Signature-256`, the HMAC-SHA256 of the raw body under the secret,
+compared with `hmac.Equal`, which takes the same time wherever two values differ
+(`401 signature_invalid`, nothing parsed, nothing written —
 [`internal/github`](../../backend/internal/github/signature.go) `Verify`, checked against GitHub's
-own documented example in `TestSignAndVerifyMatchGitHubsExample`); the delivery's id and the
-body's type; the delivery kept for a day; the event. Every delivery taken answers `202` and the
+own documented example in `TestSignAndVerifyMatchGitHubsExample`); the delivery's id, the body's
+type and the event's payload, parsed; then the delivery is kept for a day and applied. Another
+method on the route is `405`. Every delivery taken answers `202` and the
 same empty body, whatever it linked, whether its repository is bound and whatever event it was; a
 repetition answers `200`.
 
 ## Without the secret
 
-Somebody who does not hold a tenant's secret gets `404`, `413` or `401` and nothing else: no row
-is written before the signature holds — not the delivery, not an audit row —, and nothing of the
-payload is parsed (`TestASignatureThatDoesNotHoldIsRefusedAndWritesNothing`). What the three
-answers tell is [H-64](#h-64).
+Somebody who does not hold a tenant's secret gets `404`, `413`, `400` or `401` — and `405` for
+another method — and nothing else: no row is written before the signature holds — not the delivery,
+not an audit row —, and nothing of the payload is parsed
+(`TestASignatureThatDoesNotHoldIsRefusedAndWritesNothing`). What the answers tell is [H-64](#h-64).
 
 ## Whose pull requests are linked
 
@@ -81,9 +84,10 @@ and its neighbours in [`api_github_test.go`](../../backend/test/integration/api_
 - **Link a pull request or a commit to a ticket of the tenant**, if the delivery names a repository
   a project of the tenant binds — its `repository.clone_url`, normalised as a binding is
   ([ADR 0066](../adr/0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
-  D1) — and a key of the tenant's tickets, which are sequential per project. The link holds a title
-  and an author login the payload chose, shown as text everywhere and quoted in the context
-  document, and a page at GitHub that cowork writes from the bound repository's identity —
+  D1) — and a key of the tenant's tickets, which are sequential per project: a key resolves in every
+  project of the tenant, not only the one that binds the repository. The link holds a title and an
+  author login the payload chose, shown as text everywhere — the context document quotes the title
+  and writes the author on one line —, and a page at GitHub that cowork writes from the bound repository's identity —
   `https://<identity>/pull/<n>` or `/commit/<sha>` — never from the payload, so no link to a page
   outside the bound repository reaches a ticket (`TestAPayloadsPageIsNotWhatATicketLinks`). A key of
   another tenant is passed over; a delivery reaches the tenant of its path and no other, and its
@@ -113,10 +117,10 @@ first's transaction — PostgreSQL's rule for `INSERT … ON CONFLICT`; not veri
 races two. GitHub's signature covers the body only: the event and the delivery id are not signed,
 so a captured delivery — a body and its signature, which whoever sees a delivery on its way, or in
 GitHub's log of a repository's deliveries, holds — can be sent again under a new id. It changes
-nothing: a link that exists is not
-made twice, a pull request's facts are written only from a delivery whose `updated_at` is not older
-than what a link holds, so an old delivery sent after a newer one writes nothing, and a merge tells
-once, at the change of state (`TestARepeatedDeliveryChangesNothing`,
+little: a link that exists is not made twice, a pull request's facts are written only from a
+delivery whose `updated_at` is not older than what a link holds, so an old delivery sent after a
+newer one writes nothing, and a merge tells once, at the change of state — but an old delivery
+still links a ticket its keys name that was filed since, or a repository bound since (`TestARepeatedDeliveryChangesNothing`,
 `TestAnEditOrASynchronizeUpdatesThePullRequest`, `TestAMergeTellsTheAssigneeAndTheWatchersAndMovesNothing`).
 A link a person removed stays removed (`TestAPersonRemovesAWrongLinkForGood`). A replay costs the
 server the work of a delivery, as any request does ([H-65](#h-65)).
@@ -143,9 +147,9 @@ into another tenant's row does not open there (`TestTheSecretIsSealedForItsTenan
 - **A copy of the database alone opens nothing.** The plaintext needs the row and the server key
   together — the backend, or whoever holds both.
 - **The runtime role reads the sealed value only for the tenant's administrators and the webhook's
-  job**: restrictive policies of migration 41 hold reading, writing and deleting
-  `github_webhook_secrets` to them, and the administrators' route reads when and by whom, never
-  the column.
+  job**: restrictive policies of migration 41 hold reading to them, and making, rotating and
+  deleting `github_webhook_secrets` to the administrators alone; the administrators' route reads
+  when and by whom, never the column.
 - **A change of `COWORK_SESSION_KEY` makes every sealed secret unopenable**: from then on each
   tenant's endpoint answers `404` and the log says to rotate the secret, until an administrator
   does — the server key admits no second key that would keep the old one
@@ -169,7 +173,8 @@ tenant's audit record.
 ### H-64 — The answers tell which tenants take the webhook
 
 Live, by D3's answers. A tenant without a secret answers like an unknown one, `404`; a tenant with a
-secret answers a delivery without a valid signature `401`, and a body above the limit `413`. So
+secret answers a delivery without a valid signature `401`, a body above the limit `413`, and an
+undeclared query parameter or a body that cannot be read `400`. So
 anybody can learn, slug by slug, that a tenant exists and takes GitHub's webhook — the one route
 under `/tenants/{tenant}` whose refusal differs from an unknown tenant's
 ([tenancy.md](tenancy.md)). The payload URL is no secret anyway: it sits in every bound
@@ -181,7 +186,8 @@ revokes the secret of every tenant, which makes all of them `404` again.
 
 Live. Like every route of cowork ([ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)),
 the webhook has limits of size and time, not a budget: anybody can make the server read up to
-`COWORK_MAX_JSON_BODY` and compute an HMAC per request, and a holder of the secret can write links,
+`COWORK_MAX_JSON_BODY` and compute an HMAC per request at the slug of a tenant that takes the
+webhook — every other slug answers `404` before the body is read —, and a holder of the secret can write links,
 acts and notifications without a bound over time — each delivery is bounded, to fifty keys per text
 and a hundred commits per push. The login's throttle per address does not apply here. An
 installation that wants one sets it at its Ingress controller, for the webhook's path.
@@ -189,14 +195,15 @@ installation that wants one sets it at its Ingress controller, for the webhook's
 <a id="h-66"></a>
 ### H-66 — A leaked secret writes until it is rotated, and nothing says it leaked
 
-Live whenever a secret leaks — from GitHub's webhook settings, a repository administrator's
-clipboard, a person's screen. Whoever holds it can link any ticket whose key they know or guess to a
+Live whenever a secret leaks — from a repository administrator's clipboard, a person's screen, a
+script that set the webhooks up. Whoever holds it can link any ticket whose key they know or guess to a
 pull request in a bound repository with a title of their choosing, report it merged, and so put a
 merge hint on the ticket and a notification into its watchers' inboxes — a lure to move a ticket
 that nobody's work finished. They cannot change a state themselves, read anything, or reach another
 tenant, and the hint says that nothing moved. Nothing in cowork tells a leaked secret's deliveries
 from GitHub's: both are signed alike; the audit rows carry the keyed hash of the sender's address
-and the delivery's id, which GitHub's own delivery log can be held against. Not verified, and this is
+and the delivery's id, which GitHub's own delivery log can be held against — and a delivery that
+writes nothing records no row, so it leaves no address behind. Not verified, and this is
 the gap: whether the time a delivery takes tells a holder which repositories are bound or which keys
 exist — a delivery that links writes rows, one passed over does not. The remedy is the rotation,
 which refuses the old secret at once, and a person's removal of each link it made.
@@ -207,7 +214,9 @@ which refuses the old secret at once, and a person's removal of each link it mad
 By design: one tenant, one secret
 ([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
 D1). cowork holds no GitHub credential (D2), but GitHub holds a cowork credential: every webhook the
-secret is set up in keeps it to sign its deliveries, and how GitHub protects it is GitHub's. Whoever
-reads it out of one place — the settings of one repository's webhook, the person who pasted it, a
-script that set the webhooks up — holds what writes links for every repository the tenant binds. A
-secret per repository would narrow that to one repository; it is not built.
+secret is set up in keeps it to sign its deliveries, and how GitHub protects it is GitHub's —
+GitHub does not show a saved secret again in a webhook's settings, by its documentation, not
+verified here. Whoever learns it in one place — the person who pasted it, a script that set the
+webhooks up — holds what writes links for every repository the tenant binds, into the tickets of
+every project of the tenant. A secret per repository would narrow that to one repository; it is not
+built.

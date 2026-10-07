@@ -3,7 +3,7 @@
 How a person without an identity provider logs in: the local account and the local
 administrator, how a password is stored and checked, what the login answers and how it counts
 and locks, who may create, reset and deactivate an account, and what is recorded — as built on
-2026-10-03. What a session is once the login has made one is [sessions.md](sessions.md); what
+2026-10-07. What a session is once the login has made one is [sessions.md](sessions.md); what
 protects its writes is [csrf.md](csrf.md); what a token may do is [tokens.md](tokens.md); how a
 request is kept inside its tenant is [tenancy.md](tenancy.md).
 
@@ -26,9 +26,11 @@ with a password.
 | `tenant` | `POST …/accounts`, by an administrator of the tenant | that tenant's administrators | whatever role the administrator granted, by a marked grant in that tenant |
 
 There is no registration and no invitation link: the creation route and the configuration are
-the only gates (D1). The `global_admin` flag is set by the synchronisation alone — the policy
-on `users` refuses it to every request — and a global administrator has no role in any tenant
-until they grant themselves one ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+the only gates (D1). The `global_admin` flag is set by the start-up synchronisation, for the local
+administrator, and by the identity provider's login, for its persons in `COWORK_ADMIN_GROUP` — the
+policy on `users` refuses it to every request — and a global administrator has no role in any tenant
+until a grant gives them one: the bootstrap tenant's, the one that makes them a tenant's first
+administrator when they create it, or one they give themselves ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D2).
 
 ## How a password is stored and checked
@@ -40,10 +42,13 @@ D2).
   `ArgonMemoryKiB`, `ArgonIterations`, `ArgonParallelism`; ADR 0033 D4). These are OWASP's
   minimum; raising them is an amendment, and a stored hash is verified with the parameters it
   records, so it keeps working. Nothing re-hashes a password at login after such an amendment.
-- **Verification is bounded** twice. `parseHash` holds a row's parameters to sane bounds, so a
-  damaged or foreign hash cannot ask the server for gigabytes or minutes; and at most two
-  hashes are computed at once, so a flood of attempts holds at most 38 MiB, which waits behind
-  the request's own timeout. A damaged hash is a password that does not fit, not a `500`.
+- **Verification is bounded** twice. `parseHash` holds a row's parameters to bounds — at most
+  1 GiB of memory, 64 passes and 255 lanes —, so a damaged or foreign hash asks the server for no
+  more than that; and at most two hashes are computed at once in a process, so a flood of attempts
+  with the current parameters holds at most 38 MiB, and waits behind the request's own timeout
+  ([H-102](#h-102)). A damaged hash is a password that does not fit, not a `500`.
+- **What a backup holds.** The database keeps each account's Argon2id hash and no faster hash of a
+  password: a copy of it lets a guesser test guesses at Argon2id's cost.
 - **The policy is length only**, counted in characters: `COWORK_PASSWORD_MIN_LENGTH`, 12 by
   default, 8 at the lowest — below it the backend refuses to start — and at most 1024, which
   the API document also holds every password field to. No character classes, no history, no
@@ -166,14 +171,14 @@ lock is refused whatever its password and counts as one more failure.
 ## Temporary passwords, changes and resets
 
 - An administrator creates the account with a temporary password and the person changes it at
-  the first login before anything else. The UI shows the temporary password in a plain text
-  field that password managers are told to leave alone, so none offers to save it as the
-  administrator's own login or fills the administrator's password into it, and it generates
-  `max(24, COWORK_PASSWORD_MIN_LENGTH)` characters
-  ([frontend.md](../developer/frontend.md#where-state-lives)) ([sessions.md](sessions.md) "What a session may do"):
+  the first login before anything else ([sessions.md](sessions.md) "What a session may do"):
   `PUT /api/v1/me/password` verifies the current password, applies the length policy, refuses
   a new password equal to the current one, ends every other session of the account and clears
-  the flag (ADR 0033 D4).
+  the flag (ADR 0033 D4). The UI shows the temporary password in a plain text field that
+  password managers are told to leave alone, so none offers to save it as the administrator's
+  own login or fills the administrator's password into it, and it generates
+  `max(24, COWORK_PASSWORD_MIN_LENGTH)` characters
+  ([frontend.md](../developer/frontend.md#where-state-lives)).
 - An administrator's **reset** (`PUT …/accounts/{username}/password`, a session only) sets a
   new temporary password, ends every session of the account and sets the flag again. It does not unlock the
   account (an unlock is its own act) and does not revoke its tokens (revoking is the person's
@@ -194,8 +199,10 @@ tenant could reset the password of a person who is also a member of another tena
 administrator, say — log in as them and read what that tenant holds. The rule is in the
 policies of migration 15 as well as in the handlers: `app_manages_account` is true only for an
 administrator of the current tenant and an account that tenant manages, and the policies on
-`users`, `local_accounts`, `sessions`, `tokens`, `login_attempts` and `login_locks` use it
-(`TestPoliciesOfThePersonsAndTheirAccounts`).
+`users`, `sessions` and `tokens` use it; those on `login_attempts` and `login_locks` use
+`app_manages_username`, the same rule by the username; and `local_accounts` holds it in its own
+condition, the managing tenant's administrators (`TestPoliciesOfThePersonsAndTheirAccounts`,
+`TestPoliciesOfTheSessions`).
 
 - **Not their own account.** An administrator may not reset their own password, unlock
   themselves or deactivate themselves through these routes (`403 forbidden`): a reset would
@@ -218,7 +225,8 @@ administrator of the current tenant and an account that tenant manages, and the 
 - **A deactivation** ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
   D5) revokes every token of the person, ends every session and refuses the login; the person,
   the grants and every act they made stay. No route reactivates a person, and the memberships
-  of a deactivated person are not marked inactive: they stay as they were.
+  of a deactivated person are not marked inactive: they stay as they were — ADR 0024 D5's inactive
+  memberships and reactivation are not built.
 - **A deactivation is held to `last_admin` in the managing tenant.** A deactivated
   person counts as no tenant's administrator, so the deactivation is a change of who administers
   the tenant and is held to the rule the changes of grants and mappings are held to
@@ -258,9 +266,10 @@ migration Job after the schema step as well, under the same lock
 - an account the configuration kept under **another username**, or when both variables are
   empty, is deactivated, its tokens revoked and its sessions ended — never deleted;
 - the **bootstrap tenant** (`COWORK_BOOTSTRAP_TENANT_SLUG` and `_NAME`) is created only while no
-  tenant exists, with the administrator as its first administrator by a marked grant; once a
-  tenant exists the variables do nothing. They need the local administrator, who becomes the
-  first administrator: a tenant without an administrator cannot come to exist (ADR 0032 D7).
+  tenant exists, with the local administrator, when one is configured, as its first administrator
+  by a marked grant, and `COWORK_ADMIN_GROUP`, when it is set, mapped to its `admin` role; once a
+  tenant exists the variables do nothing. They need one of the two: a tenant without an
+  administrator cannot come to exist (ADR 0032 D6, D7).
 
 A start that finds everything as configured changes nothing and records nothing
 (`TestBootstrapKeepsTheConfiguredAdministrator`); replicas that start together agree
@@ -273,8 +282,8 @@ A start that finds everything as configured changes nothing and records nothing
 
 Live today, said aloud by ADR 0033 D7. A local account is its password: a phished or reused
 password is a full account until the person changes it or an administrator deactivates the
-account, and the local administrator — a global administrator, the one account that can
-create tenants — is no exception. The mitigations are the ones the record names: no public
+account, and the local administrator — a global administrator, who creates tenants as every
+global administrator does — is no exception. The mitigations are the ones the record names: no public
 registration, the length rule, the lockout and the address throttle (which slow guessing, not
 phishing), and the ability to deactivate any managed account. Keep the local administrator
 switched off (both variables empty) where an identity provider with a second factor does the
@@ -334,8 +343,8 @@ Ingress, which sees the real client, do what this limit cannot;
 
 Live today. Anyone who knows a username can fail five times a quarter of an hour and keep its
 account locked out of its own login; in `admin` mode until an administrator unlocks it. The
-local administrator is no exception: its recovery is rotating the Secret and restarting, which
-the attacker cannot undo. Failures from many clients and addresses are not slowed by the
+local administrator is no exception, and no route unlocks it: its recovery is rotating the Secret
+and restarting, which the attacker cannot undo. Failures from many clients and addresses are not slowed by the
 address throttle ([H-17](#h-17)). The throttle and the lockout are the price of limiting
 guesses without a second factor; `COWORK_LOGIN_MAX_FAILURES=0` switches the lockout off and
 leaves the guesses to the throttle and to the Argon2id cost.
@@ -359,8 +368,9 @@ person's tokens.
 ### H-20 — The local administrator's password lives in a Secret and in the pod's environment
 
 Live whenever it is configured. The password reaches the process as an environment variable —
-the serving container's and, in the chart's job mode, the migration Job's —: anyone who can read
-the pod's spec or the Secret reads it, as with the database URL. A leaked
+the serving container's and, in the chart's job mode, the migration Job's —: the pod's spec names
+only the Secret, and anyone who can read the Secret, or the process's environment in the running
+container, reads the password, as with the database URL. A leaked
 password stays valid until the Secret is rotated **and** the backend restarted — the
 synchronisation reads the environment once, at start, and the migration Job's only at the next
 install or upgrade
@@ -369,11 +379,6 @@ residual risks). The inline chart values `localAdmin.username` and `localAdmin.p
 the credential in plain text into the release Secret and into `helm get values`
 ([trust-boundaries.md](trust-boundaries.md) "Where the credentials live"); use
 `localAdmin.existingSecret`.
-
-Not built: a way for a person to recover their own password without an administrator — there
-is no e-mail flow ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)); a
-route that creates an account for no tenant or lists the accounts of other tenants for a global
-administrator; the reactivation of a deactivated person.
 
 <a id="h-32"></a>
 ### H-32 — Deactivating an account does not ask the other tenants it administers
@@ -418,3 +423,31 @@ memberships; or the self-grant of
 D2 by a global administrator — a member of `COWORK_ADMIN_GROUP`, or the local administrator under
 its new username. Mitigation: before the variables change, grant every tenant the local
 administrator administers another administrator.
+
+<a id="h-101"></a>
+### H-101 — Once the hashing parameters are raised, a login's time tells an old account from an unknown name
+
+Dormant until an amendment raises the Argon2id parameters. The login computes one hash for every
+attempt — against the account's hash, or against a dummy made at start with the current parameters
+when the name names no account ([above](#what-the-login-answers)) — and a stored hash is verified with
+the parameters it records, while nothing re-hashes it at login. After a raise, an account whose hash
+was made before it is verified faster than the dummy, so the time of a failed login tells such an
+account from a name nobody has, which the answer itself never does. Mitigation: after a raise, have
+every person of an old account change their password, or reset the accounts.
+
+<a id="h-102"></a>
+### H-102 — Two hashes at a time bound every login of a process
+
+Live today. The bound of two Argon2id computations at once ([above](#how-a-password-is-stored-and-checked))
+is the process's, not an address's: a flood of attempts from many addresses — each within the
+address throttle ([H-17](#h-17)) — keeps both slots busy, and every other login of the replica, a
+password change and an account's creation wait behind it until their request's time runs out. The
+throttle slows one address and the lockout one username; nothing bounds the attempts of many.
+Mitigation: rate limits at the Ingress, which sees every client; several replicas.
+
+### What is not built
+
+A way for a person to recover their own password without an administrator — there is no e-mail flow
+([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)); a route that creates an
+account for no tenant or lists the accounts of other tenants for a global administrator; the
+reactivation of a deactivated person.

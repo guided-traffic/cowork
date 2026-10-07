@@ -120,7 +120,7 @@ handler's clock: a dry run past its day answers `404`
 before the job deletes it. `importJobView` decodes the stored report into the generated types.
 
 **The expiry.** `DB.ExpireImportJobs` ([`store/imports.go`](../../backend/internal/store/imports.go)),
-the job `import-expiry`, lock key `7`, deletes the dry runs past `expires_at` in every tenant with
+the job `import-expiry`, lock key `9`, deletes the dry runs past `expires_at` in every tenant with
 their files and records one `expired` act on `import_jobs` per run that removed any; `runJobs` in
 [`main.go`](../../backend/cmd/cowork/main.go) runs it hourly with the others. An executed job stays:
 its tickets name it.

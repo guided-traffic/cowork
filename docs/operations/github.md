@@ -52,7 +52,8 @@ installation on an organisation.
    agent. The same secret serves every repository of the tenant.
 2. **At GitHub**, in the repository's *Settings → Webhooks → Add webhook*:
    - *Payload URL*: `<COWORK_BASE_URL>/api/v1/tenants/<slug>/integrations/github/webhook`, which the
-     settings page shows;
+     settings page shows, with no query string — a parameter the API does not declare is answered
+     `400`;
    - *Content type*: `application/json` — GitHub's default, `application/x-www-form-urlencoded`, is
      answered `415`;
    - *Secret*: the secret of step 1;
@@ -128,7 +129,7 @@ rotates its secret and sets the new one at GitHub.
 ## Running it
 
 - **Deliveries are kept a day.** Each replica removes the deliveries older than twenty-four hours at
-  start and once an hour, the job `github delivery expiry`, which logs `job removed expired rows` with
+  start and once an hour, the job `github-delivery-expiry`, which logs `job removed expired rows` with
   the count when there were any ([runtime.md](runtime.md#the-backend)). A delivery GitHub sends again
   after that is taken again and changes nothing, since nothing in it is new.
 - **The request log** carries each delivery like any request: method, path, status, duration and the

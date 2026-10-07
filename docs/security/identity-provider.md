@@ -4,7 +4,7 @@ How cowork logs a person in as an OpenID Connect relying party, what it checks o
 says, what the issuer's groups decide — who gets in, who administers the installation, which
 tenants a person belongs to and in which role — how a session and a token keep up with the groups,
 what cowork keeps of the issuer's tokens, how a person comes back without a click after a session
-ended, and what is recorded, as built on 2026-10-06. What a session is once the login has made one
+ended, and what is recorded, as built on 2026-10-07. What a session is once the login has made one
 is [sessions.md](sessions.md); the local login beside this
 one is [local-accounts.md](local-accounts.md); what a tenant's administrators do with the groups —
 mappings, grants, a restricted project's access list — is [tenancy.md](tenancy.md); what a token
@@ -53,7 +53,7 @@ the gate ([README.md, Configuration](../../README.md#configuration);
   of any answer is read, and a longer one fails rather than being cut; and no error of the relying
   party carries an answer's body.
 - The libraries: [go-oidc](https://github.com/coreos/go-oidc) v3.21.0 for the ID token's claims and
-  UserInfo, `golang.org/x/oauth2` v0.37.0 for the code exchange and the refresh grant, go-jose v4.1.4
+  UserInfo, `golang.org/x/oauth2` v0.37.0 for the code exchange and the refresh grant, go-jose v4.1.5
   for the signatures ([`backend/go.mod`](../../backend/go.mod)). The discovery and the key set are
   cowork's own: a refresh must tell keys that could not be fetched — the issuer's trouble — from a
   signature no key verifies, and no error may carry the issuer's answer into a log.
@@ -83,11 +83,13 @@ and the test asserts that the value carries neither the state nor the path.
   themselves at most — whether they see the issuer's form is the issuer's session's business
   (H-28).
 - **`return_to` is a path of this installation or `/`:** it starts with one `/`, not `//` and not
-  `/\`, holds no control character and no backslash, is valid UTF-8 and at most 2048 bytes; anything
+  `/\`, holds no byte below `0x20`, no DEL and no backslash, is valid UTF-8 and at most 2048 bytes —
+  a C1 control character passes, and the redirect still stays on this origin —; anything
   else becomes `/`, never a refusal, so a bad link still leads to a login (`safeReturnTo`,
   `TestReturnTo`). It is checked again when the cookie is opened. The login is no open redirect.
 - Without a provider, or with a gate that admits nobody, the start answers `303` to
-  `/login?error=oidc_unavailable` ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
+  `/login?error=oidc_unavailable`, with `&return=<path>` when `return_to` names another path than `/`
+  ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
   D8; `TestOIDCRoutesWithoutAProvider`).
 - **`silent=true` is the login page's own start** after a session ended
   ([ADR 0029](../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
@@ -138,7 +140,8 @@ The mix-up attack `iss` defends against needs a client of several issuers; cowor
 
 The tests hold the failures cowork depends on: a signature of another key, another audience, an
 expired token, another login's nonce (`TestExchangeRefusesAnIDTokenThatDoesNotVerify`), another
-authorized party, keys larger than 1 MiB (`TestDiscoveryHoldsTheIssuerToItsRules`), and an ID token
+authorized party (`TestAuthorizedParty`, `TestRefreshedIDTokens`), keys larger than 1 MiB
+(`TestDiscoveryHoldsTheIssuerToItsRules`), and an ID token
 signed with a key the issuer does not publish through the whole callback (`TestCallbackFailures`).
 
 ### The groups
@@ -234,9 +237,11 @@ it (above). It is an identifier, not a credential: a login still goes through th
 ## The administrator group
 
 The members of `COWORK_ADMIN_GROUP` are global administrators, and the group is behind the gate by
-definition. The flag is set and cleared from the groups whenever they are read or judged anew — a
-login, a refresh that reads them, a token's gate check — and a change is recorded
-(`TestRefreshFollowsTheIssuersGroups`). A global administrator creates tenants — becoming the new
+definition. The flag is set and cleared from the groups at a login — a refused one included —, at a
+refresh that reads them, and at a token's gate check that admits the person, and a change is recorded
+(`TestRefreshFollowsTheIssuersGroups`); a refresh that reads nothing and a gate check that refuses
+write nothing of the person, so a changed `COWORK_ADMIN_GROUP` reaches a person still inside the gate
+only at one of the first three ([H-25](#h-25)). A global administrator creates tenants — becoming the new
 tenant's first administrator by a marked grant — and has no role in any tenant they were not given:
 they list every tenant, see the administration of one without a role — its members, mappings and
 settings — and grant themselves a role there, in a browser session, recorded in the tenant
@@ -286,10 +291,12 @@ for a person the gate admits:
 
 ### One decision about a person at a time
 
-A login, the application of a refresh's answer, a token's gate check and a mapping's change each
-take a transaction-level advisory lock of the person (`identityLockNamespace`, `cowi`, the person's
-id) before they read anything the decision depends on, so two of them decide about one person one
-after the other, each on what the one before committed. A mapping's change runs under the tenant's
+The application of a refresh's answer, a token's gate check and a mapping's change each take a
+transaction-level advisory lock of the person (`identityLockNamespace`, `cowi`, the person's id)
+before they read anything the decision depends on, so two of them decide about one person one after
+the other, each on what the one before committed. A login takes the lock once it has found the person
+— a first login once it has made them — and writes the groups its own exchange read, whatever was
+stored meanwhile ([H-83](#h-83)). A mapping's change runs under the tenant's
 lock (`cowt`, `LockTenant`), which every administrator's change of a grant or a mapping takes first,
 and then takes the locks of its persons in the order of their ids; no transaction takes a tenant's
 lock after a person's. The derivations of a login, a refresh and a token's gate check take the
@@ -297,7 +304,7 @@ person's lock and no tenant's.
 
 ## The groups refresh
 
-Every `COWORK_OIDC_GROUPS_REFRESH` (fifteen minutes; one at least) a session of the identity
+Every `COWORK_OIDC_GROUPS_REFRESH` (fifteen minutes by default; one minute at least) a session of the identity
 provider reads the person's groups again
 ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
 D5; `checkProviderSession`, `refreshSession` and `askIssuer` in
@@ -423,8 +430,9 @@ person signs in through the provider, so the login page does not sign them in ag
 
 ## Signing in again without a click
 
-When the idle or the absolute limit ends a session of the provider, the login page signs the person
-in again by itself, while the provider's own session lives
+When a session of the provider ends — at the idle or the absolute limit, or by any other end but a
+sign-out in this browser —, the login page signs the person in again by itself, while the provider's
+own session lives
 ([ADR 0029](../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
 D6; [`login.ts`](../../frontend/src/app/features/auth/login.ts),
 [`sign-in-memory.ts`](../../frontend/src/app/core/sign-in-memory.ts),
@@ -523,8 +531,9 @@ migrations [20](../../backend/internal/store/migrations/000020_identity_provider
   a local account, the local administrator above all, is never its to touch.
 - `tenants`: it reads whether any exists, for the init state.
 - `group_mappings`: it reads every tenant's, and writes none.
-- `memberships`: a mapped membership is inserted, changed and removed by it alone; a grant by a
-  tenant's administrators alone.
+- `memberships`: a mapped membership is inserted, changed and removed by it alone; a grant is
+  written by the tenant's administrators, by a global administrator for themselves, and by the
+  start-up synchronisation (migrations 15, 22 and 26).
 
 The refresh's claim is no act of the provider's: it runs as the person, with the session's hash,
 and writes nothing but the lease. The settings, the restrictive policies of the administration and
@@ -547,12 +556,15 @@ memberships those groups map to — for up to the maximum age after the groups w
 longer until the token expires. A person the issuer disables outright is no different: their
 sessions end at their next refresh, when the issuer refuses the refresh token, but a refusal stores
 no groups, so their tokens go on until the groups of their last read are too old, and a sign-in goes
-through the issuer, which no longer lets them in. No route deactivates a person of the provider, and no route lets an
-administrator revoke another person's token ([tokens.md](tokens.md)). What does reach a token within
+through the issuer, which no longer lets them in. No route deactivates a person of the provider. A
+tenant's administrator revokes the person's tokens that can act in the tenant — an unrestricted one
+then ends in every tenant of the person, one restricted to a tenant only that tenant's administrators
+reach ([tokens.md](tokens.md#expiry-revocation-and-refusals), [H-57](tokens.md#h-57)). What does reach a token within
 one interval is the gate's configuration — the check judges the stored groups against
 `COWORK_OIDC_ALLOWED_GROUPS` and `COWORK_ADMIN_GROUP` as they are at the check — and a change of the
 configured issuer reaches it at once. Mitigation: a shorter `COWORK_OIDC_GROUPS_MAX_AGE` — a day asks
-a daily sign-in in the browser; to cut a person off at once, the operator sets the person's
+a daily sign-in in the browser; the tenants' administrators revoke the person's tokens on each
+tenant's page *Tokens*; to cut a person off at once everywhere, the operator sets the person's
 `users.deactivated_at` in the database, which every token and login of theirs then meets as
 revoked — outside the API, and recorded nowhere.
 
@@ -586,8 +598,9 @@ as they stand — those of the person's last login, or of another session's refr
 against the gate as configured now, so a changed gate still ends it, but a person removed from a
 group at the issuer keeps what the group gave until they log in again or the session ends, twelve
 hours at most by default. Such a refresh writes nothing of the person: their stored groups,
-administrator flag and memberships stay as the last read left them, and an older session's groups
-never go over a newer login's (`TestWithoutARefreshTokenTheLoginsGroupsHold`,
+administrator flag and memberships stay as the last read left them — a changed `COWORK_ADMIN_GROUP`
+included, which reaches the flag only at a login, a refresh that reads the groups or a token's gate
+check that admits the person —, and an older session's groups never go over a newer login's (`TestWithoutARefreshTokenTheLoginsGroupsHold`,
 `TestARefreshThatReadNothingKeepsThePersonsNewerGroups`). The backend warns once per process
 (`the issuer gave no refresh token …`, `… carries no groups claim …`). Mitigation: ask for
 `offline_access` — the default scopes do — and have the issuer send the groups at a refresh.
@@ -629,7 +642,9 @@ logs in again; a session without a refresh token is not affected. The rotation a
 in flight (`oidc_failed`), invalidates the cursors, starts the throttle's count of an address over,
 makes the audit rows' address hashes before and after it incomparable, and refuses an idempotent
 retry across it as `422 idempotency_mismatch`
-([installation.md](../operations/installation.md#the-secrets) lists each). It does not make a copy of
+([installation.md](../operations/installation.md#the-secrets) lists these), and it leaves every
+tenant's GitHub webhook secret unopenable until the tenant's administrators make a new one
+([github-webhook.md](github-webhook.md#the-secret-at-rest-and-who-can-open-it)). It does not make a copy of
 the database taken before it safe: the refresh tokens sealed in that copy open under the old key.
 Mitigation: guard the database, its backups and the Secrets as one; after a suspected compromise of
 both, rotate the server key and revoke the client's tokens at the issuer.
@@ -637,8 +652,9 @@ both, rotate the server key and revoke the client's tokens at the issuer.
 <a id="h-28"></a>
 ### H-28 — An issuer without an end-session endpoint keeps its own session after a logout
 
-Live with Dex, with every issuer whose discovery names no `end_session_endpoint`, and with one whose
-endpoint the start dropped because it is neither `https` nor `http` on a loopback host. A logout ends
+Live with every issuer that keeps a session of its own and whose discovery names no
+`end_session_endpoint`, or one the start dropped because it is neither `https` nor `http` on a
+loopback host; dormant with Dex v2.45.1, which names none and keeps no session. A logout ends
 the cowork session and answers `204`; the session the browser holds at the issuer stays, so the next
 *Sign in with* on that browser may pass without a password — on a shared computer, as the person who
 logged out. With an endpoint, the browser is sent there, and a browser that does not follow — closed,
@@ -659,8 +675,11 @@ Live in every tenant whose administrators hold the role through the identity pro
 last_admin` holds an administrator's acts — changing or removing a grant, changing or removing a
 mapping, deactivating an account the tenant manages — to leaving an administrator who can log in:
 active, and a local account or a person of the configured issuer whom the gate admitted at their
-last login, refresh or check (`TestTheLastAdministratorMustBeAbleToAct`). Nothing holds the
-issuer's word to it. A derivation at
+last login, refresh or check (`TestTheLastAdministratorMustBeAbleToAct`). The gate's stamp that this
+reads is cleared only by a login refused at the gate or a refresh that read groups outside it; a
+refresh that read nothing, or a token's gate check that refuses, ends the sessions or refuses the
+token and leaves the stamp, so `last_admin` and a mapping's change count such a person until their
+next login. Nothing holds the issuer's word to it. A derivation at
 a login, a refresh or a token's gate check is never refused: the tenant's last administrator by a
 mapping who leaves the group loses the role at their next login or refresh. A person who leaves the
 gate keeps their memberships but cannot log in, and their tenants keep no administrator who can. And
@@ -697,8 +716,44 @@ a colleague at a desk left open, a shared computer — is one input away from th
 where they were one click away. The click was no barrier either: it too passed without a password
 while the issuer's session lived. What ends that access is the issuer's session policy — its own
 idle and absolute limits, its sign-out — and cowork's sign-out, which forgets the method; an open tab
-nobody touches still shows nothing again by itself. Not verified in a browser: whether a browser sends
-pointer moves of its own under a resting pointer — the page asks for a move to another place than the
-move before, which such a move is not — or gives the window the focus without a person; either would
-sign such a tab in at that moment. Mitigation: an issuer session policy as strict as cowork's should
-be; a locked screen; on a shared computer, sign out of cowork and of the issuer.
+nobody touches still shows nothing again by itself. On a browser that remembers the provider, a
+person who came to the login page for the local form is signed in as the provider's person at their
+first sign, a key pressed in the form included, while that person's session at the issuer lives. Not
+verified in a browser: whether a browser sends pointer moves of its own under a resting pointer — the
+page asks for a move to another place than the move before, which such a move is not —, gives the
+window the focus, or makes the tab visible again without a person; each would sign such a tab in at
+that moment. Mitigation: an issuer session policy as strict as cowork's should be; a locked screen;
+on a shared computer, sign out of cowork and of the issuer.
+
+<a id="h-81"></a>
+### H-81 — Any site can start the silent sign-in
+
+Live with every issuer that keeps a session of its own and answers `prompt=none` with a code. The
+start takes `silent=true` from whatever led the browser to it: it asks for no mark of cowork's own
+page — no `Sec-Fetch-Site`, no origin — so a link or a redirect of another site makes a browser whose
+issuer session lives sign its person in to cowork without their input, where the login page itself
+waits for a sign of a person ([above](#signing-in-again-without-a-click)). The session is the
+person's own, and the other site reads nothing of it; what it gains is a session made at a moment of
+its choosing, an unattended browser included ([H-62](#h-62)). Not verified: whether the time the round
+trip takes tells a page that measures it whether the issuer holds a session. Refusing `silent=true`
+unless `Sec-Fetch-Site` says `same-origin` would close it; nothing in the configuration does.
+
+<a id="h-82"></a>
+### H-82 — A request to the callback ends the login in flight
+
+Live today. Every outcome of `GET /auth/callback` clears the state cookie, a refusal included, and
+the issuer's `error` is answered before the state is compared (`callbackRefusal`): a navigation of
+another site to the callback while a person's login is under way — the `Lax` cookie rides on it —
+ends that login, whose own return then fails as `oidc_failed`, and the person starts it again. It
+makes no session and reads nothing; it is an interruption, not a way in. Mitigation: none in cowork.
+
+<a id="h-83"></a>
+### H-83 — A login writes its groups over newer ones
+
+Narrow. A login reads the groups in its exchange with the issuer and writes them in its transaction
+without comparing them with what is stored ([above](#one-decision-about-a-person-at-a-time)); a
+refresh, by contrast, writes nothing older than the person's stored groups. A refresh of another
+session that read newer groups and committed between the login's exchange and its transaction is
+overwritten with the older ones, and the person's flag, stamp and memberships follow them until the
+next read. Read from the code; no test runs it. The next refresh that reads the groups sets them
+right.

@@ -1,11 +1,13 @@
 # What the agent's client holds, sends and leaves open
 
-`cowork-mcp` runs on a person's machine as the MCP server of Claude Code and as its three hooks
-([ADR 0040](../adr/0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md),
+`cowork-mcp` runs on a person's machine as the MCP server of Claude Code, as its three hooks, and as
+the command line of `cowork-mcp token check`, `lookup` and `export`
+([ADR 0070](../adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md),
+[ADR 0040](../adr/0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md),
 [ADR 0041](../adr/0041-the-mcp-server-speaks-stdio-and-ships-as-a-release-binary-per-platform.md),
 [ADR 0067](../adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)).
 This page is what it holds, where its token goes, what of the repository leaves the machine,
-and what the text it hands a model can do, as built on 2026-10-04. What the token itself may do
+and what the text it hands a model can do, as built on 2026-10-07. What the token itself may do
 on the server — scope, restriction, capabilities, the hard-off list — is [tokens.md](tokens.md);
 setting the client up is [docs/operations/claude-code.md](../operations/claude-code.md).
 
@@ -26,8 +28,9 @@ machine.
 
 **Every request is marked as an agent's.** The client sends `X-Cowork-Agent:
 <client>/<model>/<session>` on every request
-([`tools.Editor`](../../backend/internal/tools/session.go)): the name is the MCP client's own
-(`claude-code`), the model the one Claude Code names to the `SessionStart` hook, or after a
+([`tools.Editor`](../../backend/internal/tools/session.go)): the name is the one the MCP client
+reports — `claude-code` for Claude Code, and the hooks' — and `cowork-mcp` before the client has named
+itself and in the subcommands, whose session part names them (`token-check`, `lookup`, `export`); the model the one Claude Code names to the `SessionStart` hook, or after a
 switch to the `PostModelSwitch` hook — in the server too, which the MCP protocol does not tell
 it, through the file the hooks write for the project directory ([ADR 0067](../adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
 D5), and `unknown` while none is recorded —, the session a short random id or the hook's
@@ -49,10 +52,10 @@ status, is never retried; a refusal reaches the model as the API's code and mess
 
 | Where | What |
 |---|---|
-| The plugin's option `cowork_token` | Marked sensitive: Claude Code keeps it in the system's credential store, not in a settings file, and hands it to the MCP server in `COWORK_TOKEN` and to the hooks in `CLAUDE_PLUGIN_OPTION_COWORK_TOKEN`, which the hook command copies into `COWORK_TOKEN` ([`claude/cowork/`](../../claude/cowork/)) |
+| The plugin's option `cowork_token` | Marked `sensitive` in the plugin's manifest ([`plugin.json`](../../claude/cowork/.claude-plugin/plugin.json)), which Claude Code keeps in the system's credential store rather than a settings file — Claude Code's behaviour, not verifiable from this tree; it hands it to the MCP server in `COWORK_TOKEN` and to the hooks in `CLAUDE_PLUGIN_OPTION_COWORK_TOKEN`, which the hook command copies into `COWORK_TOKEN` ([`claude/cowork/`](../../claude/cowork/)) |
 | Configured by hand | In the environment Claude Code starts with, or written into `~/.claude.json`, or a repository's `.mcp.json` — the last two are files ([docs/operations/claude-code.md](../operations/claude-code.md)) |
 | The process | `COWORK_TOKEN` is read once, held in memory, and set as `Authorization: Bearer` on each request. No log line, error or tool answer carries it: a configuration error names the variable and the token page ([`mcpcli/config.go`](../../backend/internal/mcpcli/config.go), `TestConfiguration`) |
-| On disk | Nothing of the token. The client writes two kinds of file under the user's cache directory, on POSIX systems `0600` in a `0700` directory ([`tools.FileMemory`](../../backend/internal/tools/memory.go)); Windows applies no such mode, and they take the access list of the cache directory, `%LocalAppData%` under the person's profile: the time of the last session per installation and binding, timestamps only, and, from the `SessionStart` and `PostModelSwitch` hooks, the model of the last session started or switched per project directory, with that directory's path. An export the person asks for is written where they say ([import-and-export.md](import-and-export.md#cowork-mcp-export-on-a-persons-machine)) |
+| On disk | Nothing of the token. The client writes two kinds of file under the user's cache directory, on POSIX systems `0600` in a `0700` directory ([`tools.FileMemory`](../../backend/internal/tools/memory.go)); Windows applies no such mode, and they take the access list of the cache directory, `%LocalAppData%` under the person's profile: per installation and binding, the installation's URL, the binding and the time of its last session, and, from the `SessionStart` and `PostModelSwitch` hooks, the model of the last session started or switched per project directory, with that directory's path. `cowork-mcp export` writes a project's export where the person says — every ticket the token's person reads, confidential ones included ([import-and-export.md](import-and-export.md#cowork-mcp-export-on-a-persons-machine), [H-77](import-and-export.md#h-77)) |
 
 **The token goes to `COWORK_URL` and nowhere else.** Every tool calls the generated client,
 which addresses the installation's `/api/v1/` routes; the `api` escape hatch takes a path, not a
@@ -70,9 +73,10 @@ reason; one it cannot reach is asked again at the next call.
 
 ## What of the repository leaves the machine
 
-The hooks and `session_start` read the working directory: `git remote -v`, `git rev-parse` for
-the root and the sub-directory, the nearest `.cowork.yaml`, and for the Stop hook `git log` and
-`git status` ([`tools.GitWorkspace`](../../backend/internal/tools/workspace.go)). What is sent:
+The hooks, `session_start`, the first tool call of a session that is not bound yet and
+`cowork-mcp lookup` read the working directory: `git remote -v`, `git rev-parse` for the root and the
+sub-directory, the nearest `.cowork.yaml`, and for the Stop hook `git log` and `git status`
+([`tools.GitWorkspace`](../../backend/internal/tools/workspace.go)). What is sent:
 
 - **The remotes' URLs**, at most ten, without credentials: an HTTP(S) URL loses its user
   information — where a token such as `https://ghp_…@github.com/…` would sit — and any other URL
@@ -83,6 +87,8 @@ the root and the sub-directory, the nearest `.cowork.yaml`, and for the Stop hoo
   the lookup, and normalises every remote to its identity, `host/path` (ADR 0066 D1).
 - **The sub-directory** of the working directory relative to the repository's root, for a
   monorepo's bindings.
+- **What a `.cowork.yaml` names**: its tenant and project, which the client reads the project by,
+  and its path, which the lookup carries ([`tools.Resolve`](../../backend/internal/tools/binding.go)).
 
 Nothing else: no file names, no contents, no commit messages. Whether the repository shows work
 since the session started — the Stop hook's condition — is decided on the machine and never
@@ -139,8 +145,9 @@ so can the author of a pull request or a commit it links, whose title a ticket's
 a pull request the repository's owner, a member of its organisation or a collaborator only, of a
 commit whoever wrote one that reached the default branch ([github-webhook.md](github-webhook.md#whose-pull-requests-are-linked)). Quoting and the instructions make
 that less likely, not impossible. What follows is bounded by the token and nothing else: a
-"full" agent token closes tickets in progress, decides, ranks, overrides urgencies, creates
-projects, binds and unbinds repositories, records answers, and the `api` tool reaches every route the token reaches,
+"full" agent token closes tickets in progress, decides, drops, ranks, sets horizons (`set-horizon`),
+sets `need` and `urgent` stakes, uploads files, creates projects, binds and unbinds repositories,
+records answers, and the `api` tool reaches every route the token reaches,
 within the agent rules; the acts [tokens.md](tokens.md) H-6 leaves to every agent — the five, and
 saving, changing, sharing and unsharing its person's saved filter — are its too. Every act
 is recorded and shown with the agent mark and the token's name
@@ -150,8 +157,9 @@ into the same projects, restricted tokens, and the timeline.
 <a id="h-35"></a>
 ### H-35 — The binaries are attested, not signed for the operating system
 
-Live today. A release attaches the six binaries, a SHA-256 file each and a build provenance
-attestation for each binary, which the release workflow makes with its own identity. The check of
+Live today. A release attaches the six binaries and a SHA-256 file each; one build provenance
+attestation names the six as its subjects, made by the release workflow with its own identity and
+stored with GitHub, not in the release. The check of
 [claude-code.md](../operations/claude-code.md) names that identity — the repository, the signing
 workflow `.github/workflows/build.yml` and the source ref `refs/tags/v$VERSION` — and so proves
 that a run of `build.yml` for that tag attested the file: a binary replaced in the release fails
@@ -166,7 +174,8 @@ binary it did not build ([release-pipeline.md](release-pipeline.md#h-61) H-61) �
 ran on: the project's self-hosted runner, which the attestation names and does not vouch for. The
 check is the person's step, and nothing makes them take it: the checksum beside the binary comes
 from the same release, macOS refuses the unnotarised file at first start until the person lifts the
-quarantine, and Windows sees no Authenticode signature (ADR 0041 Residual risks). Mitigation: the
+quarantine — a file a browser downloaded; one fetched with `curl` carries no quarantine attribute and
+starts, not verified on a Mac —, and Windows sees no Authenticode signature (ADR 0041 Residual risks). Mitigation: the
 verification step of [claude-code.md](../operations/claude-code.md), the repository's release
 protection — tags written only by the release App
 ([ADR 0073](../adr/0073-main-is-protected-by-a-ruleset-every-job-required-admins-may-bypass.md)) —
@@ -182,6 +191,16 @@ controller or another proxy in front may log whole request lines, which ingress-
 default ([trust-boundaries.md](trust-boundaries.md) H-14).
 Credentials are removed before the request is built. Mitigation: treat the proxies' logs as
 holding repository names, as they hold search terms already.
+
+<a id="h-87"></a>
+### H-87 — A missing token's message quotes the installation's URL as written
+
+Live when `COWORK_TOKEN` is unset. The configuration error that names the missing token points at the
+installation's token page by quoting `COWORK_URL` as it was written, before the URL is held to its
+rule of no user, query or fragment ([`mcpcli/config.go`](../../backend/internal/mcpcli/config.go)
+`loadConfig`): a user, a password or a query someone put into the URL reaches standard error, and with
+it whatever reads the client's output — a hook's included. The token itself is never in a message.
+Mitigation: keep credentials out of `COWORK_URL`; the client refuses such a URL once a token is set.
 
 ### What the person's machine does
 

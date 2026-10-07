@@ -3,7 +3,7 @@
 Who may bring tickets into a project from files and take them out as files, what an import reads,
 keeps and creates, what an export carries out of the installation and what it leaves behind, how
 both are bounded, and what the command line does with an export on a person's machine — and what
-that leaves open, as built on 2026-10-06
+that leaves open, as built on 2026-10-07
 ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md),
 [ADR 0063](../adr/0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md),
 [ADR 0065](../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
@@ -52,7 +52,8 @@ The upload is held in memory and nothing of it is written to a file system: an a
 cleaned into relative, `/`-separated labels the report shows and a correction names, never places
 ([`upload.go`](../../backend/internal/importer/upload.go)). An entry that is no regular file — a
 link, a device — is listed as skipped and never followed. Only Markdown files and an export's
-`manifest.json` and `links.json` are read; everything else is listed with its reason.
+`manifest.json` and `links.json` are read — every `.md` file, whatever it holds, and the dry run
+keeps each ([below](#what-a-dry-run-keeps)); everything else is listed with its reason.
 
 A frontmatter is read as YAML nodes, and a value must be one scalar: an alias, a list or a mapping
 where one value belongs is an error of the file, so an alias is never expanded (read in
@@ -72,15 +73,17 @@ a reader's rendering of them costs is [rendered-markdown.md](rendered-markdown.m
 | Bound | Value | Refusal |
 |---|---|---|
 | the request's body | `COWORK_MAX_IMPORT_BYTES` (50 MiB by default) plus 64 KiB of multipart framing, before the body is read where its length is declared | `413` |
-| the files of the upload together | `COWORK_MAX_IMPORT_BYTES` once unpacked — a file the import does not read, and an entry that is no regular file, by the size its archive declares, since `tar` reads through those bytes | `413` |
+| the files of the upload together | `COWORK_MAX_IMPORT_BYTES` once unpacked — a file the import does not read by the size its archive declares, since `tar` reads through those bytes and a `zip`'s are never decompressed; a `tar` entry that is no regular file, a link or a device, by the size it declares; a directory, a `tar`'s global header and a `zip` entry that is no regular file count nothing | `413` |
 | the files of an upload | 10,000 (`importer.MaxFiles`) | `413` |
 | a path | 1,024 bytes, and no path twice | `400` at `/file` |
 | imports at once | one per replica, a dry run or an execution; another waits for it within its own request timeout (`importSlot`) | `504` past the timeout |
 | time | `COWORK_REQUEST_TIMEOUT`, reading the body included; the transaction rolls back past it | `504` |
 
 A file the import reads is decompressed only up to the bound that is left
-(`io.LimitReader`), so a compressed archive that unpacks to more is refused, not unpacked; a `zip`
+(`io.LimitReader`), so an archive whose files unpack to more is refused, not unpacked; a `zip`
 is read whole, and so bounded by the body's limit, and the files it skips are never decompressed.
+What a `tar` holds besides its files — the headers of its entries, its directories — is decompressed
+and counted by no bound but the time ([H-105](#h-105)).
 `0` switches the byte bound off, the body's included — one upload may then hold unbounded memory.
 `TestReadUploadRefusesWhatItCannotTake` and `TestImportBoundsAndExpiry` hold the bounds.
 
@@ -113,15 +116,18 @@ D2; `TestThePurgeTakesAnImportedTicketOutOfItsReport`).
   admits whom its files name; the report shows each assignee as the member it resolved to, and a
   correction removes one before the execution.
 - **The confidential flag by the rule of the source** (ADR 0065 D7, [`columns.go`](../../backend/internal/importer/columns.go)
-  `confidential`): a `publication-accepted:` date leaves it unset; an export's `confidential: true`,
-  the `local_` prefix, or a `live` or `boundary` class without a `shipped:` line sets it. The report
+  `confidential`): a `publication-accepted:` date decides first and leaves it unset; otherwise an
+  export's `confidential: true`, the `local_` prefix, or a `live` or `boundary` class without a
+  `shipped:` line sets it. The report
   gives the rule that decided for every file it applies to, and the act `confidential_set` carries
   it. The upload's own words decide: a file that claims an accepted publication is imported
   unflagged, and the report says so.
 - **Links within the project.** A reference resolves to a ticket the import creates or to one of
   the project's tickets the caller sees: `T<n>`, a key of a file in the upload, or a key of the
-  project the upload's export comes from, read as the number in the target project. Any other key
-  resolves to nothing and is reported. A `blocks` link that would close a cycle is omitted.
+  project the upload's export comes from, read as the number in the target project. A repository
+  file's `T<n>` in its text is rewritten to the full key of the ticket it became. Any other key
+  resolves to nothing, is reported, and goes into the body under `## Related`. A `blocks` link that
+  would close a cycle is omitted.
 - **Text as text.** A body, a question and an answer are stored as written and rendered through
   the sanitiser like any other ([rendered-markdown.md](rendered-markdown.md)). The paths and titles
   in the report are the upload's, shown as text — the import page shows every text of a report by
@@ -137,7 +143,7 @@ The archive holds, for the projects its reader sees:
   `/markdown` document: the frontmatter with the threat, the notes and reasons, the assignee as
   `Name <identity>` — a username, or an issuer and a subject together
   ([identity-provider.md](identity-provider.md)) —, `confidential: true` on a confidential one, the
-  body and the questions with their answers;
+  names of its attachments, the body and the questions with their answers;
 - `manifest.json`: the tenant, the projects with their names, the counts, the time, and the
   exporter as `Name <identity>`;
 - `links.json`: every link whose two ends the reader sees, once;
@@ -175,12 +181,13 @@ requests carry the agent mark `cowork-mcp/unknown/export`, so the export's act n
 <a id="h-72"></a>
 ### H-72 — A dry run keeps the files it read for a day, in the database and its backups
 
-Live for every dry run. Until its execution, or for a day, the job's `source` holds the full text
-of every file the upload carried that the import reads — a file the person then excludes, an
-embargoed finding's among them. No route answers it and the policies hold it to the tenant's
-administrators, but whoever reads the database past row-level security, or holds a backup taken
-within the day, reads it, as they read a confidential ticket ([tenancy.md, H-2](tenancy.md#h-2)).
-A backup keeps it for its own retention. Mitigation: execute the dry run, or let it expire, before
+Live for every dry run. Until its execution, or for a day and up to the hour after it until the
+job `import-expiry` runs — up to twenty-five hours —, the job's `source` holds the full text of every
+`.md` file the upload carried — a file the person then excludes, an embargoed finding's among them.
+No route answers it and the policies hold it to the tenant's administrators, but whoever reads the
+database past row-level security, or holds a backup taken meanwhile, reads it, as they read a
+confidential ticket ([tenancy.md, H-2](tenancy.md#h-2)). A backup keeps it for its own retention,
+and an archive of the database's write-ahead log keeps the insert for its own. Mitigation: execute the dry run, or let it expire, before
 a backup that must not hold it; upload only the files to be imported.
 
 <a id="h-73"></a>
@@ -190,8 +197,9 @@ Live for every import. An executed job's report is kept for good, and no route d
 every file of the upload by its path, and for each file the import read its title, its type and
 state, its columns — the threat among them —, its note or reason, its questions' texts, its block's
 reason, its assignee as the file wrote it, and its warnings. The purge of a ticket the import
-created takes that ticket's file out; a file that was skipped or excluded stays — an embargoed
-finding's title among them, which no ticket of cowork holds —, and so does a created ticket's text
+created takes that ticket's file out of the report of the job that created it, and of no other; a
+file that was skipped or excluded stays as the report had it — its path, and what was read of it, an
+embargoed finding's title among them, which no ticket of cowork holds —, and so does a created ticket's text
 as the file had it after a person changed the ticket, as the audit record keeps a replaced text
 (ADR 0026 D7). The tenant's administrators read it, never an agent, and they read every confidential
 ticket anyway. Mitigation: upload only the files to be imported; a report holding what must go is
@@ -201,8 +209,9 @@ changed by hand in the database.
 ### H-74 — An export tells its reader how many confidential tickets they cannot read
 
 Live today, by decision (ADR 0065 D5). The manifest counts, per project the reader sees, the
-confidential tickets left out. Every other surface behaves as if such a ticket did not exist — a
-dashboard tile counts only what its reader sees —, but an export does not: a member who exports a
+confidential tickets left out. The other surfaces behave as if such a ticket did not exist — a
+dashboard tile counts only what its reader sees —, but for the signals of [tenancy.md](tenancy.md#h-3)
+H-3, and an export does not: a member who exports a
 project now and then learns how many confidential tickets it holds and when one more appears,
 though nothing of what they are. A restricted project the reader cannot see is not counted.
 
@@ -213,7 +222,7 @@ Live for every export, by its nature. Once answered, an archive is outside every
 has: the act records who exported what and when, and nothing after. An administrator's archive
 holds every confidential ticket of its projects with its threat; every archive holds the persons'
 identities — usernames, and the issuer and subject of a person of the identity provider together,
-which the API shows nowhere else together — and the exporter's. A scheduled export's token reads a
+as a ticket's `/markdown` and `/context` write them too — and the exporter's. A scheduled export's token reads a
 whole tenant for as long as it lives
 ([docs/operations/import-and-export.md](../operations/import-and-export.md)). Mitigation: give a
 backup's token the `read` scope and the tenant's restriction, keep its archives as the backups they
@@ -246,3 +255,37 @@ in the target under a name the export holds ends the unpacking with an error. On
 and directories take the target directory's access list, not owner-only modes: an export written
 where other accounts may read reaches them, confidential tickets included. Mitigation: export into
 a directory only the person can write and read — on Windows, one under their profile.
+
+<a id="h-105"></a>
+### H-105 — What a tar holds besides its files is decompressed by no bound but the time
+
+Live for every import of a `tar.gz`. The byte bound counts what an archive's entries hold, by what
+is read or what they declare; the headers of the entries, and the entries that hold nothing — a
+directory, a global header —, count toward neither the bytes nor the number of files
+([`upload.go`](../../backend/internal/importer/upload.go) `tarEntry`). A small compressed upload can
+so make the replica decompress and walk a great many headers, bounded by the request timeout alone,
+while it holds the replica's one import slot ([H-76](#h-76)) — and by nothing with
+`COWORK_REQUEST_TIMEOUT` at `0`. It takes a tenant's administrator. Mitigation: keep the request
+timeout set.
+
+<a id="h-106"></a>
+### H-106 — An import can move a project's numbering to the end of its range
+
+Live for every import. An imported ticket keeps the number its file names, and the project's counter
+moves to the highest number an import wrote ([`queries/write/imports.sql`](../../backend/internal/store/queries/write/imports.sql)
+`AdvanceTicketCounter`), so a file numbered `2147483647`, the largest the column holds, leaves the
+project no number for its next ticket: every filing in it fails from then on, and no route lowers the
+counter. It takes a tenant's administrator, and the report shows each file's number, and the highest
+of them, before the execution. Mitigation: read the numbers in the dry run's report; a counter moved
+by mistake is set back by hand in the database.
+
+<a id="h-107"></a>
+### H-107 — The command line holds an export whole in memory and bounds none of it
+
+Live where `cowork-mcp export` meets an archive larger than the person's machine should hold. The
+subcommand reads the answer whole, and each entry of the archive whole before it writes it
+([`mcpcli/export.go`](../../backend/internal/mcpcli/export.go) `unpack`, `writeNew`): no bound holds
+the answer's size, what it unpacks to, or the number of its entries. An export of a large project, or
+an answer of an installation that is not what it claims, can so take the client's memory. Mitigation:
+export from an installation the person trusts; the server's own bounds are the export's, which a
+compromised installation does not keep.
