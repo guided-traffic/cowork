@@ -163,7 +163,11 @@ describe('ProblemService', () => {
 
     it('keeps the problem body of a gateway status the backend wrote itself', () => {
       const view = service.read(
-        failure({ type: 'about:blank', title: 'Not ready', status: 503, code: 'not_ready' }, 503, 'x'),
+        failure(
+          { type: 'about:blank', title: 'Not ready', status: 503, code: 'not_ready' },
+          503,
+          'x',
+        ),
       );
 
       expect(view.code).toBe('not_ready');
@@ -315,6 +319,38 @@ describe('ProblemService', () => {
     });
   });
 
+  describe('entries', () => {
+    it('hands out every entry of errors[] with its pointer as it came, in its order', () => {
+      const body = problem({
+        status: 409,
+        code: 'import_conflict',
+        errors: [
+          { pointer: 'file:docs/tickets/001-a.md', message: 'conflict: VKO-1' },
+          { pointer: '/corrections/2/block/kind', message: 'a blocks link' },
+        ],
+      });
+
+      expect(service.entries(failure(body, 409))).toEqual([
+        { pointer: 'file:docs/tickets/001-a.md', message: 'conflict: VKO-1' },
+        { pointer: '/corrections/2/block/kind', message: 'a blocks link' },
+      ]);
+    });
+
+    it('reads the problem a resource wrapped as the cause of its error', () => {
+      const body = problem({ errors: [{ pointer: 'file:a.md', message: 'error: line 2' }] });
+
+      expect(service.entries(new Error('load failed', { cause: failure(body, 409) }))).toEqual([
+        { pointer: 'file:a.md', message: 'error: line 2' },
+      ]);
+    });
+
+    it('is empty for a problem without entries and for an error that is no problem', () => {
+      expect(service.entries(failure(problem(), 400))).toEqual([]);
+      expect(service.entries(failure('<html></html>', 502))).toEqual([]);
+      expect(service.entries(new Error('boom'))).toEqual([]);
+    });
+  });
+
   describe('report', () => {
     it('shows the problem as a toast and hands it back', () => {
       const body = problem({
@@ -375,7 +411,8 @@ describe('ProblemService', () => {
       expect(messages.add).toHaveBeenCalledWith({
         severity: 'error',
         summary: 'The backend cannot be reached',
-        detail: 'The Ingress answered 502: no backend took the request. cowork tries again on its own.',
+        detail:
+          'The Ingress answered 502: no backend took the request. cowork tries again on its own.',
         life: 6000,
       });
     });
