@@ -32,6 +32,38 @@ chart into its Helm repository on every release
 from `v0.1.0` to `v0.7.0` and failed once, for `v0.3.0` (the `cowork-mcp` binaries; `v0.3.1`
 followed); the chart index lists every version from 0.1.0 to 0.7.0 (read 2026-10-06).
 
+**The upgrade from the previous release ran in a cluster on 2026-10-07**, from 0.8.0 to 0.9.0, the
+newest published pair, with the chart from the Helm repository and the images from Docker Hub: a
+kind cluster of its own (kind v0.32.0, Kubernetes v1.36.1), Helm v3.21.3, PostgreSQL 18.6 from
+[`deploy/examples/cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml)
+under CloudNativePG 1.30.1 — applied as it is but for its password, one `Cluster` of three instances
+per release — and one MinIO pod of the image `make minio-up` runs (RELEASE.2026-09-22T19-25-18Z),
+with a bucket and a bucket-scoped key per release made by
+[`deploy/examples/minio-bucket.sh`](../../deploy/examples/minio-bucket.sh). Every credential was an
+`existingSecret`: the owner's the URL CloudNativePG writes, the runtime role's a URL Secret of its
+own (0.8.0 reads URLs only), the server key 32 random bytes, a local administrator. Two releases,
+each installed at 0.8.0 and upgraded with `--reset-then-reuse-values`:
+
+- **`migrations.mode` at its default:** the new pod's `migrate` init container applied the one
+  pending migration (`database schema is current`, version 41, applied 1;
+  `cowork_migrations_schema_version 41`, dirty 0), and the old pod stopped once the new one was
+  ready. The upgrade took 7 seconds.
+- **`--set migrations.mode=job`:** the hook Job applied the migration and ran the bootstrap
+  (`the bootstrap ran after the migration`), was complete a second before the first new backend pod
+  was created, and was deleted once it had succeeded; the Deployment has no `migrate` init container
+  any more. The upgrade took 10 seconds.
+
+In both, what was written on 0.8.0 — a tenant, a project, two tickets, a comment and an attachment —
+read the same on 0.9.0, the attachment byte for byte; a session made on 0.8.0 still authenticated; a
+new login worked and a ticket was filed. A further upgrade from 0.9.0 to 0.9.0 with `--reuse-values`
+changed nothing on either release: the same manifest, the same pods, and in job mode a Job that
+applied nothing. Both releases were then switched to the chart values the CloudNativePG example
+names — each role read as components, the location from its ConfigMap — and their migration run and
+server connected with `sslmode` `require` and served. The images are published for linux/amd64
+only, which the cluster's arm64 node cannot pull: they were loaded into it and ran under the host's
+emulation. One further finding of the run, in the CloudNativePG example, is with the owner and not
+described here until he has classified it.
+
 Children:
 
 - T59 — metrics ([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md))
@@ -53,11 +85,14 @@ The tenant Markdown export the plan named here is built with phase 6's export (T
 1. **The children.**
 2. **The security pages reviewed against the code once more**, after the children landed: every
    statement of `docs/security/` checked against the tree, every `H-<n>` still true or closed.
-3. **The phase verification:** the release workflow has produced a tagged image and a chart index
-   (every release does); an upgrade from the previous release has run in a cluster — a kind cluster
-   with PostgreSQL and MinIO, the previous release's chart installed and upgraded to the new one,
-   in both migration modes; and every `H-<n>` in `docs/security/` is closed or explicitly accepted
-   by the owner — the owner's act, which only he can perform.
+3. **The phase verification.** Done: the release workflow produces a tagged image and a chart index
+   with every release — the index lists every version from 0.1.0 to 0.9.0, and Docker Hub serves
+   both images of 0.8.0 and 0.9.0 (read 2026-10-07); an upgrade from the previous release has run in
+   a kind cluster with PostgreSQL and MinIO, the previous release's chart installed and upgraded to
+   the new one, in both migration modes — 0.8.0 to 0.9.0 ([Current state](#current-state)). Left:
+   every `H-<n>` in `docs/security/` closed or explicitly accepted by the owner — the owner's act,
+   which only he can perform. Not run: an upgrade to a release after 0.9.0, whose migration and chart
+   changes are on `main` and not yet released.
 4. **1.0**, once every question of every open ticket is answered.
 
 ## Open questions
