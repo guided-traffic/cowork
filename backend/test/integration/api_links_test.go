@@ -111,6 +111,33 @@ func TestLinkingTickets(t *testing.T) {
 		http.StatusNotFound, "not_found")
 }
 
+// A link names its maker as GET /api/v1/me names them, a local account's
+// username included: the 201 that makes it, the 200 of the same link made
+// again and the list answer the same person.
+func TestANewLinkNamesItsMakerAsTheListDoes(t *testing.T) {
+	e := newTicketEnv(t)
+	require.NoError(t, fixtures(t).Account(e.ctx, e.MemberA, testPassword, e.A, false))
+	member := caller{Token: e.tk.MemberA}
+	me := decode[apigen.Me](t, e.s.do(t, member, http.MethodGet, "/api/v1/me", nil))
+	require.True(t, me.Local, "a local account")
+	require.False(t, me.Username.IsNull(), "with a username")
+	maker := apigen.Person{Id: me.Id, Username: me.Username, DisplayName: me.DisplayName}
+	a := e.file(t, member, "ALPHA", task("a"))
+	b := e.file(t, member, "ALPHA", task("b"))
+
+	created := e.link(t, member, a, apigen.LinkTypeRelatesTo, b)
+	require.Equal(t, http.StatusCreated, created.StatusCode)
+	assert.Equal(t, maker, decode[apigen.Link](t, created).CreatedBy, "the 201")
+	again := e.link(t, member, a, apigen.LinkTypeRelatesTo, b)
+	require.Equal(t, http.StatusOK, again.StatusCode)
+	assert.Equal(t, maker, decode[apigen.Link](t, again).CreatedBy, "the 200 of the same link made again")
+	res := e.s.do(t, member, http.MethodGet, e.projectTickets("ALPHA")+"/"+strconv.Itoa(a.Number)+"/links", nil)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	list := decode[apigen.LinkList](t, res)
+	require.Len(t, list.Items, 1)
+	assert.Equal(t, maker, list.Items[0].CreatedBy, "the list")
+}
+
 // Two concurrent blocks links in opposite directions cannot both pass the
 // cycle check: the tenant's blocks lock orders them (docs/adr/0012 D4).
 func TestConcurrentBlocksLinks(t *testing.T) {

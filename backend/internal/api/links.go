@@ -118,12 +118,15 @@ func readLinkEnds(ctx context.Context, r *store.Reader, t tenantScope, project s
 	return e, nil
 }
 
-func (e linkEnds) view(t tenantScope, id uuid.UUID, by apigen.Person, at store.TicketRow) apigen.Link {
+// view is the link as the path's ticket reads it, its maker named as the
+// list names them.
+func (e linkEnds) view(t tenantScope, l readq.GetLinkRow) apigen.Link {
 	outgoing := e.source.ID == e.path.row.ID
+	at := e.other.row
 	return apigen.Link{
-		Id: id, Type: apigen.LinkType(e.typ), Direction: direction(outgoing), Name: e.typ.Name(outgoing),
+		Id: l.ID, Type: apigen.LinkType(e.typ), Direction: direction(outgoing), Name: e.typ.Name(outgoing),
 		Ticket:    apigen.TicketRef{Key: domain.FullKey(t.Slug, at.ProjectKey, at.Number), Title: at.Title, State: apigen.TicketState(at.State)},
-		CreatedBy: by,
+		CreatedBy: personView(l.CreatedBy, l.CreatedByUsername, l.CreatedByName), CreatedAt: l.CreatedAt,
 	}
 }
 
@@ -160,20 +163,22 @@ func (s *Server) LinkTickets(ctx context.Context, req apigen.LinkTicketsRequestO
 		key := readq.GetLinkParams{TenantID: t.ID, Type: e.typ, SourceID: e.source.ID, TargetID: e.target.ID}
 		existing, err := w.GetLink(ctx, key)
 		if err == nil {
-			out = e.view(t, existing.ID, personView(existing.CreatedBy, existing.CreatedByUsername, existing.CreatedByName), e.other.row)
-			out.CreatedAt = existing.CreatedAt
+			out = e.view(t, existing)
 			return store.ErrNoChange
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		me := principal(ctx)
-		ins, err := addLink(ctx, w, t, e, "path:other")
-		if err != nil {
+		if err := addLink(ctx, w, t, e, "path:other"); err != nil {
 			return err
 		}
-		out = e.view(t, ins.ID, apigen.Person{Id: me.PersonID, DisplayName: me.DisplayName, Username: nullableString(nil)}, e.other.row)
-		out.CreatedAt, created = ins.CreatedAt, true
+		// Read back as the 200 and the list read it: the principal does not
+		// carry its person's username.
+		made, err := w.GetLink(ctx, key)
+		if err != nil {
+			return fmt.Errorf("read the new link: %w", err)
+		}
+		out, created = e.view(t, made), true
 		return nil
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
@@ -188,17 +193,17 @@ func (s *Server) LinkTickets(ctx context.Context, req apigen.LinkTicketsRequestO
 // addLink creates the link the ends describe, with its act on both tickets;
 // a blocks link takes the tenant's lock and refuses a cycle first
 // (docs/adr/0012 D4). pointer names the other end in a refusal.
-func addLink(ctx context.Context, w *store.Writer, t tenantScope, e linkEnds, pointer string) (writeq.InsertLinkRow, error) {
+func addLink(ctx context.Context, w *store.Writer, t tenantScope, e linkEnds, pointer string) error {
 	if e.typ == domain.LinkBlocks {
 		if err := w.LockBlocks(ctx); err != nil {
-			return writeq.InsertLinkRow{}, err
+			return err
 		}
 		cycle, err := w.BlocksPathExists(ctx, readq.BlocksPathExistsParams{TenantID: t.ID, FromID: e.target.ID, ToID: e.source.ID})
 		if err != nil {
-			return writeq.InsertLinkRow{}, fmt.Errorf("walk the blocks graph: %w", err)
+			return fmt.Errorf("walk the blocks graph: %w", err)
 		}
 		if cycle {
-			return writeq.InsertLinkRow{}, &problem.Error{Code: problem.LinkCycle,
+			return &problem.Error{Code: problem.LinkCycle,
 				Detail: "the blocked ticket already blocks the other one over blocks links",
 				Errors: []problem.FieldError{{Pointer: pointer, Message: "would close a cycle"}}}
 		}
@@ -206,10 +211,10 @@ func addLink(ctx context.Context, w *store.Writer, t tenantScope, e linkEnds, po
 	ins, err := w.InsertLink(ctx, writeq.InsertLinkParams{TenantID: t.ID, Type: e.typ, SourceID: e.source.ID,
 		TargetID: e.target.ID, CreatedBy: principal(ctx).PersonID})
 	if err != nil {
-		return ins, fmt.Errorf("insert the link: %w", err)
+		return fmt.Errorf("insert the link: %w", err)
 	}
 	e.record(w, t, actionLinked, ins.ID)
-	return ins, nil
+	return nil
 }
 
 func ticketKey(t tenantScope, r store.TicketRow) string {

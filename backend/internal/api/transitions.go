@@ -367,6 +367,5 @@ func linkWaitsOn(ctx context.Context, w *store.Writer, t tenantScope, tc, waitsO
 	if err == nil || !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	_, err = addLink(ctx, w, t, e, "/block/ticket")
-	return err
+	return addLink(ctx, w, t, e, "/block/ticket")
 }
