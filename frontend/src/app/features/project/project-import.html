@@ -344,9 +344,10 @@
                           class="number tabular"
                           [routerLink]="['/t', tenant, 'tickets', shortKey(key)]"
                           >{{ shortKey(key) }}</a
-                        >
+                        >&ngsp;
                       } @else {
-                        <span class="number tabular">{{ shortKey(key) }}</span>
+                        <span class="number tabular">{{ shortKey(key) }}</span
+                        >&ngsp;
                       }
                     }
                     <span class="name">{{ row.file.title ?? '—' }}</span>
