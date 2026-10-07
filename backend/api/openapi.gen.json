@@ -3400,6 +3400,15 @@
         "type": "object"
       },
       "GroupMapping": {
+        "example": {
+          "created_at": "2026-03-04T09:00:00Z",
+          "group": "acme-engineering",
+          "id": "019cb813-5280-79b9-b1f7-13a618f296e0",
+          "includes_caller": false,
+          "role": "member",
+          "updated_at": "2026-03-04T09:00:00Z",
+          "version": 1
+        },
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -3460,6 +3469,29 @@
         "type": "object"
       },
       "GroupMappingList": {
+        "example": {
+          "items": [
+            {
+              "created_at": "2026-03-04T09:01:00Z",
+              "group": "acme-admins",
+              "id": "019cb814-3ce0-7455-8a46-3f00097c193b",
+              "includes_caller": false,
+              "role": "admin",
+              "updated_at": "2026-03-04T09:01:00Z",
+              "version": 1
+            },
+            {
+              "created_at": "2026-03-04T09:00:00Z",
+              "group": "acme-engineering",
+              "id": "019cb813-5280-79b9-b1f7-13a618f296e0",
+              "includes_caller": false,
+              "role": "member",
+              "updated_at": "2026-03-04T09:00:00Z",
+              "version": 1
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -4809,6 +4841,22 @@
       },
       "Member": {
         "description": "A member with the effective role, the higher of the mapped and the granted one (docs/adr/0030 D4)",
+        "example": {
+          "email": "grace@acme.example",
+          "local": false,
+          "origins": [
+            {
+              "role": "member",
+              "source": "mapping"
+            }
+          ],
+          "person": {
+            "display_name": "Grace Hopper",
+            "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+            "username": null
+          },
+          "role": "member"
+        },
         "properties": {
           "email": {
             "description": "The address the identity provider asserted at the person's last login, which tells two\npersons of one name apart: for the tenant's administrators; null for anyone else, and for a\nperson without one, such as a local account\n",
@@ -4876,6 +4924,59 @@
         "type": "object"
       },
       "MemberList": {
+        "example": {
+          "items": [
+            {
+              "email": null,
+              "local": true,
+              "origins": [
+                {
+                  "role": "admin",
+                  "source": "grant"
+                }
+              ],
+              "person": {
+                "display_name": "Ada Lovelace",
+                "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                "username": "ada"
+              },
+              "role": "admin"
+            },
+            {
+              "email": "grace@acme.example",
+              "local": false,
+              "origins": [
+                {
+                  "role": "member",
+                  "source": "mapping"
+                }
+              ],
+              "person": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "role": "member"
+            },
+            {
+              "email": null,
+              "local": true,
+              "origins": [
+                {
+                  "role": "member",
+                  "source": "grant"
+                }
+              ],
+              "person": {
+                "display_name": "Sam Rivera",
+                "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+                "username": "sam"
+              },
+              "role": "member"
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -4993,6 +5094,59 @@
         "type": "object"
       },
       "MemberTokenList": {
+        "example": {
+          "items": [
+            {
+              "agent": false,
+              "capabilities": [],
+              "created_at": "2026-09-20T13:15:00Z",
+              "expires_at": "2026-12-19T13:15:00Z",
+              "id": "01a0bef4-a820-745b-88d0-ad43226cfc47",
+              "last_used_on": "2026-10-05",
+              "name": "Release checks",
+              "person": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "restricted_project": null,
+              "restricted_tenant": null,
+              "revoked_at": null,
+              "scope": "read",
+              "state": "active"
+            },
+            {
+              "agent": true,
+              "capabilities": [
+                "decide",
+                "close",
+                "drop",
+                "rank",
+                "set-horizon",
+                "interest",
+                "upload",
+                "create-project",
+                "record-answer"
+              ],
+              "created_at": "2026-09-15T07:50:00Z",
+              "expires_at": "2026-12-14T07:50:00Z",
+              "id": "01a0a40b-5040-78e5-8344-63ccb2705d84",
+              "last_used_on": "2026-10-06",
+              "name": "Claude Code on the laptop",
+              "person": {
+                "display_name": "Ada Lovelace",
+                "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                "username": "ada"
+              },
+              "restricted_project": "WEB",
+              "restricted_tenant": "acme",
+              "revoked_at": null,
+              "scope": "write",
+              "state": "active"
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -5624,6 +5778,16 @@
       },
       "ProjectAccessEntry": {
         "description": "A person on a project's access list; their role in the project is the lower of their tenant role and the entry's (docs/adr/0034 D3)",
+        "example": {
+          "created_at": "2026-10-06T11:25:00Z",
+          "email": null,
+          "person": {
+            "display_name": "Sam Rivera",
+            "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+            "username": "sam"
+          },
+          "role": "viewer"
+        },
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -5652,6 +5816,21 @@
         "type": "object"
       },
       "ProjectAccessList": {
+        "example": {
+          "items": [
+            {
+              "created_at": "2026-10-06T11:25:00Z",
+              "email": null,
+              "person": {
+                "display_name": "Sam Rivera",
+                "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+                "username": "sam"
+              },
+              "role": "viewer"
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -10728,7 +10907,7 @@
           "content": {
             "application/json": {
               "example": {
-                "group": "team-red",
+                "group": "acme-engineering",
                 "role": "member"
               },
               "schema": {
@@ -10822,6 +11001,15 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "created_at": "2026-03-04T09:00:00Z",
+                  "group": "acme-engineering",
+                  "id": "019cb813-5280-79b9-b1f7-13a618f296e0",
+                  "includes_caller": false,
+                  "role": "viewer",
+                  "updated_at": "2026-10-06T11:20:00Z",
+                  "version": 2
+                },
                 "schema": {
                   "$ref": "#/components/schemas/GroupMapping"
                 }
@@ -11061,7 +11249,7 @@
           "content": {
             "application/json": {
               "example": {
-                "person": "bob@example.com",
+                "person": "alan@acme.example",
                 "role": "member"
               },
               "schema": {
@@ -11076,7 +11264,7 @@
             "content": {
               "application/json": {
                 "example": {
-                  "email": "bob@example.com",
+                  "email": "alan@acme.example",
                   "local": false,
                   "origins": [
                     {
@@ -11085,8 +11273,8 @@
                     }
                   ],
                   "person": {
-                    "display_name": "Bob Example",
-                    "id": "0199a3c2-1d2e-7f00-8000-000000000002",
+                    "display_name": "Alan Turing",
+                    "id": "01a0e855-4ee0-7f87-8f19-0a5c9c75145e",
                     "username": null
                   },
                   "role": "member"
@@ -11158,6 +11346,26 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "email": "grace@acme.example",
+                  "local": false,
+                  "origins": [
+                    {
+                      "role": "member",
+                      "source": "mapping"
+                    },
+                    {
+                      "role": "admin",
+                      "source": "grant"
+                    }
+                  ],
+                  "person": {
+                    "display_name": "Grace Hopper",
+                    "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                    "username": null
+                  },
+                  "role": "admin"
+                },
                 "schema": {
                   "$ref": "#/components/schemas/Member"
                 }
@@ -11991,6 +12199,21 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "archived_at": null,
+                  "created_at": "2026-03-02T09:05:00Z",
+                  "description": "The public website and the customer sign-in",
+                  "id": "019cadcb-2e60-7116-9641-67b17d11d0ef",
+                  "key": "WEB",
+                  "name": "Website",
+                  "restricted": true,
+                  "updated_at": "2026-10-06T11:30:00Z",
+                  "version": 3,
+                  "wip_limits": {
+                    "in-progress": 4,
+                    "review": 2
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/Project"
                 }

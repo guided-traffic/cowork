@@ -391,6 +391,37 @@ MemberTokenList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  # An unrestricted token of Grace Hopper, which reaches every tenant she belongs to, and the
+  # agent token Ada Lovelace restricted to acme/WEB.
+  example:
+    items:
+      - id: 01a0bef4-a820-745b-88d0-ad43226cfc47
+        name: Release checks
+        person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+        scope: read
+        agent: false
+        capabilities: []
+        restricted_tenant: null
+        restricted_project: null
+        created_at: '2026-09-20T13:15:00Z'
+        expires_at: '2026-12-19T13:15:00Z'
+        last_used_on: '2026-10-05'
+        revoked_at: null
+        state: active
+      - id: 01a0a40b-5040-78e5-8344-63ccb2705d84
+        name: Claude Code on the laptop
+        person: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        scope: write
+        agent: true
+        capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+        restricted_tenant: acme
+        restricted_project: WEB
+        created_at: '2026-09-15T07:50:00Z'
+        expires_at: '2026-12-14T07:50:00Z'
+        last_used_on: '2026-10-06'
+        revoked_at: null
+        state: active
+    next_cursor: null
 CurrentToken:
   description: The token a request presents, and what it makes of the request (docs/adr/0043 D6)
   allOf:
@@ -509,6 +540,15 @@ Member:
     local:
       type: boolean
       description: The person has a local account — a username and a password of their own — rather than an identity of the identity provider (docs/adr/0033)
+  # As the tenant's administrators read a member: the address is theirs to see.
+  example: &example-member
+    person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    email: grace@acme.example
+    role: member
+    origins:
+      - source: mapping
+        role: member
+    local: false
 MemberList:
   type: object
   required: [items, next_cursor]
@@ -523,6 +563,24 @@ MemberList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  example:
+    items:
+      - person: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        email: null
+        role: admin
+        origins:
+          - source: grant
+            role: admin
+        local: true
+      - *example-member
+      - person: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+        email: null
+        role: member
+        origins:
+          - source: grant
+            role: member
+        local: true
+    next_cursor: null
 MemberAdd:
   type: object
   additionalProperties: false
@@ -565,6 +623,14 @@ GroupMapping:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-group-mapping
+    id: 019cb813-5280-79b9-b1f7-13a618f296e0
+    group: acme-engineering
+    role: member
+    includes_caller: false
+    version: 1
+    created_at: '2026-03-04T09:00:00Z'
+    updated_at: '2026-03-04T09:00:00Z'
 GroupMappingCreate:
   type: object
   additionalProperties: false
@@ -595,6 +661,17 @@ GroupMappingList:
         $ref: '#/GroupMapping'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - id: 019cb814-3ce0-7455-8a46-3f00097c193b
+        group: acme-admins
+        role: admin
+        includes_caller: false
+        version: 1
+        created_at: '2026-03-04T09:01:00Z'
+        updated_at: '2026-03-04T09:01:00Z'
+      - *example-group-mapping
+    next_cursor: null
 AuditAction:
   type: string
   enum: [created, updated, transitioned, linked, unlinked, commented, edited, withdrawn, assigned,
@@ -819,6 +896,11 @@ ProjectAccessEntry:
     role:
       $ref: '#/ProjectAccessRole'
     created_at: {type: string, format: date-time}
+  example: &example-access-entry
+    person: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+    email: null
+    role: viewer
+    created_at: '2026-10-06T11:25:00Z'
 ProjectAccessSet:
   type: object
   additionalProperties: false
@@ -836,6 +918,10 @@ ProjectAccessList:
         $ref: '#/ProjectAccessEntry'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-access-entry
+    next_cursor: null
 ProjectRef:
   type: object
   required: [key, name]
