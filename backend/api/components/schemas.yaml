@@ -2708,6 +2708,16 @@ Account:
       type: [string, 'null']
       format: date-time
     created_at: {type: string, format: date-time}
+  # The account Ada Lovelace made for Sam Rivera, its password still the temporary one.
+  example:
+    id: 019e165f-39c0-7937-931a-d0fa7735df32
+    username: sam
+    display_name: Sam Rivera
+    role: member
+    password_change_required: true
+    locked: false
+    deactivated_at: null
+    created_at: '2026-05-11T09:30:00Z'
 AccountList:
   type: object
   required: [items, next_cursor]
@@ -2718,6 +2728,17 @@ AccountList:
         $ref: '#/Account'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - id: 019e165f-39c0-7937-931a-d0fa7735df32
+        username: sam
+        display_name: Sam Rivera
+        role: member
+        password_change_required: false
+        locked: false
+        deactivated_at: null
+        created_at: '2026-05-11T09:30:00Z'
+    next_cursor: null
 AccountCreate:
   type: object
   additionalProperties: false
