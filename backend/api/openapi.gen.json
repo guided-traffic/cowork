@@ -1364,6 +1364,73 @@
         "type": "object"
       },
       "AuditList": {
+        "example": {
+          "items": [
+            {
+              "action": "created",
+              "actor": {
+                "person": {
+                  "display_name": "Ada Lovelace",
+                  "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                  "username": "ada"
+                },
+                "system": null
+              },
+              "after": {
+                "effort": "S",
+                "security": "none",
+                "severity": "medium",
+                "title": "The password reset mail links to the old domain",
+                "type": "bug",
+                "urgency": "later"
+              },
+              "agent": null,
+              "agent_capabilities": null,
+              "created_at": "2026-10-06T09:30:00Z",
+              "entity_id": "01a1108c-69c0-748d-8363-132fa3f8667c",
+              "entity_type": "ticket",
+              "id": "01a1108c-69c0-708c-a456-d344b487f663",
+              "idempotency_key": "2f6d9a41-7c3b-4e8f-9d15-0b6a8c4e2f73",
+              "note": null,
+              "reason": null,
+              "request_id": "01a1108c-69c0-7a3e-9c21-5b7d0f4e8a16",
+              "ticket_key": "acme/WEB-43",
+              "token_id": null,
+              "token_name": null
+            },
+            {
+              "action": "transitioned",
+              "actor": {
+                "person": {
+                  "display_name": "Grace Hopper",
+                  "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                  "username": null
+                },
+                "system": null
+              },
+              "after": {
+                "state": "in-progress"
+              },
+              "agent": null,
+              "agent_capabilities": null,
+              "before": {
+                "state": "decided"
+              },
+              "created_at": "2026-10-02T09:12:00Z",
+              "entity_id": "01a0f687-f3a0-7516-87ab-709ca2b1c1e6",
+              "entity_type": "ticket",
+              "id": "01a0fbe2-7f00-7f00-a107-cc0e604f9a75",
+              "idempotency_key": null,
+              "note": null,
+              "reason": null,
+              "request_id": "01a0fbe2-7f00-779f-a8b1-4da03f48c675",
+              "ticket_key": "acme/WEB-42",
+              "token_id": null,
+              "token_name": null
+            }
+          ],
+          "next_cursor": "eyJvIjoibGlzdEF1ZGl0IiwicyI6IjAxOWNhZGI4LWRlZTAtNzlhYy04YTRmLWVjYTU3MzFjYjM4NiIsImEiOiIwMWEwZmJlMi03ZjAwLTdmMDAtYTEwNy1jYzBlNjA0ZjlhNzUifQ.lIk3xBcDAMSBR357tHdkBYPo4uFvWgIKZre5ql9IWvQ"
+        },
         "properties": {
           "items": {
             "items": {
@@ -2704,6 +2771,27 @@
         "type": "object"
       },
       "DeletedTicketList": {
+        "example": {
+          "items": [
+            {
+              "confidential": false,
+              "deleted_at": "2026-10-02T16:45:00Z",
+              "deleted_by": {
+                "display_name": "Ada Lovelace",
+                "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                "username": "ada"
+              },
+              "key": "acme/WEB-17",
+              "number": 17,
+              "project": "WEB",
+              "purge_at": "2026-11-01T16:45:00Z",
+              "state": "analysed",
+              "title": "Remove the spring sale banner",
+              "type": "task"
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -4848,6 +4936,21 @@
         "type": "string"
       },
       "Project": {
+        "example": {
+          "archived_at": null,
+          "created_at": "2026-03-02T09:05:00Z",
+          "description": "The public website and the customer sign-in",
+          "id": "019cadcb-2e60-7116-9641-67b17d11d0ef",
+          "key": "WEB",
+          "name": "Website",
+          "restricted": false,
+          "updated_at": "2026-09-14T11:20:00Z",
+          "version": 2,
+          "wip_limits": {
+            "in-progress": 4,
+            "review": 2
+          }
+        },
         "properties": {
           "archived_at": {
             "format": "date-time",
@@ -5001,6 +5104,26 @@
         "type": "object"
       },
       "ProjectList": {
+        "example": {
+          "items": [
+            {
+              "archived_at": null,
+              "created_at": "2026-03-02T09:05:00Z",
+              "description": "The public website and the customer sign-in",
+              "id": "019cadcb-2e60-7116-9641-67b17d11d0ef",
+              "key": "WEB",
+              "name": "Website",
+              "restricted": false,
+              "updated_at": "2026-09-14T11:20:00Z",
+              "version": 2,
+              "wip_limits": {
+                "in-progress": 4,
+                "review": 2
+              }
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -5069,6 +5192,10 @@
         "type": "object"
       },
       "ProjectRankSorted": {
+        "example": {
+          "moved": 3,
+          "score_version": 1
+        },
         "properties": {
           "moved": {
             "description": "How many of the open tickets the caller sees changed their place; 0 when the rank followed the score already",
@@ -6154,6 +6281,16 @@
         "type": "object"
       },
       "Tenant": {
+        "example": {
+          "created_at": "2026-03-02T08:45:00Z",
+          "members_create_projects": false,
+          "name": "Acme",
+          "slug": "acme",
+          "time_locked_until": "2026-09-30",
+          "time_visible_to_members": true,
+          "updated_at": "2026-10-06T07:55:00Z",
+          "version": 4
+        },
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -6288,6 +6425,16 @@
         "type": "object"
       },
       "TenantSummaryList": {
+        "example": {
+          "items": [
+            {
+              "name": "Acme",
+              "role": "admin",
+              "slug": "acme"
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -6309,6 +6456,64 @@
         "type": "object"
       },
       "Ticket": {
+        "example": {
+          "assignee": {
+            "display_name": "Grace Hopper",
+            "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+            "username": null
+          },
+          "block": null,
+          "body": "## Current state\n\nSafari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.\n\n## Required changes\n\n- Send the password as typed.\n- An end-to-end test that signs in with a trailing space in Safari.",
+          "confidential": false,
+          "created_at": "2026-10-01T08:15:00Z",
+          "decided_at": "2026-10-02T09:05:00Z",
+          "done_at": null,
+          "done_by_hand": false,
+          "done_from": null,
+          "effort": "S",
+          "horizon": "now",
+          "horizon_set": {
+            "at": "2026-10-02T09:14:00Z",
+            "by": {
+              "display_name": "",
+              "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+              "username": null
+            },
+            "reason": "Customers cannot sign in",
+            "value": "now"
+          },
+          "id": "01a0f687-f3a0-7516-87ab-709ca2b1c1e6",
+          "key": "acme/WEB-42",
+          "number": 42,
+          "open_prerequisites": 1,
+          "opened_at": "2026-10-01T08:15:00Z",
+          "parent": "acme/WEB-40",
+          "progress": 60,
+          "progress_derived": false,
+          "progress_refinement": 100,
+          "progress_review": 0,
+          "project": "WEB",
+          "reporter": {
+            "display_name": "Ada Lovelace",
+            "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+            "username": "ada"
+          },
+          "reporter_agent": "claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911",
+          "reporter_token": {
+            "id": "01a0a40b-5040-78e5-8344-63ccb2705d84",
+            "name": "Claude Code on the laptop"
+          },
+          "score": 14.2,
+          "score_version": 1,
+          "security": "none",
+          "severity": "high",
+          "state": "in-progress",
+          "threat": null,
+          "title": "Sign-in fails in Safari when the password contains a space",
+          "type": "bug",
+          "updated_at": "2026-10-06T10:12:05Z",
+          "version": 8
+        },
         "properties": {
           "assignee": {
             "oneOf": [
@@ -6547,6 +6752,11 @@
         "type": "object"
       },
       "TicketBody": {
+        "example": {
+          "body": "## Current state\n\nSafari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.\n\n## Required changes\n\n- Send the password as typed.\n- An end-to-end test that signs in with a trailing space in Safari.",
+          "body_html": "\u003ch2\u003eCurrent state\u003c/h2\u003e\n\u003cp\u003eSafari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with \u003ccode\u003einvalid_credentials\u003c/code\u003e.\u003c/p\u003e\n\u003ch2\u003eRequired changes\u003c/h2\u003e\n\u003cul\u003e\n\u003cli\u003eSend the password as typed.\u003c/li\u003e\n\u003cli\u003eAn end-to-end test that signs in with a trailing space in Safari.\u003c/li\u003e\n\u003c/ul\u003e",
+          "version": 8
+        },
         "properties": {
           "body": {
             "description": "Markdown, as written (docs/adr/0011 D1)",
@@ -6656,6 +6866,69 @@
         "type": "object"
       },
       "TicketList": {
+        "example": {
+          "items": [
+            {
+              "assignee": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "block": null,
+              "body": "## Current state\n\nSafari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.\n\n## Required changes\n\n- Send the password as typed.\n- An end-to-end test that signs in with a trailing space in Safari.",
+              "confidential": false,
+              "created_at": "2026-10-01T08:15:00Z",
+              "decided_at": "2026-10-02T09:05:00Z",
+              "done_at": null,
+              "done_by_hand": false,
+              "done_from": null,
+              "effort": "S",
+              "horizon": "now",
+              "horizon_set": {
+                "at": "2026-10-02T09:14:00Z",
+                "by": {
+                  "display_name": "",
+                  "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                  "username": null
+                },
+                "reason": "Customers cannot sign in",
+                "value": "now"
+              },
+              "id": "01a0f687-f3a0-7516-87ab-709ca2b1c1e6",
+              "key": "acme/WEB-42",
+              "number": 42,
+              "open_prerequisites": 1,
+              "opened_at": "2026-10-01T08:15:00Z",
+              "parent": "acme/WEB-40",
+              "progress": 60,
+              "progress_derived": false,
+              "progress_refinement": 100,
+              "progress_review": 0,
+              "project": "WEB",
+              "reporter": {
+                "display_name": "Ada Lovelace",
+                "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                "username": "ada"
+              },
+              "reporter_agent": "claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911",
+              "reporter_token": {
+                "id": "01a0a40b-5040-78e5-8344-63ccb2705d84",
+                "name": "Claude Code on the laptop"
+              },
+              "score": 14.2,
+              "score_version": 1,
+              "security": "none",
+              "severity": "high",
+              "state": "in-progress",
+              "threat": null,
+              "title": "Sign-in fails in Safari when the password contains a space",
+              "type": "bug",
+              "updated_at": "2026-10-06T10:12:05Z",
+              "version": 8
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -8292,7 +8565,7 @@
           "content": {
             "application/json": {
               "example": {
-                "name": "Acme Corp",
+                "name": "Acme",
                 "slug": "acme"
               },
               "schema": {
@@ -8306,6 +8579,16 @@
           "201": {
             "content": {
               "application/json": {
+                "example": {
+                  "created_at": "2026-03-02T08:45:00Z",
+                  "members_create_projects": true,
+                  "name": "Acme",
+                  "slug": "acme",
+                  "time_locked_until": null,
+                  "time_visible_to_members": false,
+                  "updated_at": "2026-03-02T08:45:00Z",
+                  "version": 1
+                },
                 "schema": {
                   "$ref": "#/components/schemas/Tenant"
                 }
@@ -8893,6 +9176,7 @@
                 }
               },
               "text/csv": {
+                "example": "id,created_at,actor_user_id,actor_system,agent,token_id,entity_type,entity_id,ticket_key,action,reason,note,request_id,before,after,token_name\n01a1108c-69c0-708c-a456-d344b487f663,2026-10-06T09:30:00Z,019cadb4-4b00-7719-ade7-c2d450e9b5f3,,,,ticket,01a1108c-69c0-748d-8363-132fa3f8667c,acme/WEB-43,created,,,01a1108c-69c0-7a3e-9c21-5b7d0f4e8a16,,\"{\"\"type\"\": \"\"bug\"\", \"\"title\"\": \"\"The password reset mail links to the old domain\"\", \"\"effort\"\": \"\"S\"\", \"\"urgency\"\": \"\"later\"\", \"\"security\"\": \"\"none\"\", \"\"severity\"\": \"\"medium\"\"}\",\n01a0fbe2-7f00-7f00-a107-cc0e604f9a75,2026-10-02T09:12:00Z,019cb855-3d80-7d3c-a80d-97fa1e50d59e,,,,ticket,01a0f687-f3a0-7516-87ab-709ca2b1c1e6,acme/WEB-42,transitioned,,,01a0fbe2-7f00-779f-a8b1-4da03f48c675,\"{\"\"state\"\": \"\"decided\"\"}\",\"{\"\"state\"\": \"\"in-progress\"\"}\",\n",
                 "schema": {
                   "type": "string"
                 }
@@ -10080,11 +10364,15 @@
           "content": {
             "application/json": {
               "example": {
-                "description": "The backlog of cowork itself",
-                "key": "COW",
-                "name": "cowork",
+                "description": "The public website and the customer sign-in",
+                "key": "WEB",
+                "name": "Website",
                 "repository": {
-                  "remote": "git@github.com:guided-traffic/cowork.git"
+                  "remote": "git@github.com:acme/website.git"
+                },
+                "wip_limits": {
+                  "in-progress": 4,
+                  "review": 2
                 }
               },
               "schema": {
@@ -10188,6 +10476,13 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "description": "The public website and the customer sign-in",
+                "wip_limits": {
+                  "in-progress": 4,
+                  "review": 2
+                }
+              },
               "schema": {
                 "$ref": "#/components/schemas/ProjectPatch"
               }
@@ -10359,6 +10654,21 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "archived_at": "2026-10-06T11:00:00Z",
+                  "created_at": "2026-03-02T09:05:00Z",
+                  "description": "The public website and the customer sign-in",
+                  "id": "019cadcb-2e60-7116-9641-67b17d11d0ef",
+                  "key": "WEB",
+                  "name": "Website",
+                  "restricted": false,
+                  "updated_at": "2026-10-06T11:00:00Z",
+                  "version": 3,
+                  "wip_limits": {
+                    "in-progress": 4,
+                    "review": 2
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/Project"
                 }
@@ -10962,9 +11272,10 @@
             "application/json": {
               "example": {
                 "effort": "S",
+                "parent": "WEB-40",
                 "security": "none",
                 "severity": "medium",
-                "title": "The export drops attachments",
+                "title": "The password reset mail links to the old domain",
                 "type": "bug"
               },
               "schema": {
@@ -10978,6 +11289,48 @@
           "201": {
             "content": {
               "application/json": {
+                "example": {
+                  "assignee": null,
+                  "block": null,
+                  "body": "",
+                  "confidential": false,
+                  "created_at": "2026-10-06T09:30:00Z",
+                  "decided_at": null,
+                  "done_at": null,
+                  "done_by_hand": false,
+                  "done_from": null,
+                  "effort": "S",
+                  "horizon": "later",
+                  "horizon_set": null,
+                  "id": "01a1108c-69c0-748d-8363-132fa3f8667c",
+                  "key": "acme/WEB-43",
+                  "number": 43,
+                  "open_prerequisites": 0,
+                  "opened_at": "2026-10-06T09:30:00Z",
+                  "parent": "acme/WEB-40",
+                  "progress": 0,
+                  "progress_derived": false,
+                  "progress_refinement": 0,
+                  "progress_review": 0,
+                  "project": "WEB",
+                  "reporter": {
+                    "display_name": "Ada Lovelace",
+                    "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                    "username": "ada"
+                  },
+                  "reporter_agent": null,
+                  "reporter_token": null,
+                  "score": 4,
+                  "score_version": 1,
+                  "security": "none",
+                  "severity": "medium",
+                  "state": "filed",
+                  "threat": null,
+                  "title": "The password reset mail links to the old domain",
+                  "type": "bug",
+                  "updated_at": "2026-10-06T09:30:00Z",
+                  "version": 1
+                },
                 "schema": {
                   "$ref": "#/components/schemas/Ticket"
                 }
@@ -11069,6 +11422,10 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "comment": "The fix sends the password as typed; the test in Safari is next.",
+                "progress": 60
+              },
               "schema": {
                 "$ref": "#/components/schemas/TicketPatch"
               }
@@ -11395,11 +11752,6 @@
           "200": {
             "content": {
               "application/json": {
-                "example": {
-                  "body": "## Current state\n\nThe gate fails on `readyReplicas` — see [the run](https://ci.example/run/7).",
-                  "body_html": "\u003ch2\u003eCurrent state\u003c/h2\u003e\n\u003cp\u003eThe gate fails on \u003ccode\u003ereadyReplicas\u003c/code\u003e — see \u003ca href=\"https://ci.example/run/7\" rel=\"noopener noreferrer nofollow\" target=\"_blank\"\u003ethe run\u003c/a\u003e.\u003c/p\u003e",
-                  "version": 4
-                },
                 "schema": {
                   "$ref": "#/components/schemas/TicketBody"
                 }
@@ -11443,6 +11795,10 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "body": "## Current state\n\nSafari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.\n\n## Required changes\n\n- Send the password as typed.\n- An end-to-end test that signs in with a trailing space in Safari.",
+                "comment": "Rewritten after the reproduction in Safari 18."
+              },
               "schema": {
                 "$ref": "#/components/schemas/TicketBodyReplace"
               }
@@ -11778,6 +12134,10 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "confidential": false,
+                "reason": "The fix is released; every member may read the finding now."
+              },
               "schema": {
                 "$ref": "#/components/schemas/ConfidentialSet"
               }
@@ -11895,8 +12255,8 @@
           "content": {
             "application/json": {
               "example": {
-                "reason": "Taken up once the import works",
-                "value": "next"
+                "reason": "Customers cannot sign in",
+                "value": "now"
               },
               "schema": {
                 "$ref": "#/components/schemas/HorizonUpdate"

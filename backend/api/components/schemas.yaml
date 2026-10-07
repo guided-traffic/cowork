@@ -105,6 +105,12 @@ TenantSummaryList:
         $ref: '#/TenantSummary'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - slug: acme
+        name: Acme
+        role: admin
+    next_cursor: null
 Membership:
   type: object
   required: [tenant, role, origins]
@@ -373,6 +379,15 @@ Tenant:
       description: Members create projects; off, only administrators do (docs/adr/0034 D9)
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example:
+    slug: acme
+    name: Acme
+    version: 4
+    time_visible_to_members: true
+    time_locked_until: '2026-09-30'
+    members_create_projects: false
+    created_at: '2026-03-02T08:45:00Z'
+    updated_at: '2026-10-06T07:55:00Z'
 TenantCreate:
   type: object
   additionalProperties: false
@@ -572,6 +587,52 @@ AuditList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  example:
+    items:
+      - id: 01a1108c-69c0-708c-a456-d344b487f663
+        created_at: '2026-10-06T09:30:00Z'
+        actor:
+          person: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+          system: null
+        agent: null
+        agent_capabilities: null
+        token_id: null
+        token_name: null
+        entity_type: ticket
+        entity_id: 01a1108c-69c0-748d-8363-132fa3f8667c
+        ticket_key: acme/WEB-43
+        action: created
+        after:
+          type: bug
+          title: The password reset mail links to the old domain
+          effort: S
+          urgency: later
+          security: none
+          severity: medium
+        reason: null
+        note: null
+        request_id: 01a1108c-69c0-7a3e-9c21-5b7d0f4e8a16
+        idempotency_key: 2f6d9a41-7c3b-4e8f-9d15-0b6a8c4e2f73
+      - id: 01a0fbe2-7f00-7f00-a107-cc0e604f9a75
+        created_at: '2026-10-02T09:12:00Z'
+        actor:
+          person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+          system: null
+        agent: null
+        agent_capabilities: null
+        token_id: null
+        token_name: null
+        entity_type: ticket
+        entity_id: 01a0f687-f3a0-7516-87ab-709ca2b1c1e6
+        ticket_key: acme/WEB-42
+        action: transitioned
+        before: {state: decided}
+        after: {state: in-progress}
+        reason: null
+        note: null
+        request_id: 01a0fbe2-7f00-779f-a8b1-4da03f48c675
+        idempotency_key: null
+    next_cursor: eyJvIjoibGlzdEF1ZGl0IiwicyI6IjAxOWNhZGI4LWRlZTAtNzlhYy04YTRmLWVjYTU3MzFjYjM4NiIsImEiOiIwMWEwZmJlMi03ZjAwLTdmMDAtYTEwNy1jYzBlNjA0ZjlhNzUifQ.lIk3xBcDAMSBR357tHdkBYPo4uFvWgIKZre5ql9IWvQ
 WipLimits:
   type: object
   additionalProperties: false
@@ -603,6 +664,17 @@ Project:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-project
+    id: 019cadcb-2e60-7116-9641-67b17d11d0ef
+    key: WEB
+    name: Website
+    description: The public website and the customer sign-in
+    restricted: false
+    wip_limits: {in-progress: 4, review: 2}
+    archived_at: null
+    version: 2
+    created_at: '2026-03-02T09:05:00Z'
+    updated_at: '2026-09-14T11:20:00Z'
 ProjectCreate:
   type: object
   additionalProperties: false
@@ -638,6 +710,10 @@ ProjectList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  example:
+    items:
+      - *example-project
+    next_cursor: null
 ProjectRestrictionSet:
   type: object
   additionalProperties: false
@@ -980,6 +1056,56 @@ Ticket:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-ticket
+    id: 01a0f687-f3a0-7516-87ab-709ca2b1c1e6
+    key: acme/WEB-42
+    project: WEB
+    number: 42
+    type: bug
+    title: Sign-in fails in Safari when the password contains a space
+    body: |-
+      ## Current state
+
+      Safari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.
+
+      ## Required changes
+
+      - Send the password as typed.
+      - An end-to-end test that signs in with a trailing space in Safari.
+    state: in-progress
+    block: null
+    severity: high
+    security: none
+    threat: null
+    horizon: now
+    horizon_set:
+      value: now
+      reason: Customers cannot sign in
+      # The handler names the person who set it by the id alone (tickets.go, horizonSetView).
+      by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: null, display_name: ''}
+      at: '2026-10-02T09:14:00Z'
+    effort: S
+    progress: 60
+    progress_refinement: 100
+    progress_review: 0
+    progress_derived: false
+    parent: acme/WEB-40
+    reporter: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+    reporter_agent: claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911
+    reporter_token: {id: 01a0a40b-5040-78e5-8344-63ccb2705d84, name: Claude Code on the laptop}
+    assignee: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    confidential: false
+    opened_at: '2026-10-01T08:15:00Z'
+    decided_at: '2026-10-02T09:05:00Z'
+    done_at: null
+    done_from: null
+    done_by_hand: false
+    open_prerequisites: 1
+    score: 14.2
+    score_version: 1
+    version: 8
+    created_at: '2026-10-01T08:15:00Z'
+    updated_at: '2026-10-06T10:12:05Z'
 TicketCreate:
   type: object
   additionalProperties: false
@@ -1065,6 +1191,18 @@ TicketBody:
       description: |
         The body rendered and sanitised on the server (docs/adr/0011 D6); empty for an empty body
     version: {type: integer, description: The ticket's version the body belongs to}
+  example:
+    body: |-
+      ## Current state
+
+      Safari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.
+
+      ## Required changes
+
+      - Send the password as typed.
+      - An end-to-end test that signs in with a trailing space in Safari.
+    body_html: "<h2>Current state</h2>\n<p>Safari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with <code>invalid_credentials</code>.</p>\n<h2>Required changes</h2>\n<ul>\n<li>Send the password as typed.</li>\n<li>An end-to-end test that signs in with a trailing space in Safari.</li>\n</ul>"
+    version: 8
 TicketBodyReplace:
   type: object
   additionalProperties: false
@@ -1156,6 +1294,9 @@ ProjectRankSorted:
     score_version:
       type: integer
       description: The version of the score function the rank was sorted by (docs/adr/0014 D4)
+  example:
+    moved: 3
+    score_version: 1
 BlockSet:
   type: object
   additionalProperties: false
@@ -1857,6 +1998,10 @@ TicketList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  example:
+    items:
+      - *example-ticket
+    next_cursor: null
 DeletedTicket:
   type: object
   description: |
@@ -1890,6 +2035,19 @@ DeletedTicketList:
         $ref: '#/DeletedTicket'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - key: acme/WEB-17
+        project: WEB
+        number: 17
+        type: task
+        title: Remove the spring sale banner
+        state: analysed
+        confidential: false
+        deleted_at: '2026-10-02T16:45:00Z'
+        deleted_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        purge_at: '2026-11-01T16:45:00Z'
+    next_cursor: null
 SavedFilterParameters:
   type: object
   description: |
