@@ -70,8 +70,9 @@ import:
     summary: An import job with its report
     description: |
       A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
-      the tenant's administrators, a token's `read` scope; a job of another project, and a dry run
-      older than twenty-four hours, is `404`.
+      the tenant's administrators, a token's `read` scope, never an agent — a flagged token and a
+      request with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a
+      dry run older than twenty-four hours, is `404`.
     responses:
       '200':
         description: The job

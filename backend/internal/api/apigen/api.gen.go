@@ -2735,7 +2735,9 @@ type ImportJob struct {
 	// ExpiresAt When the dry run is gone; null once it is executed
 	ExpiresAt nullable.Nullable[time.Time] `json:"expires_at"`
 
-	// Files Every file of the upload, in the order the upload carried them
+	// Files Every file of the upload, in the order the upload carried them. Once a ticket the execution
+	// created is purged, its file is no longer listed, and `summary` still counts it
+	// (docs/adr/0024 D2)
 	Files []ImportFile       `json:"files"`
 	Id    openapi_types.UUID `json:"id"`
 
@@ -6701,8 +6703,9 @@ type ClientInterface interface {
 	// GetImport An import job with its report
 	//
 	// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
-	// the tenant's administrators, a token's `read` scope; a job of another project, and a dry run
-	// older than twenty-four hours, is `404`.
+	// the tenant's administrators, a token's `read` scope, never an agent — a flagged token and a
+	// request with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a
+	// dry run older than twenty-four hours, is `404`.
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/imports/{import} (the `GetImport` operationId).
 	GetImport(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -9885,8 +9888,9 @@ func (c *Client) CreateImportWithBody(ctx context.Context, tenant TenantSlug, pr
 // GetImport An import job with its report
 //
 // A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
-// the tenant's administrators, a token's `read` scope; a job of another project, and a dry run
-// older than twenty-four hours, is `404`.
+// the tenant's administrators, a token's `read` scope, never an agent — a flagged token and a
+// request with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a
+// dry run older than twenty-four hours, is `404`.
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/imports/{import} (the `GetImport` operationId).
 func (c *Client) GetImport(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -22359,8 +22363,9 @@ type ClientWithResponsesInterface interface {
 	// GetImportWithResponse An import job with its report
 	//
 	// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
-	// the tenant's administrators, a token's `read` scope; a job of another project, and a dry run
-	// older than twenty-four hours, is `404`.
+	// the tenant's administrators, a token's `read` scope, never an agent — a flagged token and a
+	// request with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a
+	// dry run older than twenty-four hours, is `404`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -33162,8 +33167,9 @@ func (c *ClientWithResponses) CreateImportWithBodyWithResponse(ctx context.Conte
 // GetImportWithResponse An import job with its report
 //
 // A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
-// the tenant's administrators, a token's `read` scope; a job of another project, and a dry run
-// older than twenty-four hours, is `404`.
+// the tenant's administrators, a token's `read` scope, never an agent — a flagged token and a
+// request with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a
+// dry run older than twenty-four hours, is `404`.
 //
 // Returns a wrapper object for the known response body format(s).
 //

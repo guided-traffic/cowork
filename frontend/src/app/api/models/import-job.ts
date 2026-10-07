@@ -22,7 +22,9 @@ export interface ImportJob {
   expires_at: (string | null);
 
   /**
-   * Every file of the upload, in the order the upload carried them
+   * Every file of the upload, in the order the upload carried them. Once a ticket the execution
+   * created is purged, its file is no longer listed, and `summary` still counts it
+   * (docs/adr/0024 D2)
    */
   files: Array<ImportFile>;
   id: string;

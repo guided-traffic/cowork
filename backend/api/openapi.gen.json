@@ -3326,7 +3326,7 @@
             ]
           },
           "files": {
-            "description": "Every file of the upload, in the order the upload carried them",
+            "description": "Every file of the upload, in the order the upload carried them. Once a ticket the execution\ncreated is purged, its file is no longer listed, and `summary` still counts it\n(docs/adr/0024 D2)\n",
             "items": {
               "$ref": "#/components/schemas/ImportFile"
             },
@@ -9623,7 +9623,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/imports/{import}": {
       "get": {
-        "description": "A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For\nthe tenant's administrators, a token's `read` scope; a job of another project, and a dry run\nolder than twenty-four hours, is `404`.\n",
+        "description": "A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For\nthe tenant's administrators, a token's `read` scope, never an agent — a flagged token and a\nrequest with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a\ndry run older than twenty-four hours, is `404`.\n",
         "operationId": "getImport",
         "responses": {
           "200": {
