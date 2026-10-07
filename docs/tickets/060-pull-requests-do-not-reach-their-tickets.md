@@ -44,16 +44,11 @@ is built, D1–D7, on trial; the details it left open were made concrete by the 
   [docs/security/github-webhook.md](../security/github-webhook.md) with H-64 to H-67, and the
   developer pages.
 
-**Verified** on 2026-10-07: `make lint cyclo gosec`, `make generate-check` and
-`make frontend-generate-check frontend-test frontend-lint frontend-build` pass (the frontend: 120
-files, 4205 tests). `make test-unit` passes but for the three store tests that hold the migration set
-gapless (`TestMigrationFilesAreWellFormed`, `TestCountVersionsBetween`, `TestSchemaStatePending`),
-and `make test-integration` passes but for the three that count the migrations applied
-(`TestMigrateBringsFreshDatabaseToCurrentVersion`, `TestRankMigrationKeepsNumberOrder`,
-`TestStagesMigrationBackfill`): versions 40 and 41 are missing until the work that brings them is
-integrated, and all six pass with the migration numbered 40. The sixteen webhook tests of
-[`api_github_test.go`](../../backend/test/integration/api_github_test.go) pass, over payloads rendered
-from GitHub's documented shapes.
+**Verified** on 2026-10-07 on the branch that integrates it after migration 40, as migration 41:
+`make generate-check test-unit lint cyclo gosec vuln`, `make test-integration` and
+`make frontend-generate-check frontend-test frontend-lint frontend-build` pass — every test, the
+sixteen webhook tests of [`api_github_test.go`](../../backend/test/integration/api_github_test.go)
+among them, over payloads rendered from GitHub's documented shapes.
 
 ## Required changes
 
@@ -140,6 +135,6 @@ key on the body's first line and the short key in the title, so both usually nam
 - An organisation's webhook, which sends the same events for every repository of the organisation,
   and a GitHub Enterprise Server were not tried.
 - Whether GitHub signs a delivery it sends again from its log with the secret it holds then.
-- **Migration 41 has not run after 40 and 41.** It restates the `tenants_read` policy of migration
-  26 with the webhook's job added; a migration 40 or 41 that changes that policy as well must be
-  merged into 42's statement, or the later one drops the other's clause.
+- **The policy migration 41 restates.** It restates the `tenants_read` policy of migration 26 with
+  the webhook's job added; a later migration that changes that policy must carry the webhook's clause
+  in its statement, or it drops it. Migration 40 does not touch it.
