@@ -474,6 +474,35 @@ func TestTheImportJobPoliciesAdmitTheTenantsAdministratorsOnly(t *testing.T) {
 	assert.Zero(t, n, "an administrator deletes no job: the expiry job does")
 }
 
+// docs/adr/0024 D2, docs/adr/0051 D3: the purge of a ticket an import created
+// — by the job, which is no administrator — takes its file out of the job's
+// report, which would keep the text the purge removes; the other files stay,
+// and the summary still counts it.
+func TestThePurgeTakesAnImportedTicketOutOfItsReport(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	admin := caller{Token: e.tk.AdminA}
+	created := e.dryRun(t, admin, "ALPHA", ticketFile(1, ""), ticketFile(2, ""))
+	require.Equal(t, http.StatusCreated, created.StatusCode(), string(created.Body))
+	id := created.JSON201.Id
+	require.Equal(t, http.StatusOK, e.execute(t, admin, "ALPHA", id).StatusCode())
+	e.send(t, admin, http.StatusNoContent, http.MethodDelete, ticketPath(e.SlugA, "ALPHA", 1), nil)
+	require.NoError(t, f.Exec(e.ctx, `UPDATE tickets SET deleted_at = now() - interval '31 days'
+		WHERE tenant_id = $1 AND imported_from_job = $2 AND number = 1`, e.A, id))
+
+	_, err := openRuntime(t).PurgeDeletedTickets(e.ctx, time.Now())
+	require.NoError(t, err)
+	read, err := e.s.client(t, admin).GetImportWithResponse(e.ctx, e.SlugA, "ALPHA", id)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, read.StatusCode(), string(read.Body))
+	require.Len(t, read.JSON200.Files, 1)
+	assert.Equal(t, e.SlugA+"/ALPHA-2", read.JSON200.Files[0].Key.MustGet())
+	assert.Equal(t, 2, read.JSON200.Summary.Created, "the summary still counts the purged ticket")
+	assert.Equal(t, 1, scalar[int](t, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND action = 'purged'
+		AND ticket_key = $2 AND (after ->> 'import_report')::int = 1`, e.A, e.SlugA+"/ALPHA-1"),
+		"the purge's act counts the report it changed")
+}
+
 // stateLine is a ticket file's frontmatter state, as the grep of
 // docs/tickets/README.md reads it.
 var stateLine = regexp.MustCompile(`(?m)^state:[ \t]*([a-z-]+)`)

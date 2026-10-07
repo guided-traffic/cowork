@@ -240,9 +240,38 @@ func (q *Queries) DetachChildren(ctx context.Context, arg DetachChildrenParams) 
 	return result.RowsAffected(), nil
 }
 
+const forgetPurgedImportFile = `-- name: ForgetPurgedImportFile :execrows
+UPDATE import_jobs j
+SET report = jsonb_set(j.report, '{files}', coalesce((
+        SELECT jsonb_agg(e.f ORDER BY e.n)
+        FROM jsonb_array_elements(j.report -> 'files') WITH ORDINALITY AS e(f, n)
+        WHERE e.f ->> 'key' IS DISTINCT FROM $1::text), '[]'::jsonb))
+WHERE j.tenant_id = $2 AND j.id = $3 AND j.status = 'executed'
+  AND j.report -> 'files' @> jsonb_build_array(jsonb_build_object('key', $1::text))
+`
+
+type ForgetPurgedImportFileParams struct {
+	TicketKey string
+	TenantID  uuid.UUID
+	ID        uuid.UUID
+}
+
+// The purge of a ticket an import created takes its file out of the report
+// of the job that created it, which would keep the title, the threat, the
+// note and the questions the purge removes (docs/adr/0024 D2,
+// docs/adr/0051 D3); the report's summary still counts it. The policies of
+// migration 41 admit the purge to the update.
+func (q *Queries) ForgetPurgedImportFile(ctx context.Context, arg ForgetPurgedImportFileParams) (int64, error) {
+	result, err := q.db.Exec(ctx, forgetPurgedImportFile, arg.TicketKey, arg.TenantID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getPurgedTicket = `-- name: GetPurgedTicket :one
 SELECT t.id, t.project_id, p.key AS project_key, t.number, t.version, t.confidential, t.assignee_id,
-       t.reporter_id,
+       t.reporter_id, t.imported_from_job,
        ARRAY(SELECT a.id FROM attachments a WHERE a.tenant_id = t.tenant_id AND a.ticket_id = t.id
              ORDER BY a.id)::uuid[] AS attachments
 FROM tickets t
@@ -257,15 +286,16 @@ type GetPurgedTicketParams struct {
 }
 
 type GetPurgedTicketRow struct {
-	ID           uuid.UUID
-	ProjectID    uuid.UUID
-	ProjectKey   string
-	Number       int32
-	Version      int32
-	Confidential bool
-	AssigneeID   *uuid.UUID
-	ReporterID   uuid.UUID
-	Attachments  []uuid.UUID
+	ID              uuid.UUID
+	ProjectID       uuid.UUID
+	ProjectKey      string
+	Number          int32
+	Version         int32
+	Confidential    bool
+	AssigneeID      *uuid.UUID
+	ReporterID      uuid.UUID
+	ImportedFromJob *uuid.UUID
+	Attachments     []uuid.UUID
 }
 
 // What the purge keeps of a deleted ticket: its key for the act, the facts its
@@ -284,6 +314,7 @@ func (q *Queries) GetPurgedTicket(ctx context.Context, arg GetPurgedTicketParams
 		&i.Confidential,
 		&i.AssigneeID,
 		&i.ReporterID,
+		&i.ImportedFromJob,
 		&i.Attachments,
 	)
 	return i, err

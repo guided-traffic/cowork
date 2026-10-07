@@ -40,10 +40,12 @@ CREATE INDEX import_jobs_expiry     ON import_jobs (expires_at) WHERE status = '
 -- The tenant's rows in the tenant, and of those only a tenant administrator's
 -- reach: an import is an administrator's act (docs/adr/0051 D6), and a dry
 -- run holds the content of the files it read, confidential findings among
--- them. The restrictive policy is ANDed with the canonical one, so a query
+-- them. The restrictive policies are ANDed with the canonical one, so a query
 -- that forgot the role shows a member nothing. The expiry job names itself in
 -- app.job, sets no tenant, and reads and deletes the dry runs of every tenant;
--- nothing else deletes, and the job deletes nothing but a dry run.
+-- nothing else deletes, and the job deletes nothing but a dry run. The purge
+-- of a ticket an import created (ticket-purge, in the ticket's tenant) takes
+-- the ticket's file out of the job's report (docs/adr/0024 D2).
 ALTER TABLE import_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE import_jobs FORCE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation ON import_jobs
@@ -53,9 +55,13 @@ CREATE POLICY import_jobs_expiry_read ON import_jobs FOR SELECT
     USING (app_job() = 'import-expiry' AND status = 'dry_run');
 CREATE POLICY import_jobs_expiry_delete ON import_jobs FOR DELETE
     USING (app_job() = 'import-expiry' AND status = 'dry_run');
-CREATE POLICY import_jobs_administrators ON import_jobs AS RESTRICTIVE
-    USING (app_is_tenant_admin() OR app_job() = 'import-expiry')
+CREATE POLICY import_jobs_read ON import_jobs AS RESTRICTIVE FOR SELECT
+    USING (app_is_tenant_admin() OR app_job() = 'import-expiry' OR app_job() = 'ticket-purge');
+CREATE POLICY import_jobs_insert ON import_jobs AS RESTRICTIVE FOR INSERT
     WITH CHECK (app_is_tenant_admin());
+CREATE POLICY import_jobs_update ON import_jobs AS RESTRICTIVE FOR UPDATE
+    USING (app_is_tenant_admin() OR app_job() = 'ticket-purge')
+    WITH CHECK (app_is_tenant_admin() OR app_job() = 'ticket-purge');
 CREATE POLICY import_jobs_delete ON import_jobs AS RESTRICTIVE FOR DELETE
     USING (app_job() = 'import-expiry' AND status = 'dry_run');
 
