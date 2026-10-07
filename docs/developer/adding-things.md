@@ -196,10 +196,16 @@ the mechanics are [api.md](api.md)).
 
 ## A chart value
 
-1. `values.yaml` under the block it belongs to — `backend.`, `frontend.`, `database.`, `session.`,
-   `localAdmin.`, `bootstrap.`, `auth.`, `storage.`, `chat.`, `ingress.` — with a comment, the template, and
-   — when it maps to an environment variable — the `env` entry.
-2. A `ci/*-values.yaml` if the value opens a new shape worth rendering in CI.
+1. `values.yaml` under the block it belongs to — `backend.`, `frontend.`, `database.`, `migrations.`,
+   `session.`, `localAdmin.`, `bootstrap.`, `auth.`, `storage.`, `chat.`, `ingress.` — with a comment, the
+   template, and — when it maps to an environment variable — the `env` entry; one the migration run
+   needs goes into the init container and the Job of `migrate-job.yaml` as well, and a credential the
+   Job reads must come from an `existingSecret`, since the Job runs before the release's own Secrets.
+   Read the new value with its default when it is missing (`dig`, `| default`): `helm upgrade
+   --reuse-values` hands the templates the previous release's values, which lack it.
+2. A `ci/*-values.yaml` if the value opens a new shape worth rendering in CI; render every existing
+   `ci/` file before and after the change and compare — a value that changes nothing must change no
+   manifest ([testing.md](testing.md#chart-tests)).
 3. The README's values block and, when operators need to understand it,
    [docs/operations/installation.md](../operations/installation.md).
 

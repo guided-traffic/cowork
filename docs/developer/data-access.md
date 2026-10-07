@@ -14,7 +14,7 @@ against the tree on 2026-10-05.
 
 | Role | Connects through | Owns | Does |
 |---|---|---|---|
-| Owner | `COWORK_DATABASE_OWNER_URL` | every object of the schema | runs the migrations: `cowork migrate`, and `cowork serve` while `COWORK_MIGRATE_ON_START=true`; in the chart only the `migrate` init container holds it |
+| Owner | `COWORK_DATABASE_OWNER_URL`, or its components `COWORK_DATABASE_OWNER_*` | every object of the schema | runs the migrations: `cowork migrate`, and `cowork serve` while `COWORK_MIGRATE_ON_START=true`; in the chart only the migration run holds it — the `migrate` init container, or the migration Job in job mode |
 | Runtime | `COWORK_DATABASE_URL` | nothing | serves; held by row-level security on every table |
 
 [`Migrate`](../../backend/internal/store/migrate.go) takes the owner URL and the runtime role's

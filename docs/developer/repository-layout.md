@@ -52,6 +52,7 @@ cowork/
 │   │   ├── stubllm/            # a language model in the test's process, both wire formats, for the chat
 │   │   └── integration/        # build tag `integration`; needs PostgreSQL 18, an S3 server and Dex
 │   ├── tools/
+│   │   ├── crdschema/          # turns the operators' CRDs into the schemas make examples-lint checks against
 │   │   ├── problemdoc/         # writes the problem-code enum and the README table
 │   │   └── specbundle/         # bundles api/ into openapi.gen.json
 │   ├── sqlc.yaml               # readq/writeq from the migrations and queries/
@@ -69,7 +70,8 @@ cowork/
 │   └── eslint.config.js
 ├── claude/cowork/              # the Claude Code plugin: MCP server entry, hooks, skills /next /ticket /question /done
 ├── .claude-plugin/             # marketplace.json: the repository as a Claude Code plugin marketplace
-├── deploy/helm/cowork/         # the chart: backend (with the migrate init container) + frontend; ci/*-values.yaml
+├── deploy/helm/cowork/         # the chart: backend (with the migrate init container, or the migration Job) + frontend; ci/*-values.yaml
+├── deploy/examples/            # example manifests: a CloudNativePG cluster, a MinIO Tenant, the mc commands; syntax-checked only
 ├── hack/                       # dev.sh + dev_demo.py (make dev); e2e.sh (make e2e); verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
 │   ├── dex/config.yaml         # the development and test issuer: one client, four users; credentials development-only
 │   └── ingress/default.conf    # the stand-in for the Ingress when the two images run together

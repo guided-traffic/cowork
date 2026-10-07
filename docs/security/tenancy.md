@@ -138,7 +138,7 @@ layer does not repeat it.
 
 | Role | Owns | Holds | Used by |
 |---|---|---|---|
-| owner | every object of the schema | DDL | `cowork migrate`, the chart's migration init container, and `cowork serve` while `COWORK_MIGRATE_ON_START` is true |
+| owner | every object of the schema | DDL | `cowork migrate`, the chart's migration run — the init container, or the migration Job in job mode —, and `cowork serve` while `COWORK_MIGRATE_ON_START` is true |
 | runtime | nothing | only what the migrations grant it; the migration run names it in the session setting `cowork.runtime_role` | `cowork serve` |
 
 The runtime role's grants are narrow: `UPDATE` only where the API changes something — column
@@ -1018,7 +1018,8 @@ its own.
 
 The split of the two roles protects against a compromised serving process only while that
 process does not hold the owner credential (ADR 0021, residual risks). The chart keeps it in
-the migration init container. `cowork serve` with `COWORK_MIGRATE_ON_START=true` — the
+the migration run — the init container, or in job mode the migration Job, neither of which
+serves a request. `cowork serve` with `COWORK_MIGRATE_ON_START=true` — the
 binary's default, and `make run`'s — requires `COWORK_DATABASE_OWNER_URL` and holds it for its
 whole lifetime ([`cmd/cowork/main.go`](../../backend/cmd/cowork/main.go) `requireForServe`);
 so does a serving container given the owner URL through `backend.extraEnv`. Such an

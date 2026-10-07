@@ -79,6 +79,8 @@ flowchart LR
 ### Environment variables
 
 Every backend setting is `COWORK_<NAME>`; the full table is under [Configuration](#configuration).
+A database role given as components instead of a URL is `COWORK_DATABASE_HOST`, `_PORT`, `_NAME`,
+`_USER`, `_PASSWORD` and `_SSLMODE`, the owner role's the same under `COWORK_DATABASE_OWNER_`.
 The frontend container takes no variable: its nginx configuration is a file in the image
 ([frontend container](#frontend-container)). The integration tier reads
 `COWORK_TEST_DATABASE_URL`, `COWORK_TEST_S3_ENDPOINT`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` and
@@ -101,15 +103,16 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Frontend Deployment and Service | `<fullname>-frontend` | the Ingress sends every path but `/api/` and `/auth/` here |
 | Ingress | `<fullname>` | only with `ingress.enabled`; per host `/api/` and `/auth/` (`Prefix`) to `<fullname>-backend`, `/` (`Prefix`) to `<fullname>-frontend` |
 | ServiceAccount | `<fullname>` | shared by both pods, no token mounted |
-| Init container of the backend pod | `migrate` | runs `cowork migrate` as the owner role; only with `backend.config.migrateOnStart` |
-| Database Secret rendered by the chart | `<fullname>-database`, key `databaseUrl` | only with `database.url` |
-| Owner database Secret rendered by the chart | `<fullname>-database-owner`, key `databaseUrl` | only with `database.owner.url` while `backend.config.migrateOnStart` is true |
+| Init container of the backend pod | `migrate` | runs `cowork migrate` as the owner role; only with `migrations.mode: onStart` (the default) and `backend.config.migrateOnStart` |
+| Migration Job | `<fullname>-migrate`, component `migrate` | only with `migrations.mode: job`: a Helm hook (`pre-install,pre-upgrade`, weight `-10`, deleted before its next creation and once it succeeded) that runs `cowork migrate` with `COWORK_MIGRATE_BOOTSTRAP=true`, as the namespace's `default` ServiceAccount (or `serviceAccount.name` without `serviceAccount.create`), no token mounted |
+| Database Secret rendered by the chart | `<fullname>-database`, key `databaseUrl` | only with `database.url`; never in job mode |
+| Owner database Secret rendered by the chart | `<fullname>-database-owner`, key `databaseUrl` | only with `database.owner.url` while the init container migrates; never in job mode |
 | Local administrator Secret rendered by the chart | `<fullname>-local-admin`, keys `username` and `password` | only with the inline `localAdmin.username` and `localAdmin.password` |
 | Identity provider's client Secret | not rendered: `auth.oidc.existingSecret` names one of yours, key `auth.oidc.keys.clientSecret` (`clientSecret`) and, when set, `auth.oidc.keys.clientId` | only with `auth.oidc.issuer`; the client secret has no inline value |
 | A chat provider's key Secret | not rendered: each entry of `chat.providers` names one of yours in `existingSecret`, key `keys.apiKey` (`apiKey`) | one per provider; required for kind `anthropic`; there is no inline value |
-| Pod annotations of the backend | `checksum/database-secret`, `checksum/database-owner-secret`, `checksum/local-admin-secret` | only with the inline values (the owner's while `migrateOnStart` is true); a changed value rolls the pods |
-| CA volume of the backend | `s3-ca`, mounted at `/etc/cowork/s3-ca` | only with `storage.endpoint` and `storage.tls.caConfigMap` |
-| Labels | `app.kubernetes.io/name=cowork`, `app.kubernetes.io/instance=<release>`, `app.kubernetes.io/component=backend\|frontend`, `app.kubernetes.io/version`, `app.kubernetes.io/managed-by=Helm`, `helm.sh/chart` | selectors use `name`, `instance` and `component` |
+| Pod annotations of the backend | `checksum/database-secret`, `checksum/database-owner-secret`, `checksum/local-admin-secret` | only with the inline values (the owner's while the init container migrates); a changed value rolls the pods |
+| CA volume of the backend | `s3-ca`, mounted at `/etc/cowork/s3-ca` | only with the storage on (`storage.endpoint` or `storage.existingConfigMap`) and `storage.tls.caConfigMap` |
+| Labels | `app.kubernetes.io/name=cowork`, `app.kubernetes.io/instance=<release>`, `app.kubernetes.io/component=backend\|frontend\|migrate`, `app.kubernetes.io/version`, `app.kubernetes.io/managed-by=Helm`, `helm.sh/chart` | selectors use `name`, `instance` and `component` |
 | Container ports | `http`, `8080` on both containers | `backend.containerPort`; the frontend's is fixed by the nginx configuration |
 
 ### Keys and identifiers
@@ -213,7 +216,8 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
 | [docs/developer/development-credentials.md](docs/developer/development-credentials.md) | Every development-only username, password, key and token of `make dev`, its containers and the test tiers, with the file that sets it |
-| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the Ingress and its controller's settings; runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [Claude Code](docs/operations/claude-code.md) against an installation |
+| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [Claude Code](docs/operations/claude-code.md) against an installation |
+| [deploy/examples/](deploy/examples/) | A CloudNativePG cluster and a MinIO bucket to copy and adapt — examples checked for syntax against the operators' CRD schemas, not supported deployments |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
 | [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [Dex](https://dexidp.io/docs/) | The standard the login through an identity provider follows, and the issuer it is developed and tested against |
@@ -328,7 +332,11 @@ make docker-build       # guidedtraffic/cowork-backend:latest and guidedtraffic/
 
 The database comes first: one PostgreSQL 18 database, an owner role that owns it and a
 runtime role that owns nothing — both created by you, as
-[installation.md](docs/operations/installation.md#the-database-and-its-two-roles) shows.
+[installation.md](docs/operations/installation.md#the-database-and-its-two-roles) shows; a Secret
+without a URL key, as an operator writes one, is read by its component keys instead
+([the Secrets](docs/operations/installation.md#the-secrets)), and
+[`deploy/examples/`](deploy/examples/) has a CloudNativePG cluster and a MinIO bucket to copy —
+checked for syntax only.
 
 ```bash
 kubectl create namespace cowork
@@ -407,12 +415,15 @@ the object storage, the Ingress annotations, the CloudNativePG note:
 
 ```bash
 helm repo update cowork
-helm upgrade cowork cowork/cowork --version <new> -n cowork --reuse-values
+helm upgrade cowork cowork/cowork --version <new> -n cowork --reset-then-reuse-values   # Helm 3.14+ or 4
 helm uninstall cowork -n cowork      # the database and the bucket are left untouched
 ```
 
-The new backend pods migrate the schema in their init container before the server starts; see
-[docs/operations/runtime.md](docs/operations/runtime.md#the-migration-run).
+`--reset-then-reuse-values` keeps your values and takes the new chart's defaults; `--reuse-values`
+keeps the old chart's defaults too, so a value a release adds is missing
+([upgrade](docs/operations/installation.md#upgrade)). The pending migrations run before the new
+server starts — in the init container of each new backend pod, or in the migration Job in job mode;
+see [docs/operations/runtime.md](docs/operations/runtime.md#the-migration-run).
 
 </details>
 
@@ -449,9 +460,12 @@ size is a number of bytes or a number with `KiB`, `MiB` or `GiB`; a duration is 
 
 | Variable | Default | Values | Meaning |
 |---|---|---|---|
-| `COWORK_DATABASE_URL` | — (required) | `postgres://cowork_app:…@postgres:5432/cowork?sslmode=require` `# example` | The runtime role's connection URL; every request runs as this role. It must not be a superuser, have `BYPASSRLS`, own a relation of the schema or be a member of the owner role — `serve` and `migrate` refuse it otherwise. `pool_max_conns=<n>` in the URL sizes the connection pool. **Security:** a credential: from a Secret. cowork never logs it; a URL pgx cannot parse appears in the startup error with its password masked, which pgx does on a best-effort basis |
-| `COWORK_DATABASE_OWNER_URL` | empty `# default` | `postgres://cowork_owner:…@postgres:5432/cowork?sslmode=require` `# example` | The owner role's URL, which the migrations run under; it must name another role than `COWORK_DATABASE_URL`. Required by `cowork migrate`, and by `cowork serve` while `COWORK_MIGRATE_ON_START` is `true`. **Security:** the owner can switch row-level security off, so a serving process that holds this URL loses the second line of tenant isolation against its own compromise. The chart hands it to the `migrate` init container only |
-| `COWORK_MIGRATE_ON_START` | `true` `# default` | `true`, `false` | `serve` applies pending migrations before it listens; with `false` it refuses to start while migrations are pending. The chart sets `false` and migrates in an init container |
+| `COWORK_DATABASE_URL` | — (required, or its components) | `postgres://cowork_app:…@postgres:5432/cowork?sslmode=require` `# example` | The runtime role's connection URL; every request runs as this role. Set it or the components below, not both. It must not be a superuser, have `BYPASSRLS`, own a relation of the schema or be a member of the owner role — `serve` and `migrate` refuse it otherwise. `pool_max_conns=<n>` in the URL sizes the connection pool. **Security:** a credential: from a Secret. cowork never logs it; a URL pgx cannot parse appears in the startup error with its password masked, which pgx does on a best-effort basis |
+| `COWORK_DATABASE_OWNER_URL` | empty `# default` | `postgres://cowork_owner:…@postgres:5432/cowork?sslmode=require` `# example` | The owner role's URL, which the migrations run under; it must name another role than `COWORK_DATABASE_URL`. Set it or its components below, not both. Required by `cowork migrate`, and by `cowork serve` while `COWORK_MIGRATE_ON_START` is `true`. **Security:** the owner can switch row-level security off, so a serving process that holds this URL loses the second line of tenant isolation against its own compromise. The chart hands it to the migration run only: the `migrate` init container, or the migration Job in job mode |
+| `COWORK_DATABASE_HOST`, `COWORK_DATABASE_PORT`, `COWORK_DATABASE_NAME`, `COWORK_DATABASE_USER`, `COWORK_DATABASE_PASSWORD`, `COWORK_DATABASE_SSLMODE` | empty `# default` | `postgres.cowork.svc`, `5432`, `cowork`, `cowork_app`, `CHANGE-ME`, `require` `# example` | The runtime role's connection as components, for a Secret that holds no URL ([ADR 0058](docs/adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D4): the backend composes `postgres://user:password@host:port/name?sslmode=…`, the user, the password and the name escaped. The host, the name, the user and the password are required together; without the port it is 5432, without the sslmode the driver's default, `prefer`. One of them beside `COWORK_DATABASE_URL`, a port that is no port, an sslmode other than `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`, or a host with `/`, `?`, `#`, `@` or a space refuses the start. **Security:** the password is a credential, read as it is and never echoed — an error quotes the port, the sslmode or the host, never the password |
+| `COWORK_DATABASE_OWNER_HOST`, `_PORT`, `_NAME`, `_USER`, `_PASSWORD`, `_SSLMODE` | empty `# default` | as above `# example` | The owner role's connection as components, by the same rules, in place of `COWORK_DATABASE_OWNER_URL`. **Security:** as `COWORK_DATABASE_OWNER_URL` |
+| `COWORK_MIGRATE_BOOTSTRAP` | `false` `# default` | `true`, `false` | Read by `cowork migrate`: with `true`, after the schema step it synchronises the local administrator and the bootstrap tenant as `cowork serve` does at its start — as the runtime role, under the bootstrap's advisory lock, with the same variables ([ADR 0057](docs/adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md) D4). The chart's migration Job sets it; the init container does not, because a bootstrap given no administrator would deactivate the one the serving container keeps |
+| `COWORK_MIGRATE_ON_START` | `true` `# default` | `true`, `false` | `serve` applies pending migrations before it listens; with `false` it refuses to start while migrations are pending. The chart sets `false` and migrates in an init container or, in job mode, in a Job |
 | `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key: keys derived from it sign the list cursors, key the fingerprint of an idempotent request and the hashes of a client's address — the login throttle's and the one every audit row of a request carries — and seal the identity provider's login state and refresh tokens. Every replica needs the same key. A new key invalidates the cursors clients hold (`400 invalid_cursor`), fails the logins through the provider under way, gives every address another hash — the login throttle counts it anew, and audit rows before and after cannot be compared —, refuses the retry of an idempotent request keyed before it (`422 idempotency_mismatch`), and ends each session of the provider that holds a refresh token at its next refresh — no previous key is kept to open what the old one sealed ([ADR 0031](docs/adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1; [rotating it](docs/operations/installation.md#the-secrets)); it signs no session, and a session of the local login survives it. **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. With the database, it opens the stored refresh tokens ([H-27](docs/security/identity-provider.md#h-27)) and reverses the audit rows' IPv4 hashes ([H-30](docs/security/tokens.md#h-30)). `make run` makes a throw-away one |
 | `COWORK_LISTEN_ADDR` | `:8080` `# default` | `host:port` | The backend listener for API and health |
 | `COWORK_LOG_LEVEL` | `info` `# default` | `debug`, `info`, `warn`, `error` | Minimum level |
@@ -494,9 +508,9 @@ refuses the start, naming itself. Chart values are `auth.oidc.*` in
 
 | Variable | Default | Values | Meaning |
 |---|---|---|---|
-| `COWORK_OIDC_ISSUER` | empty `# default` | `https://login.example.com/realms/acme` `# example` | The issuer. `https://`, or `http://` on a loopback host (`localhost`, `127.0.0.0/8`, `::1`) for development; no user, query or fragment. Kept as written: it must equal the `issuer` the discovery document names, trailing slash and all. The backend fetches `<issuer>/.well-known/openid-configuration` at every start — no redirect followed, at most 1 MiB — and **refuses to start when it cannot**, when the document's authorization, token, keys or UserInfo endpoint is neither `https` nor `http` on a loopback host, or when it names no signature algorithm cowork verifies (the asymmetric ones; `RS256` when it names none); an `end_session_endpoint` that breaks the rule is dropped with a warning. Requires `COWORK_BASE_URL` — the redirect URI to register at the provider is `COWORK_BASE_URL` + `/auth/callback` — and the client's id and secret |
-| `COWORK_OIDC_CLIENT_ID` | — (required with the issuer) | `cowork` `# example` | cowork's client at the provider |
-| `COWORK_OIDC_CLIENT_SECRET` | — (required with the issuer) | — | The client's secret, read as it is; a public client without a secret is not supported. A secret the provider no longer accepts (`invalid_client`) logs nobody out: sessions are served on their groups, and the log says so at error level. **Security:** a secret: from a Secret, never echoed; the chart reads it from `auth.oidc.existingSecret` only. With it, the server key and the database, the stored refresh tokens can be redeemed at the provider ([H-27](docs/security/identity-provider.md#h-27)) |
+| `COWORK_OIDC_ISSUER` | empty `# default` | `https://login.example.com/realms/acme` `# example` | The issuer. `https://`, or `http://` on a loopback host (`localhost`, `127.0.0.0/8`, `::1`) for development; no user, query or fragment. Kept as written: it must equal the `issuer` the discovery document names, trailing slash and all. The backend fetches `<issuer>/.well-known/openid-configuration` at every start — no redirect followed, at most 1 MiB — and **refuses to start when it cannot**, when the document's authorization, token, keys or UserInfo endpoint is neither `https` nor `http` on a loopback host, or when it names no signature algorithm cowork verifies (the asymmetric ones; `RS256` when it names none); an `end_session_endpoint` that breaks the rule is dropped with a warning. Requires `COWORK_BASE_URL` — the redirect URI to register at the provider is `COWORK_BASE_URL` + `/auth/callback` — and, for `serve`, the client's id and secret; `cowork migrate` reads the issuer and `COWORK_ADMIN_GROUP` for the bootstrap without them |
+| `COWORK_OIDC_CLIENT_ID` | — (required by `serve` with the issuer) | `cowork` `# example` | cowork's client at the provider |
+| `COWORK_OIDC_CLIENT_SECRET` | — (required by `serve` with the issuer) | — | The client's secret, read as it is; a public client without a secret is not supported. A secret the provider no longer accepts (`invalid_client`) logs nobody out: sessions are served on their groups, and the log says so at error level. **Security:** a secret: from a Secret, never echoed; the chart reads it from `auth.oidc.existingSecret` only. With it, the server key and the database, the stored refresh tokens can be redeemed at the provider ([H-27](docs/security/identity-provider.md#h-27)) |
 | `COWORK_OIDC_SCOPES` | `openid profile email groups offline_access` `# default` | separated by spaces or commas; `openid` among them | The scopes a login asks for. `offline_access` brings the refresh token the groups refresh needs — most providers issue one only for it; without one a session never reads the groups anew and is judged on those of the person's last login until it ends ([H-25](docs/security/identity-provider.md#h-25)) |
 | `COWORK_OIDC_GROUPS_CLAIM` | `groups` `# default` | a claim's name; `roles` `# example` | The claim that carries the groups, read from the ID token and, when it lacks it, from UserInfo; a string is one group, a list of strings the groups, anything else fails the login |
 | `COWORK_OIDC_ALLOWED_GROUPS` | empty `# default` | comma-separated group names, each at most 256 bytes; `cowork-users,Domain Users` `# example` | **The gate:** a person logs in through the provider only when one of their groups is here or is `COWORK_ADMIN_GROUP`, matched exactly, case and all; trimmed, a repetition dropped; a name cannot hold a comma. With this and `COWORK_ADMIN_GROUP` both empty the gate admits nobody: the login page offers no button and the start warns. A personal access token of a person of the provider meets the gate as well, on the groups of their last login or refresh (`401 not_allowed`). A person of another issuer than the configured one — or any person of a provider once none is configured — is outside the gate whatever their groups. **Security:** whoever can put a person into an allowed group at the provider lets them in |
@@ -573,8 +587,8 @@ is substituted at start, and it serves the UI and nothing else — the Ingress r
 
 | Command | Does |
 |---|---|
-| `cowork serve` | Load the configuration (`COWORK_SESSION_KEY` required, `COWORK_DATABASE_OWNER_URL` too while migrating on start); migrate unless `COWORK_MIGRATE_ON_START=false`; connect as the runtime role; refuse a runtime role that could bypass row-level security, a dirty schema and pending migrations; discover the identity provider when `COWORK_OIDC_ISSUER` is set, and refuse to start when it cannot; synchronise the local administrator and the bootstrap tenant under an advisory lock; listen until `SIGINT`/`SIGTERM` |
-| `cowork migrate` | Load the configuration (`COWORK_DATABASE_URL` names the runtime role the migrations grant to, `COWORK_DATABASE_OWNER_URL` is the role they run as); apply pending migrations; exit 0. Exit 1 on a dirty or failing schema or a runtime role that could bypass row-level security |
+| `cowork serve` | Load the configuration (`COWORK_SESSION_KEY` required, the owner role's connection too while migrating on start, the identity provider's client id and secret with `COWORK_OIDC_ISSUER`); migrate unless `COWORK_MIGRATE_ON_START=false`; connect as the runtime role; refuse a runtime role that could bypass row-level security, a dirty schema and pending migrations; discover the identity provider when `COWORK_OIDC_ISSUER` is set, and refuse to start when it cannot; synchronise the local administrator and the bootstrap tenant under an advisory lock; listen until `SIGINT`/`SIGTERM` |
+| `cowork migrate` | Load the configuration (the runtime role's connection — `COWORK_DATABASE_URL` or its components — names the role the migrations grant to, the owner role's is the role they run as); apply pending migrations; with `COWORK_MIGRATE_BOOTSTRAP=true` then synchronise the local administrator and the bootstrap tenant as `serve` does, as the runtime role and under the same advisory lock; exit 0. Exit 1 on a dirty or failing schema, a runtime role that could bypass row-level security or a failed bootstrap |
 | `cowork version` | Print `cowork <version> (commit <sha>, built <epoch>)` |
 | `cowork help` | Print the usage (also `-h`, `--help`) |
 
@@ -1043,13 +1057,34 @@ serviceAccount:
   name: ""
   automountServiceAccountToken: false # neither pod talks to the Kubernetes API
 database:                             # the runtime role: owns nothing, held to row-level security
-  existingSecret: ""                  # preferred: the URL never enters the release
-  existingSecretKey: databaseUrl
+  existingSecret: ""                  # preferred: the credential never enters the release
+  keys:                               # the key names of existingSecret (and of existingConfigMap)
+    url: databaseUrl                  # COWORK_DATABASE_URL; empty: the components below instead
+    host: host                        # COWORK_DATABASE_HOST
+    port: port                        # COWORK_DATABASE_PORT; empty: not read, 5432
+    name: dbname                      # COWORK_DATABASE_NAME
+    user: username                    # COWORK_DATABASE_USER, always from the Secret
+    password: password                # COWORK_DATABASE_PASSWORD, always from the Secret
+    sslmode: ""                       # COWORK_DATABASE_SSLMODE; empty: not read, the driver's default prefer
+  existingSecretKey: ""               # the URL's key under its earlier name; set, it wins over keys.url
+  existingConfigMap: ""               # with keys.url empty: host, port, name and sslmode from this ConfigMap
   url: ""                             # renders <fullname>-database; plain text in the release Secret and in `helm get values`
-  owner:                              # the role the migrations run as; only the migrate init container reads it
-    existingSecret: ""                # preferred; this or url is required while backend.config.migrateOnStart is true
-    existingSecretKey: databaseUrl
-    url: ""                           # renders <fullname>-database-owner while migrateOnStart is true; plain text in the release either way
+  owner:                              # the role the migrations run as; only the migration run reads it — the init container or the Job
+    existingSecret: ""                # preferred, and the only source in job mode; required while the release migrates
+    keys:                             # as above: COWORK_DATABASE_OWNER_URL or COWORK_DATABASE_OWNER_HOST, _PORT, _NAME, _USER, _PASSWORD, _SSLMODE
+      url: databaseUrl
+      host: host
+      port: port
+      name: dbname
+      user: username
+      password: password
+      sslmode: ""
+    existingSecretKey: ""
+    existingConfigMap: ""
+    url: ""                           # renders <fullname>-database-owner while the init container migrates; plain text in the release either way
+migrations:
+  mode: onStart                       # onStart: the migrate init container of every backend pod; job: the hook Job <fullname>-migrate,
+                                      # which then runs the bootstrap too and takes existingSecret references only
 session:                              # COWORK_SESSION_KEY, from a Secret only
   existingSecret: ""                  # required: rendering fails without it
   keys:
@@ -1093,6 +1128,11 @@ storage:                              # S3-compatible object storage; without an
   keys:
     accessKeyId: accessKeyId          # COWORK_S3_ACCESS_KEY_ID
     secretAccessKey: secretAccessKey  # COWORK_S3_SECRET_ACCESS_KEY
+    endpoint: endpoint                # the keys of existingConfigMap; a value whose key is empty is the literal value below
+    bucket: bucket
+    region: region                    # may be missing from the ConfigMap: the server's region
+    pathStyle: pathStyle              # may be missing from the ConfigMap: path style
+  existingConfigMap: ""               # the endpoint, bucket, region and path style from a ConfigMap; naming it turns the storage on
   endpoint: ""                        # COWORK_S3_ENDPOINT, e.g. https://s3.example.com; setting it turns the storage on
   bucket: ""                          # COWORK_S3_BUCKET; required with an endpoint
   region: ""                          # COWORK_S3_REGION, set only when non-empty; empty asks the server
@@ -1116,8 +1156,8 @@ ingress:                              # per host: /api/ and /auth/ (Prefix) to t
     - host: cowork.example.com        # example; the paths are the chart's, a host has none of its own
   tls: []
 backend:
-  replicaCount: 1                     # every pod migrates in its init container; they serialise on an advisory lock
-  image:                              # the migrate init container runs the same image
+  replicaCount: 1                     # in onStart mode every pod migrates in its init container; they serialise on an advisory lock
+  image:                              # the migrate init container and the migration Job run the same image
     repository: guidedtraffic/cowork-backend
     pullPolicy: IfNotPresent
     tag: ""                           # default: the chart appVersion
@@ -1126,9 +1166,9 @@ backend:
     type: ClusterIP
     port: 8080
   config:
-    migrateOnStart: true              # the migrate init container; false: nothing migrates — run `cowork migrate` yourself
-    logLevel: info                    # COWORK_LOG_LEVEL, also for the init container
-    logFormat: json                   # COWORK_LOG_FORMAT, also for the init container
+    migrateOnStart: true              # read in onStart mode: the migrate init container; false: nothing migrates — run `cowork migrate` yourself
+    logLevel: info                    # COWORK_LOG_LEVEL, also for the init container and the Job
+    logFormat: json                   # COWORK_LOG_FORMAT, also for the init container and the Job
     shutdownTimeout: 15s              # COWORK_SHUTDOWN_TIMEOUT; keep below terminationGracePeriodSeconds
     baseURL: ""                       # COWORK_BASE_URL, set only when non-empty: the origin the browser shows; required with localAdmin or auth.oidc.issuer
     trustedProxies: ""                # COWORK_TRUSTED_PROXIES, set only when non-empty: the Ingress controller's networks, comma-separated CIDRs
@@ -1151,19 +1191,19 @@ backend:
     fsGroup: 65532
     seccompProfile:
       type: RuntimeDefault
-  securityContext:                    # the binary writes nothing to disk; the init container has the same
+  securityContext:                    # the binary writes nothing to disk; the init container and the Job have the same
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: true
     capabilities:
       drop: [ALL]
-  resources:                          # the init container has the same
+  resources:                          # the init container and the Job have the same
     limits:
       memory: 256Mi
     requests:
       cpu: 50m
       memory: 128Mi
   probes:
-    startup:                          # /healthz; the migration ran before, in the init container
+    startup:                          # /healthz; the migration ran before, in the init container or the Job
       periodSeconds: 5
       failureThreshold: 36
     liveness:                         # /healthz
@@ -1217,9 +1257,14 @@ frontend:
 ```
 
 Rendering fails, naming the value, without `database.existingSecret` or `database.url`;
-without `database.owner.existingSecret` or `database.owner.url` while
-`backend.config.migrateOnStart` is `true`; without `session.existingSecret`; with a
-`storage.endpoint` but no `storage.bucket` or no `storage.existingSecret`; with one of
+without `database.owner.existingSecret` or `database.owner.url` while the release migrates —
+`backend.config.migrateOnStart` `true` in `onStart` mode, or `migrations.mode: job`; in job mode
+with `database.url`, `database.owner.url` or the inline local administrator instead of their
+`existingSecret`; with a `migrations.mode` other than `onStart` and `job`; with a database role's
+`keys.url` empty and no key for its host, name, user or password, or with its
+`existingConfigMap` beside a URL; without `session.existingSecret`; with a
+`storage.endpoint` or a `storage.existingConfigMap` but no bucket or no
+`storage.existingSecret`; with one of
 `localAdmin.username` and `localAdmin.password` alone, or a local administrator without
 `backend.config.baseURL`; with an `auth.oidc.issuer` but no `backend.config.baseURL`, no client
 id (`auth.oidc.clientId`, or `auth.oidc.keys.clientId` with the Secret) or no
@@ -1236,12 +1281,26 @@ The modes that change what is exposed:
   `database.owner.url` are for throw-away installations: each is stored in plain text in the
   Helm release Secret and returned by `helm get values`, and the chart's notes warn for each.
   The owner URL is the worse one to inline — its role can switch row-level security off.
-- **The owner credential reaches the `migrate` init container only.** The serving container
-  gets the runtime URL and `COWORK_MIGRATE_ON_START=false`; never add the owner URL to
-  `backend.extraEnv`. With `migrateOnStart: false` the chart needs no owner credential and
+- **The owner credential reaches the migration run only** — the `migrate` init container, or in
+  job mode the migration Job. The serving container gets the runtime role's connection and
+  `COWORK_MIGRATE_ON_START=false`; never add the owner URL to `backend.extraEnv`. With
+  `migrateOnStart: false` in `onStart` mode the chart needs no owner credential and
   renders no owner Secret — an inline `database.owner.url` still stays in the release values,
   readable with `helm get values`, so leave it empty — and nothing migrates: the backend
   refuses to start until `cowork migrate` has run.
+- **`migrations.mode: job`** runs the migrations and then the bootstrap in the Helm hook Job
+  `<fullname>-migrate` before every install and upgrade; a failed Job fails the release before a
+  new pod starts. The Job runs before the release's own Secrets exist, so it takes
+  `existingSecret` references only. Besides the two roles' connections it holds the local
+  administrator's Secret and, with an `auth.oidc.adminGroup`, the issuer and that group — never the
+  identity provider's client secret, the server key or the storage key
+  ([job mode](docs/operations/installation.md#job-mode)).
+- **A database role as components.** With its `keys.url` empty, a role's Secret is read key by
+  key — the user and the password always from the Secret, the host, port, name and sslmode from
+  `existingConfigMap` when one is named — and the backend composes the URL; a named key a Secret or
+  ConfigMap lacks stops the pod rather than falling back. The chart mounts no authority for the
+  database's certificate, so `sslmode` can be `require` but not `verify-full` against a private
+  authority ([the Secrets](docs/operations/installation.md#the-secrets)).
 - **The server key has no inline path.** One Secret gives every replica the same key;
   rotating it invalidates the cursors clients hold and ends each session of the identity provider
   that holds a refresh token at its next refresh.
@@ -1272,8 +1331,9 @@ The modes that change what is exposed:
   to the backend, so the controller's body limit and read timeout must sit above the backend's or
   it answers the `413` and `504` itself, as its own page; the chart does not know the controller
   and prints the figures in its notes ([expose it](docs/operations/installation.md#expose-it)).
-- **The storage key comes from a Secret only**; endpoint, bucket and region are plain values.
-  Without `storage.endpoint` the backend runs without object storage and refuses uploads.
+- **The storage key comes from a Secret only**; endpoint, bucket, region and path style are plain
+  values or, with `storage.existingConfigMap`, a ConfigMap's. Without `storage.endpoint` and
+  without the ConfigMap the backend runs without object storage and refuses uploads.
 - **`0` in `backend.config`** switches a backend limit off, and the chart's notes then ask the
   Ingress controller for no limit either — `maxJsonBody: 0` for no body limit, `requestTimeout: 0`
   for an hour's read timeout. No production values file should carry one
@@ -1292,6 +1352,7 @@ make lint cyclo gosec vuln
 make dev-up               # what the integration tier needs: PostgreSQL, MinIO and Dex (dex-up and dex-down alone)
 make test test-integration
 make frontend-lint frontend-test-coverage frontend-build
+make helm-lint helm-template examples-lint   # the chart with every ci/ values file; deploy/examples/ against the operators' CRD schemas
 make docker-build e2e     # the end-to-end suite in Chromium and WebKit against both images (make e2e-browsers once)
 make build                # bin/cowork and frontend/dist/frontend/browser
 make build-mcp            # bin/cowork-mcp; GOOS= GOARCH= cross-compile

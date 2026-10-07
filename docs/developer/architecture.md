@@ -54,15 +54,18 @@ the person's token, like a script — no path to the database, nothing the API d
 
 [`backend/cmd/cowork/main.go`](../../backend/cmd/cowork/main.go), `runServe`:
 
-1. `config.Load(os.LookupEnv)` reads and validates every `COWORK_*` variable, then
-   `requireForServe` adds what only `serve` needs: `COWORK_SESSION_KEY`, and
-   `COWORK_DATABASE_OWNER_URL` while `COWORK_MIGRATE_ON_START` is true. `config.Load` reports
+1. `config.Load(os.LookupEnv)` reads and validates every `COWORK_*` variable — a database role's
+   components composed into its URL in [`config/database.go`](../../backend/internal/config/database.go),
+   so everything after reads `DatabaseURL` and `DatabaseOwnerURL` whichever way they came —, then
+   `requireForServe` adds what only `serve` needs: `COWORK_SESSION_KEY`, the owner role's
+   connection while `COWORK_MIGRATE_ON_START` is true, and with an issuer the client's id and
+   secret (`OIDC.RequireClient`). `config.Load` reports
    all of its problems together, `requireForServe`'s follow once `Load` passes, and the process
    exits 1 before anything else happens; a secret's value is never in the message.
 2. The logger is built from `COWORK_LOG_LEVEL` and `COWORK_LOG_FORMAT` (`log/slog`, JSON by
    default); `SIGINT`/`SIGTERM` are bound to the context.
 3. If `COWORK_MIGRATE_ON_START` is true (the default; the chart sets it false and migrates in an
-   init container): `store.Migrate` runs as the owner role, with the runtime role's name from
+   init container or a Job): `store.Migrate` runs as the owner role, with the runtime role's name from
    `COWORK_DATABASE_URL` for the grants ([data-access.md](data-access.md#two-database-roles)).
    A schema ahead of the binary is logged and left alone; a failure ends the process.
 4. `store.Open` opens the runtime role's pool on `COWORK_DATABASE_URL` and pings it; `/readyz`
@@ -105,9 +108,13 @@ the person's token, like a script — no path to the database, nothing the API d
     in-flight requests for up to `COWORK_SHUTDOWN_TIMEOUT`, then the pool closes and the process
     exits 0 — or 1, logging `server stopped with error`, when the drain outlasts the timeout.
 
-`cowork migrate` is the configuration (with `COWORK_DATABASE_OWNER_URL` required instead of
-`requireForServe`), the logger and step 3 alone; it is what the chart's `migrate` init container
-runs. It discovers no issuer: the init container never reaches the identity provider.
+`cowork migrate` is the configuration (with the owner role's connection required instead of
+`requireForServe`), the logger and step 3 — and, with `COWORK_MIGRATE_BOOTSTRAP=true`, step 7's
+bootstrap after it, on a runtime-role pool of its own that `bootstrapAfterMigration` opens and
+closes ([ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)
+D4). The chart's `migrate` init container runs it without the switch, the migration Job of
+`migrations.mode: job` with it. It discovers no issuer: neither ever reaches the identity provider,
+and the Job reads the issuer and the administrator group without the client secret.
 
 ## Backend request path
 

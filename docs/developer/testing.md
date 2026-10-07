@@ -69,10 +69,23 @@ The lints run in this tier, without a database:
 
 The `run(ctx, args, lookup, stdout, stderr)` tests in `backend/cmd/cowork` cover the command
 dispatch and the configuration errors without a database: `migrate` without
-`COWORK_DATABASE_URL` or without `COWORK_DATABASE_OWNER_URL`, `serve` without the database URL or
-— while it migrates on start — without the owner URL, and with a local administrator's
+the runtime role's connection or without the owner role's, `serve` without the database's or
+— while it migrates on start — without the owner's, and with a local administrator's
 username but no password or the other way round (`TestServeRefusesAHalfConfiguredLocalAdministrator`),
-each exit 1 naming the variable; an unparsable URL exits 1 with "migration failed".
+each exit 1 naming the variables; `serve` without the identity provider's client id and secret,
+which `migrate` reads the administrator group without
+(`TestTheIdentityProvidersClientIsServesRequirementAlone`), and `migrate` with the owner as
+components (`TestMigrateTakesTheOwnerAsComponents`); an unparsable URL exits 1 with "migration
+failed", before any network.
+
+[`config/database_test.go`](../../backend/internal/config/database_test.go) holds the composition of
+a database role's components ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
+D4): the composed URL is read back with pgx's own `pgconn.ParseConfig`, and every part — a password
+with `@`, `:`, `/`, `%`, `?`, `#`, `&`, `=`, `+`, a space and brackets, a user and a name with
+reserved characters, an IPv6 host — comes back as it was given; the refusals name the variables and
+never quote the password or a URL. `backend/tools/crdschema` has its own tests: one schema per served
+version, nested objects closed, the root, a map, an object that keeps unknown fields and the
+branches of `anyOf` left open.
 
 The unit tests of the login's pieces: [`password_test.go`](../../backend/internal/auth/password_test.go)
 (the recorded parameters, the salts, verification by the parameters a hash records, the refusal of a
@@ -292,6 +305,7 @@ generated types the server encodes, and `TestATurnIsHeldToTheDocument` in
 | File | What it proves |
 |---|---|
 | [`migrate_test.go`](../../backend/test/integration/migrate_test.go) | A fresh database reaches the embedded version, a second run applies nothing, the runtime role reads the version; PostgreSQL 18 or newer; a schema ahead of the binary is served; tenant ids are UUIDv7; migration 17 ranks every project's open tickets in number order and restores the force it lifts (`TestRankMigrationKeepsNumberOrder`, on a database of its own that `migrateTo` brings to version 16 first); migrations 18 and 19 backfill the three progress stages, `done_from` and `done_by_hand` on the tickets a release before them left, derive the parents' new stages a level at a time, grant the new columns and restore the force (`TestStagesMigrationBackfill`, from version 17); migration 37 lets the capability sets of the tokens and of the chat take `set-horizon` beside `override-urgency`, rewrites no row and still refuses a name outside the catalogue (`TestTheCapabilityMigrationTakesBothNamesAndRewritesNothing`, from version 36 to 37); migration 38 rewrites every `override-urgency` of those sets to `set-horizon`, each name once in the order first named — a revoked token's too —, and a saved filter's `urgency` to `horizon`, a horizon already there winning, moves no version and no time, leaves both checks taking the old name — release 0.5 writes it after a rollback — and refusing one outside the catalogue, and restores the force it lifts (`TestTheContractMigrationRewritesTheNamesBefore`, from version 37 to 38); migration 39 changes no saved filter and lets an administrator of the tenant unshare and delete another person's shared one, which version 38 refused, never one that is not shared (`TestTheModerationMigrationWidensTheFilterPoliciesAndChangesNoRow`, from version 38); migration 40 rewrites again what 0.5 stores after a rollback — `override-urgency` beside `set-horizon` in the tokens' and the chat's sets, each name once in the order first named, a revoked token's too, and a saved filter's `urgency` to `horizon`, a horizon already there winning, a shared filter's through the moderation guard of migration 39 —, moves no version and no time, and then both checks refuse the old name with SQLSTATE `23514`, take every name of `auth.AllCapabilities` and refuse one outside the catalogue, and restores the force it lifts (`TestTheNarrowingMigrationRewritesAgainAndRefusesTheOldName`, from version 39) |
+| [`command_test.go`](../../backend/test/integration/command_test.go) | The binary itself, built with `go build` and run with exactly the environment a container has, against a database of its own that no migration has touched, both roles given as components ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D4): `cowork migrate` with `COWORK_MIGRATE_BOOTSTRAP=true`, as the chart's migration Job runs it, leaves the schema current and the bootstrap done — the local administrator, the bootstrap tenant with its grant and the administrator group's mapping, no client secret given —, a second run changes and records nothing, and a run without the switch, as the init container's, leaves the administrator active (`TestMigrateInJobModeLeavesTheBootstrapDone`, [ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md) D4); `cowork serve` exits 1 with `pending migrations: 1` on a schema one version behind, before it listens, and `cowork migrate` then applies that one (`TestServeRefusesAStaleSchema`, D3) |
 | [`store_test.go`](../../backend/test/integration/store_test.go) | The runtime role check; an unfiltered query under tenant A sees nothing of B in any tenant-bound table; the context dies with its transaction; the wrappers; the append-only audit record; `Mutate`'s acts, rollbacks and idempotency, concurrent duplicates included; the expiry job and its lock; the token lookup, refusal bound and last-used date; an act's token name beside its id, never on a system actor's act in the request |
 | [`api_core_test.go`](../../backend/test/integration/api_core_test.go) | Unauthenticated meta routes, unknown routes and methods, authentication and the agent header, one tenant's token in another, `/me` and tokens, tenant settings, the audit view, the body limit, cursors, validation |
 | [`api_boundary_test.go`](../../backend/test/integration/api_boundary_test.go) | Every tenant route refuses another tenant's token exactly like an unknown tenant (`TestEveryTenantRouteRefusesAnotherTenantLikeNoTenant`); the routes come from a walk over the document (`tenantRoutes`), shared with the session test below, so the account routes are covered the day they exist; `POST /tenants` has no tenant in its path and is tested by `TestOnlyAGlobalAdministratorCreatesATenant` |
@@ -510,7 +524,17 @@ stay manual.
 each `ci/*-values.yaml`. The default values name no database URL, no owner URL and no server-key
 Secret, and the helpers `fail` on each — `helm lint` reports them as `[INFO]`, `helm template`
 fails on the first. That is why the template target runs only with the `ci/` files, each of
-which sets all three.
+which sets all three. The two migration modes each have a file
+([ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)
+D5): `ci/components-values.yaml` names `onStart` and reads both database roles as components with a
+ConfigMap and the storage from a ConfigMap; `ci/migrations-job-values.yaml` renders the Job with the
+owner as the components of a Secret alone. What these targets do not show — that a shape fails, and
+that a change leaves the manifests of the existing files as they were — is checked by hand: render
+each `ci/` file with the chart before and after and compare, once with the new `values.yaml` and
+once with the previous release's in its place, as `helm upgrade --reuse-values` has it
+([installation.md](../operations/installation.md#upgrade)). `make examples-lint` checks the example
+manifests of `deploy/examples/` against the operators' CRD schemas
+([build-test-lint.md](build-test-lint.md#targets)).
 
 ## Environment variables the suites read
 

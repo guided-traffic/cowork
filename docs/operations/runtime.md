@@ -10,16 +10,19 @@ logs. The variables named here are explained one by one in
 
 `cowork serve` is the container command. In order:
 
-1. **Configuration.** Every `COWORK_*` variable is read. Invalid values and a missing
-   `COWORK_DATABASE_URL` end the process with exit code 1 and one message that lists them
-   all; `serve`'s own requirements — `COWORK_SESSION_KEY`, and `COWORK_DATABASE_OWNER_URL`
-   while `COWORK_MIGRATE_ON_START` is `true` — are listed the same way once the rest is valid.
+1. **Configuration.** Every `COWORK_*` variable is read. Invalid values and a runtime role
+   given neither as `COWORK_DATABASE_URL` nor as its components end the process with exit code 1
+   and one message that lists them all; the components are composed into the URL here
+   ([installation.md](installation.md#the-secrets)). `serve`'s own requirements —
+   `COWORK_SESSION_KEY`, the owner role's connection while `COWORK_MIGRATE_ON_START` is `true`,
+   and with `COWORK_OIDC_ISSUER` the client's `COWORK_OIDC_CLIENT_ID` and
+   `COWORK_OIDC_CLIENT_SECRET` — are listed the same way once the rest is valid.
    These messages go to stderr as `cowork: …`, before the log exists. They name the variable
-   and quote a rejected setting such as a size or a duration — never the value of a URL, a key
-   or a secret.
+   and quote a rejected setting such as a size, a duration or a port — never the value of a URL,
+   a key, a password or a secret.
 2. **The migration run**, unless `COWORK_MIGRATE_ON_START=false`; then the log says
-   `migrations skipped on start`. The chart always sets `false`: its pods migrate in an init
-   container before the server starts. See below.
+   `migrations skipped on start`. The chart always sets `false`: the migration runs before the
+   server starts, in an init container of the pod or in the migration Job. See below.
 3. **The connection pool** is opened as the runtime role and pinged. A database that cannot
    be reached ends the process with exit code 1; the pod restarts and tries again, which is the
    intended behaviour while a database is still coming up.
@@ -50,7 +53,9 @@ logs. The variables named here are explained one by one in
    advisory lock that makes replicas wait for each other
    ([installation.md](installation.md#the-local-administrator)). With neither variable set it
    deactivates an account it kept before and otherwise does nothing; a failure ends the process
-   with `bootstrap failed` and exit code 1.
+   with `bootstrap failed` and exit code 1. In the chart's job mode the migration Job has run the
+   same synchronisation before the pod started, and the start finds it in step
+   ([below](#the-migration-run)).
 7. **The event listener** starts: one connection of its own, outside the pool, listening on
    the channel `cowork_events`; it reconnects by itself when the connection drops
    ([the event stream](#the-event-stream)).
@@ -83,17 +88,24 @@ no setting for it yet.
 
 The schema lives in the binary as numbered SQL files, forward only. A run applies every file
 newer than the version recorded in the `schema_migrations` table, each file in one
-transaction, as the **owner role** of `COWORK_DATABASE_OWNER_URL`. The runtime role — the user
-named in `COWORK_DATABASE_URL` — receives what each file grants it, and is checked before and
-after the run. Several runs at once take a PostgreSQL advisory lock in turn; the first applies,
-the rest log `database schema is current` with `applied=0`.
+transaction, as the **owner role** of `COWORK_DATABASE_OWNER_URL` (or of its components). The
+runtime role — the user of `COWORK_DATABASE_URL` or `COWORK_DATABASE_USER` — receives what each file
+grants it, and is checked before and after the run. Several runs at once take a PostgreSQL advisory
+lock in turn; the first applies, the rest log `database schema is current` with `applied=0`.
 
 Where a run happens:
 
-- **In the chart:** the `migrate` init container of every backend pod runs `cowork migrate`;
-  the server container starts after it succeeded and never migrates
-  ([installation.md](installation.md#how-the-schema-is-migrated)).
-- **`cowork migrate`**, run by hand or by a Job you write, with both URLs — what an
+- **In the chart, `migrations.mode: onStart`** (the default): the `migrate` init container of every
+  backend pod runs `cowork migrate`; the server container starts after it succeeded and never
+  migrates ([installation.md](installation.md#how-the-schema-is-migrated)).
+- **In the chart, `migrations.mode: job`:** the Helm hook Job `<fullname>-migrate` runs `cowork
+  migrate` with `COWORK_MIGRATE_BOOTSTRAP=true` before every install and upgrade: after the schema
+  step it opens a pool of the runtime role and runs the bootstrap of `cowork serve` — under the
+  bootstrap's own advisory lock, the one the pods take — and logs `the bootstrap ran after the
+  migration` ([installation.md](installation.md#job-mode)). Without the variable `cowork migrate`
+  never touches the bootstrap, which is why the init container, given no administrator, deactivates
+  none.
+- **`cowork migrate`**, run by hand or by a Job you write, with both roles' connections — what an
   installation with `backend.config.migrateOnStart: false` has to do before the pods start.
 - **`cowork serve` itself**, when `COWORK_MIGRATE_ON_START=true` and the owner URL is set —
   `make run` does this. A serving process that holds the owner credential keeps row-level
@@ -129,7 +141,7 @@ is not an error: the run applies nothing and logs
 
 | Probe | Path | Answers | The chart's default |
 |---|---|---|---|
-| startup | `/healthz` | 200 as soon as the listener is open. In the chart the migration ran before, in the init container, so this covers connecting and the database check | every 5 s, up to 36 failures — three minutes |
+| startup | `/healthz` | 200 as soon as the listener is open. In the chart the migration ran before, in the init container or the Job, so this covers connecting and the database check | every 5 s, up to 36 failures — three minutes |
 | liveness | `/healthz` | 200 while the process serves; says nothing about the database | every 10 s |
 | readiness | `/readyz` | 200 when a ping on the connection pool succeeds; otherwise 503 `not_ready` with the detail `the database does not answer` — the ping's error goes to the log (`not ready`), never into the body | every 10 s |
 
@@ -169,7 +181,8 @@ an alert or a look:
 | `token refused` | info | a presented token was expired, revoked, or — its person one of the identity provider's — outside the provider's gate, of another issuer than the configured one, or judged by groups older than `COWORK_OIDC_GROUPS_MAX_AGE` (`not_allowed`); the line names the token id and the reason |
 | the identity provider's lines | info, warn, error | discovery at start, failed logins, the groups refresh, the token gate ([below](#the-login-through-the-identity-provider)) |
 | `client addresses are read through trusted proxies` | info | at start, when `COWORK_TRUSTED_PROXIES` is set; the line lists the networks as parsed |
-| `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
+| `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something — or the migration Job's in job mode; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
+| `the bootstrap ran after the migration` | info | in the migration Job's log: `COWORK_MIGRATE_BOOTSTRAP` was `true` and the bootstrap succeeded after the schema step |
 | `a stored password hash cannot be verified` | error | an account's hash is damaged or foreign; the login answers its person like a wrong password, and the line carries the request id |
 | `job removed expired rows`, `job failed` | info, error | the hourly jobs ([above](#the-backend)) |
 | `ticket purged` | info | the purge job removed a ticket deleted thirty days ago; the line names its key and how many attachments it had |
