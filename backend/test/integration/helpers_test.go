@@ -174,8 +174,14 @@ func seedEveryTenantTable(t *testing.T, w world) {
 			VALUES ($1, $2, $3, $3, 30, '2026-01-01') RETURNING id`, s.tenant, first, s.person).Scan(&entry))
 		require.NoError(t, f.Exec(ctx, `INSERT INTO time_entry_revisions (tenant_id, entry_id, minutes, day, note, edited_by)
 			VALUES ($1, $2, 15, '2026-01-01', '', $3)`, s.tenant, entry, s.person))
-		require.NoError(t, f.Exec(ctx, `INSERT INTO attachments (tenant_id, ticket_id, file_name, size, sha256, content_type, uploaded_by)
-			VALUES ($1, $2, 'seed.txt', 0, sha256(''::bytea), 'text/plain; charset=utf-8', $3)`, s.tenant, first, s.person))
+		var attachment uuid.UUID
+		require.NoError(t, f.QueryRow(ctx, `INSERT INTO attachments (tenant_id, ticket_id, file_name, size, sha256, content_type, uploaded_by)
+			VALUES ($1, $2, 'seed.txt', 0, sha256(''::bytea), 'text/plain; charset=utf-8', $3) RETURNING id`,
+			s.tenant, first, s.person).Scan(&attachment))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO consistency_checks (id, tenant_id, checked_at, dangling, accepted, orphans, orphan_bytes)
+			VALUES ($1, $2, now(), 0, 1, 0, 0) ON CONFLICT (tenant_id) DO NOTHING`, uuid.Must(uuid.NewV7()), s.tenant))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO consistency_acceptances (tenant_id, attachment_id, accepted_by)
+			VALUES ($1, $2, $3)`, s.tenant, attachment, s.person))
 		require.NoError(t, f.Exec(ctx, `INSERT INTO project_repositories (tenant_id, project_id, identity, remote)
 			VALUES ($1, $2, 'example.org/seed/repo', 'git@example.org:seed/repo.git')`, s.tenant, s.project))
 		_, tokenID, err := f.Token(ctx, fixture.TokenSpec{UserID: s.person})
