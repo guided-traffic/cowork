@@ -4,11 +4,11 @@ How the backend reaches PostgreSQL: two roles, the transaction wrappers, the set
 policies read, the visibility predicates, the deletion filter and the lints that hold every query
 to them, the one place SQL is built at run time, the dashboard's queries, the advisory locks, the
 background jobs, the deletion and the purge of a ticket, the notifications an act writes, GitHub's
-deliveries and the publication of acts. The package is [`backend/internal/store/`](../../backend/internal/store/); the decisions
+deliveries, the consistency check's tables and the publication of acts. The package is [`backend/internal/store/`](../../backend/internal/store/); the decisions
 are [ADR 0027] (the wrappers), [ADR 0021] (row-level security, the roles), [ADR 0026] (the
 audit record), [ADR 0034] D4 with [ADR 0065] D4 (the visibility predicate), [ADR 0024] (deletion),
 [ADR 0031] (the sessions) and [ADR 0030] (the memberships the identity provider derives). Read
-against the tree on 2026-10-05.
+against the tree on 2026-10-06.
 
 ## Two database roles
 
@@ -47,7 +47,7 @@ on the columns a route may change — table-wide only on `ticket_counters`, `ide
 and `login_locks` — and `DELETE` only on `ticket_links`, `ticket_interest`,
 `project_repositories`, `idempotency_keys`, `sessions`, `login_attempts`, `login_locks`,
 `memberships`, `group_mappings`, `project_access`, `saved_filters` — to its owner, and a shared one
-to an administrator of the tenant, by a restrictive policy — and `notifications` — to its retention job and the purge alone —, and, since migration 32,
+to an administrator of the tenant, by a restrictive policy —, `notifications` — to its retention job and the purge alone — and `consistency_acceptances` — to the consistency check's job alone ([below](#the-consistency-checks-tables)) —, and, since migration 32,
 on `tickets`, `questions`, `comments`, `comment_revisions`, `attachments`, `time_entries` and
 `time_entry_revisions`, which restrictive policies hold to the purge of a deleted ticket
 ([below](#deletion-and-the-purge)) — and, since migration 41, on `github_webhook_secrets` (an
@@ -98,8 +98,10 @@ last-used date and the idle clock, bookkeeping and not acts, [ADR 0035] D2,
 [ADR 0031] D3), the login's own transactions ([below](#the-login-and-the-sessions)), the identity
 provider's ([below](#the-identity-providers-transactions)), `FindPerson` (the person lookup of a
 member's addition, which sets `app.person_lookup`), `CheckRuntimeRole`, `SchemaState`, `Ping`, and
-`Listen`; and GitHub's webhook's `WebhookSecret` and `ReceiveDelivery`
-([below](#githubs-deliveries)).
+`Listen`; GitHub's webhook's `WebhookSecret` and `ReceiveDelivery`
+([below](#githubs-deliveries)); and `jobRead` — a read-only transaction that names a job and no
+tenant, through which `LastConsistencyCheck` and a scrape read the consistency check's results of
+every tenant ([below](#the-consistency-checks-tables)).
 
 `Open` registers `timestamptz` to scan in UTC and a tracer that logs a query slower than
 `DefaultSlowQuery` (500 ms) by its sqlc name, never its arguments, and counts a statement that
@@ -121,7 +123,7 @@ wrapper's transaction; an empty value leaves a setting unset.
 | `app.tenant_id` | the wrapper's tenant | `app_tenant_id()`: every `tenant_isolation` policy, the policies of `tenants`, `memberships`, `users`, `audit_events`, the visibility functions |
 | `app.user_id` | `Caller.UserID` | `app_user_id()`: the person's own user row, memberships, tenants, tokens, idempotency keys and installation-level audit rows; the visibility functions |
 | `app.restricted_project_id` | `Caller.RestrictedProjectID` | `app_restricted_project_id()` in `app_project_visible` |
-| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`); `github-webhook` for GitHub's webhook's transactions (`WebhookSecret`, `ReceiveDelivery`) | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30, 32 and 42 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry`, `ticket-purge`, `github-webhook` and `github-delivery-expiry` for the rows those system actors keep (`app_job()`) |
+| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`); `github-webhook` for GitHub's webhook's transactions (`WebhookSecret`, `ReceiveDelivery`); `consistency-check` for its job, and for the read-only transactions of `jobRead` that read its results across the tenants — the schedule's and a scrape's | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30, 32, 41 and 42 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry`, `ticket-purge`, `github-webhook`, `github-delivery-expiry` and `consistency-check` for the rows those system actors keep (`app_job()`) |
 | `app.token_hash` | `LookupToken`, the hex SHA-256 of the presented token | the `tokens` policy admits exactly that row |
 | `app.session_hash` | `LookupSession`, and `Caller.SessionHash` in every transaction of a session's request: the hex SHA-256 of the presented cookie; in the identity provider's transactions the session a login replaces or a refresh holds | `app_session_hash()`: the `sessions` policies admit exactly that row — to read it, to end it |
 | `app.person_lookup` | `FindPerson` only: the address or username an administrator adds a member by | `app_person_lookup()`: the `users` policy admits the persons it names to an administrator of the current tenant, and no other person of the installation (migration 20) |
@@ -292,6 +294,7 @@ the one on the ticket the query reads.
 | `ProjectKeyTaken` | a key's existence, unique in the tenant whether or not the caller sees its project |
 | `GetRepositoryBinding` | a binding's existence: a repository and sub-directory are unique in the tenant whether or not the caller sees the project that holds them; the handler names the project only when the caller sees it. The other queries of `project_repositories` join `projects` and call `app_project_visible` |
 | `TenantAttachmentUsage` | the bytes of every attachment of the tenant, for the quota and its administrators: a file counts whether or not the caller sees its ticket; it reads no ticket, and names it anyway |
+| `ListCheckedAttachments` | the consistency check's list of the missing files, every one of the tenant whose bytes are missing, for the tenant's administrators, who see every ticket; read by the job, which has no person |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket`, `ListRankKeys` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice, and a rebalancing spreads every key, so every ticket keeps its place ([domain.md](domain.md#rank)) |
 | `GetScoreInputs` | the inputs of the score of a ticket the caller read through the predicate in this transaction, read again after the write that changed one ([domain.md](domain.md#the-score)) |
 | `ResolveTicketKeys` | GitHub's webhook's system actor, who has no person, resolves the keys a signed delivery names; whoever reads a link is held to the ticket's predicate (`ListTicketPullRequests`) |
@@ -317,7 +320,8 @@ security. `TestEveryReadOfTicketsCarriesTheDeletionFilter` in
 `tickets` to the filter once per ticket it reads, unless its block names `-- deletion: exempt
 (<why>)`: the bin's two queries and the purge's, which read deleted tickets only; `GetWrittenTicket`,
 the writer's reread (its joined tickets keep the filter); `TicketFacts`, because a deletion, a
-restoration and a purge are published too; `GetTicketRank` and `GetScoreInputs`, a ticket read
+restoration and a purge are published too; `ListCheckedAttachments`, the consistency check's list, in
+which a deleted ticket's file has its row and its object until the purge; `GetTicketRank` and `GetScoreInputs`, a ticket read
 through the filter in the same transaction; and the rank keys of `LastRank`, `ListUnrankedTickets`,
 `NextRankedTicket`, `PreviousRankedTicket` and `ListRankKeys`, because a deleted ticket keeps its
 key, which its restoration brings back — a rebalancing spreads it with the others —, and no key may
@@ -509,13 +513,20 @@ notifications read more than `ReadRetention`, ninety days, ago, an `expired` act
 an unread one stays) and the delivery expiry, key `7` (`ExpireGitHubDeliveries`: GitHub's deliveries
 past their `DeliveryRetention`, a day, an `expired` act on `github_deliveries`) and the ticket purge,
 key `6` (`PurgeDeletedTickets`,
-[below](#deletion-and-the-purge)), the one job that works in the tenants: it writes each tenant's
+[below](#deletion-and-the-purge)), which works in the tenants: it writes each tenant's
 acts there through `Writer.inTenant`, which binds the job's transaction to the tenant for the work
-and its acts and unbinds it after; `RunJob` commits when acts were written that way, too.
+and its acts and unbinds it after; `RunJob` commits when acts were written that way, too. The
+consistency check, key `8` (`CheckConsistency`, `system:consistency-check`,
+[below](#the-consistency-checks-tables)), works in the tenants the same way, and records one
+installation-level act after them; it is not hourly: `runJobs` asks every hour whether it is due
+(`LastConsistencyCheck`, `ConsistencyCheckDue` — no result yet, or the last run before the latest
+03:00 UTC) and runs it then, and never without object storage. Each job holds a key of its own; a
+unit test reads every `RunJob` call of the backend and refuses a key two jobs share.
 `runJobs` in [`main.go`](../../backend/cmd/cowork/main.go)
 runs them at start and then every hour, on every replica; each lock lets one of them work. Its log
 lines name a job as the metrics do, by its system actor's name: `idempotency-expiry`,
-`session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge`. The
+`session-expiry`, `login-expiry`, `notification-expiry`, `github-delivery-expiry`, `ticket-purge`,
+`consistency-check`. The
 bootstrap of [`internal/bootstrap`](../../backend/internal/bootstrap/bootstrap.go) is a `RunJob`
 too — key `4`, `system:bootstrap` — run once at start, and retried until the lock is free
 (`bootstrap.Sync`).
@@ -567,6 +578,22 @@ A ticket is deleted into its tenant's bin and purged from it ([ADR 0024] D1–D3
 - **The job** (`PurgeDeletedTickets`, key `6`, `system:ticket-purge`) purges up to 200 tickets
   deleted longer than `PurgeAfter`, thirty days, ago, tenant by tenant; `runJobs` removes their
   objects and logs each key.
+
+## The consistency check's tables
+
+[Migration 42](../../backend/internal/store/migrations/000042_attachment_consistency.up.sql) keeps
+the check of [ADR 0059] D4 ([storage.md](storage.md#the-consistency-check)) in two tenant-bound
+tables under the canonical policy, with restrictive ones beside it:
+
+| Table | Holds | Read by | Written by |
+|---|---|---|---|
+| `consistency_checks` | one row per tenant, its latest result: the id the confirmations name, the counts, the two lists as JSON, an administrator's confirmed removal | the tenant's administrators and the job; across the tenants, in a transaction named `consistency-check` with no tenant set (`consistency_checks_counts`, the counts a scrape reads) | the job inserts and replaces the row (`SaveConsistencyCheck`, an upsert under a new id); an administrator updates the counts and the lists (`RecordOrphanRemoval`, `RecordDanglingAcceptance`) |
+| `consistency_acceptances` | an administrator's acceptance that an attachment's bytes are lost; a foreign key to `attachments` with `ON DELETE CASCADE`, so the purge's delete of the row takes it along | the tenant's administrators and the job | an administrator inserts, as themselves (`accepted_by = app_user_id()`); the job deletes those of whole attachments |
+
+The job reads every tenant with no tenant set: migration 42 adds `consistency-check` to the jobs
+`tenants_read` admits. A member's transaction reads neither table, whatever its query says. The
+grants: `SELECT, INSERT` and `UPDATE` of the result's columns on `consistency_checks`, no `DELETE`;
+`SELECT, INSERT, DELETE` on `consistency_acceptances`.
 
 ## Notifications
 

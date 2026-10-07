@@ -1,10 +1,11 @@
 # Object storage
 
 Where an attachment's bytes live and how they get there and back: the object key, the client,
-the upload flow and its limits, the type detection, the delivery headers, and the S3 server
-the tests run against. The decisions are [ADR 0016] (attachments) and [ADR 0058] (external
-storage, the chart's references); the variables are in
-[README.md, Configuration](../../README.md#configuration). Read against the tree on 2026-10-05.
+the upload flow and its limits, the type detection, the delivery headers, the consistency check
+of the bytes against their metadata, and the S3 server the tests run against. The decisions are
+[ADR 0016] (attachments), [ADR 0058] (external storage, the chart's references) and [ADR 0059]
+(the consistency check); the variables are in
+[README.md, Configuration](../../README.md#configuration). Read against the tree on 2026-10-06.
 
 ## Keys and metadata
 
@@ -25,6 +26,9 @@ the bytes leave only through the backend, so nothing signs a URL (D4).
 | `Put(ctx, key, r, size, contentType)` | stores the bytes |
 | `Get(ctx, key)` | opens the object for streaming with its size; `ErrMissing` when the bucket does not hold it |
 | `Delete(ctx, key)` | removes the object; a missing one is no error |
+| `List(ctx, prefix)` | every object whose key begins with the prefix — current versions only — with its size and last change (`Object`); takes `s3:ListBucket`, the consistency check's alone |
+| `Exists(ctx, key)` | whether the bucket holds the object, a `HEAD` |
+| `ParseKey(tenantID, key)` | the attachment id a key names under the tenant's prefix, when the key is exactly what `Key` writes; any other key names none |
 | `EnsureBucket(ctx)` | creates the bucket; only the tests call it — the operator provides the bucket ([ADR 0058] D5) |
 
 Endpoint, bucket and both keys come together or not at all (`config.Load`). Without them
@@ -115,9 +119,58 @@ deletes its attachment rows in its transaction and returns their ids; once that 
 `api.RemovePurgedObjects` deletes each object, `<tenant-id>/<attachment-id>` — an administrator's
 purge in its request, the job after its run. Removing first would leave rows that name missing
 bytes after a rollback. An object whose removal fails, or one left because no object storage is
-configured, stays in the bucket with no row naming it, and the log says which; nothing sweeps such
-objects. A deleted ticket's files stay readable to nobody — every route of the ticket is `404` —
-and stay in the bucket until the purge.
+configured, stays in the bucket with no row naming it, and the log says which; the next
+consistency check lists it as an orphan ([below](#the-consistency-check)). A deleted ticket's files
+stay readable to nobody — every route of the ticket is `404` — and stay in the bucket until the
+purge.
+
+## The consistency check
+
+The job `consistency-check` ([ADR 0059] D4, D6; [`store/consistency.go`](../../backend/internal/store/consistency.go))
+compares each tenant's attachment rows with the objects under its prefix, after a restore that
+brought the database and the bucket back from two points in time. Its schedule and its place among
+the jobs are [data-access.md](data-access.md#jobs); its tables and policies
+[data-access.md](data-access.md#the-consistency-checks-tables).
+
+```
+CheckConsistency(objects, now) ── RunJob(consistency-check, lock 7) ─┬─ ListTenantsToCheck
+                                                                     └─ per tenant, inTenant:
+   1 objects.List(<tenant-id>/)              the listing first
+   2 ListTenantAttachmentIDs                 then the rows: an upload puts its object before its row commits
+   3 judge                                   orphans: listed, no row, older than OrphanGrace; unlisted rows
+   4 objects.Exists, per unlisted row        a put after the listing passed its key is no loss
+   5 ListAcceptedAttachments, ForgetWholeAcceptances
+   6 ListCheckedAttachments (at most 1000)   the missing files' names and tickets
+   7 SaveConsistencyCheck                    the tenant's one row, under a new id
+then one installation-level act `checked`, counts per tenant id
+```
+
+- **The grace.** An object no row names is judged only when its key's UUIDv7 was made more than
+  `OrphanGrace`, an hour, before the run — a restore that rewrote the object keeps its key and with it
+  that time —, or, under a key the backend does not write, when it last changed that long ago
+  (`judge`, `young`). An object under any other key than `storage.Key`'s is an orphan: no row can
+  name it.
+- **The order.** The rows are read after the listing, so a row the read finds has its object in the
+  listing unless the object was put after the listing passed its key, which `Exists` answers. A purge
+  that committed between the listing and the read leaves its object as a short-lived orphan, which
+  the purge's own removal ends.
+- **The lists.** At most `ConsistencyListBound`, a thousand, of each; the counts are exact. The
+  missing files are listed with the ones nobody accepted first. An acceptance whose attachment is
+  whole again is forgotten (`ForgetWholeAcceptances`), so a later loss counts once more.
+- **What it removes: nothing.** A tenant administrator confirms the removal of a result's orphans
+  (`RemoveOrphanedObjects` in [`api/consistency.go`](../../backend/internal/api/consistency.go)): in
+  the confirming transaction each listed orphan is asked again whether a row names it now
+  (`ListAttachmentsAmong`) — one that does is kept —, a key outside the tenant's prefix is never
+  touched, the act `purged` is recorded with the counts, and the objects go after the commit, as an
+  administrator's purge removes its ticket's. The acceptance of the missing files
+  (`AcceptDanglingAttachments`) inserts `consistency_acceptances` rows and moves the counts; it
+  removes nothing either.
+- **Immediately.** `cowork check-consistency` ([`main.go`](../../backend/cmd/cowork/main.go)
+  `runCheckConsistency`) runs `CheckConsistency` once and prints every tenant's counts — what a
+  restore runs ([docs/operations/backups.md](../operations/backups.md)).
+
+The download of a dangling attachment answers its `404` before any of this
+([above](#download)); the check is what finds it without a reader.
 
 ## The test server
 
@@ -129,8 +182,10 @@ image the [`Makefile`](../../Makefile) pins by digest, with `server /data` as it
 them and creates a bucket of its own per run, `cowork-it-<nanoseconds>`, with `EnsureBucket`, and
 empties and removes it when the run ends (`removeBucket` in the test package, minio-go directly:
 the server never removes a bucket). The API tests run with a 1 MiB file maximum and five
-attachments per ticket. CI starts the same image
-with `make minio-up` ([ci-and-release.md](ci-and-release.md)).
+attachments per ticket. The consistency check's tests put and delete objects in that bucket directly
+and run the check with a clock two hours ahead, so that the objects they put are past the grace
+([`api_consistency_test.go`](../../backend/test/integration/api_consistency_test.go)). CI starts the
+same image with `make minio-up` ([ci-and-release.md](ci-and-release.md)).
 
 `make run` sets no `COWORK_S3_*`, so a local backend refuses uploads unless they are exported,
 and the bucket they name must exist — the server never creates it.
