@@ -18,9 +18,9 @@ shipped: the consistency check compares the listing and the rows in ordered batc
 ## Current state
 
 The daily consistency check of ADR 0059 D4 (built 2026-10-06, released in 0.10.0) reads a tenant's
-whole object listing into one slice — [`storage.List`](../../backend/internal/storage/storage.go)
+whole object listing into one slice — [`storage.List`](../../../backend/internal/storage/storage.go)
 collects every object under the prefix — and `judge` in
-[`store/consistency.go`](../../backend/internal/store/consistency.go) builds two maps over the
+[`store/consistency.go`](../../../backend/internal/store/consistency.go) builds two maps over the
 listing and the rows (`named`, `seen`), so the check's memory grows with the number of objects of
 the largest tenant: roughly 250 bytes per object (an estimate from the types, not measured). The
 chart's backend limit is 256Mi and no `GOMEMLIMIT` is set.
