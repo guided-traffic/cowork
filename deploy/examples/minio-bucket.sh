@@ -6,8 +6,9 @@
 # `make minio-up` — Chainguard's build, version 2026-09-22T19-25-18Z: the key it
 # made put, read and deleted objects in its bucket and was refused listing the
 # bucket, another bucket and the administration. The repositories of the MinIO
-# server and of mc are archived, and MinIO publishes no image of either any
-# more: no fix follows from MinIO.
+# server and of mc are archived on GitHub, and neither image can be pulled from
+# Docker Hub or quay.io any more (both checked 2026-10-06): no fix follows from
+# MinIO.
 #
 # What it makes, run by the store's administrator, for an existing MinIO or
 # the Tenant of minio-tenant.yaml: the bucket cowork, the policy

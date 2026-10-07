@@ -4,10 +4,10 @@
 # proves no more than that it parses: it has not been applied to a cluster in
 # this repository.
 #
-# The MinIO Operator's repository is archived since March 2026: v7.1.1, of
-# 2025-04-23, is its last release, and the repositories of the MinIO server and
-# of its client mc are archived as well, so no fix follows from MinIO for any of
-# them. The server image the operator defaults to, minio/minio, can no longer
+# The MinIO Operator's repository is archived on GitHub (checked on 2026-10-06):
+# v7.1.1, of 2025-04-23, is its last release, and the repositories of the MinIO
+# server and of its client mc are archived as well, so no fix follows from MinIO
+# for any of them. The server image the operator defaults to, minio/minio, can no longer
 # be pulled — Docker Hub has no such repository, and quay.io refuses it (checked
 # on 2026-10-06) —, so spec.image below names Chainguard's build, the one this
 # repository's integration tier runs (MINIO_IMAGE in the Makefile); the operator
