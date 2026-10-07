@@ -237,6 +237,8 @@ export class ProjectImport {
   protected readonly dragging = signal(false);
   protected readonly uploading = signal(false);
   protected readonly uploadRefusal = signal<ProblemView | null>(null);
+  /** The folders a drop held, which are not uploaded: a browser reads no folder as one file. */
+  protected readonly droppedFolders = signal<string[]>([]);
   protected readonly chosenBytes = computed(() =>
     this.chosen().reduce((sum, file) => sum + file.size, 0),
   );
@@ -448,13 +450,23 @@ export class ProjectImport {
     }
   }
 
+  /**
+   * Takes the files of a drop. A folder comes as an entry whose bytes cannot be read, which would
+   * fail the upload as a whole: it is left out, and the page says how to pack it.
+   */
   protected drop(event: DragEvent): void {
     event.preventDefault();
     this.dragging.set(false);
-    this.add([...(event.dataTransfer?.files ?? [])]);
+    const folders = [...(event.dataTransfer?.items ?? [])]
+      .map((item) => (item.kind === 'file' ? item.webkitGetAsEntry?.() : null))
+      .filter((entry) => entry?.isDirectory)
+      .map((entry) => entry?.name ?? '');
+    this.droppedFolders.set(folders);
+    this.add([...(event.dataTransfer?.files ?? [])].filter((file) => !folders.includes(file.name)));
   }
 
   protected pick(picker: HTMLInputElement): void {
+    this.droppedFolders.set([]);
     this.add([...(picker.files ?? [])]);
     picker.value = '';
   }

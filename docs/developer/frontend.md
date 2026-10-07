@@ -1124,7 +1124,9 @@ would refuse.
 
 **The files.** A drop zone and *Choose files*, a hidden `<input type="file" multiple>`: a `tar.gz`
 or a `zip`, or Markdown files. A file of a name already chosen takes the place of the earlier one,
-since the API takes a path once; a row's button takes a file out. *Start the dry run* sends every
+since the API takes a path once; a row's button takes a file out. A folder dropped is left out — the
+browser hands it over as an entry whose bytes cannot be read, which would fail the whole upload —,
+and the page says how to pack it. *Start the dry run* sends every
 file as a part named `file` under its own name (`ImportsService.dryRun`) and opens the job's
 address; a refusal — `413`, `400` at `/file` — shows under the files. `ImportsService` keeps the
 job the dry run answered until the page of its address asks for it once (`job`), so the report is

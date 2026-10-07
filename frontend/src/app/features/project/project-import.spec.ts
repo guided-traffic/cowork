@@ -389,6 +389,33 @@ describe('ProjectImport', () => {
       expect((el(fixture, 'import-input') as HTMLInputElement).value).toBe('');
     });
 
+    it('leaves a dropped folder out and says how to pack it', async () => {
+      const fixture = await render();
+      const folder = new File([], 'tickets');
+      const entry = (file: File, isDirectory: boolean) => ({
+        kind: 'file',
+        webkitGetAsEntry: () => ({ isDirectory, name: file.name }),
+      });
+      const readme = markdown('README.md');
+
+      debug(fixture, 'import-drop').triggerEventHandler('drop', {
+        preventDefault: () => undefined,
+        dataTransfer: {
+          files: [folder, readme],
+          items: [entry(folder, true), entry(readme, false)],
+        },
+      });
+      await settle(fixture);
+
+      expect(chosen(fixture)).toEqual(['README.md']);
+      expect(text(el(fixture, 'import-folders'))).toContain(
+        'A folder is not uploaded (tickets): pack it — tar czf tickets.tar.gz docs/tickets',
+      );
+
+      await pick(fixture, [markdown('001-a.md')]);
+      expect(el(fixture, 'import-folders')).toBeNull();
+    });
+
     it('marks the zone while files are dragged over it', async () => {
       const fixture = await render();
       const zone = debug(fixture, 'import-drop');

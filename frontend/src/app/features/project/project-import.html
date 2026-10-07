@@ -94,6 +94,14 @@
           </ul>
         }
 
+        @if (droppedFolders().length > 0) {
+          <p class="note" role="status" data-testid="import-folders">
+            A folder is not uploaded ({{ droppedFolders().join(', ') }}): pack it —
+            <code>tar czf tickets.tar.gz docs/tickets</code> — and drop the archive, or drop the
+            Markdown files it holds.
+          </p>
+        }
+
         @if (uploadRefusal(); as refusal) {
           <p class="refusal" role="alert" data-testid="import-upload-refusal">
             <strong>{{ refusal.title }}.</strong> {{ refusal.fields['file'] ?? refusal.detail }}
