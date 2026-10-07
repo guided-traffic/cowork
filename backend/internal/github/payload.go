@@ -30,6 +30,13 @@ const (
 // assignment, a label or a review request changes nothing a ticket shows.
 var readActions = map[string]bool{"opened": true, "edited": true, "synchronize": true, "reopened": true, "closed": true}
 
+// linkedAuthors are the authors whose pull requests cowork links
+// (docs/adr/0071 D4 as amended 2026-10-07), by GitHub's author_association:
+// the owner of the repository, a member of the organisation that owns it, a
+// collaborator of it. A pull request of any other author is taken and passed
+// over.
+var linkedAuthors = map[string]bool{"OWNER": true, "MEMBER": true, "COLLABORATOR": true}
+
 // The bounds of what a delivery writes into a ticket's list: a title is cut,
 // an author beyond its bound is left out. No page a payload names is kept: the
 // page of a pull request or a commit is written from the bound repository's
@@ -61,6 +68,9 @@ type PullRequest struct {
 	// State is open, closed or merged.
 	State  string
 	Author string
+	// AuthorAssociation is how GitHub relates the author to the repository:
+	// OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, FIRST_TIMER, …
+	AuthorAssociation string
 	// MergedAt is when it was merged; nil when it was not.
 	MergedAt *time.Time
 	// UpdatedAt orders the deliveries of one pull request: an older one
@@ -68,8 +78,9 @@ type PullRequest struct {
 	UpdatedAt time.Time
 }
 
-// Read reports whether the delivery's action is one cowork reads.
-func (p PullRequest) Read() bool { return readActions[p.Action] }
+// Read reports whether cowork reads the delivery: an action it reads, of a
+// pull request of an author whose pull requests it links.
+func (p PullRequest) Read() bool { return readActions[p.Action] && linkedAuthors[p.AuthorAssociation] }
 
 // Push is what cowork reads of a push delivery.
 type Push struct {
@@ -109,14 +120,15 @@ type userPayload struct {
 type pullRequestPayload struct {
 	Action      string `json:"action"`
 	PullRequest *struct {
-		Number    int64       `json:"number"`
-		Title     string      `json:"title"`
-		Body      *string     `json:"body"`
-		State     string      `json:"state"`
-		Merged    bool        `json:"merged"`
-		MergedAt  *time.Time  `json:"merged_at"`
-		UpdatedAt time.Time   `json:"updated_at"`
-		User      userPayload `json:"user"`
+		Number            int64       `json:"number"`
+		Title             string      `json:"title"`
+		Body              *string     `json:"body"`
+		State             string      `json:"state"`
+		Merged            bool        `json:"merged"`
+		MergedAt          *time.Time  `json:"merged_at"`
+		UpdatedAt         time.Time   `json:"updated_at"`
+		User              userPayload `json:"user"`
+		AuthorAssociation string      `json:"author_association"`
 	} `json:"pull_request"`
 	Repository repositoryPayload `json:"repository"`
 }
@@ -144,13 +156,14 @@ func ParsePullRequest(body []byte) (PullRequest, error) {
 		return PullRequest{}, fmt.Errorf("%w: a pull request needs its number and updated_at", ErrPayload)
 	}
 	out := PullRequest{
-		Action:     p.Action,
-		Repository: Repository(p.Repository),
-		Number:     int32(pr.Number),
-		Title:      Cut(pr.Title),
-		State:      StateOpen,
-		Author:     author(pr.User.Login),
-		UpdatedAt:  pr.UpdatedAt,
+		Action:            p.Action,
+		Repository:        Repository(p.Repository),
+		Number:            int32(pr.Number),
+		Title:             Cut(pr.Title),
+		State:             StateOpen,
+		Author:            author(pr.User.Login),
+		AuthorAssociation: pr.AuthorAssociation,
+		UpdatedAt:         pr.UpdatedAt,
 	}
 	if pr.Body != nil {
 		out.Body = *pr.Body

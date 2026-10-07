@@ -90,19 +90,27 @@ func payload(t *testing.T, name string, data any) []byte {
 	return b.Bytes()
 }
 
-// prEvent is a pull_request delivery's variable part.
+// prEvent is a pull_request delivery's variable part; its author is a member
+// of the organisation that owns the repository unless it says otherwise.
 type prEvent struct {
 	Action, Title, State, UpdatedAt string
 	Body, MergedAt                  *string
 	Number                          int
 	Merged                          bool
 	Repo, DefaultBranch             string
+	Login, AuthorAssociation        string
 }
 
 func (p prEvent) body(t *testing.T) []byte {
 	t.Helper()
 	if p.Repo == "" {
 		p.Repo = hookRepo
+	}
+	if p.Login == "" {
+		p.Login = "octocat"
+	}
+	if p.AuthorAssociation == "" {
+		p.AuthorAssociation = "MEMBER"
 	}
 	if p.DefaultBranch == "" {
 		p.DefaultBranch = "main"
@@ -328,6 +336,56 @@ func TestWhatTheWebhookDoesNotReadIsTakenAndPassedOver(t *testing.T) {
 	}
 	assert.Empty(t, e.pullRequests(t, caller{Token: e.tk.MemberA}, tk.Number))
 	assert.Zero(t, countRows(t, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND actor_system = 'system:github'`, e.A))
+}
+
+// docs/adr/0071 D4 as amended 2026-10-07: a pull request links only when
+// GitHub names its author the repository's owner, a member of the
+// organisation that owns it or a collaborator. The pull request of any other
+// author — a fork's by somebody outside the organisation, a first-time
+// contributor's —, and one whose payload names no association, is taken with
+// the same 202 and changes nothing: no link, no fact of a link the pull
+// request has, no act, nobody told. A member's pull request naming the same
+// ticket links as before.
+func TestAPullRequestOfAnAuthorOutsideTheRepositoryLinksNothing(t *testing.T) {
+	e := newWebhookEnv(t)
+	member := caller{Token: e.tk.MemberA}
+	tk := e.file(t, member, "ALPHA", task("named by a pull request"))
+	key := strings.SplitN(tk.Key, "/", 2)[1]
+	before := written(t, e.A)
+	for i, association := range []string{"CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "NONE", "MANNEQUIN"} {
+		fork := prEvent{Number: 60 + i, Title: "fix: from a fork (" + key + ")", Body: ptrTo("Cowork-Ticket: " + tk.Key),
+			Login: "contributor", AuthorAssociation: association}
+		for _, action := range []string{"opened", "edited", "synchronize", "reopened"} {
+			fork.Action = action
+			e.mustTake(t, "pull_request", fork.body(t))
+		}
+		fork.Action, fork.State, fork.Merged, fork.MergedAt = "closed", "closed", true, ptrTo("2026-10-06T09:30:00Z")
+		e.mustTake(t, "pull_request", fork.body(t))
+	}
+	without := bytes.ReplaceAll(prEvent{Action: "opened", Number: 70, Title: "x (" + key + ")"}.body(t),
+		[]byte(`"author_association": "MEMBER",`), nil)
+	require.NotContains(t, string(without), "author_association")
+	e.mustTake(t, "pull_request", without)
+	assert.Empty(t, e.pullRequests(t, member, tk.Number))
+	after := written(t, e.A)
+	assert.Equal(t, before[1:], after[1:], "no link and no act")
+	assert.Equal(t, before[0]+26, after[0], "every delivery is taken and kept")
+	assert.NotContains(t, reasonsAbout(e.inbox(t, member, ""), tk.Key), "merged")
+
+	e.mustTake(t, "pull_request", prEvent{Action: "opened", Number: 71, Title: "fix: from the team (" + key + ")",
+		UpdatedAt: "2026-10-06T08:00:00Z"}.body(t))
+	e.mustTake(t, "pull_request", prEvent{Action: "edited", Number: 71, Title: "now from outside (" + key + ")",
+		UpdatedAt: "2026-10-06T09:00:00Z", Login: "octocat", AuthorAssociation: "CONTRIBUTOR"}.body(t))
+	prs := e.pullRequests(t, member, tk.Number)
+	require.Len(t, prs, 1, "a member's pull request links")
+	assert.Equal(t, 71, prs[0].Number.MustGet())
+	assert.Equal(t, "fix: from the team ("+key+")", prs[0].Title, "a delivery of an author outside changes no fact")
+	for _, association := range []string{"OWNER", "COLLABORATOR"} {
+		other := e.file(t, member, "ALPHA", task("named by the "+association))
+		e.mustTake(t, "pull_request", prEvent{Action: "opened", Number: 80 + other.Number,
+			Title: "fix (" + strings.SplitN(other.Key, "/", 2)[1] + ")", AuthorAssociation: association}.body(t))
+		assert.Len(t, e.pullRequests(t, member, other.Number), 1, association)
+	}
 }
 
 // docs/adr/0071 D3, D4: a delivery's id must be a UUID, its type JSON and its

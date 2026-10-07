@@ -585,9 +585,12 @@ name it ([ADR 0071], [`internal/github`](../../backend/internal/github/),
 [api.md](api.md#githubs-webhook), the table [data-access.md](data-access.md#githubs-deliveries).
 
 - **Which deliveries.** `pull_request` with the action `opened`, `edited`, `synchronize`, `reopened`
-  or `closed`, and `push` whose `ref` is `refs/heads/` and the repository's `default_branch`; the
-  repository's `clone_url`, normalised as a binding is ([repositories](#repositories)), must be bound
-  by a project of the tenant — any project, any sub-directory. Every other delivery links nothing.
+  or `closed` whose `author_association` is `OWNER`, `MEMBER` or `COLLABORATOR` — the repository's
+  owner, a member of the organisation that owns it, a collaborator (`linkedAuthors`, ADR 0071 D4 as
+  made concrete 2026-10-07) —, and `push` whose `ref` is `refs/heads/` and the repository's
+  `default_branch`; the repository's `clone_url`, normalised as a binding is
+  ([repositories](#repositories)), must be bound by a project of the tenant — any project, any
+  sub-directory. Every other delivery links nothing.
 - **Which keys** ([ADR 0068] D1, D2, D5; `PullRequestKeys`, `CommitKeys`). A pull request's body is
   read for `Cowork-Ticket: <key>` trailer lines — the name without regard to case, the key full or
   short — and for lines that are a full key alone, as ADR 0068 D5 puts the full key on its first

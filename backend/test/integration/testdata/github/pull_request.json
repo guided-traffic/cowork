@@ -11,11 +11,12 @@
     "locked": false,
     "title": {{json .Title}},
     "user": {
-      "login": "octocat",
+      "login": {{json .Login}},
       "id": 21031067,
       "type": "User",
       "site_admin": false
     },
+    "author_association": {{json .AuthorAssociation}},
     "body": {{json .Body}},
     "created_at": "2026-10-05T08:00:00Z",
     "updated_at": {{json .UpdatedAt}},

@@ -48,8 +48,9 @@ type linkTarget struct {
 }
 
 // applyDelivery writes what a delivery links (docs/adr/0071 D4–D6): a pull
-// request of a read action, or a push to the default branch; every other
-// delivery changes nothing.
+// request of a read action whose author is the repository's owner, a member
+// of its organisation or a collaborator, or a push to the default branch;
+// every other delivery changes nothing.
 func applyDelivery(ctx context.Context, w *store.Writer, hook hookTenant, d delivery, now time.Time) error {
 	switch {
 	case d.pr != nil && d.pr.Read():

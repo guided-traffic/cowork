@@ -693,7 +693,8 @@ concrete:
    then `202` with no body, whatever it linked.
 
 `applyDelivery` reads a `pull_request` of the actions `opened`, `edited`, `synchronize`, `reopened`
-and `closed`, and a `push` whose `ref` is the default branch's; `boundIdentity` normalises
+and `closed` whose author is the repository's owner, a member or a collaborator (`PullRequest.Read`,
+by `author_association`), and a `push` whose `ref` is the default branch's; `boundIdentity` normalises
 `repository.clone_url` and asks `RepositoryBoundInTenant`, any project and sub-directory; the keys of
 `internal/github` resolve through `ResolveTicketKeys` (`resolveKeys`, `targetsOf`: a key of another
 tenant, of no ticket or of a deleted one passed over, each ticket once by the first place its key

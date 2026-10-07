@@ -89,11 +89,14 @@ githubWebhook:
          `application/json` (`415 unsupported_media_type` otherwise). A delivery the tenant took
          in the last twenty-four hours answers `200` without effect.
       5. `X-GitHub-Event`: `pull_request` with the action `opened`, `edited`, `synchronize`,
-         `reopened` or `closed`, and `push` to the repository's default branch, are read; the
-         repository (`repository.clone_url`, normalised as docs/adr/0066 D1 says) must be bound to
-         a project of the tenant. Every delivery taken answers `202`, whether it linked anything,
-         named a repository the tenant does not bind, or was another event — the answer says
-         nothing about what is bound or which keys exist.
+         `reopened` or `closed` whose author GitHub names the repository's `OWNER`, a `MEMBER` of
+         the organisation that owns it or a `COLLABORATOR` (`pull_request.author_association`,
+         docs/adr/0071 D4 as amended 2026-10-07), and `push` to the repository's default branch,
+         are read; the repository (`repository.clone_url`, normalised as docs/adr/0066 D1 says)
+         must be bound to a project of the tenant. Every delivery taken answers `202`, whether it
+         linked anything, named a repository the tenant does not bind, was a pull request of
+         another author, or was another event — the answer says nothing about what is bound or
+         which keys exist.
 
       A pull request is linked by its title and body: a `Cowork-Ticket: <tenant>/<KEY>-<n>`
       trailer line or a line that is a full key alone, else the short keys in parentheses at the
@@ -120,11 +123,11 @@ githubWebhook:
       required: true
       description: |
         GitHub's payload, read only after its signature: of `pull_request` the action, the pull
-        request's number, title, body, state, `merged`, `merged_at`, `updated_at` and
-        `user.login`; of `push` the `ref` and the commits' `id`, `message` and `author.username`; of
-        both `repository.clone_url` and `repository.default_branch`. Everything else is passed
-        over — a page the payload names too: the page a ticket links is written from the bound
-        repository's identity.
+        request's number, title, body, state, `merged`, `merged_at`, `updated_at`, `user.login`
+        and `author_association`; of `push` the `ref` and the commits' `id`, `message` and
+        `author.username`; of both `repository.clone_url` and `repository.default_branch`.
+        Everything else is passed over — a page the payload names too: the page a ticket links is
+        written from the bound repository's identity.
       content:
         application/json:
           schema:
@@ -147,6 +150,7 @@ githubWebhook:
                   merged_at: null
                   updated_at: '2026-10-06T14:02:10Z'
                   user: {login: grace-hopper}
+                  author_association: MEMBER
                 repository:
                   clone_url: https://github.com/acme/website.git
                   default_branch: main

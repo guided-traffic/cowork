@@ -94,6 +94,16 @@ is the owner's trial on a real repository, outstanding.
   URL with what to set at GitHub; [docs/operations/github.md](../operations/github.md) is the
   operator's page.
 
+*(Made concrete 2026-10-07 by the implementer and built the same day, open to the owner's
+objection:)* **D4 — whose pull requests are linked.** A pull request is read only when its author is
+the repository's owner, a member of the organisation that owns it or a collaborator of it, as
+GitHub's `author_association` names them — `OWNER`, `MEMBER`, `COLLABORATOR`
+([`internal/github`](../../backend/internal/github/payload.go) `linkedAuthors`); the pull request of
+any other author, and one whose payload names no association, is taken with the same `202` and
+changes nothing — no link, no fact of a link, no act, nobody told. A push to the default branch is
+read as before: a commit is there because somebody who may write the repository put it there. So a
+pull request of an outside contributor links no ticket, whatever its title and body name.
+
 Four of these choices await the owner's answer, the recommended option of each built: what a push to
 the default branch adds to a ticket, whether a removal stays and an agent may make one, whether a key
 that leaves a pull request's text unlinks it, and whether a title's short keys are read where the
@@ -128,7 +138,10 @@ missing signature answers `401` without processing; the body is bounded by the J
 D2; the delivery id is kept for twenty-four hours and a repeat answers `200` without effect.
 
 **D4 — Only `pull_request` (opened, edited, synchronize, closed *— and reopened, made concrete
-2026-10-06*) and `push` to the default branch are processed;** every other event answers `202` and
+2026-10-06*) *of an author who is the repository's owner, a member of the organisation that owns it
+or a collaborator of it, a pull request of any other author answered `202` and discarded like
+another event — made concrete 2026-10-07, the Status* and `push` to the default branch are
+processed;** every other event answers `202` and
 is discarded. The repository in
 the payload (`repository.clone_url`) is normalised and resolved to a project by
 [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)

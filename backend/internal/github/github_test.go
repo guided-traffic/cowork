@@ -128,11 +128,27 @@ func TestParseAPushToTheDefaultBranch(t *testing.T) {
 
 func TestOnlyTheReadActionsAreRead(t *testing.T) {
 	for _, action := range []string{"opened", "edited", "synchronize", "reopened", "closed"} {
-		assert.True(t, PullRequest{Action: action}.Read(), action)
+		assert.True(t, PullRequest{Action: action, AuthorAssociation: "MEMBER"}.Read(), action)
 	}
 	for _, action := range []string{"assigned", "labeled", "review_requested", "ready_for_review", ""} {
-		assert.False(t, PullRequest{Action: action}.Read(), action)
+		assert.False(t, PullRequest{Action: action, AuthorAssociation: "MEMBER"}.Read(), action)
 	}
+}
+
+// docs/adr/0071 D4 as amended 2026-10-07: a pull request is read only when
+// GitHub names its author the repository's owner, a member of the
+// organisation that owns it or a collaborator; every other author's, and one
+// whose payload names no association, is passed over.
+func TestOnlyThePullRequestsOfOwnersMembersAndCollaboratorsAreRead(t *testing.T) {
+	for _, association := range []string{"OWNER", "MEMBER", "COLLABORATOR"} {
+		assert.True(t, PullRequest{Action: "opened", AuthorAssociation: association}.Read(), association)
+	}
+	for _, association := range []string{"CONTRIBUTOR", "FIRST_TIME_CONTRIBUTOR", "FIRST_TIMER", "MANNEQUIN", "NONE", "member", ""} {
+		assert.False(t, PullRequest{Action: "opened", AuthorAssociation: association}.Read(), association)
+	}
+	pr, err := ParsePullRequest(fixture(t, "pull_request.opened.json"))
+	require.NoError(t, err)
+	assert.Equal(t, "MEMBER", pr.AuthorAssociation, "read from pull_request.author_association")
 }
 
 func keyStrings(keys []Key) []string {
