@@ -55,9 +55,8 @@ const (
 	AuditActionReactivated        AuditAction = "reactivated"
 	AuditActionLoginRefused       AuditAction = "login_refused"
 	AuditActionRead               AuditAction = "read"
-	AuditActionMerged             AuditAction = "merged"
-	AuditActionClosed             AuditAction = "closed"
-	AuditActionReopened           AuditAction = "reopened"
+	AuditActionChecked            AuditAction = "checked"
+	AuditActionAccepted           AuditAction = "accepted"
 )
 
 func (e *AuditAction) Scan(src interface{}) error {
@@ -325,7 +324,6 @@ const (
 	NotificationReasonCommented     NotificationReason = "commented"
 	NotificationReasonUrgent        NotificationReason = "urgent"
 	NotificationReasonMentioned     NotificationReason = "mentioned"
-	NotificationReasonMerged        NotificationReason = "merged"
 )
 
 func (e *NotificationReason) Scan(src interface{}) error {
@@ -798,19 +796,27 @@ type CommentRevision struct {
 	TokenName *string
 }
 
-type GithubDelivery struct {
-	ID         uuid.UUID
-	TenantID   uuid.UUID
-	Delivery   uuid.UUID
-	ReceivedAt time.Time
-	ExpiresAt  time.Time
+type ConsistencyAcceptance struct {
+	TenantID     uuid.UUID
+	AttachmentID uuid.UUID
+	AcceptedBy   uuid.UUID
+	AcceptedAt   time.Time
 }
 
-type GithubWebhookSecret struct {
-	TenantID  uuid.UUID
-	Secret    []byte
-	CreatedBy uuid.UUID
-	CreatedAt time.Time
+type ConsistencyCheck struct {
+	ID               uuid.UUID
+	TenantID         uuid.UUID
+	CheckedAt        time.Time
+	Dangling         int32
+	Accepted         int32
+	Orphans          int32
+	OrphanBytes      int64
+	DanglingItems    []byte
+	OrphanItems      []byte
+	OrphansRemovedAt *time.Time
+	OrphansRemovedBy *uuid.UUID
+	OrphansRemoved   *int32
+	OrphansKept      *int32
 }
 
 type GroupMapping struct {
@@ -1066,27 +1072,6 @@ type TicketLink struct {
 	TargetID  uuid.UUID
 	CreatedBy uuid.UUID
 	CreatedAt time.Time
-}
-
-type TicketPullRequest struct {
-	ID              uuid.UUID
-	TenantID        uuid.UUID
-	TicketID        uuid.UUID
-	Kind            string
-	Repository      string
-	Number          *int32
-	Sha             *string
-	Title           string
-	State           string
-	Url             string
-	Author          *string
-	MergedAt        *time.Time
-	FoundIn         string
-	SourceUpdatedAt *time.Time
-	FirstSeenAt     time.Time
-	LastSeenAt      time.Time
-	RemovedAt       *time.Time
-	RemovedBy       *uuid.UUID
 }
 
 type TimeEntry struct {
