@@ -547,7 +547,7 @@ check fails at its listing — the log says `job failed` with `consistency-check
 and [`CoworkJobFailing`](metrics.md#coworkjobfailing) fires. With it the key can list every
 tenant's object keys, which it could not before: a key that leaks alone then reads every object, not
 only those whose keys the database names
-([attachments.md H-70](../security/attachments.md#h-70)). Checked on 2026-10-07 against that MinIO
+([attachments.md H-68](../security/attachments.md#h-68)). Checked on 2026-10-07 against that MinIO
 with a key of this policy and with one without its second statement: the listing was refused
 without it and answered with it, another bucket's listing was refused either way, and a missing
 object's `HEAD` and `GET` answered `404` either way. AWS S3 documents a `403` instead of the `404`
@@ -625,7 +625,7 @@ and what it makes, and the chart's values for it.
 |---|---|---|
 | [`cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml) | CloudNativePG 1.30.1, PostgreSQL 18.6 | a `Cluster` whose `initdb` bootstrap makes the database, the owner role, the runtime role with the attributes [above](#the-database-and-its-two-roles), the three extensions and `CONNECT` for the two roles only; the runtime role's `basic-auth` Secret; a ConfigMap with the location. Never applied to a cluster here |
 | [`minio-tenant.yaml`](../../deploy/examples/minio-tenant.yaml) | the MinIO Operator v7.1.1 | a `Tenant` with one pool and the bucket — and no user: the operator gives every user of its `users` field the policy `consoleAdmin`, an administrator of the whole store. Never applied to a cluster here |
-| [`minio-bucket.sh`](../../deploy/examples/minio-bucket.sh) | `mc` RELEASE.2025-08-13T08-35-41Z | the bucket, the bucket-scoped policy, the access key with that policy alone and the Secret `cowork-storage`, for an existing MinIO or the Tenant above. Run once on 2026-10-06 against the MinIO of `make minio-up`: the key put, read and deleted objects in its bucket and was refused listing it, another bucket and the administration |
+| [`minio-bucket.sh`](../../deploy/examples/minio-bucket.sh) | `mc` RELEASE.2025-08-13T08-35-41Z | the bucket, the bucket-scoped policy, the access key with that policy alone and the Secret `cowork-storage`, for an existing MinIO or the Tenant above. Run on 2026-10-07 against the MinIO of `make minio-up`: the key put, read, listed and deleted objects in its bucket and was refused listing another bucket and the administration |
 
 **MinIO is archived.** The repositories of the MinIO Operator, the MinIO server and `mc` are
 archived on GitHub, and the server image the operator defaults to, `minio/minio`, can no longer

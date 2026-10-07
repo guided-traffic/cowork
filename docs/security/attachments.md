@@ -203,7 +203,7 @@ disagrees: the files whose bytes are missing — dangling —, and the objects n
 time and its ticket's key; an orphan with its key, size and last change — no name, because no row
 has one. The lists are the tenant's and are read by its administrators alone: the route answers
 anybody else `403`, another tenant's person `404`, and row-level security holds both tables of
-[migration 43](../../backend/internal/store/migrations/000043_attachment_consistency.up.sql) to the
+[migration 42](../../backend/internal/store/migrations/000042_attachment_consistency.up.sql) to the
 tenant's administrators and the job by restrictive policies, whatever a query says
 (`TestTheConsistencyCheckIsTheTenantAdministratorsAndNoAgents`). An administrator sees every ticket —
 confidential ones and restricted projects' among them — and reads there nothing the tickets do not
@@ -346,8 +346,8 @@ deletes after a failed upload), access logs and backups are the storage's and th
 (ADR 0058 D5, ADR 0059); cowork verifies none of them. The bucket holds a confidential ticket's attachments like any other:
 [tenancy.md](tenancy.md) H-2 applies to them.
 
-<a id="h-70"></a>
-### H-70 — The storage key lists the bucket, so a key that leaks alone reads every object
+<a id="h-68"></a>
+### H-68 — The storage key lists the bucket, so a key that leaks alone reads every object
 
 Live wherever the key is granted `s3:ListBucket`, which the consistency check needs and the
 installation page asks for. Before the check, the key read, wrote and deleted objects whose keys it
@@ -362,8 +362,8 @@ suspicion; turn on the store's access logs, which show a listing like any reques
 key for the check, apart from the key that reads, is not built. Not verified: the store's own
 controls, which cowork checks none of.
 
-<a id="h-71"></a>
-### H-71 — The objects of a tenant the database does not know are never listed
+<a id="h-69"></a>
+### H-69 — The objects of a tenant the database does not know are never listed
 
 Live after a restore that brought the database back from before a tenant was created, while the
 bucket kept its files. The check lists the prefixes of the tenants the database knows, one by one
@@ -372,8 +372,8 @@ bucket, unlisted, readable to whoever holds the storage key, and no administrato
 operator finds them by listing the bucket's top-level prefixes against the tenants' ids, and removes
 them by hand.
 
-<a id="h-72"></a>
-### H-72 — An acceptance ends the alert on files that are lost
+<a id="h-70"></a>
+### H-70 — An acceptance ends the alert on files that are lost
 
 Live by design (ADR 0059 D5 as made concrete 2026-10-06). An administrator's acceptance — in a
 session, or with an `admin`-scope token — counts the listed missing files as accepted, and the gauge
@@ -383,8 +383,8 @@ accepted on the settings page, the act `accepted` is in the tenant's audit recor
 its token, and the check forgets an acceptance once the bytes are back, so a later loss counts again.
 An installation that wants to know of every loss watches the act in the audit record.
 
-<a id="h-73"></a>
-### H-73 — An object can gain its row between the confirming transaction and its removal
+<a id="h-71"></a>
+### H-71 — An object can gain its row between the confirming transaction and its removal
 
 Narrow, and not live in the ways cowork writes rows. The confirmed removal asks each orphan in its
 transaction whether a row names it, and removes the objects after the commit, so a row committed for

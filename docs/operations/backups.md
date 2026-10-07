@@ -187,4 +187,4 @@ ticket's thirty days are over.
 - The age of the last export: nothing in cowork knows when an export was last fetched.
 - Objects under the prefix of a tenant the restored database does not know: the check lists the
   prefixes of the tenants it knows only
-  ([attachments.md H-71](../security/attachments.md#h-71)).
+  ([attachments.md H-69](../security/attachments.md#h-69)).

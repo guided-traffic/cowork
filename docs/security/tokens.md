@@ -166,7 +166,7 @@ because the bin undoes either for thirty days; the purge, which nothing undoes, 
 [tenancy.md H-54](tenancy.md#h-54)), nor the removal of a consistency check's orphaned objects; the
 acceptance of the check's missing files stays open, because it removes nothing
 (`TestTheConsistencyCheckIsTheTenantAdministratorsAndNoAgents`; what an acceptance can hide is
-[attachments.md H-72](attachments.md#h-72)). No agent makes any administration act: an agent token's
+[attachments.md H-70](attachments.md#h-70)). No agent makes any administration act: an agent token's
 scope is at most `write`, and a plain token marked by the header meets the hard-off rule
 "administration".
 

@@ -19,7 +19,7 @@ done:
 Built on 2026-10-06 (ADR 0059 D4–D6, ADR 0060 D4–D6 for the consistency family, details made
 concrete in both records): the daily job `consistency-check`
 ([`store/consistency.go`](../../backend/internal/store/consistency.go)) under
-[migration 43](../../backend/internal/store/migrations/000043_attachment_consistency.up.sql); the routes
+[migration 42](../../backend/internal/store/migrations/000042_attachment_consistency.up.sql); the routes
 `GET`, `POST …/orphan-removal` and `POST …/dangling-acceptance` under
 `/api/v1/tenants/{tenant}/attachment-consistency`
 ([`api/consistency.go`](../../backend/internal/api/consistency.go)); the section *Files and the
@@ -27,7 +27,7 @@ bucket* on the tenant's settings page; `cowork check-consistency`; the gauges
 `cowork_consistency_dangling_attachments` and `cowork_consistency_orphaned_objects`, the dashboard row,
 the alert `CoworkAttachmentsOutOfStep` with `metrics.prometheusRule.restoreWindow`; the pages
 [backups.md](../operations/backups.md) and [upgrade.md](../operations/upgrade.md), the runbook, the
-developer and security pages (H-70 to H-73).
+developer and security pages (H-68 to H-71).
 
 What is left:
 
@@ -59,15 +59,6 @@ What is left:
 - ADR 0060's Status and D4, D6; ADR 0059's residual risks; README, Metrics and Helm values;
   [backups.md](../operations/backups.md), which says that nothing watches the schedule yet.
 
-### At the integration of the night's work
-
-- `deploy/examples/minio-bucket.sh`: the statement `s3:ListBucket` on the bucket, as the policy of
-  [installation.md](../operations/installation.md#object-storage) has it; its run against the MinIO of
-  `make minio-up` again.
-- [upgrade.md](../operations/upgrade.md) names the migration Job of the chart-references work, which
-  installation.md describes only once both are in.
-- The six migration tests above pass with migrations 40 to 43 together.
-
 ## Open questions
 
 ### Q1: Does the removal of a check's orphaned objects take a browser session only, or an administrator's token as well?
@@ -88,7 +79,7 @@ applied to an irreversible act, and the removal is meant to follow a person's lo
 ADR 0059 D5 says "accept the dangling metadata or re-upload" and names no act. Options: (a) an
 administrator's recorded acceptance of the listed files — built: they count as accepted, not
 dangling, stay on their tickets with their honest `404`, and an acceptance is forgotten when the
-bytes come back; a table and a route more, and an acceptance can silence a real loss (H-72); (b)
+bytes come back; a table and a route more, and an acceptance can silence a real loss (H-70); (b)
 nothing in cowork: the count stays until the bytes are back, and the operator silences the alert in
 Alertmanager, whose silence expires; (c) removing the dangling metadata, so the files leave their
 tickets — destructive, and against D4's honest `404`. **Recommended: (a)**, built: it makes the
@@ -110,7 +101,7 @@ from a global administrator's token (ADR 0035 D5). **Recommended: (a)**, built, 
 
 Orphans cannot be found without a listing. Options: (a) the key needs `s3:ListBucket` — built and
 documented; the key can then enumerate every tenant's object keys, so a key that leaks alone reads
-every object (H-70); AWS S3 documents a `403` instead of a `404` for a missing object to a key without
+every object (H-68); AWS S3 documents a `403` instead of a `404` for a missing object to a key without
 it, which would make the honest `404` of a lost file a `500` there; (b) the check works without it:
 the missing files by a `HEAD` per attachment, the orphans unchecked and said so on the page — more
 code, a check that sees half, the key as narrow as before; (c) a second, list-only key for the
