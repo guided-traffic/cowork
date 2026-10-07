@@ -554,6 +554,11 @@ The policy keeps every script, style sheet, font, image and request of the UI on
 runs no inline script ([trust-boundaries.md](../security/trust-boundaries.md#the-shells-content-security-policy)).
 A page that broke under it shows a violation in the browser's console, never in nginx's log.
 
+A second server listens on `127.0.0.1:8082`, the pod's loopback address, with nginx's
+`stub_status` and nothing else, and logs nothing: the counts the exporter sidecar of
+`frontend.metrics.exporter.enabled` reads. Without the sidecar nothing reads it, and nothing outside
+the pod reaches it ([metrics.md](metrics.md#nginxs-numbers)).
+
 The pod runs with a read-only root filesystem; the chart mounts an `emptyDir` at `/tmp`, which is
 all nginx writes — its pid and temporary files —, and `fsGroup: 101` is what makes it writable for
 the nginx user. The configuration is part of the image: a volume mounted over `/etc/nginx/conf.d`

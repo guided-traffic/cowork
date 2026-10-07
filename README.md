@@ -59,6 +59,7 @@ flowchart LR
 - 📜 **Contract first** — the OpenAPI 3.1 document in `backend/api/` generates the server, is served at `/api/v1/openapi.json` and validates every request; every error is RFC 9457 problem details with a stable `code`.
 - 🧾 **Every act on the record** — an append-only audit record of who did what, with the token and the agent; every act made through a token shows it on the ticket — the agent's mark, or the token's name — so nothing a script or a model does reads as the person's own; `ETag` and `If-Match` keep two writers from overwriting each other.
 - 📡 **Live updates** — server-sent events per tenant carry keys and versions, never content, filtered by what the reader may see; a reconnect replays what it missed.
+- 📈 **Prometheus metrics** — requests by route pattern, the database pool, the jobs, the event streams, the acts, the logins and the schema, on a port of their own that no Service carries and no label of which names a tenant or a person; the chart adds a `PodMonitor` or a `ServiceMonitor`, four alerts with their runbooks and a Grafana dashboard, each behind a switch.
 - 🗑️ **Deletion that waits thirty days** — a tenant administrator deletes a ticket, never an agent; from then on it answers like a missing one everywhere but the tenant's bin, which restores it as it was, until the purge — a job thirty days later, or an administrator's second confirmation in a browser session, which no token gives — removes it with its files, keeping in the audit record only its key, who did what and when.
 - 🔖 **Saved filters** — the list filters under a name, the person's own or shared with the tenant with its owner beside it, applied, saved and shared from the filter bars of the backlog, of the tenant board and of the tenant's ticket list — every project's tickets in one table, whose address is its filter, so a filtered list is a link; a value that no longer holds is a warning, a shared filter that names what the reader cannot see is shown without its conditions, and a tenant administrator unshares or deletes a shared one — of a person who left, say — and changes nothing else of it.
 - 🔎 **Search with snippets** — PostgreSQL full text over titles, bodies, comments, questions and file names, keys by their beginning and titles by trigram, one ranked hit per ticket with the words found marked; a tenant's from its pages, every tenant's of the person from anywhere, each hit held to what the reader may see.
@@ -112,8 +113,12 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | A chat provider's key Secret | not rendered: each entry of `chat.providers` names one of yours in `existingSecret`, key `keys.apiKey` (`apiKey`) | one per provider; required for kind `anthropic`; there is no inline value |
 | Pod annotations of the backend | `checksum/database-secret`, `checksum/database-owner-secret`, `checksum/local-admin-secret` | only with the inline values (the owner's while the init container migrates); a changed value rolls the pods |
 | CA volume of the backend | `s3-ca`, mounted at `/etc/cowork/s3-ca` | only with the storage on (`storage.endpoint` or `storage.existingConfigMap`) and `storage.tls.caConfigMap` |
-| Labels | `app.kubernetes.io/name=cowork`, `app.kubernetes.io/instance=<release>`, `app.kubernetes.io/component=backend\|frontend\|migrate`, `app.kubernetes.io/version`, `app.kubernetes.io/managed-by=Helm`, `helm.sh/chart` | selectors use `name`, `instance` and `component` |
-| Container ports | `http`, `8080` on both containers | `backend.containerPort`; the frontend's is fixed by the nginx configuration |
+| Headless metrics Service | `<fullname>-backend-metrics`, port `metrics`, component label `metrics` | only with `metrics.serviceMonitor.enabled`; the metrics port alone, so the backend Service never carries it |
+| `PodMonitor`, `ServiceMonitor`, `PrometheusRule` | `<fullname>` | each only with its switch under `metrics.*`; they need the Prometheus Operator's CRDs |
+| Grafana dashboard ConfigMap | `<fullname>-dashboard`, key `cowork.json`, label `grafana_dashboard: "1"` `# default` | only with `metrics.grafanaDashboard.enabled` |
+| nginx exporter sidecar of the frontend pod | container `nginx-exporter` | only with `frontend.metrics.exporter.enabled` |
+| Labels | `app.kubernetes.io/name=cowork`, `app.kubernetes.io/instance=<release>`, `app.kubernetes.io/component=backend\|frontend\|migrate\|metrics`, `app.kubernetes.io/version`, `app.kubernetes.io/managed-by=Helm`, `helm.sh/chart` | selectors use `name`, `instance` and `component`; `migrate` is the migration Job's own, `metrics` the headless metrics Service's |
+| Container ports | `http`, `8080` on both containers; `metrics`, `8081`, on the backend; `nginx-metrics`, `9113`, on the exporter sidecar | `backend.containerPort`, `metrics.port`, `frontend.metrics.exporter.port`; the frontend's is fixed by the nginx configuration, which also listens on `127.0.0.1:8082` for `stub_status`, inside the pod only |
 
 ### Keys and identifiers
 
@@ -149,6 +154,8 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Problem type | `https://cowork.dev/problems/<code, hyphenated>` | `https://cowork.dev/problems/not-found` |
 | Attachment object | `<tenant-id>/<attachment-id>` in the configured bucket, derived, never stored | — |
 | Event channel | the PostgreSQL `NOTIFY` channel `cowork_events` | — |
+| Metric | `cowork_<subsystem>_<name>_<unit>`, a counter's ending in `_total`, a duration's in `_seconds` ([Metrics](#metrics)) | `cowork_http_requests_total` |
+| Alert | `Cowork<what>`, in the chart's `PrometheusRule`, its section in [docs/operations/metrics.md](docs/operations/metrics.md) | `CoworkSchemaDirty` |
 | Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`; on a person-level stream (`?me=true`) also `inbox.changed`; the control events `resync` and `unavailable` | — |
 
 ### Development environment
@@ -199,6 +206,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 | `/api/v1/tenants/<slug>/events` | the event stream, answered with `X-Accel-Buffering: no`; `?me=true` makes it the person-level stream | — |
 | `/api/v1/tenants/<slug>/chat` | a turn of the chat, a `POST` answered as a stream with `X-Accel-Buffering: no` | — |
 | hashed bundles | — | served with `Cache-Control: public, max-age=31536000, immutable` |
+| `/metrics` | on the metrics listener only, `COWORK_METRICS_ADDR` (`:8081`): the Prometheus text format, no authentication, on no Service; the API's port answers it `404` | not served; `stub_status` listens on `127.0.0.1:8082`, inside the pod only |
 | everything else | `404` problem details | `index.html` with `Cache-Control: no-store` |
 
 | Media type | Where |
@@ -209,6 +217,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 | `text/csv` | on `Accept: text/csv`: the audit record, the tenant's time entries, the time report |
 | `text/markdown; charset=utf-8` | a ticket's canonical Markdown and its context |
 | `text/event-stream` | the event stream, a turn of the chat |
+| `text/plain` | a scrape of `/metrics` on the metrics listener, the Prometheus text format |
 
 ## 📚 Documentation
 
@@ -216,7 +225,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
 | [docs/developer/development-credentials.md](docs/developer/development-credentials.md) | Every development-only username, password, key and token of `make dev`, its containers and the test tiers, with the file that sets it |
-| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [Claude Code](docs/operations/claude-code.md) against an installation |
+| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation |
 | [deploy/examples/](deploy/examples/) | A CloudNativePG cluster and a MinIO bucket to copy and adapt — examples checked for syntax against the operators' CRD schemas, not supported deployments |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
@@ -403,6 +412,13 @@ that network that reaches the backend can then choose its address, which only a 
 the cluster's prevents — the chart ships none
 ([the client address](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)).
 
+The backend pods answer Prometheus at `/metrics` on port 8081, without authentication and on no
+Service; a network policy that admits only the monitoring namespace to the port is the cluster's, and
+`--set metrics.enabled=false` closes it. With kube-prometheus,
+`--set metrics.podMonitor.enabled=true --set metrics.prometheusRule.enabled=true` and the label your
+Prometheus selects them by wire the scraping and the alerts
+([metrics](docs/operations/metrics.md)).
+
 Attachments need an S3-compatible bucket and three more values; without them uploads are
 refused. Without a local administrator or an identity provider nobody can log in. A release publishes the chart and both images (`guidedtraffic/cowork-backend`,
 `guidedtraffic/cowork-frontend` on Docker Hub) with one version; the chart's image tags follow
@@ -468,6 +484,7 @@ size is a number of bytes or a number with `KiB`, `MiB` or `GiB`; a duration is 
 | `COWORK_MIGRATE_ON_START` | `true` `# default` | `true`, `false` | `serve` applies pending migrations before it listens; with `false` it refuses to start while migrations are pending. The chart sets `false` and migrates in an init container or, in job mode, in a Job |
 | `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key: keys derived from it sign the list cursors, key the fingerprint of an idempotent request and the hashes of a client's address — the login throttle's and the one every audit row of a request carries — and seal the identity provider's login state and refresh tokens. Every replica needs the same key. A new key invalidates the cursors clients hold (`400 invalid_cursor`), fails the logins through the provider under way, gives every address another hash — the login throttle counts it anew, and audit rows before and after cannot be compared —, refuses the retry of an idempotent request keyed before it (`422 idempotency_mismatch`), and ends each session of the provider that holds a refresh token at its next refresh — no previous key is kept to open what the old one sealed ([ADR 0031](docs/adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1; [rotating it](docs/operations/installation.md#the-secrets)); it signs no session, and a session of the local login survives it. **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. With the database, it opens the stored refresh tokens ([H-27](docs/security/identity-provider.md#h-27)) and reverses the audit rows' IPv4 hashes ([H-30](docs/security/tokens.md#h-30)). `make run` makes a throw-away one |
 | `COWORK_LISTEN_ADDR` | `:8080` `# default` | `host:port` | The backend listener for API and health |
+| `COWORK_METRICS_ADDR` | `:8081` `# default` | `host:port`, another than `COWORK_LISTEN_ADDR`; empty switches it off | The metrics listener: Prometheus text at `/metrics` and nothing else ([Metrics](#metrics), [docs/operations/metrics.md](docs/operations/metrics.md)). Bound beside the API's listener before either serves — a taken port refuses the start — and shut down with it. Unlike every other variable, one set to an empty value is not unset: it closes the port, and nothing is recorded. An address without a port, or the API's, refuses the start, naming the variable. **Security:** no authentication — every pod that reaches the backend pods reads the installation's activity in counts, never a tenant, a person, a ticket or a token ([H-62](docs/security/metrics.md#h-62)); admit only the monitoring namespace to the port, or switch it off |
 | `COWORK_LOG_LEVEL` | `info` `# default` | `debug`, `info`, `warn`, `error` | Minimum level |
 | `COWORK_LOG_FORMAT` | `json` `# default` | `json`, `text` | `text` for a terminal |
 | `COWORK_SHUTDOWN_TIMEOUT` | `15s` `# default` | a positive duration | Drain bound after `SIGTERM`; the event streams end as the drain begins. A drain that outlasts it ends the process with exit 1. Keep it below the pod's grace period |
@@ -1043,6 +1060,52 @@ every error body carries one of these as `code`.
 | `timeout` | 504 | The request took longer than the configured limit (docs/adr/0039 D2) |
 <!-- problem-codes:end -->
 
+### Metrics
+
+The backend's instruments, Prometheus text at `/metrics` on `COWORK_METRICS_ADDR`
+([ADR 0060](docs/adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md);
+scraping, the alerts and the dashboard: [docs/operations/metrics.md](docs/operations/metrics.md)).
+Source: [`backend/internal/metrics/metrics.go`](backend/internal/metrics/metrics.go). Every count is
+the replica's; no label names a person, a ticket, a key, a token, a request id or a tenant. A label
+set marked *at zero* exists from the start. A scrape through the Prometheus Operator adds the
+target's `namespace`, `pod`, `container` and `job`.
+
+<details>
+<summary>Every instrument</summary>
+
+| Instrument | Type | Labels | Meaning |
+|---|---|---|---|
+| `cowork_http_requests_total` | counter | `route`, `method`, `status` | Requests answered on the API's listener. `route` is the API document's pattern (`/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}`), `/healthz`, `/readyz`, or `unmatched` for a path no route matches; `method` one HTTP defines, else `other` |
+| `cowork_http_request_duration_seconds` | histogram, the library's default buckets, 5 ms to 10 s | `route`, `method` | From a request's arrival to its handler's return; an event stream and a turn of the chat count their whole life |
+| `cowork_http_requests_in_flight` | gauge | — | Requests being served, the open event streams and turns of the chat among them |
+| `cowork_db_pool_connections` | gauge | `state`: `idle`, `in_use`, `constructing` | The pool's connections, read at the scrape |
+| `cowork_db_pool_max_connections` | gauge | — | The pool's maximum: `pool_max_conns` of `COWORK_DATABASE_URL`, else the greater of 4 and the CPUs the process sees |
+| `cowork_db_pool_acquire_duration_seconds` | summary: `_count`, `_sum` | — | Successful acquires of a connection and their time; `rate(_sum) / rate(_count)` is the mean |
+| `cowork_db_pool_wait_duration_seconds` | summary: `_count`, `_sum` | — | The acquires among them that waited because no connection was free, and the time they waited; `rate(_sum)` is the mean number waiting |
+| `cowork_db_pool_canceled_acquires_total` | counter | — | Acquires a context ended before a connection was free |
+| `cowork_db_query_errors_total` | counter | `kind`: `unique_violation`, `foreign_key_violation`, `check_violation`, `not_null_violation`, `integrity_violation`, `serialization_failure`, `deadlock_detected`, `insufficient_privilege`, `lock_not_available`, `query_canceled`, `connection`, `other_sqlstate`, `canceled`, `timeout`, `other` | Failed statements by the SQLSTATE's meaning or what the client saw; a row that was not found is no failure. `insufficient_privilege` is a policy, a grant or a guard that refused |
+| `cowork_jobs_runs_total` | counter | `name` | Runs of a background job on this replica that took its lock, or failed before it could; `name` is the job's system actor: `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge`, `bootstrap` |
+| `cowork_jobs_failures_total` | counter | `name` | The runs that failed |
+| `cowork_jobs_duration_seconds` | histogram, 10 ms to 600 s | `name` | A run's duration |
+| `cowork_jobs_consecutive_failures` | gauge | `name` | Runs that failed one after the other since the job's last success on this replica; `CoworkJobFailing` fires at 2 |
+| `cowork_events_open_streams` | gauge | — | Event streams the replica's hub holds |
+| `cowork_events_published_total` | counter | — | Notifications the hub received from the database's listener |
+| `cowork_events_subscribers_dropped_total` | counter | `reason`: `behind` (its buffer of 256 was full), `limit` (the person's oldest beyond `COWORK_SSE_MAX_STREAMS_PER_PERSON`), `resync` (the listener came back after a loss), *at zero* | Streams the hub ended; a shutdown ends none of them here |
+| `cowork_events_replays_total` | counter | `outcome`: `hit`, `miss`, *at zero* | Reconnects with a `Last-Event-ID`: replayed from the ring, or told to `resync` |
+| `cowork_audit_acts_total` | counter | `action` (an `audit_action`), `actor`: `person`, `agent`, `system` | Acts committed to the audit record; one of a transaction that rolled back never counts |
+| `cowork_auth_logins_total` | counter | `method`: `local`, `oidc`; `outcome`: `success`, `failure`, `locked`, `throttled`, `refused`, *at zero* | Logins; `locked` and `throttled` are the local form's, `refused` a login that proved who it was and was refused all the same — the init state, the identity provider's gate |
+| `cowork_auth_lockouts_total` | counter | — *at zero* | Usernames locked by failed attempts |
+| `cowork_auth_token_refusals_total` | counter | `reason`: `malformed`, `unknown`, `revoked`, `expired`, `not_allowed`, `session_only`, *at zero* | Personal access tokens refused; `session_only` is a usable token on a route that takes a session only |
+| `cowork_migrations_schema_version` | gauge | — | The schema version the database records, read at a scrape at most every ten seconds; absent after a read that failed |
+| `cowork_migrations_schema_dirty` | gauge | — | `1` while the recorded version is dirty: a migration failed halfway, or one is running |
+| `go_*`, `process_*` | | | The Go runtime's and the process's, `client_golang`'s defaults |
+
+The consistency family of [ADR 0059](docs/adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4 — dangling attachment metadata, orphaned objects, seconds since the last export, the only one with
+a `tenant` label — comes with the consistency check, which is not built.
+
+</details>
+
 ### Helm chart values
 
 Source: [`deploy/helm/cowork/values.yaml`](deploy/helm/cowork/values.yaml). Every value below is the default.
@@ -1155,6 +1218,28 @@ ingress:                              # per host: /api/ and /auth/ (Prefix) to t
   hosts:
     - host: cowork.example.com        # example; the paths are the chart's, a host has none of its own
   tls: []
+metrics:                              # Prometheus text at /metrics on the backend pods, no authentication, on no Service (docs/operations/metrics.md)
+  enabled: true                       # COWORK_METRICS_ADDR=":<port>" and the container port metrics; false renders it empty, which closes the port
+  port: 8081                          # must differ from backend.containerPort
+  podMonitor:                         # needs the Prometheus Operator's CRDs
+    enabled: false                    # scrapes the backend's metrics port, and the nginx exporter's with frontend.metrics.exporter.enabled
+    labels: {}                        # what your Prometheus selects monitors by, e.g. release: kube-prometheus-stack
+    interval: 30s
+    scrapeTimeout: 10s
+  serviceMonitor:                     # for a Prometheus that discovers Services only; needs the CRDs
+    enabled: false                    # adds the headless Service <fullname>-backend-metrics; the backend alone, not the nginx exporter
+    labels: {}
+    interval: 30s
+    scrapeTimeout: 10s
+  prometheusRule:                     # the alerts of docs/operations/metrics.md; needs the CRDs
+    enabled: false
+    labels: {}                        # what your Prometheus's ruleSelector matches
+    alertLabels: {}                   # on every alert, for Alertmanager's routing; a severity here replaces the alert's own
+  grafanaDashboard:                   # a ConfigMap with the dashboard, for the Grafana sidecar
+    enabled: false
+    labels:
+      grafana_dashboard: "1"          # kube-prometheus-stack's sidecar label
+    annotations: {}                   # e.g. the folder your sidecar reads
 backend:
   replicaCount: 1                     # in onStart mode every pod migrates in its init container; they serialise on an advisory lock
   image:                              # the migrate init container and the migration Job run the same image
@@ -1254,6 +1339,20 @@ frontend:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  metrics:
+    exporter:                         # the sidecar nginx-exporter: reads stub_status on 127.0.0.1:8082 in the pod, scraped by metrics.podMonitor
+      enabled: false
+      image:
+        repository: nginx/nginx-prometheus-exporter
+        tag: "1.5.3"
+        pullPolicy: IfNotPresent
+      port: 9113                      # the container port nginx-metrics, no authentication
+      resources:
+        limits:
+          memory: 32Mi
+        requests:
+          cpu: 5m
+          memory: 16Mi
 ```
 
 Rendering fails, naming the value, without `database.existingSecret` or `database.url`;
@@ -1270,7 +1369,9 @@ with `database.url`, `database.owner.url` or the inline local administrator inst
 id (`auth.oidc.clientId`, or `auth.oidc.keys.clientId` with the Secret) or no
 `auth.oidc.existingSecret`, or with a group in `auth.oidc.allowedGroups` that holds a comma; and
 with `bootstrap.tenant.slug` and `.name` apart, or without a local administrator or an
-`auth.oidc.adminGroup` of a configured issuer. `helm lint` reports
+`auth.oidc.adminGroup` of a configured issuer; with `metrics.port` equal to
+`backend.containerPort`; and with a `ServiceMonitor` or a `PrometheusRule` while `metrics.enabled` is
+`false`, or a `PodMonitor` that would scrape nothing. `helm lint` reports
 these as info lines, `helm template` and `helm install` fail. Where a Secret reference and its
 inline URL are both set, the reference wins and the URL is ignored.
 
@@ -1334,6 +1435,13 @@ The modes that change what is exposed:
 - **The storage key comes from a Secret only**; endpoint, bucket, region and path style are plain
   values or, with `storage.existingConfigMap`, a ConfigMap's. Without `storage.endpoint` and
   without the ConfigMap the backend runs without object storage and refuses uploads.
+- **`metrics.enabled` opens a port without authentication.** On by default: the backend pods answer
+  `/metrics` on `metrics.port` to every pod that reaches them — counts of the installation's activity,
+  never a tenant, a person, a ticket or a token ([H-62](docs/security/metrics.md#h-62)). The port is on
+  no Service and the Ingress never routes it; the chart ships no NetworkPolicy, so admitting only the
+  monitoring namespace is a policy of the cluster's
+  ([metrics.md](docs/operations/metrics.md#the-network-policy-for-the-port)). `false` closes it.
+  `frontend.metrics.exporter.enabled` opens the exporter's port on the frontend pods the same way.
 - **`0` in `backend.config`** switches a backend limit off, and the chart's notes then ask the
   Ingress controller for no limit either — `maxJsonBody: 0` for no body limit, `requestTimeout: 0`
   for an hour's read timeout. No production values file should carry one
@@ -1346,7 +1454,7 @@ The modes that change what is exposed:
 ```bash
 make help                 # every target, grouped
 make dev                  # the whole stack with demo data; the UI on :4200 with live reload
-make generate             # after a change to backend/api/, the SQL queries or the problem catalogue; CI fails on drift
+make generate             # after a change to backend/api/, the SQL queries, the problem catalogue or the dashboard; CI fails on drift
 make frontend-generate    # after make generate changed the API document: the Angular client; CI fails on drift
 make lint cyclo gosec vuln
 make dev-up               # what the integration tier needs: PostgreSQL, MinIO and Dex (dex-up and dex-down alone)

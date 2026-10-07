@@ -31,6 +31,7 @@ works the same way with `deploy/helm/cowork` and the image values set. The value
 [Example manifests](#example-manifests) for CloudNativePG and for MinIO show one way to provide the
 database and the bucket; they are checked for syntax only.
 | A model the chat in the UI talks to | no — without it there is no chat | the provider, its URL and the model as values, its API key from a Secret ([below](#the-chat)) |
+| A Prometheus — with the Prometheus Operator's CRDs for the monitors and the alerts — and a Grafana with the dashboard sidecar | no — the metrics port is on either way, until `metrics.enabled: false` | `metrics.*` switches each resource on; nothing of it is a credential ([metrics.md](metrics.md)) |
 
 Rendering fails, naming the missing value, without a database connection, without an owner
 connection while the release migrates — `backend.config.migrateOnStart` `true` (the default), or
@@ -668,8 +669,10 @@ contains: the Deployments `<fullname>-backend` and `<fullname>-frontend` — `<f
 and `cowork-frontend` for the release `cowork` — a Service for each
 (backend on 8080, frontend on 80), one ServiceAccount without an API token, the `migrate` init
 container in every backend pod — or, in [job mode](#job-mode), the hook Job `<fullname>-migrate`
-in its place —, and — only when the values ask for them — the Secrets rendered
-from inline URLs, the CA volume and the Ingress ([Expose it](#expose-it)). No NetworkPolicy
+in its place —, the container port `metrics` (8081) on the backend pods, which no Service lists
+([metrics.md](metrics.md)), and — only when the values ask for them — the Secrets rendered from
+inline URLs, the CA volume, the Ingress ([Expose it](#expose-it)) and the monitoring resources of
+`metrics.*`. No NetworkPolicy
 ([network policies are the cluster's](#network-policies-are-the-clusters)) and no RBAC objects:
 neither container talks to the Kubernetes API. The frontend pod takes no configuration: its
 nginx serves the UI from a file in the image and reaches no backend.
@@ -685,6 +688,8 @@ curl -s localhost:8081/api/v1/version   # the backend's version
 kubectl -n cowork port-forward svc/cowork-frontend 8080:80 &
 curl -s localhost:8080/healthz          # {"status":"ok"} — nginx itself
 curl -s localhost:8080/api/v1/version   # a 404 problem: the frontend serves no API, the Ingress routes it
+kubectl -n cowork port-forward deploy/cowork-backend 18081:8081 &
+curl -s localhost:18081/metrics | grep '^cowork_migrations'   # the schema version, dirty 0: the metrics port of a pod
 # once the Ingress is set up (below):
 curl -s https://cowork.example.com/api/v1/version   # the backend's version, through the Ingress
 open https://cowork.example.com                     # the UI shell, with the version in the footer
@@ -1002,8 +1007,10 @@ where your controller runs. What cowork's pods need, for a policy you write:
   providers, and DNS.
 - **The frontend's pods**, port 8080: the Ingress controller's pods. The frontend reaches nothing.
 - **The kubelet's probes** of both pods come from the node, which Kubernetes always admits.
-- **A scrape of the metrics port** ([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md),
-  not built) will need its own rule for the monitoring namespace.
+- **The backend's pods**, port 8081 (`metrics.port`): the monitoring namespace, for Prometheus, and
+  nothing else — the port answers `/metrics` without authentication; with
+  `frontend.metrics.exporter.enabled`, **the frontend's pods**, port 9113, likewise. The rule and
+  why it goes beside the others are [metrics.md](metrics.md#the-network-policy-for-the-port).
 
 A policy is enforced by a network plugin that implements NetworkPolicy and by nothing else;
 Kubernetes says that creating one without such a plugin "will have no effect". Nothing of this was
@@ -1023,7 +1030,7 @@ release was installed with instead — Helm puts the old release's values in pla
 value a later release adds is missing. The chart reads every value added since 0.7.0 with its
 default when it is missing, so `--reuse-values` from 0.7.0 renders as `--reset-then-reuse-values`
 does; the charts before it did not, and an upgrade from 0.2.0 to 0.7.0 with `--reuse-values` fails
-to render at `chat.providers` (checked 2026-10-06).
+to render at `chat.providers` (checked 2026-10-06). Keeping your own values file and passing it with `-f` works as well.
 
 Both images carry the release's version, and the chart of that version names them; set
 `backend.image.tag` and `frontend.image.tag` only to pin images apart from the chart, and then
@@ -1122,6 +1129,15 @@ meanwhile — and then the checks of the tokens' and the chat's capability sets 
   every agent token it makes and every chat capability set it stores that holds `set-horizon`; the
   checks refuse that write, so making such a token or choosing such a set fails. 0.5 is
   unsupported ([SECURITY.md](../../SECURITY.md)). Read from the code of 0.5.1, not run.
+
+**The release that brings the metrics**
+([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md))
+opens a port on the backend pods with the upgrade itself: `metrics.enabled` is `true` by default,
+so the new pods answer `/metrics` on 8081 without authentication to every pod that reaches them
+([metrics.md](metrics.md#the-network-policy-for-the-port)). Add the policy for the port before, or
+upgrade with `--set metrics.enabled=false` until it is in place. Nothing else changes: the
+monitoring resources stay off until they are switched on, and the backend Service keeps its one
+port.
 
 ## Uninstall
 
