@@ -3281,6 +3281,68 @@ Dashboard:
         the counted projects updated last, newest first (the later id on a tie).
       items:
         $ref: '#/DashboardRecent'
+  # Acme's dashboard as an administrator reads it on 2026-10-06, the default period: fourteen
+  # open tickets in WEB, the confidential finding among them.
+  example:
+    period: {from: '2026-09-07', to: '2026-10-06'}
+    open_by_state:
+      - {project: WEB, state: filed, count: 4}
+      - {project: WEB, state: analysed, count: 3}
+      - {project: WEB, state: decided, count: 2}
+      - {project: WEB, state: in-progress, count: 3}
+      - {project: WEB, state: review, count: 1}
+      - {project: WEB, state: blocked, count: 1}
+    open_by_severity:
+      - {severity: critical, count: 0}
+      - {severity: high, count: 3}
+      - {severity: medium, count: 6}
+      - {severity: low, count: 4}
+      - {severity: cosmetic, count: 1}
+    security:
+      - {class: live, count: 0, oldest: null}
+      - class: boundary
+        count: 1
+        oldest: {key: acme/WEB-31, title: A password reset link works twice, since: '2026-09-02T11:40:00Z'}
+    blocked:
+      count: 1
+      oldest: {key: acme/WEB-36, title: Move the sign-in page to the new domain, since: '2026-09-29T15:00:00Z', kind: external}
+    age:
+      - {from_days: 0, to_days: 7, count: 4}
+      - {from_days: 7, to_days: 30, count: 7}
+      - {from_days: 30, to_days: 90, count: 2}
+      - {from_days: 90, to_days: 365, count: 1}
+      - {from_days: 365, to_days: null, count: 0}
+    throughput:
+      - {week: 2026-W34, from: '2026-08-17', to: '2026-08-23', done: 2}
+      - {week: 2026-W35, from: '2026-08-24', to: '2026-08-30', done: 3}
+      - {week: 2026-W36, from: '2026-08-31', to: '2026-09-06', done: 1}
+      - {week: 2026-W37, from: '2026-09-07', to: '2026-09-13', done: 2}
+      - {week: 2026-W38, from: '2026-09-14', to: '2026-09-20', done: 4}
+      - {week: 2026-W39, from: '2026-09-21', to: '2026-09-27', done: 1}
+      - {week: 2026-W40, from: '2026-09-28', to: '2026-10-04', done: 3}
+      - {week: 2026-W41, from: '2026-10-05', to: '2026-10-06', done: 1}
+    lead_time: {from: '2026-09-07', to: '2026-10-06', done: 11, median_seconds: 410400}
+    decisions:
+      count: 1
+      oldest:
+        key: acme/WEB-42
+        title: Sign-in fails in Safari when the password contains a space
+        number: 1
+        question: Do we trim passwords on the server as well?
+        since: '2026-10-05T14:55:00Z'
+    time:
+      total_minutes: 135
+      projects:
+        - {project: WEB, name: Website, minutes: 135}
+    recent:
+      - {key: acme/WEB-42, type: bug, title: Sign-in fails in Safari when the password contains a space, state: in-progress, updated_at: '2026-10-06T10:12:05Z'}
+      - {key: acme/WEB-43, type: bug, title: The password reset mail links to the old domain, state: filed, updated_at: '2026-10-06T09:30:00Z'}
+      - {key: acme/WEB-39, type: task, title: Log the sign-in failures with their reason, state: analysed, updated_at: '2026-10-06T08:20:00Z'}
+      - {key: acme/WEB-40, type: feature, title: Customer sign-in, state: in-progress, updated_at: '2026-10-05T17:00:00Z'}
+      - {key: acme/WEB-38, type: task, title: Show the cookie notice in German, state: review, updated_at: '2026-10-05T11:45:00Z'}
+      - {key: acme/WEB-36, type: task, title: Move the sign-in page to the new domain, state: blocked, updated_at: '2026-10-03T16:10:00Z'}
+      - {key: acme/WEB-35, type: bug, title: The footer covers the last line of the price table, state: decided, updated_at: '2026-10-02T13:25:00Z'}
+      - {key: acme/WEB-31, type: bug, title: A password reset link works twice, state: in-progress, updated_at: '2026-10-01T09:50:00Z'}
 DashboardPeriod:
   type: object
   description: |

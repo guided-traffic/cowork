@@ -2582,6 +2582,252 @@
       },
       "Dashboard": {
         "description": "The tenant's dashboard, the nine fixed tiles of docs/adr/0018 D6, read in one read-only\ntransaction. Every tile counts only what the caller can see: the visibility predicate holds\neach ticket, question and time entry it reads, so a restricted project or a confidential\nticket the caller cannot see counts nowhere and is named nowhere (docs/adr/0034 D4,\ndocs/adr/0065 D4), and a time entry follows the visibility of time as well (docs/adr/0034\nD5). A deleted ticket counts nowhere either — nor its questions and its time — until it is\nrestored (docs/adr/0024 D1). *Open* is every state but `done` and `dropped`. The open tiles count the tickets as they\nstand at the request; throughput and lead time end with the period's last day; the time is\nthe period's (docs/adr/0019 D2). Days are UTC days and weeks ISO weeks of them\n(docs/adr/0055 D3). The counted projects are the ones the `project` filter names, or, without\na plain value, every project the caller sees that is not archived; a negated value leaves its\nproject out, and a key that names no project the caller sees counts nothing.\n",
+        "example": {
+          "age": [
+            {
+              "count": 4,
+              "from_days": 0,
+              "to_days": 7
+            },
+            {
+              "count": 7,
+              "from_days": 7,
+              "to_days": 30
+            },
+            {
+              "count": 2,
+              "from_days": 30,
+              "to_days": 90
+            },
+            {
+              "count": 1,
+              "from_days": 90,
+              "to_days": 365
+            },
+            {
+              "count": 0,
+              "from_days": 365,
+              "to_days": null
+            }
+          ],
+          "blocked": {
+            "count": 1,
+            "oldest": {
+              "key": "acme/WEB-36",
+              "kind": "external",
+              "since": "2026-09-29T15:00:00Z",
+              "title": "Move the sign-in page to the new domain"
+            }
+          },
+          "decisions": {
+            "count": 1,
+            "oldest": {
+              "key": "acme/WEB-42",
+              "number": 1,
+              "question": "Do we trim passwords on the server as well?",
+              "since": "2026-10-05T14:55:00Z",
+              "title": "Sign-in fails in Safari when the password contains a space"
+            }
+          },
+          "lead_time": {
+            "done": 11,
+            "from": "2026-09-07",
+            "median_seconds": 410400,
+            "to": "2026-10-06"
+          },
+          "open_by_severity": [
+            {
+              "count": 0,
+              "severity": "critical"
+            },
+            {
+              "count": 3,
+              "severity": "high"
+            },
+            {
+              "count": 6,
+              "severity": "medium"
+            },
+            {
+              "count": 4,
+              "severity": "low"
+            },
+            {
+              "count": 1,
+              "severity": "cosmetic"
+            }
+          ],
+          "open_by_state": [
+            {
+              "count": 4,
+              "project": "WEB",
+              "state": "filed"
+            },
+            {
+              "count": 3,
+              "project": "WEB",
+              "state": "analysed"
+            },
+            {
+              "count": 2,
+              "project": "WEB",
+              "state": "decided"
+            },
+            {
+              "count": 3,
+              "project": "WEB",
+              "state": "in-progress"
+            },
+            {
+              "count": 1,
+              "project": "WEB",
+              "state": "review"
+            },
+            {
+              "count": 1,
+              "project": "WEB",
+              "state": "blocked"
+            }
+          ],
+          "period": {
+            "from": "2026-09-07",
+            "to": "2026-10-06"
+          },
+          "recent": [
+            {
+              "key": "acme/WEB-42",
+              "state": "in-progress",
+              "title": "Sign-in fails in Safari when the password contains a space",
+              "type": "bug",
+              "updated_at": "2026-10-06T10:12:05Z"
+            },
+            {
+              "key": "acme/WEB-43",
+              "state": "filed",
+              "title": "The password reset mail links to the old domain",
+              "type": "bug",
+              "updated_at": "2026-10-06T09:30:00Z"
+            },
+            {
+              "key": "acme/WEB-39",
+              "state": "analysed",
+              "title": "Log the sign-in failures with their reason",
+              "type": "task",
+              "updated_at": "2026-10-06T08:20:00Z"
+            },
+            {
+              "key": "acme/WEB-40",
+              "state": "in-progress",
+              "title": "Customer sign-in",
+              "type": "feature",
+              "updated_at": "2026-10-05T17:00:00Z"
+            },
+            {
+              "key": "acme/WEB-38",
+              "state": "review",
+              "title": "Show the cookie notice in German",
+              "type": "task",
+              "updated_at": "2026-10-05T11:45:00Z"
+            },
+            {
+              "key": "acme/WEB-36",
+              "state": "blocked",
+              "title": "Move the sign-in page to the new domain",
+              "type": "task",
+              "updated_at": "2026-10-03T16:10:00Z"
+            },
+            {
+              "key": "acme/WEB-35",
+              "state": "decided",
+              "title": "The footer covers the last line of the price table",
+              "type": "bug",
+              "updated_at": "2026-10-02T13:25:00Z"
+            },
+            {
+              "key": "acme/WEB-31",
+              "state": "in-progress",
+              "title": "A password reset link works twice",
+              "type": "bug",
+              "updated_at": "2026-10-01T09:50:00Z"
+            }
+          ],
+          "security": [
+            {
+              "class": "live",
+              "count": 0,
+              "oldest": null
+            },
+            {
+              "class": "boundary",
+              "count": 1,
+              "oldest": {
+                "key": "acme/WEB-31",
+                "since": "2026-09-02T11:40:00Z",
+                "title": "A password reset link works twice"
+              }
+            }
+          ],
+          "throughput": [
+            {
+              "done": 2,
+              "from": "2026-08-17",
+              "to": "2026-08-23",
+              "week": "2026-W34"
+            },
+            {
+              "done": 3,
+              "from": "2026-08-24",
+              "to": "2026-08-30",
+              "week": "2026-W35"
+            },
+            {
+              "done": 1,
+              "from": "2026-08-31",
+              "to": "2026-09-06",
+              "week": "2026-W36"
+            },
+            {
+              "done": 2,
+              "from": "2026-09-07",
+              "to": "2026-09-13",
+              "week": "2026-W37"
+            },
+            {
+              "done": 4,
+              "from": "2026-09-14",
+              "to": "2026-09-20",
+              "week": "2026-W38"
+            },
+            {
+              "done": 1,
+              "from": "2026-09-21",
+              "to": "2026-09-27",
+              "week": "2026-W39"
+            },
+            {
+              "done": 3,
+              "from": "2026-09-28",
+              "to": "2026-10-04",
+              "week": "2026-W40"
+            },
+            {
+              "done": 1,
+              "from": "2026-10-05",
+              "to": "2026-10-06",
+              "week": "2026-W41"
+            }
+          ],
+          "time": {
+            "projects": [
+              {
+                "minutes": 135,
+                "name": "Website",
+                "project": "WEB"
+              }
+            ],
+            "total_minutes": 135
+          }
+        },
         "properties": {
           "age": {
             "description": "Tile 5, the age distribution of the open tickets, the age being the time since filing\n(`opened_at`) at the request: five buckets in this order, every one present — under 7\ndays, 7 to under 30, 30 to under 90, 90 to under 365, and 365 days or more, a day being\n24 hours.\n",
