@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -73,9 +74,15 @@ func TestTheCommandLine(t *testing.T) {
 	code, _, stderr := run(t, Env{})
 	assert.Equal(t, 2, code)
 	assert.Contains(t, stderr, "Usage: cowork-mcp")
-	code, _, stderr = run(t, Env{}, "export", "acme/COW", "out")
+	code, _, stderr = run(t, Env{}, "export", "acme/COW")
+	assert.Equal(t, 2, code, "export takes a project and a directory (docs/adr/0070 D4)")
+	assert.Contains(t, stderr, `unknown command "export acme/COW"`)
+	code, _, stderr = run(t, Env{}, "export", "acme-COW", t.TempDir())
 	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, `unknown command "export acme/COW out"`)
+	assert.Contains(t, stderr, `"acme-COW" names no project`)
+	code, _, stderr = run(t, Env{}, "export", "acme/COW", filepath.Join(t.TempDir(), "new"))
+	assert.Equal(t, 1, code, "export without configuration ends at once")
+	assert.Contains(t, stderr, "COWORK_URL is not set")
 	code, stdout, _ := run(t, Env{}, "version")
 	assert.Equal(t, 0, code)
 	assert.Regexp(t, `^cowork-mcp 0\.9\.0 \(commit abc, built 0, API /api/v1: \d+ operations\)\n$`, stdout)
