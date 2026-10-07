@@ -1693,6 +1693,15 @@ Interest:
     since: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
     settled: {type: boolean, description: The ticket is done or dropped; the stake stays on record (docs/adr/0013 D5)}
+  example: &example-interest
+    person: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+    weight: need
+    note: Support answers three calls a day from customers who cannot sign in.
+    agent: null
+    token: null
+    since: '2026-10-01T09:00:00Z'
+    updated_at: '2026-10-01T09:00:00Z'
+    settled: false
 InterestSet:
   type: object
   additionalProperties: false
@@ -1711,6 +1720,10 @@ InterestList:
         $ref: '#/Interest'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-interest
+    next_cursor: null
 QuestionStatus:
   type: string
   enum: [open, answered, withdrawn]
@@ -1836,6 +1849,15 @@ Link:
     created_by:
       $ref: '#/Person'
     created_at: {type: string, format: date-time}
+  # The link as acme/WEB-39 reads it, its source: PUT …/tickets/39/links/blocks/WEB-42.
+  example:
+    id: 01a0f68c-8780-7b4f-be55-ff44fa945045
+    type: blocks
+    direction: outgoing
+    name: blocks
+    ticket: {key: acme/WEB-42, title: Sign-in fails in Safari when the password contains a space, state: in-progress}
+    created_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    created_at: '2026-10-01T08:20:00Z'
 LinkList:
   type: object
   required: [items, next_cursor]
@@ -1846,6 +1868,24 @@ LinkList:
         $ref: '#/Link'
     next_cursor:
       type: [string, 'null']
+  # The links of acme/WEB-42, the target of both.
+  example:
+    items:
+      - id: 01a0f68c-8780-7b4f-be55-ff44fa945045
+        type: blocks
+        direction: incoming
+        name: blocked by
+        ticket: {key: acme/WEB-39, title: Log the sign-in failures with their reason, state: analysed}
+        created_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+        created_at: '2026-10-01T08:20:00Z'
+      - id: 01a0f68d-71e0-7ada-9dcc-c3feda69e27a
+        type: blocks
+        direction: incoming
+        name: blocked by
+        ticket: {key: acme/WEB-41, title: Pick the SameSite mode of the session cookie, state: done}
+        created_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+        created_at: '2026-10-01T08:21:00Z'
+    next_cursor: null
 PullRequestKind:
   type: string
   enum: [pull_request, commit]
@@ -1890,6 +1930,20 @@ PullRequest:
       $ref: '#/PullRequestFoundIn'
     first_seen_at: {type: string, format: date-time, description: When a delivery first linked it to the ticket}
     last_seen_at: {type: string, format: date-time, description: When a delivery last told of it}
+  example: &example-pull-request
+    id: 01a11185-9ea0-7025-a5c9-d7ff9a0dcc8e
+    kind: pull_request
+    repository: github.com/acme/website
+    number: 118
+    sha: null
+    title: Send the password as typed (WEB-42)
+    state: merged
+    url: https://github.com/acme/website/pull/118
+    author: grace-hopper
+    merged_at: '2026-10-06T16:40:03Z'
+    found_in: trailer
+    first_seen_at: '2026-10-06T14:02:12Z'
+    last_seen_at: '2026-10-06T16:40:03Z'
 PullRequestList:
   type: object
   required: [items, next_cursor]
@@ -1900,6 +1954,23 @@ PullRequestList:
         $ref: '#/PullRequest'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-pull-request
+      - id: 01a11216-2a88-789b-9a95-0865acfc9150
+        kind: commit
+        repository: github.com/acme/website
+        number: null
+        sha: 4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281
+        title: Send the password as typed (WEB-42) (#118)
+        state: merged
+        url: https://github.com/acme/website/commit/4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281
+        author: grace-hopper
+        merged_at: '2026-10-06T16:40:05Z'
+        found_in: trailer
+        first_seen_at: '2026-10-06T16:40:05Z'
+        last_seen_at: '2026-10-06T16:40:05Z'
+    next_cursor: null
 GitHubSecret:
   type: object
   description: The tenant's GitHub webhook secret as its administrators read it — never the secret itself
@@ -1985,6 +2056,35 @@ PrerequisiteTree:
       type: integer
       minimum: 0
       description: The open tickets of the whole tree the caller can see, each counted once, on every page
+  # What blocks acme/WEB-42, siblings in the order they were filed.
+  example:
+    items:
+      - key: acme/WEB-41
+        title: Pick the SameSite mode of the session cookie
+        state: done
+        blocked_from: null
+        assignee: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        progress: 100
+        progress_refinement: 100
+        progress_review: 100
+        progress_derived: false
+        depth: 1
+        settled: true
+        repeated: false
+      - key: acme/WEB-39
+        title: Log the sign-in failures with their reason
+        state: analysed
+        blocked_from: null
+        assignee: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+        progress: 0
+        progress_refinement: 40
+        progress_review: 0
+        progress_derived: false
+        depth: 1
+        settled: false
+        repeated: false
+    next_cursor: null
+    open: 1
 TicketList:
   type: object
   required: [items, next_cursor]

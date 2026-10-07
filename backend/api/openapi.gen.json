@@ -4017,6 +4017,20 @@
         "type": "object"
       },
       "Interest": {
+        "example": {
+          "agent": null,
+          "note": "Support answers three calls a day from customers who cannot sign in.",
+          "person": {
+            "display_name": "Sam Rivera",
+            "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+            "username": "sam"
+          },
+          "settled": false,
+          "since": "2026-10-01T09:00:00Z",
+          "token": null,
+          "updated_at": "2026-10-01T09:00:00Z",
+          "weight": "need"
+        },
         "properties": {
           "agent": {
             "description": "The agent mark of the write that set the stake as it stands, in the person's name (docs/adr/0036 D6)",
@@ -4071,6 +4085,25 @@
         "type": "object"
       },
       "InterestList": {
+        "example": {
+          "items": [
+            {
+              "agent": null,
+              "note": "Support answers three calls a day from customers who cannot sign in.",
+              "person": {
+                "display_name": "Sam Rivera",
+                "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+                "username": "sam"
+              },
+              "settled": false,
+              "since": "2026-10-01T09:00:00Z",
+              "token": null,
+              "updated_at": "2026-10-01T09:00:00Z",
+              "weight": "need"
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -4118,6 +4151,23 @@
         "type": "string"
       },
       "Link": {
+        "example": {
+          "created_at": "2026-10-01T08:20:00Z",
+          "created_by": {
+            "display_name": "Grace Hopper",
+            "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+            "username": null
+          },
+          "direction": "outgoing",
+          "id": "01a0f68c-8780-7b4f-be55-ff44fa945045",
+          "name": "blocks",
+          "ticket": {
+            "key": "acme/WEB-42",
+            "state": "in-progress",
+            "title": "Sign-in fails in Safari when the password contains a space"
+          },
+          "type": "blocks"
+        },
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -4161,6 +4211,45 @@
         "type": "object"
       },
       "LinkList": {
+        "example": {
+          "items": [
+            {
+              "created_at": "2026-10-01T08:20:00Z",
+              "created_by": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "direction": "incoming",
+              "id": "01a0f68c-8780-7b4f-be55-ff44fa945045",
+              "name": "blocked by",
+              "ticket": {
+                "key": "acme/WEB-39",
+                "state": "analysed",
+                "title": "Log the sign-in failures with their reason"
+              },
+              "type": "blocks"
+            },
+            {
+              "created_at": "2026-10-01T08:21:00Z",
+              "created_by": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "direction": "incoming",
+              "id": "01a0f68d-71e0-7ada-9dcc-c3feda69e27a",
+              "name": "blocked by",
+              "ticket": {
+                "key": "acme/WEB-41",
+                "state": "done",
+                "title": "Pick the SameSite mode of the session cookie"
+              },
+              "type": "blocks"
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -4813,6 +4902,48 @@
         "type": "object"
       },
       "PrerequisiteTree": {
+        "example": {
+          "items": [
+            {
+              "assignee": {
+                "display_name": "Ada Lovelace",
+                "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                "username": "ada"
+              },
+              "blocked_from": null,
+              "depth": 1,
+              "key": "acme/WEB-41",
+              "progress": 100,
+              "progress_derived": false,
+              "progress_refinement": 100,
+              "progress_review": 100,
+              "repeated": false,
+              "settled": true,
+              "state": "done",
+              "title": "Pick the SameSite mode of the session cookie"
+            },
+            {
+              "assignee": {
+                "display_name": "Sam Rivera",
+                "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+                "username": "sam"
+              },
+              "blocked_from": null,
+              "depth": 1,
+              "key": "acme/WEB-39",
+              "progress": 0,
+              "progress_derived": false,
+              "progress_refinement": 40,
+              "progress_review": 0,
+              "repeated": false,
+              "settled": false,
+              "state": "analysed",
+              "title": "Log the sign-in failures with their reason"
+            }
+          ],
+          "next_cursor": null,
+          "open": 1
+        },
         "properties": {
           "items": {
             "items": {
@@ -5263,6 +5394,21 @@
       },
       "PullRequest": {
         "description": "A pull request or a default-branch commit GitHub's webhook linked to the ticket (docs/adr/0071 D6)",
+        "example": {
+          "author": "grace-hopper",
+          "first_seen_at": "2026-10-06T14:02:12Z",
+          "found_in": "trailer",
+          "id": "01a11185-9ea0-7025-a5c9-d7ff9a0dcc8e",
+          "kind": "pull_request",
+          "last_seen_at": "2026-10-06T16:40:03Z",
+          "merged_at": "2026-10-06T16:40:03Z",
+          "number": 118,
+          "repository": "github.com/acme/website",
+          "sha": null,
+          "state": "merged",
+          "title": "Send the password as typed (WEB-42)",
+          "url": "https://github.com/acme/website/pull/118"
+        },
         "properties": {
           "author": {
             "description": "The author's GitHub login, where GitHub named one",
@@ -5365,6 +5511,41 @@
         "type": "string"
       },
       "PullRequestList": {
+        "example": {
+          "items": [
+            {
+              "author": "grace-hopper",
+              "first_seen_at": "2026-10-06T14:02:12Z",
+              "found_in": "trailer",
+              "id": "01a11185-9ea0-7025-a5c9-d7ff9a0dcc8e",
+              "kind": "pull_request",
+              "last_seen_at": "2026-10-06T16:40:03Z",
+              "merged_at": "2026-10-06T16:40:03Z",
+              "number": 118,
+              "repository": "github.com/acme/website",
+              "sha": null,
+              "state": "merged",
+              "title": "Send the password as typed (WEB-42)",
+              "url": "https://github.com/acme/website/pull/118"
+            },
+            {
+              "author": "grace-hopper",
+              "first_seen_at": "2026-10-06T16:40:05Z",
+              "found_in": "trailer",
+              "id": "01a11216-2a88-789b-9a95-0865acfc9150",
+              "kind": "commit",
+              "last_seen_at": "2026-10-06T16:40:05Z",
+              "merged_at": "2026-10-06T16:40:05Z",
+              "number": null,
+              "repository": "github.com/acme/website",
+              "sha": "4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281",
+              "state": "merged",
+              "title": "Send the password as typed (WEB-42) (#118)",
+              "url": "https://github.com/acme/website/commit/4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281"
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -12203,6 +12384,7 @@
           "200": {
             "content": {
               "text/markdown": {
+                "example": "\u003c!-- cowork: context of acme/WEB-42, exported 2026-10-06T17:05:00Z by Ada Lovelace (via claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911) — not an import format --\u003e\n---\nkey: acme/WEB-42\ntitle: Sign-in fails in Safari when the password contains a space\ntype: bug\nstate: in-progress\nseverity: high\nsecurity: none\nhorizon: now\neffort: S\nprogress-refinement: 100\nprogress: 60\nprogress-review: 0\nassignee: \"Grace Hopper \u003coidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw\u003e\"\nparent: acme/WEB-40\nopened: 2026-10-01\ndecided: 2026-10-02\nattachments:\n  - safari-sign-in.png\n---\n\n## Current state\n\nSafari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.\n\n## Required changes\n\n- Send the password as typed.\n- An end-to-end test that signs in with a trailing space in Safari.\n\n## Open questions\n\n### Q1: Do we trim passwords on the server as well?\n\n- A: trim nowhere: a password is sent and stored as typed.\n- B: trim on both ends, and say so at sign-up.\n\n**Recommendation:** A: a space is a character like any other; trimming would lock out who chose one.\n\n**Answer:** _open_\n\n## Links\n\n- blocked by acme/WEB-39 — Log the sign-in failures with their reason (analysed, Sam Rivera)\n- blocked by acme/WEB-41 — Pick the SameSite mode of the session cookie (done, Ada Lovelace)\n\n## Prerequisites\n\n1 of 2 open.\n\n- acme/WEB-41 — Pick the SameSite mode of the session cookie (done, Ada Lovelace, 100%)\n- acme/WEB-39 — Log the sign-in failures with their reason (analysed, Sam Rivera, 0%)\n\n## Recent comments\n\n**Grace Hopper**, 2026-10-05 15:02 UTC:\n\n\u003e Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.\n\u003e\n\u003e ![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)\n\u003e\n\u003e @Ada Lovelace, see Q1 before we change the form.\n\n## Attachments\n\n- safari-sign-in.png — image/png, 182.4 KiB — /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content\n\n## Pull requests\n\n- github.com/acme/website#118 \"Send the password as typed (WEB-42)\" (merged 2026-10-06 16:40 UTC, by grace-hopper, key in the trailer) — https://github.com/acme/website/pull/118\n- github.com/acme/website@4c1d8e2b7a9f \"Send the password as typed (WEB-42) (#118)\" (merged 2026-10-06 16:40 UTC, by grace-hopper, key in the trailer) — https://github.com/acme/website/commit/4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281\n\n## Recent activity\n\n- 2026-10-02 09:12 UTC — Grace Hopper — transitioned: decided → in-progress\n- 2026-10-02 09:14 UTC — Ada Lovelace — set the horizon to now — reason: \"Customers cannot sign in\"\n- 2026-10-05 15:02 UTC — Grace Hopper — commented\n- 2026-10-06 14:02 UTC — system:github — linked pull request github.com/acme/website#118\n- 2026-10-06 16:40 UTC — system:github — merged pull request github.com/acme/website#118\n- 2026-10-06 16:40 UTC — system:github — linked commit github.com/acme/website@4c1d8e2b7a9f\n",
                 "schema": {
                   "type": "string"
                 }
@@ -12366,6 +12548,10 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "note": "Support answers three calls a day from customers who cannot sign in.",
+                "weight": "need"
+              },
               "schema": {
                 "$ref": "#/components/schemas/InterestSet"
               }
@@ -12535,6 +12721,7 @@
           "200": {
             "content": {
               "text/markdown": {
+                "example": "---\nkey: acme/WEB-42\ntitle: Sign-in fails in Safari when the password contains a space\ntype: bug\nstate: in-progress\nseverity: high\nsecurity: none\nhorizon: now\neffort: S\nprogress-refinement: 100\nprogress: 60\nprogress-review: 0\nassignee: \"Grace Hopper \u003coidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw\u003e\"\nparent: acme/WEB-40\nopened: 2026-10-01\ndecided: 2026-10-02\nattachments:\n  - safari-sign-in.png\n---\n\n## Current state\n\nSafari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.\n\n## Required changes\n\n- Send the password as typed.\n- An end-to-end test that signs in with a trailing space in Safari.\n\n## Open questions\n\n### Q1: Do we trim passwords on the server as well?\n\n- A: trim nowhere: a password is sent and stored as typed.\n- B: trim on both ends, and say so at sign-up.\n\n**Recommendation:** A: a space is a character like any other; trimming would lock out who chose one.\n\n**Answer:** _open_\n",
                 "schema": {
                   "type": "string"
                 }
@@ -12600,30 +12787,6 @@
           "200": {
             "content": {
               "application/json": {
-                "example": {
-                  "items": [
-                    {
-                      "assignee": {
-                        "display_name": "Ada",
-                        "id": "0190f4c2-6f1e-7a3b-9c2d-1e2f3a4b5c6d",
-                        "username": "ada"
-                      },
-                      "blocked_from": null,
-                      "depth": 1,
-                      "key": "acme/COW-7",
-                      "progress": 40,
-                      "progress_derived": false,
-                      "progress_refinement": 100,
-                      "progress_review": 0,
-                      "repeated": false,
-                      "settled": false,
-                      "state": "in-progress",
-                      "title": "Pick the format"
-                    }
-                  ],
-                  "next_cursor": null,
-                  "open": 1
-                },
                 "schema": {
                   "$ref": "#/components/schemas/PrerequisiteTree"
                 }
@@ -13055,7 +13218,7 @@
           "content": {
             "application/json": {
               "example": {
-                "after": 12
+                "after": 39
               },
               "schema": {
                 "$ref": "#/components/schemas/TicketRankSet"
@@ -13389,10 +13552,22 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "example": {
-                "from": "review",
-                "note": "make test-integration passed against PostgreSQL 18.6",
-                "to": "done"
+              "examples": {
+                "done": {
+                  "summary": "Done by hand, with the verification note",
+                  "value": {
+                    "from": "review",
+                    "note": "The end-to-end sign-in with a trailing space passed in Safari 18 and Chrome 129 against staging.",
+                    "to": "done"
+                  }
+                },
+                "start": {
+                  "summary": "Forward one step, which the ticket's example answers",
+                  "value": {
+                    "from": "decided",
+                    "to": "in-progress"
+                  }
+                }
               },
               "schema": {
                 "$ref": "#/components/schemas/Transition"
