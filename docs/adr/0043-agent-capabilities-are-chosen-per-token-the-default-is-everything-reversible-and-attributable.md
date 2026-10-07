@@ -44,6 +44,10 @@ amended 2026-10-06 a seventh time, for GitHub's webhook of ADR 0071, made concre
 to the owner's objection (D2: removing a link the webhook made is in the baseline, and stays; D3:
 the tenant's webhook secret is among the administration acts — built the same day, `administer` in
 [`api/integrations.go`](../../backend/internal/api/integrations.go)),
+amended 2026-10-06 an eighth time (the note on what is built of D3: the removal of a consistency
+check's orphaned objects and the acceptance of its missing files,
+[ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4, D5, are hard-off by D3 as it stands; no rule changes),
 amended 2026-10-03 (D4: `close` covers both ways to `done`
 of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
 that fills the last progress stage and done by hand — an agent's only from `in-progress` or
@@ -108,6 +112,14 @@ agent_forbidden`, `hard-off: deleting, restoring or purging`, before the filter 
 sharing and unsharing its person's own filter need `filterNeed` and no capability, each recorded
 with the agent mark (`TestAnAgentKeepsItsPersonsSavedFilterAndDeletesNone`, which asserts each of
 the five acts as allowed or refused, a token with no capability included).
+*(2026-10-06:)* D3 is built for the two acts of the consistency check of
+[ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4, D5 ([`api/consistency.go`](../../backend/internal/api/consistency.go)): removing a check's
+orphaned objects is `deleting, restoring or purging` — and takes a browser session, so an agent's
+token meets `403 session_required` and a session the header marks `403 agent_forbidden` first —;
+accepting the loss of its missing files is `administration`, `403 agent_forbidden` with
+`hard-off: administration` (`TestTheConsistencyCheckIsTheTenantAdministratorsAndNoAgents`). No rule
+changes.
 *(2026-10-05:)* D4's amendment of 2026-10-05 is built, its expand half: `set-horizon` is the
 capability's name in `auth.AllCapabilities`, `auth.DefaultChatCapabilities`, the tool descriptions,
 the chat's instructions and the UI's nine switches; `auth.Canonical` reads `override-urgency` as

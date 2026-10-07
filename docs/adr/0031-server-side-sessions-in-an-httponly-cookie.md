@@ -33,7 +33,10 @@ sign-in that follows an ended provider session is
 D6), and on 2026-10-06 for GitHub's webhook of
 [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
 (D6: eighteen routes, making or rotating the tenant's webhook secret the eighteenth; built the same
-day). Date: 2026-10-01. Decided by the owner as the answer to the
+day), and on 2026-10-06 by the rule of
+[ADR 0035](0035-personal-access-tokens.md) D5 for the consistency check of
+[ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4, made concrete by the implementer, open to the owner's objection (D6: nineteen routes). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "browser session mechanism?": server-side sessions, over the identity
 provider's JWT in the browser and over a stateless signed cookie. The rules of D5–D7 were put
 to the owner with the question and explicitly confirmed.
@@ -265,8 +268,12 @@ D7: ~~sixteen~~ seventeen routes, purging a deleted ticket the seventeenth (ADR 
 agent-marked request is refused all ~~seventeen~~.)* *(Amended 2026-10-06 for GitHub's webhook of
 [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
 D1: ~~seventeen~~ eighteen routes, making or rotating the tenant's webhook secret the eighteenth (ADR
-0035 D5); an agent-marked request is refused all eighteen. The webhook itself takes no session at all:
+0035 D5); an agent-marked request is refused all ~~eighteen~~. The webhook itself takes no session at all:
 a cookie on a delivery is ignored, never resolved.)*
+*(Amended 2026-10-06 by the rule of ADR 0035 D5 for the consistency check of
+[ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4: ~~eighteen~~ nineteen routes, removing the orphaned objects of a consistency check the
+nineteenth; an agent-marked request is refused all nineteen.)*
 
 **D7 — Sessions are recorded, never by id.** Login, logout, revocation and refresh outcomes
 are audit rows ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md))
