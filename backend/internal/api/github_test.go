@@ -69,6 +69,14 @@ func TestNewWebhookSecret(t *testing.T) {
 	assert.NotEqual(t, s, newWebhookSecret())
 }
 
+// docs/adr/0071 D6: the page a ticket links is the bound repository's, never
+// a payload's.
+func TestThePagesAreTheBoundRepositorys(t *testing.T) {
+	assert.Equal(t, "https://github.com/acme/app/pull/34", pullRequestPage("github.com/acme/app", 34))
+	assert.Equal(t, "https://ghe.example.com/org/sub/repo/commit/0d1a26e6",
+		commitPage("ghe.example.com/org/sub/repo", "0d1a26e6"))
+}
+
 func TestWebhookPathAndFoundInWord(t *testing.T) {
 	assert.Equal(t, "/api/v1/tenants/acme/integrations/github/webhook", webhookPath("acme"))
 	assert.Equal(t, "title", foundInWord(entityPullRequest, github.FoundInSubject))

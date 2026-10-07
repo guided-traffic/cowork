@@ -32,9 +32,11 @@ export interface ReceiveGitHubWebhook$Params {
   
     /**
      * GitHub's payload, read only after its signature: of `pull_request` the action, the pull
-     * request's number, title, body, state, `merged`, `merged_at`, `updated_at`, `html_url` and
-     * `user.login`; of `push` the `ref` and the commits' `id`, `message`, `url` and author; of
-     * both `repository.clone_url` and `repository.default_branch`. Everything else is passed over.
+     * request's number, title, body, state, `merged`, `merged_at`, `updated_at` and
+     * `user.login`; of `push` the `ref` and the commits' `id`, `message` and `author.username`; of
+     * both `repository.clone_url` and `repository.default_branch`. Everything else is passed
+     * over — a page the payload names too: the page a ticket links is written from the bound
+     * repository's identity.
      */
     body: {
 }

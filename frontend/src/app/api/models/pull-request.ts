@@ -59,7 +59,8 @@ export interface PullRequest {
   title: string;
 
   /**
-   * The pull request's or the commit's page at GitHub
+   * The pull request's or the commit's page at GitHub, written from the bound repository's
+   * identity, never taken from a payload
    */
   url: string;
 }

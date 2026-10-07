@@ -4094,7 +4094,7 @@
             "type": "string"
           },
           "url": {
-            "description": "The pull request's or the commit's page at GitHub",
+            "description": "The pull request's or the commit's page at GitHub, written from the bound repository's\nidentity, never taken from a payload\n",
             "type": "string"
           }
         },
@@ -8442,7 +8442,7 @@
               }
             }
           },
-          "description": "GitHub's payload, read only after its signature: of `pull_request` the action, the pull\nrequest's number, title, body, state, `merged`, `merged_at`, `updated_at`, `html_url` and\n`user.login`; of `push` the `ref` and the commits' `id`, `message`, `url` and author; of\nboth `repository.clone_url` and `repository.default_branch`. Everything else is passed over.\n",
+          "description": "GitHub's payload, read only after its signature: of `pull_request` the action, the pull\nrequest's number, title, body, state, `merged`, `merged_at`, `updated_at` and\n`user.login`; of `push` the `ref` and the commits' `id`, `message` and `author.username`; of\nboth `repository.clone_url` and `repository.default_branch`. Everything else is passed\nover — a page the payload names too: the page a ticket links is written from the bound\nrepository's identity.\n",
           "required": true
         },
         "responses": {

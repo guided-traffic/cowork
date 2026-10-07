@@ -2824,7 +2824,8 @@ type PullRequest struct {
 	// Title The pull request's title, or the commit's subject, as GitHub sent it
 	Title string `json:"title"`
 
-	// Url The pull request's or the commit's page at GitHub
+	// Url The pull request's or the commit's page at GitHub, written from the bound repository's
+	// identity, never taken from a payload
 	Url string `json:"url"`
 }
 

@@ -1643,7 +1643,11 @@ PullRequest:
     title: {type: string, description: 'The pull request''s title, or the commit''s subject, as GitHub sent it'}
     state:
       $ref: '#/PullRequestState'
-    url: {type: string, description: The pull request's or the commit's page at GitHub}
+    url:
+      type: string
+      description: |
+        The pull request's or the commit's page at GitHub, written from the bound repository's
+        identity, never taken from a payload
     author: {type: [string, 'null'], description: 'The author''s GitHub login, where GitHub named one'}
     merged_at:
       type: [string, 'null']

@@ -61,7 +61,6 @@ func TestParseAMergedPullRequest(t *testing.T) {
 	require.NotNil(t, pr.MergedAt)
 	assert.Equal(t, time.Date(2026, 10, 6, 9, 30, 0, 0, time.UTC), pr.MergedAt.UTC())
 	assert.Equal(t, time.Date(2026, 10, 6, 9, 30, 0, 0, time.UTC), pr.UpdatedAt.UTC())
-	assert.Equal(t, "https://github.com/acme/app/pull/34", pr.URL)
 	assert.Equal(t, "octocat", pr.Author)
 	assert.Equal(t, "fix(controller): guard the failover gate (VKO-12)", pr.Title)
 	assert.Equal(t, Repository{CloneURL: "https://github.com/acme/app.git", DefaultBranch: "main"}, pr.Repository)
@@ -96,12 +95,11 @@ func TestParseTheStatesOfAPullRequest(t *testing.T) {
 
 func TestParseRefusesWhatGitHubDoesNotSend(t *testing.T) {
 	for name, body := range map[string]string{
-		"not json":       `{`,
-		"no pr":          `{"action":"opened"}`,
-		"no number":      `{"pull_request":{"html_url":"https://github.com/a/b/pull/1","updated_at":"2026-10-06T10:00:00Z"}}`,
-		"huge number":    `{"pull_request":{"number":4294967296,"html_url":"https://github.com/a/b/pull/1","updated_at":"2026-10-06T10:00:00Z"}}`,
-		"no update":      `{"pull_request":{"number":1,"html_url":"https://github.com/a/b/pull/1"}}`,
-		"plain http url": `{"pull_request":{"number":1,"html_url":"http://github.com/a/b/pull/1","updated_at":"2026-10-06T10:00:00Z"}}`,
+		"not json":    `{`,
+		"no pr":       `{"action":"opened"}`,
+		"no number":   `{"pull_request":{"html_url":"https://github.com/a/b/pull/1","updated_at":"2026-10-06T10:00:00Z"}}`,
+		"huge number": `{"pull_request":{"number":4294967296,"html_url":"https://github.com/a/b/pull/1","updated_at":"2026-10-06T10:00:00Z"}}`,
+		"no update":   `{"pull_request":{"number":1,"html_url":"https://github.com/a/b/pull/1"}}`,
 	} {
 		_, err := ParsePullRequest([]byte(body))
 		assert.ErrorIs(t, err, ErrPayload, name)

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -147,7 +148,8 @@ func applyPullRequest(ctx context.Context, w *store.Writer, hook hookTenant, pr 
 func linkPullRequest(ctx context.Context, w *store.Writer, hook hookTenant, identity string, pr github.PullRequest, t linkTarget, now time.Time) error {
 	at := pr.UpdatedAt
 	id, err := w.InsertTicketPullRequest(ctx, writeq.InsertTicketPullRequestParams{TenantID: hook.id, TicketID: t.id,
-		Repository: identity, Number: pr.Number, Title: pr.Title, State: pr.State, Url: pr.URL, Author: optional(pr.Author),
+		Repository: identity, Number: pr.Number, Title: pr.Title, State: pr.State, Url: pullRequestPage(identity, pr.Number),
+		Author:   optional(pr.Author),
 		MergedAt: pr.MergedAt, FoundIn: t.foundIn, SourceUpdatedAt: &at, SeenAt: now})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
@@ -168,7 +170,7 @@ func linkPullRequest(ctx context.Context, w *store.Writer, hook hookTenant, iden
 // facts quietly.
 func updatePullRequest(ctx context.Context, w *store.Writer, hook hookTenant, identity string, pr github.PullRequest, now time.Time) error {
 	rows, err := w.UpdatePullRequestFacts(ctx, writeq.UpdatePullRequestFactsParams{Title: pr.Title, State: pr.State,
-		Url: pr.URL, Author: optional(pr.Author), MergedAt: pr.MergedAt, SourceUpdatedAt: pr.UpdatedAt, SeenAt: now,
+		Url: pullRequestPage(identity, pr.Number), Author: optional(pr.Author), MergedAt: pr.MergedAt, SourceUpdatedAt: pr.UpdatedAt, SeenAt: now,
 		TenantID: hook.id, Repository: identity, Number: pr.Number})
 	if err != nil {
 		return err
@@ -254,7 +256,8 @@ func applyPush(ctx context.Context, w *store.Writer, hook hookTenant, push githu
 // holds the link, or held it until a person removed it, changes nothing.
 func linkCommit(ctx context.Context, w *store.Writer, hook hookTenant, identity string, c github.Commit, t linkTarget, now time.Time) error {
 	id, err := w.InsertTicketCommit(ctx, writeq.InsertTicketCommitParams{TenantID: hook.id, TicketID: t.id,
-		Repository: identity, Sha: c.SHA, Title: c.Subject(), Url: c.URL, Author: optional(c.Author), SeenAt: now,
+		Repository: identity, Sha: c.SHA, Title: c.Subject(), Url: commitPage(identity, c.SHA), Author: optional(c.Author),
+		SeenAt:  now,
 		FoundIn: t.foundIn})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil
@@ -265,6 +268,19 @@ func linkCommit(ctx context.Context, w *store.Writer, hook hookTenant, identity 
 	w.Record(store.Event{EntityType: entityCommit, EntityID: id, TicketID: t.id, TicketKey: t.key, Action: actionLinked,
 		After: map[string]any{fieldSHA: c.SHA, fieldRepository: identity, fieldFoundIn: t.foundIn}})
 	return nil
+}
+
+// pullRequestPage and commitPage are the pages of a pull request and a commit
+// at GitHub, written from the bound repository's identity and never taken
+// from a payload: whoever holds the secret puts no link to anywhere but the
+// bound repository on a ticket (docs/adr/0071 D6). GitHub's own pages, and
+// those of a GitHub Enterprise Server, are https://<host>/<owner>/<repo>/….
+func pullRequestPage(identity string, number int32) string {
+	return "https://" + identity + "/pull/" + strconv.FormatInt(int64(number), 10)
+}
+
+func commitPage(identity, sha string) string {
+	return "https://" + identity + "/commit/" + sha
 }
 
 // optional is a string a column holds as NULL when it is empty.

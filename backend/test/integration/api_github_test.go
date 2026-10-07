@@ -428,6 +428,22 @@ func TestAPullRequestLinksTheTicketsItsTitleAndBodyName(t *testing.T) {
 	assert.NotContains(t, string(canonical), "Pull requests", "the canonical ticket carries no pull request (docs/adr/0044 D1)")
 }
 
+// docs/adr/0071 D6: the page a ticket links is the bound repository's: a
+// payload that names another page — whoever holds the secret writes the
+// payload — puts no link to it on the ticket.
+func TestAPayloadsPageIsNotWhatATicketLinks(t *testing.T) {
+	e := newWebhookEnv(t)
+	member := caller{Token: e.tk.MemberA}
+	tk := e.file(t, member, "ALPHA", task("its link stays at GitHub"))
+	key := strings.SplitN(tk.Key, "/", 2)[1]
+	body := prEvent{Action: "opened", Number: 12, Title: "x (" + key + ")"}.body(t)
+	body = bytes.ReplaceAll(body, []byte(`"html_url": "https://github.com/acme/app/pull/12"`),
+		[]byte(`"html_url": "https://phishing.example/login"`))
+	require.Contains(t, string(body), "phishing.example")
+	e.mustTake(t, "pull_request", body)
+	assert.Equal(t, "https://github.com/acme/app/pull/12", e.pullRequests(t, member, tk.Number)[0].Url)
+}
+
 // docs/adr/0071 D6: edited and synchronize bring the title up to date on every
 // ticket the pull request is linked to — an act updated, which the activity
 // leaves out —, and a delivery older than the facts a link holds changes

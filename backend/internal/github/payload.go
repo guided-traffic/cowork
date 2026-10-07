@@ -31,10 +31,11 @@ const (
 var readActions = map[string]bool{"opened": true, "edited": true, "synchronize": true, "reopened": true, "closed": true}
 
 // The bounds of what a delivery writes into a ticket's list: a title is cut,
-// an author or a URL beyond its bound is left out or refuses the delivery.
+// an author beyond its bound is left out. No page a payload names is kept: the
+// page of a pull request or a commit is written from the bound repository's
+// identity, so a delivery cannot put a link to anywhere else on a ticket.
 const (
 	maxTitle  = 500
-	maxURL    = 2000
 	maxAuthor = 100
 )
 
@@ -59,7 +60,6 @@ type PullRequest struct {
 	Body       string
 	// State is open, closed or merged.
 	State  string
-	URL    string
 	Author string
 	// MergedAt is when it was merged; nil when it was not.
 	MergedAt *time.Time
@@ -84,11 +84,10 @@ func (p Push) ToDefaultBranch() bool {
 	return p.Repository.DefaultBranch != "" && p.Ref == "refs/heads/"+p.Repository.DefaultBranch
 }
 
-// Commit is one pushed commit: its id, its message, its page and its author.
+// Commit is one pushed commit: its id, its message and its author.
 type Commit struct {
 	SHA     string
 	Message string
-	URL     string
 	Author  string
 }
 
@@ -117,7 +116,6 @@ type pullRequestPayload struct {
 		Merged    bool        `json:"merged"`
 		MergedAt  *time.Time  `json:"merged_at"`
 		UpdatedAt time.Time   `json:"updated_at"`
-		HTMLURL   string      `json:"html_url"`
 		User      userPayload `json:"user"`
 	} `json:"pull_request"`
 	Repository repositoryPayload `json:"repository"`
@@ -128,7 +126,6 @@ type pushPayload struct {
 	Commits []struct {
 		ID      string `json:"id"`
 		Message string `json:"message"`
-		URL     string `json:"url"`
 		Author  struct {
 			Username string `json:"username"`
 		} `json:"author"`
@@ -143,8 +140,8 @@ func ParsePullRequest(body []byte) (PullRequest, error) {
 		return PullRequest{}, fmt.Errorf("%w: %w", ErrPayload, err)
 	}
 	pr := p.PullRequest
-	if pr == nil || pr.Number <= 0 || pr.Number > math.MaxInt32 || pr.UpdatedAt.IsZero() || !webPage(pr.HTMLURL) {
-		return PullRequest{}, fmt.Errorf("%w: a pull request needs its number, updated_at and html_url", ErrPayload)
+	if pr == nil || pr.Number <= 0 || pr.Number > math.MaxInt32 || pr.UpdatedAt.IsZero() {
+		return PullRequest{}, fmt.Errorf("%w: a pull request needs its number and updated_at", ErrPayload)
 	}
 	out := PullRequest{
 		Action:     p.Action,
@@ -152,7 +149,6 @@ func ParsePullRequest(body []byte) (PullRequest, error) {
 		Number:     int32(pr.Number),
 		Title:      Cut(pr.Title),
 		State:      StateOpen,
-		URL:        pr.HTMLURL,
 		Author:     author(pr.User.Login),
 		UpdatedAt:  pr.UpdatedAt,
 	}
@@ -173,8 +169,7 @@ func ParsePullRequest(body []byte) (PullRequest, error) {
 }
 
 // ParsePush reads a push delivery's body. A commit without an id of forty or
-// sixty-four hexadecimal characters, or without a page at GitHub, is passed
-// over.
+// sixty-four hexadecimal characters is passed over.
 func ParsePush(body []byte) (Push, error) {
 	var p pushPayload
 	if err := json.Unmarshal(body, &p); err != nil {
@@ -182,10 +177,10 @@ func ParsePush(body []byte) (Push, error) {
 	}
 	out := Push{Ref: p.Ref, Repository: Repository(p.Repository)}
 	for _, c := range p.Commits {
-		if !commitID(c.ID) || !webPage(c.URL) {
+		if !commitID(c.ID) {
 			continue
 		}
-		out.Commits = append(out.Commits, Commit{SHA: strings.ToLower(c.ID), Message: c.Message, URL: c.URL,
+		out.Commits = append(out.Commits, Commit{SHA: strings.ToLower(c.ID), Message: c.Message,
 			Author: author(c.Author.Username)})
 	}
 	return out, nil
@@ -197,11 +192,6 @@ func Cut(s string) string {
 		return s
 	}
 	return string([]rune(s)[:maxTitle-1]) + "…"
-}
-
-// webPage is a link to a page: https, within its bound.
-func webPage(u string) bool {
-	return strings.HasPrefix(u, "https://") && len(u) <= maxURL
 }
 
 // author is a login within its bound, or none.
