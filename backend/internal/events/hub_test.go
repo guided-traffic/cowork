@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 )
 
@@ -123,7 +124,7 @@ func TestMembershipEventsOfAProjectRestrictedStream(t *testing.T) {
 
 func TestPublishReplayAndWindow(t *testing.T) {
 	f := newFixtures()
-	h := New(time.Minute, 0)
+	h := New(time.Minute, 0, nil)
 	now := time.Unix(1000, 0)
 	h.now = func() time.Time { return now }
 	s, _, _ := h.Subscribe(one(f.tenant, f.filter()), nil)
@@ -152,7 +153,7 @@ func TestPublishReplayAndWindow(t *testing.T) {
 // replay.
 func TestPersonLevelEvents(t *testing.T) {
 	f := newFixtures()
-	h := New(time.Minute, 0)
+	h := New(time.Minute, 0, nil)
 	elsewhere := uuid.New()
 	me := one(f.tenant, f.filter())
 	me.Me = true
@@ -186,7 +187,7 @@ func TestPersonLevelEvents(t *testing.T) {
 // the hub received the events.
 func TestAStreamAcrossTheTenantsOfItsPerson(t *testing.T) {
 	f := newFixtures()
-	h := New(time.Minute, 0)
+	h := New(time.Minute, 0, nil)
 	b, c := uuid.New(), uuid.New()
 	inB := uuid.New()
 	note := func(tenant, project uuid.UUID) store.Notification {
@@ -257,11 +258,71 @@ func TestAStreamAcrossTheTenantsOfItsPerson(t *testing.T) {
 	assert.True(t, resync, "an id of no tenant the stream follows")
 }
 
+// docs/adr/0060 D4: the hub records its open streams, every notification it
+// receives, the streams it drops by why — behind, beyond the limit, at the
+// listener's recovery, never at the shutdown — and a reconnect's replay as a
+// hit or a miss.
+func TestTheHubRecordsItsInstruments(t *testing.T) {
+	f := newFixtures()
+	m := metrics.New()
+	h := New(time.Minute, 2, m)
+	clock := time.Unix(0, 0)
+	h.now = func() time.Time { clock = clock.Add(time.Millisecond); return clock }
+	value := func(name string, labels ...string) float64 {
+		t.Helper()
+		samples, err := m.Samples()
+		require.NoError(t, err)
+		return metrics.Sum(samples, name, labels...)
+	}
+
+	slow, _, _ := h.Subscribe(one(f.tenant, f.filter()), nil)
+	other := f.filter()
+	other.Person = f.other
+	kept, _, _ := h.Subscribe(one(f.tenant, other), nil)
+	assert.Equal(t, 2.0, value("cowork_events_open_streams"))
+	first := f.note(f.project)
+	h.Publish(first)
+	<-kept.C
+	for range streamBuffer {
+		h.Publish(f.note(f.project))
+		<-kept.C
+	}
+	<-slow.Done
+	h.Unsubscribe(slow)
+	assert.Equal(t, float64(streamBuffer+1), value("cowork_events_published_total"))
+	assert.Equal(t, 1.0, value("cowork_events_subscribers_dropped_total", "reason", "behind"), "dropped once, however often it is sent to")
+	assert.Equal(t, 1.0, value("cowork_events_open_streams"), "the dropped stream's handler unsubscribed it")
+
+	again, replay, resync := h.Subscribe(one(f.tenant, other), &first.ID)
+	assert.False(t, resync)
+	assert.Len(t, replay, streamBuffer)
+	_, _, resync = h.Subscribe(one(f.tenant, other), new(uuid.Must(uuid.NewV7())))
+	assert.True(t, resync)
+	assert.Equal(t, 1.0, value("cowork_events_replays_total", "outcome", "hit"))
+	assert.Equal(t, 1.0, value("cowork_events_replays_total", "outcome", "miss"))
+	<-kept.Done
+	assert.Equal(t, 1.0, value("cowork_events_subscribers_dropped_total", "reason", "limit"), "the person's oldest beyond the limit of two")
+	assert.Equal(t, 2.0, value("cowork_events_open_streams"))
+
+	h.SetUp(false)
+	h.SetUp(true)
+	<-again.Done
+	assert.Equal(t, 2.0, value("cowork_events_subscribers_dropped_total", "reason", "resync"))
+	assert.Equal(t, 0.0, value("cowork_events_open_streams"))
+
+	h.Subscribe(one(f.tenant, f.filter()), nil)
+	assert.Equal(t, 1.0, value("cowork_events_open_streams"))
+	h.Close()
+	assert.Equal(t, 0.0, value("cowork_events_open_streams"))
+	assert.Equal(t, 2.0, value("cowork_events_subscribers_dropped_total", "reason", "resync"), "the shutdown drops nothing")
+	assert.Equal(t, 1.0, value("cowork_events_subscribers_dropped_total", "reason", "limit"))
+}
+
 // docs/adr/0054 D4: a stream that falls behind is told to resync and
 // dropped; the others go on.
 func TestSlowStreamIsDropped(t *testing.T) {
 	f := newFixtures()
-	h := New(time.Minute, 0)
+	h := New(time.Minute, 0, nil)
 	slow, _, _ := h.Subscribe(one(f.tenant, f.filter()), nil)
 	for range streamBuffer + 1 {
 		h.Publish(f.note(f.project))
@@ -273,7 +334,7 @@ func TestSlowStreamIsDropped(t *testing.T) {
 // docs/adr/0054 D8: the eleventh stream closes the oldest.
 func TestStreamLimit(t *testing.T) {
 	f := newFixtures()
-	h := New(time.Minute, 2)
+	h := New(time.Minute, 2, nil)
 	clock := time.Unix(0, 0)
 	h.now = func() time.Time { clock = clock.Add(time.Second); return clock }
 	a, _, _ := h.Subscribe(one(f.tenant, f.filter()), nil)
@@ -300,7 +361,7 @@ func TestStreamLimit(t *testing.T) {
 // when it can again; the shutdown ends every stream.
 func TestUpDownAndClose(t *testing.T) {
 	f := newFixtures()
-	h := New(time.Minute, 0)
+	h := New(time.Minute, 0, nil)
 	s, _, _ := h.Subscribe(one(f.tenant, f.filter()), nil)
 	h.SetUp(false)
 	refused, _, _ := h.Subscribe(one(f.tenant, f.filter()), nil)
@@ -323,7 +384,7 @@ func TestUpDownAndClose(t *testing.T) {
 // id is told to resync instead of being replayed a buffer with a gap.
 func TestRecoveryDropsTheBuffer(t *testing.T) {
 	f := newFixtures()
-	h := New(time.Minute, 0)
+	h := New(time.Minute, 0, nil)
 	before := f.note(f.project)
 	h.Publish(before)
 	h.SetUp(false)
@@ -339,7 +400,7 @@ func TestRecoveryDropsTheBuffer(t *testing.T) {
 // admitted, a project lost is not.
 func TestRefilter(t *testing.T) {
 	f := newFixtures()
-	h := New(time.Minute, 0)
+	h := New(time.Minute, 0, nil)
 	s, _, _ := h.Subscribe(one(f.tenant, f.filter()), nil)
 	h.Refilter(s, on(f.tenant, Filter{Person: f.person, Projects: map[uuid.UUID]bool{f.hidden: true}}), h.Changes(s))
 	h.Publish(f.note(f.project))
@@ -357,7 +418,7 @@ func TestRefilter(t *testing.T) {
 // not know it yet.
 func TestAnAdmissionChangeHoldsTheFilterUntilTheStreamRefilters(t *testing.T) {
 	f := newFixtures()
-	h := New(time.Minute, 0)
+	h := New(time.Minute, 0, nil)
 	s, _, _ := h.Subscribe(one(f.tenant, f.filter()), nil)
 	fresh := uuid.New()
 	first := f.note(f.project)

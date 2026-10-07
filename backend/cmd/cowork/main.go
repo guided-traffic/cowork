@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/events"
 	"github.com/guided-traffic/cowork/backend/internal/httpserver"
 	"github.com/guided-traffic/cowork/backend/internal/llm"
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/internal/storage"
 	"github.com/guided-traffic/cowork/backend/internal/store"
@@ -155,7 +157,8 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		logger.Info("migrations skipped on start", "reason", config.EnvMigrateOnStart+"=false")
 	}
 
-	db, err := store.Open(ctx, cfg.DatabaseURL, store.Options{Logger: logger})
+	m := metricsOf(cfg)
+	db, err := store.Open(ctx, cfg.DatabaseURL, store.Options{Logger: logger, Metrics: m})
 	if err != nil {
 		logger.Error("database connection failed", "error", err)
 		return 1
@@ -186,7 +189,7 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		return 1
 	}
 
-	hub := events.New(cfg.SSEReplayWindow, cfg.SSEMaxStreamsPerPerson)
+	hub := events.New(cfg.SSEReplayWindow, cfg.SSEMaxStreamsPerPerson, m)
 	go db.Listen(ctx, hub.Publish, hub.SetUp)
 	objects, err := objectStorage(cfg, logger)
 	if err != nil {
@@ -233,21 +236,71 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		TrustedProxies:       cfg.TrustedProxies,
 		OIDC:                 identity,
 		Chat:                 chatOptions,
+		Metrics:              m,
 	})
 	if err != nil {
 		logger.Error("API setup failed", "error", err)
 		return 1
 	}
-	root = httpserver.New(httpserver.Options{Ready: db.Ping, API: apiHandler, Logger: logger})
+	root = httpserver.New(httpserver.Options{Ready: db.Ping, API: apiHandler, Logger: logger, Metrics: m})
 	go runJobs(ctx, db, objects, logger, cfg.SessionIdle)
 
-	logger.Info("listening", "addr", cfg.ListenAddr, "version", version, "commit", commit)
-	if err := httpserver.ListenAndServe(ctx, cfg.ListenAddr, root, cfg.ShutdownTimeout, hub.Close); err != nil {
+	if err := serve(ctx, cfg, root, m, hub, logger); err != nil {
 		logger.Error("server stopped with error", "error", err)
 		return 1
 	}
 	logger.Info("server stopped")
 	return 0
+}
+
+// metricsOf is the registry of the backend's instruments, or nil — nothing
+// recorded — while COWORK_METRICS_ADDR switches the listener that would serve
+// them off (docs/adr/0060 D1).
+func metricsOf(cfg config.Config) *metrics.Metrics {
+	if cfg.MetricsAddr == "" {
+		return nil
+	}
+	return metrics.New()
+}
+
+// serve binds the API listener and, unless COWORK_METRICS_ADDR switches it
+// off, the metrics listener, before either serves, so that a port that is
+// taken refuses the start; the two then share one lifecycle — the signal shuts
+// both down within the shutdown timeout, and one that fails stops the other
+// (docs/adr/0060 D1). The event streams end as the API listener's shutdown
+// begins (docs/adr/0054 D9).
+func serve(ctx context.Context, cfg config.Config, root http.Handler, m *metrics.Metrics, hub *events.Hub, logger *slog.Logger) error {
+	listeners, err := bind(cfg, root, m, logger)
+	if err != nil {
+		return err
+	}
+	listeners[0].OnShutdown = []func(){hub.Close}
+	logger.Info("listening", "addr", cfg.ListenAddr, "version", version, "commit", commit)
+	if m != nil {
+		logger.Info("metrics listening", "addr", cfg.MetricsAddr, "path", "/metrics")
+	} else {
+		logger.Info("the metrics listener is off", "variable", config.EnvMetricsAddr)
+	}
+	return httpserver.ServeAll(ctx, cfg.ShutdownTimeout, listeners...)
+}
+
+// bind opens the API listener, first, and the metrics listener when m is set.
+func bind(cfg config.Config, root http.Handler, m *metrics.Metrics, logger *slog.Logger) ([]httpserver.Listener, error) {
+	api, err := net.Listen("tcp", cfg.ListenAddr)
+	if err != nil {
+		return nil, err
+	}
+	listeners := make([]httpserver.Listener, 0, 2)
+	listeners = append(listeners, httpserver.Listener{Listener: api, Handler: root})
+	if m == nil {
+		return listeners, nil
+	}
+	scrape, err := net.Listen("tcp", cfg.MetricsAddr)
+	if err != nil {
+		_ = api.Close()
+		return nil, fmt.Errorf("the metrics listener (%s): %w", config.EnvMetricsAddr, err)
+	}
+	return append(listeners, httpserver.Listener{Listener: scrape, Handler: httpserver.NewMetrics(m.Handler(logger), logger)}), nil
 }
 
 // objectStorage is the configuration's object storage, or nil without one,
@@ -337,7 +390,8 @@ func requireForServe(cfg config.Config) error {
 // request, a lock that ended holds nothing at the next attempt. The purge of
 // the tickets deleted thirty days ago is here too (docs/adr/0024 D2): their
 // attachment objects go once the purge committed, and each purged key is
-// logged.
+// logged. A job's name in the log is its system actor's, which the metrics
+// name it by too (docs/adr/0060 D4).
 func runJobs(ctx context.Context, db *store.DB, objects *storage.Client, logger *slog.Logger, sessionIdle time.Duration) {
 	expiry := time.NewTicker(time.Hour)
 	defer expiry.Stop()
@@ -345,16 +399,16 @@ func runJobs(ctx context.Context, db *store.DB, objects *storage.Client, logger 
 		name string
 		run  func(ctx context.Context) (int64, error)
 	}{
-		{"idempotency expiry", db.ExpireIdempotencyKeys},
-		{"session expiry", func(ctx context.Context) (int64, error) { return db.ExpireSessions(ctx, time.Now(), sessionIdle) }},
-		{"login expiry", func(ctx context.Context) (int64, error) {
+		{"idempotency-expiry", db.ExpireIdempotencyKeys},
+		{"session-expiry", func(ctx context.Context) (int64, error) { return db.ExpireSessions(ctx, time.Now(), sessionIdle) }},
+		{"login-expiry", func(ctx context.Context) (int64, error) {
 			return db.ExpireLoginState(ctx, time.Now(), store.LoginWindow)
 		}},
-		{"notification expiry", func(ctx context.Context) (int64, error) { return db.ExpireNotifications(ctx, time.Now()) }},
-		{"ticket purge", func(ctx context.Context) (int64, error) {
+		{"notification-expiry", func(ctx context.Context) (int64, error) { return db.ExpireNotifications(ctx, time.Now()) }},
+		{"ticket-purge", func(ctx context.Context) (int64, error) {
 			purged, err := db.PurgeDeletedTickets(ctx, time.Now())
 			for _, p := range purged {
-				logger.Info("ticket purged", "job", "ticket purge", "ticket", p.Key, "attachments", len(p.Attachments))
+				logger.Info("ticket purged", "job", "ticket-purge", "ticket", p.Key, "attachments", len(p.Attachments))
 			}
 			api.RemovePurgedObjects(ctx, objects, logger, purged)
 			return int64(len(purged)), err

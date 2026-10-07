@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 )
 
@@ -167,11 +168,14 @@ type Stream struct {
 	once                sync.Once
 }
 
-func (s *Stream) end(reason string) {
+// end ends the stream with the reason, once; ended says this call ended it.
+func (s *Stream) end(reason string) (ended bool) {
 	s.once.Do(func() {
 		s.Reason = reason
 		close(s.Done)
+		ended = true
 	})
+	return ended
 }
 
 // Hub fans out one replica's notifications. The zero value is not usable;
@@ -180,23 +184,27 @@ type Hub struct {
 	window       time.Duration
 	maxPerPerson int
 	now          func() time.Time
+	metrics      *metrics.Metrics
 
 	mu    sync.Mutex
 	seq   uint64
 	rings map[uuid.UUID][]Event
 	// streams holds the streams that follow a tenant, persons every stream
-	// of a person.
+	// of a person; open counts the streams persons holds.
 	streams map[uuid.UUID][]*Stream
 	persons map[uuid.UUID][]*Stream
+	open    int
 	down    bool
 	closed  bool
 }
 
 // New returns a hub that keeps window of events per tenant for the replay
 // and at most maxPerPerson streams per person, 0 for no limit
-// (docs/adr/0054 D5, D8).
-func New(window time.Duration, maxPerPerson int) *Hub {
-	return &Hub{window: window, maxPerPerson: maxPerPerson, now: time.Now,
+// (docs/adr/0054 D5, D8), and records its streams, the notifications it
+// receives, the streams it drops and the replays in m (docs/adr/0060 D4); a
+// nil m records nothing.
+func New(window time.Duration, maxPerPerson int, m *metrics.Metrics) *Hub {
+	return &Hub{window: window, maxPerPerson: maxPerPerson, now: time.Now, metrics: m,
 		rings: map[uuid.UUID][]Event{}, streams: map[uuid.UUID][]*Stream{}, persons: map[uuid.UUID][]*Stream{}}
 }
 
@@ -216,13 +224,14 @@ func New(window time.Duration, maxPerPerson int) *Hub {
 func (h *Hub) Publish(n store.Notification) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.metrics.EventPublished()
 	h.seq++
 	e := Event{Notification: n, At: h.now(), Seq: h.seq}
 	if n.Entity == store.EntityInbox {
 		if n.Person != nil {
 			for _, s := range h.persons[*n.Person] {
 				if s.me {
-					send(s, e)
+					h.send(s, e)
 				}
 			}
 		}
@@ -235,14 +244,14 @@ func (h *Hub) Publish(n store.Notification) {
 	}
 	h.rings[n.Tenant] = ring[cut:]
 	for _, s := range h.streams[n.Tenant] {
-		deliver(s, e)
+		h.deliver(s, e)
 	}
 	if e.ChangesAdmission() && n.Person != nil {
 		for _, s := range h.persons[*n.Person] {
 			if s.span && !s.follows(n.Tenant) {
 				s.filters[n.Tenant] = Filter{Person: s.person, Projects: map[uuid.UUID]bool{}}
 				h.streams[n.Tenant] = append(h.streams[n.Tenant], s)
-				deliver(s, e)
+				h.deliver(s, e)
 			}
 		}
 	}
@@ -251,7 +260,7 @@ func (h *Hub) Publish(n store.Notification) {
 // deliver hands an event of a tenant the stream follows to it: judged by the
 // tenant's filter, or unjudged while that filter is behind, and marked when it
 // changes what the stream may admit.
-func deliver(s *Stream, e Event) {
+func (h *Hub) deliver(s *Stream, e Event) {
 	out := e
 	switch {
 	case s.refiltered[e.Tenant] < s.changes[e.Tenant]:
@@ -264,7 +273,7 @@ func deliver(s *Stream, e Event) {
 		out.Refilter = s.changes[e.Tenant]
 	}
 	if !out.Withheld || out.Refilter > 0 {
-		send(s, out)
+		h.send(s, out)
 	}
 }
 
@@ -273,12 +282,15 @@ func (s *Stream) follows(tenant uuid.UUID) bool {
 	return ok
 }
 
-// send hands an event to a stream, or ends one whose buffer is full.
-func send(s *Stream, e Event) {
+// send hands an event to a stream, or ends one whose buffer is full: a
+// subscriber dropped for falling behind (docs/adr/0054 D4).
+func (h *Hub) send(s *Stream, e Event) {
 	select {
 	case s.C <- e:
 	default:
-		s.end(Resync)
+		if s.end(Resync) {
+			h.metrics.SubscriberDropped(metrics.DropBehind)
+		}
 	}
 }
 
@@ -296,6 +308,7 @@ func (h *Hub) Subscribe(sub Subscription, lastEventID *uuid.UUID) (s *Stream, re
 	}
 	if lastEventID != nil {
 		replay, resync = h.replay(sub, *lastEventID)
+		h.metrics.Replay(!resync)
 	}
 	h.limit(sub.Person)
 	s = &Stream{C: make(chan Event, streamBuffer), Done: make(chan struct{}), tenant: sub.Tenant, person: sub.Person,
@@ -306,6 +319,8 @@ func (h *Hub) Subscribe(sub Subscription, lastEventID *uuid.UUID) (s *Stream, re
 		h.streams[tenant] = append(h.streams[tenant], s)
 	}
 	h.persons[sub.Person] = append(h.persons[sub.Person], s)
+	h.open++
+	h.metrics.OpenStreams(h.open)
 	return s, replay, resync
 }
 
@@ -346,7 +361,9 @@ func (h *Hub) limit(person uuid.UUID) {
 	slices.SortFunc(own, func(a, b *Stream) int { return a.opened.Compare(b.opened) })
 	for len(own) >= h.maxPerPerson {
 		h.remove(own[0])
-		own[0].end(Unavailable)
+		if own[0].end(Unavailable) {
+			h.metrics.SubscriberDropped(metrics.DropLimit)
+		}
 		own = own[1:]
 	}
 }
@@ -399,7 +416,12 @@ func (h *Hub) remove(s *Stream) {
 	for tenant := range s.filters {
 		h.streams[tenant] = slices.DeleteFunc(h.streams[tenant], func(o *Stream) bool { return o == s })
 	}
+	held := len(h.persons[s.person])
 	h.persons[s.person] = slices.DeleteFunc(h.persons[s.person], func(o *Stream) bool { return o == s })
+	if len(h.persons[s.person]) < held {
+		h.open--
+		h.metrics.OpenStreams(h.open)
+	}
 }
 
 // SetUp tells the hub whether the database can be heard. Every open stream
@@ -410,7 +432,9 @@ func (h *Hub) SetUp(up bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if up && h.down {
-		h.endAll(Resync)
+		for range h.endAll(Resync) {
+			h.metrics.SubscriberDropped(metrics.DropResync)
+		}
 		h.rings = map[uuid.UUID][]Event{}
 	}
 	h.down = !up
@@ -425,13 +449,19 @@ func (h *Hub) Close() {
 	h.endAll(Unavailable)
 }
 
-// endAll ends every stream with the reason; the hub's lock is held.
-func (h *Hub) endAll(reason string) {
+// endAll ends every stream with the reason and returns how many it ended;
+// the hub's lock is held.
+func (h *Hub) endAll(reason string) (ended int) {
 	for _, list := range h.persons {
 		for _, s := range list {
-			s.end(reason)
+			if s.end(reason) {
+				ended++
+			}
 		}
 	}
 	h.streams = map[uuid.UUID][]*Stream{}
 	h.persons = map[uuid.UUID][]*Stream{}
+	h.open = 0
+	h.metrics.OpenStreams(0)
+	return ended
 }

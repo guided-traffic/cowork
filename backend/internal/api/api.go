@@ -30,6 +30,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/config"
 	"github.com/guided-traffic/cowork/backend/internal/events"
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/requestid"
@@ -111,6 +112,10 @@ type Options struct {
 	// Chat is the chat in the UI; nil configures none, and every tenant
 	// answers that it has no chat (docs/adr/0076).
 	Chat *ChatOptions
+	// Metrics records the logins and the refused tokens; the route of every
+	// request is named for the HTTP instruments whether or not it is set
+	// (docs/adr/0060 D4, D5). nil records nothing.
+	Metrics *metrics.Metrics
 }
 
 // OIDCOptions is the identity provider the browser logs in through, and the
@@ -296,6 +301,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeRouteError(w, r, err)
 		return
 	}
+	// The route's pattern as the document writes it, never the path the
+	// client sent (docs/adr/0060 D5).
+	metrics.SetRoute(r.Context(), route.Path)
 	ctx := withClient(withAccept(r.Context(), r.Header.Get("Accept")), r, h.trusted)
 	opID := route.Operation.OperationID
 	if accepts := credentialsOf(h.doc, route.Operation); accepts.any() {

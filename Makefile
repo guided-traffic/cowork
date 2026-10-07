@@ -145,16 +145,21 @@ help: ## Display this help.
 GENERATED_GO = _test.go|\.gen\.go|/readq/|/writeq/
 
 .PHONY: generate
-generate: $(SQLC) $(OAPI_CODEGEN) ## Regenerate the data layer (sqlc), the API code (oapi-codegen) and the files generated from the problem catalogue.
+generate: $(SQLC) $(OAPI_CODEGEN) ## Regenerate the data layer (sqlc), the API code (oapi-codegen), the files generated from the problem catalogue and the chart's Grafana dashboard.
 	cd $(BACKEND_DIR) && $(GOCMD) run ./tools/problemdoc
 	cd $(BACKEND_DIR) && $(GOCMD) run ./tools/specbundle
+	cd $(BACKEND_DIR) && $(GOCMD) run ./tools/dashboard
 	cd $(BACKEND_DIR) && $(OAPI_CODEGEN) -config api/oapi-codegen.yaml api/openapi.gen.json
 	cd $(BACKEND_DIR) && $(SQLC) generate
 
+# The chart's Grafana dashboard is generated from backend/internal/metrics
+# (docs/adr/0060 D3), so the drift check reads the chart's files too.
+DASHBOARD_DIR = $(HELM_CHART)/files
+
 .PHONY: generate-check
 generate-check: generate ## Fail when a generated file differs from what make generate writes (docs/adr/0027 D1, docs/adr/0046 D2).
-	@git diff --exit-code -- $(BACKEND_DIR) README.md || { echo "generated files are out of date: run make generate and commit the result"; exit 1; }
-	@untracked=$$(git ls-files --others --exclude-standard -- $(BACKEND_DIR)); if [ -n "$$untracked" ]; then echo "make generate wrote untracked files:"; echo "$$untracked"; exit 1; fi
+	@git diff --exit-code -- $(BACKEND_DIR) README.md $(DASHBOARD_DIR) || { echo "generated files are out of date: run make generate and commit the result"; exit 1; }
+	@untracked=$$(git ls-files --others --exclude-standard -- $(BACKEND_DIR) $(DASHBOARD_DIR)); if [ -n "$$untracked" ]; then echo "make generate wrote untracked files:"; echo "$$untracked"; exit 1; fi
 
 .PHONY: fmt
 fmt: ## Run gofmt against the backend.

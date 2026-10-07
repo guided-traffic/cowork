@@ -335,7 +335,7 @@ func TestEventStreamLifecycle(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
 	srv := newAPI(t, func(o *api.Options) {
-		o.Events = events.New(time.Minute, 2)
+		o.Events = events.New(time.Minute, 2, nil)
 		o.Heartbeat = 100 * time.Millisecond
 	})
 	member := caller{Token: e.tk.MemberA}

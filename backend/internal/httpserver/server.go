@@ -4,7 +4,9 @@
 // and the Ingress routes /api/ and /auth/ to this one (docs/adr/0001 D3).
 // Every request gets an id (X-Request-Id), a recovery from panics and one
 // line in the request log; every error is an RFC 9457 problem details body
-// (docs/adr/0047).
+// (docs/adr/0047). The metrics are served by a listener of their own
+// (NewMetrics), which shares the API listener's lifecycle (ServeAll,
+// docs/adr/0060 D1).
 package httpserver
 
 import (
@@ -14,8 +16,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/requestid"
 )
@@ -29,6 +33,9 @@ type Options struct {
 	API http.Handler
 	// Logger receives one line per request. nil discards them.
 	Logger *slog.Logger
+	// Metrics records every request in the HTTP instruments; nil records
+	// nothing (docs/adr/0060 D4).
+	Metrics *metrics.Metrics
 }
 
 // New builds the handler.
@@ -44,15 +51,35 @@ func New(opts Options) http.Handler {
 		mux.Handle("/auth/", opts.API)
 	}
 	mux.HandleFunc("/", handleNotFound)
-	return withRequestID(requestLog(opts.Logger, recoverer(opts.Logger, mux)))
+	return withRequestID(instrument(opts.Metrics, requestLog(opts.Logger, recoverer(opts.Logger, mux))))
+}
+
+// NewMetrics builds the handler of the metrics listener (docs/adr/0060 D1):
+// GET /metrics answers scrape, every other path 404 and another method 405,
+// as problems with a request id. It writes no request log: a scrape every few
+// seconds is not a request a person made, and the listener records nothing in
+// the HTTP instruments, which count the API listener's requests.
+func NewMetrics(scrape http.Handler, logger *slog.Logger) http.Handler {
+	if logger == nil {
+		logger = slog.New(slog.DiscardHandler)
+	}
+	mux := http.NewServeMux()
+	handleGet(mux, "/metrics", scrape.ServeHTTP)
+	mux.HandleFunc("/", handleNotFound)
+	return withRequestID(recoverer(logger, mux))
 }
 
 // handleGet registers h for GET (and HEAD) on pattern and answers every other
 // method on the same path with 405. Without the second registration the
-// catch-all "/" would match those requests and answer 404.
+// catch-all "/" would match those requests and answer 404. Both name the
+// path as the request's route in the metrics.
 func handleGet(mux *http.ServeMux, pattern string, h http.HandlerFunc) {
-	mux.HandleFunc("GET "+pattern, h)
+	mux.HandleFunc("GET "+pattern, func(w http.ResponseWriter, r *http.Request) {
+		metrics.SetRoute(r.Context(), pattern)
+		h(w, r)
+	})
 	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		metrics.SetRoute(r.Context(), pattern)
 		w.Header().Set("Allow", "GET, HEAD")
 		problem.Write(w, r, problem.New(problem.MethodNotAllowed, r.Method+" is not allowed on "+r.URL.Path))
 	})
@@ -68,6 +95,33 @@ func ListenAndServe(ctx context.Context, addr string, handler http.Handler, shut
 		return err
 	}
 	return Serve(ctx, ln, handler, shutdownTimeout, onShutdown...)
+}
+
+// Listener is a bound listener and the handler it serves; OnShutdown runs
+// when its shutdown begins.
+type Listener struct {
+	Listener   net.Listener
+	Handler    http.Handler
+	OnShutdown []func()
+}
+
+// ServeAll serves every listener until ctx is cancelled or one of them stops,
+// then shuts every one down, each within shutdownTimeout: one lifecycle for the
+// API listener and the metrics listener (docs/adr/0060 D1). It closes the
+// listeners and returns their errors joined; a clean shutdown returns nil.
+func ServeAll(ctx context.Context, shutdownTimeout time.Duration, listeners ...Listener) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	errs := make([]error, len(listeners))
+	var wg sync.WaitGroup
+	for i, l := range listeners {
+		wg.Go(func() {
+			errs[i] = Serve(ctx, l.Listener, l.Handler, shutdownTimeout, l.OnShutdown...)
+			cancel()
+		})
+	}
+	wg.Wait()
+	return errors.Join(errs...)
 }
 
 // Serve is ListenAndServe on an existing listener. Serve closes the listener.
@@ -186,6 +240,23 @@ func (s *statusRecorder) Flush() {
 
 // Unwrap lets http.ResponseController reach the connection.
 func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
+// instrument records every request in the HTTP instruments
+// (docs/adr/0060 D4, D5): in flight while it runs, then its route — the
+// pattern the API or this server's mux names, metrics.Unmatched when none
+// does —, its method, its status and its duration. A chat turn's tool calls
+// come through it as requests of their own.
+func instrument(m *metrics.Metrics, next http.Handler) http.Handler {
+	if m == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, done := m.Request(r.Context(), r.Method)
+		rec := &statusRecorder{ResponseWriter: w}
+		defer func() { done(rec.status) }()
+		next.ServeHTTP(rec, r.WithContext(ctx))
+	})
+}
 
 // requestLog writes one line per request: method, path, status, duration and
 // the request id — never a body, a header or a query (CLAUDE.md, the runtime
