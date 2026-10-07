@@ -156,12 +156,19 @@ D3). The answer is `application/gzip` with `Content-Disposition: attachment` and
 ## `cowork-mcp export` on a person's machine
 
 The subcommand ([`mcpcli/export.go`](../../backend/internal/mcpcli/export.go)) refuses a target
-that is a file or a directory that is not empty before it asks the server. It writes regular files
-only, each at a path inside the directory — an absolute path or one that steps out with `..` ends
-the unpacking with an error, as does an entry that is no regular file —, creates every file with
-`O_EXCL`, so nothing that exists is overwritten, and makes the directories `0700` and the files
-`0600`, since an archive may hold confidential tickets (`TestUnpackStaysInsideAndNeverOverwrites`).
-Its requests carry the agent mark `cowork-mcp/unknown/export`, so the export's act names the binary.
+that is a file or a directory that is not empty before it asks the server. It writes only the names
+an export of the project holds — the three manifests and `<tenant>/<PROJECT>-<n>.md` of that tenant
+and project, each a valid `/`-separated path (`exportEntry`) —, so a name with another separator, a
+step, a volume or an absolute path ends the unpacking with an error, as does an entry that is no
+regular file. It writes through a root opened at the target (`os.OpenRoot`): no name and no link
+inside the target reaches out of it — a directory link planted in the target that leads elsewhere
+is refused (tested with a symbolic link; not run on Windows, whose junctions the test does not
+make). It creates every file with `O_EXCL`, so nothing that exists is overwritten
+(`TestUnpackStaysInsideAndNeverOverwrites`, `TestTheExportWritesOnlyItsOwnNamesInsideItsTarget`).
+On POSIX systems the directories are `0700` and the files `0600`, since an archive may hold
+confidential tickets; Windows applies no such mode — Go sets only the read-only attribute there —,
+and the files take the access list of the directory they are written to ([H-77](#h-77)). Its
+requests carry the agent mark `cowork-mcp/unknown/export`, so the export's act names the binary.
 
 ## What this does not cover
 
@@ -228,11 +235,14 @@ Mitigation: keep the backend's memory limit well above the variable, lower the
 variable to what the installation's imports need, split an import by directory.
 
 <a id="h-77"></a>
-### H-77 — The command line checks its target once, before it writes
+### H-77 — An export is as private as its target directory
 
-Live where another local account may write the target directory or its parent. `cowork-mcp
-export` checks that the directory is empty, or absent, before it asks the server, and writes after
-the answer arrived. A process that can write the directory in between can plant a directory link
-under the name an entry's path needs, and the unpacking writes into the place it points to — new
-files only, since `O_EXCL` refuses one that exists. Mitigation: export into a directory only the
-person can write.
+Live where another local account may write or read the target directory or its parent. The root
+holds every file the unpacking writes inside the directory the target names when the answer
+arrives — after the check that it is empty, or absent, which ran before the request: a process
+that can write the target's parent can put a link to another directory in its place in between, and
+the files are written there, new files only, since `O_EXCL` refuses one that exists. A file planted
+in the target under a name the export holds ends the unpacking with an error. On Windows the files
+and directories take the target directory's access list, not owner-only modes: an export written
+where other accounts may read reaches them, confidential tickets included. Mitigation: export into
+a directory only the person can write and read — on Windows, one under their profile.

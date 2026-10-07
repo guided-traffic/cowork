@@ -9,8 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -56,7 +56,7 @@ func exportProject(ctx context.Context, e Env, args []string) int {
 		fmt.Fprintf(e.Stderr, "cowork-mcp: the export of %s failed: %v\n", args[0], api)
 		return exitError
 	}
-	manifest, err := unpack(res.Body, dir)
+	manifest, err := unpack(res.Body, dir, tenant, project)
 	if err != nil {
 		fmt.Fprintf(e.Stderr, "cowork-mcp: %v\n", err)
 		return exitError
@@ -91,11 +91,20 @@ func emptyTarget(dir string) error {
 	return nil
 }
 
-// unpack writes an export's files under dir: regular files only, each at a
-// path inside dir, created anew — a file that exists is an error, never
-// overwritten. The directories are the person's alone, 0700, and the files
-// 0600: an export may hold confidential tickets.
-func unpack(archive []byte, dir string) (apigen.ExportManifest, error) {
+// exportManifest is the manifest at the root of an export, and
+// exportManifests are its three manifests (docs/adr/0051 D4).
+const exportManifest = "manifest.json"
+
+var exportManifests = map[string]bool{exportManifest: true, "links.json": true, "attachments.json": true}
+
+// unpack writes the files of the export of tenant/project under dir, through
+// a root opened at dir, which no name or link reaches out of: only the names
+// such an export holds, regular files only, each created anew — a file that
+// exists is an error, never overwritten. On POSIX systems the directories
+// are the person's alone, 0700, and the files 0600, since an export may hold
+// confidential tickets; Windows applies no such mode, and the files take the
+// access list of the directory they are written to.
+func unpack(archive []byte, dir, tenant, project string) (apigen.ExportManifest, error) {
 	var manifest apigen.ExportManifest
 	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
@@ -104,6 +113,11 @@ func unpack(archive []byte, dir string) (apigen.ExportManifest, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return manifest, fmt.Errorf("create %s: %w", dir, err)
 	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return manifest, fmt.Errorf("open %s: %w", dir, err)
+	}
+	defer func() { _ = root.Close() }()
 	tr := tar.NewReader(gz)
 	for {
 		h, err := tr.Next()
@@ -113,15 +127,14 @@ func unpack(archive []byte, dir string) (apigen.ExportManifest, error) {
 		if err != nil {
 			return manifest, fmt.Errorf("read the export: %w", err)
 		}
-		target, err := inside(dir, h)
+		if err := exportEntry(h, tenant, project); err != nil {
+			return manifest, err
+		}
+		body, err := writeNew(root, h.Name, tr)
 		if err != nil {
 			return manifest, err
 		}
-		body, err := writeNew(target, tr)
-		if err != nil {
-			return manifest, err
-		}
-		if h.Name == "manifest.json" {
+		if h.Name == exportManifest {
 			if err := json.Unmarshal(body, &manifest); err != nil {
 				return manifest, fmt.Errorf("read the export's manifest: %w", err)
 			}
@@ -129,39 +142,59 @@ func unpack(archive []byte, dir string) (apigen.ExportManifest, error) {
 	}
 }
 
-// inside is where an entry of the archive goes: a regular file at a relative
-// path that stays inside dir.
-func inside(dir string, h *tar.Header) (string, error) {
-	clean := path.Clean(h.Name)
+// exportEntry accepts an entry of the archive that the export of
+// tenant/project holds (docs/adr/0051 D4): a regular file, named as a valid
+// fs path, that is one of the three manifests or a ticket's document
+// <tenant>/<PROJECT>-<n>.md of the project. Every other entry is refused,
+// whatever separators, steps or volume its name holds.
+func exportEntry(h *tar.Header, tenant, project string) error {
 	switch {
 	case h.Typeflag != tar.TypeReg:
-		return "", fmt.Errorf("the export holds %q, which is no regular file", h.Name)
-	case path.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") || clean == ".":
-		return "", fmt.Errorf("the export holds %q, a path outside its directory", h.Name)
+		return fmt.Errorf("the export holds %q, which is no regular file", h.Name)
+	case !fs.ValidPath(h.Name) || !exportName(h.Name, tenant, project):
+		return fmt.Errorf("the export holds %q, a name no export of %s/%s holds", h.Name, tenant, project)
 	}
-	return filepath.Join(dir, filepath.FromSlash(clean)), nil
+	return nil
 }
 
-// writeNew creates the file, never over one that exists, and returns what it
-// wrote.
-func writeNew(target string, r io.Reader) ([]byte, error) {
-	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-		return nil, fmt.Errorf("create %s: %w", filepath.Dir(target), err)
+// exportName reports whether name is one of the manifests, or the document of
+// a ticket of tenant/project, its number written as the key writes it.
+func exportName(name, tenant, project string) bool {
+	if exportManifests[name] {
+		return true
+	}
+	dir, file, ok := strings.Cut(name, "/")
+	stem, document := strings.CutSuffix(file, ".md")
+	if !ok || !document || dir != tenant {
+		return false
+	}
+	key, err := domain.ParseTicketKey(stem)
+	return err == nil && key.Tenant == "" && key.Project == project
+}
+
+// writeNew creates the file of an entry inside the root, never over one that
+// exists, and returns what it wrote.
+func writeNew(root *os.Root, name string, r io.Reader) ([]byte, error) {
+	file := filepath.FromSlash(name)
+	if dir := filepath.Dir(file); dir != "." {
+		if err := root.MkdirAll(dir, 0o700); err != nil {
+			return nil, fmt.Errorf("create %s: %w", dir, err)
+		}
 	}
 	body, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("read the export: %w", err)
 	}
-	f, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- a path inside the directory the person named, checked by inside
+	f, err := root.OpenFile(file, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("write %s: %w", target, err)
+		return nil, fmt.Errorf("write %s: %w", file, err)
 	}
 	if _, err := f.Write(body); err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("write %s: %w", target, err)
+		return nil, fmt.Errorf("write %s: %w", file, err)
 	}
 	if err := f.Close(); err != nil {
-		return nil, fmt.Errorf("write %s: %w", target, err)
+		return nil, fmt.Errorf("write %s: %w", file, err)
 	}
 	return body, nil
 }

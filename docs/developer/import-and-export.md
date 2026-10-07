@@ -271,8 +271,13 @@ decodes it into the generated types. `Correction` writes back only what a correc
 `exportProject` in [`mcpcli/export.go`](../../backend/internal/mcpcli/export.go) takes
 `<tenant>/<PROJECT>` and a directory (usage, exit `2`, otherwise); refuses a directory that is not
 empty, or a file, before it asks (exit `1`); fetches the export through the generated client with
-the configuration of every subcommand; and unpacks it: regular files only, each at a cleaned path
-inside the directory, created with `O_EXCL`, the directories `0700` and the files `0600`. It prints
+the configuration of every subcommand; and unpacks it through a root opened at the directory
+(`os.OpenRoot`), which no name or link reaches out of: regular files only, each named as an export
+of that project names it — `exportEntry` takes a valid `/`-separated path that is one of the three
+manifests or `<tenant>/<PROJECT>-<n>.md` of that tenant and project, the number as its key writes
+it, and refuses every other —, created with `O_EXCL`; on POSIX systems the directories `0700` and
+the files `0600`, on Windows, where Go sets only the read-only attribute, the directory's access
+list ([docs/security/import-and-export.md](../security/import-and-export.md#h-77) H-77). It prints
 the count of documents and, when there are any, of the confidential tickets left out. Its requests
 carry the agent mark `cowork-mcp/unknown/export`, as every request of the binary carries one, so the
 export's act names the binary ([mcp.md](mcp.md)).
@@ -285,7 +290,7 @@ export's act names the binary ([mcp.md](mcp.md)).
 | unit | [`roundtrip_test.go`](../../backend/internal/importer/roundtrip_test.go) | every golden file of `/markdown` in [`internal/markdown/testdata`](../../backend/internal/markdown/testdata/) parses without an error — `questions.md` with the one warning of its body's heading — and renders again to its bytes, and every one of `/context` is refused; render, parse, render is the same document for values with quotes, colons, fences and every answer form |
 | unit | [`analyze_test.go`](../../backend/internal/importer/analyze_test.go) | a dry run of the fixtures, the conflicts and the purged numbers, the corrections and their rules, an export read back with its links, a block on a ticket, parents and a loop; the texts at the lengths the API takes and one character beyond, a body grown beyond by the keys the import puts in (`TestTheImportHoldsTheTextsToTheLengthsOfTheAPI`) |
 | unit | [`upload_test.go`](../../backend/internal/importer/upload_test.go) | the three forms of an upload, the bounds, the stored form; a hand-written frontmatter read line by line |
-| unit | [`mcpcli/export_test.go`](../../backend/internal/mcpcli/export_test.go) | the unpacking stays inside its directory and never overwrites |
+| unit | [`mcpcli/export_test.go`](../../backend/internal/mcpcli/export_test.go) | the unpacking stays inside its directory and never overwrites; it writes the names an export holds and no other — backslashes, steps, volumes, other tenants and projects, numbers not written as keys —, and a directory link planted in the target leads nowhere outside it |
 | integration | [`api_imports_test.go`](../../backend/test/integration/api_imports_test.go) | the dry run and its execution end to end, who may — an agent neither imports nor reads a job —, the acts, one event, the sequence, `409 import_executed`; a conflict until it is excluded, also one filed after the dry run; the bounds and the expiry; the policies of `import_jobs` as the runtime role meets them; the purge of an imported ticket taking its file out of the report, by the job; this repository's whole `docs/tickets/` read without an error, the open tickets after the execution as many as the source's open `state:` lines |
 | integration | [`api_exports_test.go`](../../backend/test/integration/api_exports_test.go) | the round trip of [ADR 0051] D5; the export as each reader sees it |
 | integration | [`mcp_test.go`](../../backend/test/integration/mcp_test.go) `TestTheExportSubcommand`, `TestTheBinaryRunsItsSubcommands` | the subcommand by its command line and by the built binary |

@@ -174,6 +174,10 @@ empty directory, never over a file:
 cowork-mcp export acme/VKO ./vko-export                                  # example
 ```
 
+On Linux and macOS its directories are `0700` and its files `0600`. Windows applies no such mode:
+the files take the access list of the directory they are written to, so export under your profile
+there, not into a directory other accounts may read.
+
 The archive holds `manifest.json` — the projects, the counts, who exported it and when, and how
 many confidential tickets it leaves out because its reader cannot read them —, `links.json` with
 every link whose two ends the reader sees, `attachments.json` with the attachments' names, types,

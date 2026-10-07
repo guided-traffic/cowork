@@ -19,9 +19,12 @@ command line against the fixture environment, and once by running the built bina
 fetches the project export of ADR 0051 D4 through the generated client and unpacks it: the
 documents at `<dir>/<tenant>/<PROJECT>-<n>.md` and the three manifests at its root. *(Made concrete
 2026-10-06 by the implementer, open to the owner's objection:)* it refuses a target that is a file
-or a directory that is not empty before it asks the server; it writes regular files only, each at
-a path inside the directory, never over a file — `O_EXCL` —, the directories `0700` and the files
-`0600`, since an export may hold confidential tickets; it prints the count of documents and of the
+or a directory that is not empty before it asks the server; it writes regular files only, ~~each at
+a path inside the directory~~ *(made concrete 2026-10-07 by the implementer, open to the owner's
+objection: only the names an export of the project holds, through a root opened at the directory,
+which no name or link reaches out of)*, never over a file — `O_EXCL` —, the directories `0700` and
+the files `0600` *(on POSIX systems; Windows applies no such mode, and the files take the access list
+of the directory)*, since an export may hold confidential tickets; it prints the count of documents and of the
 confidential tickets left out, and has no `--json`: its result is the directory, whose
 `manifest.json` is the structured form. Its requests carry the agent mark
 `cowork-mcp/unknown/export`, like every request of the binary, so the export's act names it. The
