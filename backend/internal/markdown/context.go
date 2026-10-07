@@ -225,6 +225,18 @@ func summary(a Act) string {
 	if a.Redacted {
 		return a.Action + " (the details name a ticket you cannot see)"
 	}
+	s := did(a)
+	if a.Reason != "" {
+		s += " — reason: " + quoted(a.Reason)
+	}
+	if a.Note != "" {
+		s += " — note: " + quoted(a.Note)
+	}
+	return s
+}
+
+// did is what an act did: its name and what it changed.
+func did(a Act) string {
 	s := a.Action
 	switch {
 	case a.Action == "transitioned" && a.Before["state"] != nil && a.After["state"] != nil:
@@ -246,12 +258,6 @@ func summary(a Act) string {
 		// person removed (docs/adr/0071 D6).
 		s += " " + codeChange(a)
 	}
-	if a.Reason != "" {
-		s += " — reason: " + quoted(a.Reason)
-	}
-	if a.Note != "" {
-		s += " — note: " + quoted(a.Note)
-	}
 	return s
 }
 
@@ -271,10 +277,7 @@ func horizonAct(a Act) string {
 // repository's identity with #number or @ and the commit's short id —, or
 // nothing for any other act.
 func codeChange(a Act) string {
-	p := a.After
-	if a.Action == "unlinked" {
-		p = a.Before
-	}
+	p := payload(a)
 	repository, ok := p["repository"].(string)
 	if !ok {
 		return ""
@@ -291,11 +294,17 @@ func codeChange(a Act) string {
 	return ""
 }
 
-func linkPayload(a Act) map[string]any {
-	p := a.After
+// payload is what an act names: what it removed for an unlinked act, what it
+// made or changed for any other.
+func payload(a Act) map[string]any {
 	if a.Action == "unlinked" {
-		p = a.Before
+		return a.Before
 	}
+	return a.After
+}
+
+func linkPayload(a Act) map[string]any {
+	p := payload(a)
 	if p["source"] == nil || p["target"] == nil {
 		return nil
 	}

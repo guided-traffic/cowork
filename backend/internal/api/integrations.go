@@ -15,7 +15,7 @@ import (
 )
 
 // entityGitHubSecret is the entity of the acts on a tenant's webhook secret.
-const entityGitHubSecret = "github_webhook_secret"
+const entityGitHubSecret = "github_webhook_secret" // #nosec G101 -- an entity type of the audit record, not a credential
 
 // webhookEvents are the events to choose in GitHub's webhook settings
 // (docs/adr/0071 D4, D7).

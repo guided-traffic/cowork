@@ -11,6 +11,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
+	"github.com/guided-traffic/cowork/backend/internal/github"
 	"github.com/guided-traffic/cowork/backend/internal/markdown"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
@@ -160,11 +161,15 @@ func contextPullRequests(ctx context.Context, r *store.Reader, t tenantScope, tc
 	return err
 }
 
+// foundInTitle is where a reader finds a pull request's short key: its title,
+// which the stored found_in calls the subject as it does a commit's.
+const foundInTitle = "title"
+
 // foundInWord says where a key was read as a reader names it: the title of a
 // pull request, the subject of a commit.
 func foundInWord(kind, foundIn string) string {
-	if foundIn == "subject" && kind == entityPullRequest {
-		return "title"
+	if foundIn == github.FoundInSubject && kind == entityPullRequest {
+		return foundInTitle
 	}
 	return foundIn
 }

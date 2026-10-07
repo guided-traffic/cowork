@@ -163,11 +163,10 @@ func (s apiServer) post(t *testing.T, slug string, h hook, opts ...reqOpt) *http
 }
 
 // deliver signs a delivery with the tenant's secret and posts it under a new
-// delivery id, which it returns.
-func (e webhookEnv) deliver(t *testing.T, event string, body []byte, opts ...reqOpt) (*http.Response, string) {
+// delivery id.
+func (e webhookEnv) deliver(t *testing.T, event string, body []byte, opts ...reqOpt) *http.Response {
 	t.Helper()
-	id := uuid.NewString()
-	return e.s.post(t, e.SlugA, e.signed(event, id, body), opts...), id
+	return e.s.post(t, e.SlugA, e.signed(event, uuid.NewString(), body), opts...)
 }
 
 func (e webhookEnv) signed(event, delivery string, body []byte) hook {
@@ -178,7 +177,7 @@ func (e webhookEnv) signed(event, delivery string, body []byte) hook {
 // mustTake delivers and requires the 202 of a delivery taken.
 func (e webhookEnv) mustTake(t *testing.T, event string, body []byte) {
 	t.Helper()
-	res, _ := e.deliver(t, event, body)
+	res := e.deliver(t, event, body)
 	if res.StatusCode != http.StatusAccepted {
 		require.Equal(t, http.StatusAccepted, res.StatusCode, "%v", problemBody(t, res))
 	}
@@ -264,7 +263,7 @@ func TestASignatureThatDoesNotHoldIsRefusedAndWritesNothing(t *testing.T) {
 	}
 	assert.Equal(t, [3]int64{0, 0, 0}, written(t, e.A), "nothing read, nothing written")
 
-	res, _ := e.deliver(t, "pull_request", body, withBearer("cwk_"+strings.Repeat("x", 43)),
+	res := e.deliver(t, "pull_request", body, withBearer("cwk_"+strings.Repeat("x", 43)),
 		withHeader("Cookie", auth.SessionCookie+"=not-a-session"))
 	require.Equal(t, http.StatusAccepted, res.StatusCode, "a bearer token or a cookie beside the signature is not looked at")
 	assert.Len(t, e.pullRequests(t, caller{Token: e.tk.MemberA}, tk.Number), 1)
@@ -324,7 +323,7 @@ func TestWhatTheWebhookDoesNotReadIsTakenAndPassedOver(t *testing.T) {
 		"another branch": {"push", pushEvent{Ref: "refs/heads/feature/x",
 			Commits: []pushedCommit{{ID: strings.Repeat("a", 40), Message: "fix: x (" + key + ")"}}}.body(t)},
 	} {
-		res, _ := e.deliver(t, d.event, d.body)
+		res := e.deliver(t, d.event, d.body)
 		require.Equal(t, http.StatusAccepted, res.StatusCode, name)
 	}
 	assert.Empty(t, e.pullRequests(t, caller{Token: e.tk.MemberA}, tk.Number))
@@ -345,7 +344,7 @@ func TestASignedDeliveryThatIsNotGitHubsIsRefused(t *testing.T) {
 	h.contentType = "application/x-www-form-urlencoded"
 	assertProblem(t, e.s.post(t, e.SlugA, h), http.StatusUnsupportedMediaType, "unsupported_media_type")
 	broken := []byte(`{"action":"opened","pull_request":{"number":0}}`)
-	res, _ = e.deliver(t, "pull_request", broken)
+	res = e.deliver(t, "pull_request", broken)
 	assertProblem(t, res, http.StatusBadRequest, "validation_failed")
 	assert.Equal(t, [3]int64{0, 0, 0}, written(t, e.A))
 }
@@ -355,7 +354,7 @@ func TestASignedDeliveryThatIsNotGitHubsIsRefused(t *testing.T) {
 func TestTheWebhookBodyIsBounded(t *testing.T) {
 	e := newWebhookEnv(t, func(o *api.Options) { o.MaxJSONBody = 4096 })
 	body := prEvent{Action: "opened", Number: 1, Title: "x (ALPHA-1)", Body: ptrTo(strings.Repeat("a", 8192))}.body(t)
-	res, _ := e.deliver(t, "pull_request", body)
+	res := e.deliver(t, "pull_request", body)
 	assertProblem(t, res, http.StatusRequestEntityTooLarge, "payload_too_large")
 	assert.Equal(t, [3]int64{0, 0, 0}, written(t, e.A))
 }
@@ -649,7 +648,7 @@ func TestThePurgeRemovesTheTicketsPullRequests(t *testing.T) {
 	e.send(t, admin, http.StatusNoContent, http.MethodDelete, ticketPath(e.SlugA, "ALPHA", tk.Number), nil)
 	purged, err := openRuntime(t).PurgeDeletedTickets(context.Background(), time.Now().Add(31*24*time.Hour))
 	require.NoError(t, err)
-	var keys []string
+	keys := make([]string, 0, len(purged))
 	for _, p := range purged {
 		keys = append(keys, p.Key)
 	}
@@ -703,7 +702,7 @@ func TestTheWebhookSecretIsAnAdministratorsAct(t *testing.T) {
 	rotated := decode[apigen.GitHubSecretCreated](t, res)
 	assert.True(t, rotated.Replaced)
 	assert.NotEqual(t, made.Secret, rotated.Secret)
-	old, _ := e.deliver(t, "pull_request", body)
+	old := e.deliver(t, "pull_request", body)
 	assertProblem(t, old, http.StatusUnauthorized, "signature_invalid")
 	e.secret = rotated.Secret
 	e.mustTake(t, "pull_request", body)
@@ -724,7 +723,7 @@ func TestTheWebhookSecretIsAnAdministratorsAct(t *testing.T) {
 	// A token revokes: it only takes access away.
 	require.Equal(t, http.StatusNoContent, s.do(t, caller{Token: tk.AdminA}, http.MethodDelete, base+"/secret", nil).StatusCode)
 	require.Equal(t, http.StatusNoContent, admin.request(http.MethodDelete, base+"/secret", nil).StatusCode)
-	gone, _ := e.deliver(t, "pull_request", body)
+	gone := e.deliver(t, "pull_request", body)
 	assertProblem(t, gone, http.StatusNotFound, "not_found")
 	assert.True(t, decode[apigen.GitHubIntegration](t, admin.get(base)).Secret.IsNull())
 
