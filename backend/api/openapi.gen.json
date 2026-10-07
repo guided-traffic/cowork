@@ -3613,6 +3613,21 @@
         "type": "object"
       },
       "GitHubIntegration": {
+        "example": {
+          "events": [
+            "pull_request",
+            "push"
+          ],
+          "secret": {
+            "created_at": "2026-10-06T13:55:00Z",
+            "created_by": {
+              "display_name": "Ada Lovelace",
+              "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+              "username": "ada"
+            }
+          },
+          "webhook_path": "/api/v1/tenants/acme/integrations/github/webhook"
+        },
         "properties": {
           "events": {
             "description": "The events to choose in GitHub's webhook settings; every other is taken and passed over",
@@ -3663,6 +3678,16 @@
         "type": "object"
       },
       "GitHubSecretCreated": {
+        "example": {
+          "created_at": "2026-10-06T13:55:00Z",
+          "created_by": {
+            "display_name": "Ada Lovelace",
+            "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+            "username": "ada"
+          },
+          "replaced": false,
+          "secret": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+        },
         "properties": {
           "created_at": {
             "format": "date-time",
@@ -11585,6 +11610,31 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "examples": {
+                "pullRequestOpened": {
+                  "summary": "X-GitHub-Event: pull_request, opened; the payload cut to the fields cowork reads",
+                  "value": {
+                    "action": "opened",
+                    "number": 118,
+                    "pull_request": {
+                      "body": "The form no longer trims the password before it sends it.\n\nCowork-Ticket: acme/WEB-42",
+                      "merged": false,
+                      "merged_at": null,
+                      "number": 118,
+                      "state": "open",
+                      "title": "Send the password as typed (WEB-42)",
+                      "updated_at": "2026-10-06T14:02:10Z",
+                      "user": {
+                        "login": "grace-hopper"
+                      }
+                    },
+                    "repository": {
+                      "clone_url": "https://github.com/acme/website.git",
+                      "default_branch": "main"
+                    }
+                  }
+                }
+              },
               "schema": {
                 "type": "object"
               }

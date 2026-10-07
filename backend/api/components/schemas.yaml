@@ -2391,6 +2391,12 @@ GitHubIntegration:
       type: array
       description: The events to choose in GitHub's webhook settings; every other is taken and passed over
       items: {type: string}
+  example:
+    secret:
+      created_at: '2026-10-06T13:55:00Z'
+      created_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+    webhook_path: /api/v1/tenants/acme/integrations/github/webhook
+    events: [pull_request, push]
 GitHubSecretCreated:
   type: object
   required: [secret, created_at, created_by, replaced]
@@ -2406,6 +2412,12 @@ GitHubSecretCreated:
     replaced:
       type: boolean
       description: A secret existed and is replaced; a delivery signed with it is refused from now on
+  # The first secret of acme; its value is an example that signs nothing.
+  example:
+    secret: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0
+    created_at: '2026-10-06T13:55:00Z'
+    created_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+    replaced: false
 PrerequisiteNode:
   type: object
   description: A ticket of a prerequisite tree, or of its upward reading, the dependents (docs/adr/0012 D6)
