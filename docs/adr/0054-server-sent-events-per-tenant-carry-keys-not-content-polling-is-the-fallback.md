@@ -145,6 +145,12 @@ access lists, its projects when a `project_id` is there, and the person's own `G
 *(Added 2026-10-05:)* `project.changed`, `{"key": "<tenant>/<PROJECT>", "kind": "ranked"}` without a
 version, says that a project's rank was set as a whole — the sort by the score — and reaches whoever
 sees the project, as its tickets' events do (D3); the client loads its open lists again.
+*(Added 2026-10-06, [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+D6:)* `pull_request.changed`, a ticket's event like the others — `{"key", "version", "kind"}`, the
+kind `linked`, `merged`, `closed`, `reopened`, `updated` or `unlinked` — says that GitHub's webhook
+linked a pull request or a commit to the ticket or reported its state, or that a person removed a
+link; the ticket's version is the one it has, which the act did not move. The client loads the
+ticket's list of pull requests and its activity again.
 
 **D3 — Visibility is enforced at the stream.** Each event carries the project; a
 subscription knows the person's visible projects (computed at connect, recomputed on

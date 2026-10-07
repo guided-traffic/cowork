@@ -32,7 +32,10 @@ revoke?" (D5). The options were (a) every token of every member, also those rest
 member's other tenants; (b) the tokens that can act in the tenant — the members' unrestricted tokens
 and those restricted to it; (c) only the tokens restricted to the tenant. (b) was the
 recommendation, and it was built on the owner's instruction of 2026-10-05 to build the recommended
-option, the owner reviewing the result. Date: 2026-10-01. Decided by the owner as the answer to the
+option, the owner reviewing the result. Amended 2026-10-06 for GitHub's webhook of
+[ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md),
+by D5's rule and built the same day (D5: eighteen operations, making or rotating the tenant's
+webhook secret the eighteenth). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "personal access token design?" at its three contested points: three hierarchical scopes
 with optional tenant and project restriction; mandatory expiry with a ninety-day default and
 a one-year maximum; creation only by the person themselves in a browser session, never by an
@@ -222,7 +225,7 @@ D7, built on the recommendation: ~~sixteen~~ seventeen operations. Purging a del
 `purgeTicket`, takes a session by the rule itself: nothing undoes a purge, so what a leaked token did
 there would outlive its revocation. Deleting a ticket and restoring it, which the bin undoes, stay
 open to an administrator's `admin`-scope token. A session the agent header marks is refused all
-seventeen.)* *(Amended 2026-10-05, the owner's answer to "which of a member's tokens does a tenant's
+~~seventeen~~.)* *(Amended 2026-10-05, the owner's answer to "which of a member's tokens does a tenant's
 administrator see and revoke?": the tokens of their tenant's members are **the tokens that can act in
 the tenant** — every token of a member that is unrestricted or restricted to this tenant. A token
 restricted to another tenant is not shown, not even by its name or by the fact that it exists, and
@@ -234,9 +237,16 @@ and finally (D6), as an act of the tenant recorded in its audit (D9). Revoking a
 ends it in every tenant of its person: that is what an unrestricted token is, the person makes a new
 one in a session, and the page says so before it acts. Listing takes the administrator role and
 `read` scope; revoking takes `admin` scope and no agent, and a token may, because it only takes
-access away (the rule above) — neither is among the seventeen. An unrestricted token's name and
+access away (the rule above) — neither is among the ~~seventeen~~ eighteen. An unrestricted token's name and
 last-used day are its person's across their tenants, so they can say something of the person's work
 elsewhere ([docs/security/tokens.md](../security/tokens.md#h-57) H-57). Built the same day.)*
+*(Amended 2026-10-06 by the rule itself, for GitHub's webhook of
+[ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+D1, and built the same day: ~~seventeen~~ eighteen operations. Making the tenant's webhook secret,
+or rotating it — one operation, `createGitHubSecret` —, takes a session: whoever learns the secret
+writes links into the tenant and tells its people of merges, long after a leaked token that made it
+was revoked. Revoking the secret only takes access away and stays open to an administrator's
+`admin`-scope token. A session the agent header marks is refused all eighteen.)*
 
 **D6 — Revocation is immediate and keeps the row.** Revoked and expired tokens stay listed
 with their state; a revoked token answers `401` with the reason. *(Amended 2026-10-02: a
