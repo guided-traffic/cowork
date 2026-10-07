@@ -268,9 +268,11 @@ func TestServeAllSharesOneLifecycle(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the listeners did not stop after the signal")
 	}
+	// net/http starts each shutdown hook in a goroutine of its own and does
+	// not wait for it, so the hook may still be running when ServeAll returns.
 	select {
 	case <-shutdown:
-	default:
+	case <-time.After(5 * time.Second):
 		t.Error("the API listener's shutdown hook did not run")
 	}
 	for _, addr := range []string{api.Addr().String(), scrape.Addr().String()} {
