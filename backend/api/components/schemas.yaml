@@ -1347,6 +1347,26 @@ Comment:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-comment
+    id: 01a10c96-0240-79ce-bd04-bc6c377cbc17
+    author: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    agent: null
+    token: null
+    body: |-
+      Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.
+
+      ![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)
+
+      @Ada Lovelace, see Q1 before we change the form.
+    body_html: "<p>Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.</p>\n<p><img src=\"/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content\" alt=\"The failed sign-in\"></p>\n<p>@Ada Lovelace, see Q1 before we change the form.</p>"
+    withdrawn: false
+    withdrawn_at: null
+    edited: false
+    explains: []
+    mentions: [019cadb4-4b00-7719-ade7-c2d450e9b5f3]
+    version: 1
+    created_at: '2026-10-05T15:02:00Z'
+    updated_at: '2026-10-05T15:02:00Z'
 CommentWrite:
   type: object
   additionalProperties: false
@@ -1376,6 +1396,10 @@ CommentList:
         $ref: '#/Comment'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-comment
+    next_cursor: null
 CommentRevision:
   type: object
   required: [body, edited_by, agent, token, at]
@@ -1400,6 +1424,15 @@ CommentRevisionList:
         $ref: '#/CommentRevision'
     next_cursor:
       type: [string, 'null']
+  # The text before an agent's edit of a comment of Ada Lovelace, made through her token.
+  example:
+    items:
+      - body: The fix sends the password as typed.
+        edited_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        agent: claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911
+        token: {id: 01a0a40b-5040-78e5-8344-63ccb2705d84, name: Claude Code on the laptop}
+        at: '2026-10-06T08:50:00Z'
+    next_cursor: null
 Activity:
   type: object
   required: [id, at, actor, actor_system, agent, token, action, entity_type, entity_id, before, after, reason, note,
@@ -1434,6 +1467,22 @@ Activity:
     redacted:
       type: boolean
       description: The act names a ticket the caller cannot see; its payload, reason and note are withheld
+  example: &example-activity
+    id: 01a10c96-0240-7fdd-bbe7-eb2168110b66
+    at: '2026-10-05T15:02:00Z'
+    actor: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    actor_system: null
+    agent: null
+    token: null
+    action: commented
+    entity_type: comment
+    entity_id: 01a10c96-0240-79ce-bd04-bc6c377cbc17
+    before: null
+    after: null
+    reason: null
+    note: null
+    explained_by_comment: null
+    redacted: false
 ActivityList:
   type: object
   required: [items, next_cursor]
@@ -1444,6 +1493,41 @@ ActivityList:
         $ref: '#/Activity'
     next_cursor:
       type: [string, 'null']
+  # The acts of acme/WEB-42, oldest first.
+  example:
+    items:
+      - id: 01a0fbe2-7f00-7f00-a107-cc0e604f9a75
+        at: '2026-10-02T09:12:00Z'
+        actor: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+        actor_system: null
+        agent: null
+        token: null
+        action: transitioned
+        entity_type: ticket
+        entity_id: 01a0f687-f3a0-7516-87ab-709ca2b1c1e6
+        before: {state: decided}
+        after: {state: in-progress}
+        reason: null
+        note: null
+        explained_by_comment: null
+        redacted: false
+      - id: 01a0fbe4-53c0-7730-b386-e3a9864a24b0
+        at: '2026-10-02T09:14:00Z'
+        actor: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        actor_system: null
+        agent: null
+        token: null
+        action: overridden
+        entity_type: ticket
+        entity_id: 01a0f687-f3a0-7516-87ab-709ca2b1c1e6
+        before: {urgency_override: null}
+        after: {urgency_override: now}
+        reason: Customers cannot sign in
+        note: null
+        explained_by_comment: null
+        redacted: false
+      - *example-activity
+    next_cursor: null
 Attachment:
   type: object
   required: [id, file_name, size, sha256, content_type, comment, uploaded_by, agent, token, created_at, content_url]

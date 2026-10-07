@@ -838,6 +838,27 @@
         "type": "object"
       },
       "Activity": {
+        "example": {
+          "action": "commented",
+          "actor": {
+            "display_name": "Grace Hopper",
+            "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+            "username": null
+          },
+          "actor_system": null,
+          "after": null,
+          "agent": null,
+          "at": "2026-10-05T15:02:00Z",
+          "before": null,
+          "entity_id": "01a10c96-0240-79ce-bd04-bc6c377cbc17",
+          "entity_type": "comment",
+          "explained_by_comment": null,
+          "id": "01a10c96-0240-7fdd-bbe7-eb2168110b66",
+          "note": null,
+          "reason": null,
+          "redacted": false,
+          "token": null
+        },
         "properties": {
           "action": {
             "$ref": "#/components/schemas/AuditAction"
@@ -951,6 +972,82 @@
         "type": "object"
       },
       "ActivityList": {
+        "example": {
+          "items": [
+            {
+              "action": "transitioned",
+              "actor": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "actor_system": null,
+              "after": {
+                "state": "in-progress"
+              },
+              "agent": null,
+              "at": "2026-10-02T09:12:00Z",
+              "before": {
+                "state": "decided"
+              },
+              "entity_id": "01a0f687-f3a0-7516-87ab-709ca2b1c1e6",
+              "entity_type": "ticket",
+              "explained_by_comment": null,
+              "id": "01a0fbe2-7f00-7f00-a107-cc0e604f9a75",
+              "note": null,
+              "reason": null,
+              "redacted": false,
+              "token": null
+            },
+            {
+              "action": "overridden",
+              "actor": {
+                "display_name": "Ada Lovelace",
+                "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                "username": "ada"
+              },
+              "actor_system": null,
+              "after": {
+                "urgency_override": "now"
+              },
+              "agent": null,
+              "at": "2026-10-02T09:14:00Z",
+              "before": {
+                "urgency_override": null
+              },
+              "entity_id": "01a0f687-f3a0-7516-87ab-709ca2b1c1e6",
+              "entity_type": "ticket",
+              "explained_by_comment": null,
+              "id": "01a0fbe4-53c0-7730-b386-e3a9864a24b0",
+              "note": null,
+              "reason": "Customers cannot sign in",
+              "redacted": false,
+              "token": null
+            },
+            {
+              "action": "commented",
+              "actor": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "actor_system": null,
+              "after": null,
+              "agent": null,
+              "at": "2026-10-05T15:02:00Z",
+              "before": null,
+              "entity_id": "01a10c96-0240-79ce-bd04-bc6c377cbc17",
+              "entity_type": "comment",
+              "explained_by_comment": null,
+              "id": "01a10c96-0240-7fdd-bbe7-eb2168110b66",
+              "note": null,
+              "reason": null,
+              "redacted": false,
+              "token": null
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -1926,6 +2023,28 @@
         "type": "string"
       },
       "Comment": {
+        "example": {
+          "agent": null,
+          "author": {
+            "display_name": "Grace Hopper",
+            "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+            "username": null
+          },
+          "body": "Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.\n\n![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)\n\n@Ada Lovelace, see Q1 before we change the form.",
+          "body_html": "\u003cp\u003eReproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.\u003c/p\u003e\n\u003cp\u003e\u003cimg src=\"/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content\" alt=\"The failed sign-in\"\u003e\u003c/p\u003e\n\u003cp\u003e@Ada Lovelace, see Q1 before we change the form.\u003c/p\u003e",
+          "created_at": "2026-10-05T15:02:00Z",
+          "edited": false,
+          "explains": [],
+          "id": "01a10c96-0240-79ce-bd04-bc6c377cbc17",
+          "mentions": [
+            "019cadb4-4b00-7719-ade7-c2d450e9b5f3"
+          ],
+          "token": null,
+          "updated_at": "2026-10-05T15:02:00Z",
+          "version": 1,
+          "withdrawn": false,
+          "withdrawn_at": null
+        },
         "properties": {
           "agent": {
             "description": "The agent mark when an agent wrote it in the author's name",
@@ -2026,6 +2145,33 @@
         "type": "object"
       },
       "CommentList": {
+        "example": {
+          "items": [
+            {
+              "agent": null,
+              "author": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "body": "Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.\n\n![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)\n\n@Ada Lovelace, see Q1 before we change the form.",
+              "body_html": "\u003cp\u003eReproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.\u003c/p\u003e\n\u003cp\u003e\u003cimg src=\"/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content\" alt=\"The failed sign-in\"\u003e\u003c/p\u003e\n\u003cp\u003e@Ada Lovelace, see Q1 before we change the form.\u003c/p\u003e",
+              "created_at": "2026-10-05T15:02:00Z",
+              "edited": false,
+              "explains": [],
+              "id": "01a10c96-0240-79ce-bd04-bc6c377cbc17",
+              "mentions": [
+                "019cadb4-4b00-7719-ade7-c2d450e9b5f3"
+              ],
+              "token": null,
+              "updated_at": "2026-10-05T15:02:00Z",
+              "version": 1,
+              "withdrawn": false,
+              "withdrawn_at": null
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -2088,6 +2234,25 @@
         "type": "object"
       },
       "CommentRevisionList": {
+        "example": {
+          "items": [
+            {
+              "agent": "claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911",
+              "at": "2026-10-06T08:50:00Z",
+              "body": "The fix sends the password as typed.",
+              "edited_by": {
+                "display_name": "Ada Lovelace",
+                "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                "username": "ada"
+              },
+              "token": {
+                "id": "01a0a40b-5040-78e5-8344-63ccb2705d84",
+                "name": "Claude Code on the laptop"
+              }
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -12147,6 +12312,12 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "body": "Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.\n\n![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)\n\n@Ada Lovelace, see Q1 before we change the form.",
+                "mentions": [
+                  "019cadb4-4b00-7719-ade7-c2d450e9b5f3"
+                ]
+              },
               "schema": {
                 "$ref": "#/components/schemas/CommentWrite"
               }
@@ -12236,6 +12407,9 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "body": "Reproduced with Safari 18.0 and 18.1 on macOS 15: the request carries the password without its trailing space. Chrome and Firefox send it whole.\n\n![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)\n\n@Ada Lovelace, see Q1 before we change the form."
+              },
               "schema": {
                 "$ref": "#/components/schemas/CommentWrite"
               }
@@ -12337,6 +12511,26 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "agent": null,
+                  "author": {
+                    "display_name": "Grace Hopper",
+                    "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                    "username": null
+                  },
+                  "body": null,
+                  "body_html": null,
+                  "created_at": "2026-10-05T15:02:00Z",
+                  "edited": false,
+                  "explains": [],
+                  "id": "01a10c96-0240-79ce-bd04-bc6c377cbc17",
+                  "mentions": [],
+                  "token": null,
+                  "updated_at": "2026-10-06T09:05:00Z",
+                  "version": 2,
+                  "withdrawn": true,
+                  "withdrawn_at": "2026-10-06T09:05:00Z"
+                },
                 "schema": {
                   "$ref": "#/components/schemas/Comment"
                 }
