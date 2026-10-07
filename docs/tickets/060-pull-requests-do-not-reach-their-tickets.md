@@ -126,6 +126,25 @@ key on the body's first line and the short key in the title, so both usually nam
 
 **Answer:** _open_
 
+### Q5: Are the pull requests of authors outside the repository linked?
+
+Since 0.12.0 the webhook links only pull requests whose `author_association` is `OWNER`, `MEMBER` or
+`COLLABORATOR`: anyone can open a pull request against a public repository, and its title would reach
+the ticket's context document, which Claude Code sessions and the chat read (ADR 0071 D4 as amended
+2026-10-07).
+
+- **(a) Only owners, members and collaborators** (built): an outside contributor's pull request stays
+  unlinked until a maintainer pushes its commits to the default branch, which links them by their
+  messages.
+- **(b) Outside authors' pull requests linked without their title**: the link names the number, the
+  state and the author, and the context document shows no text the author wrote.
+- **(c) Every author, as before.**
+
+Recommended: **(a)** — no text a stranger wrote reaches a model; (b) keeps the link at the cost of a
+second rule in every surface that shows a pull request.
+
+**Answer:** _open_
+
 ## Not verified
 
 - **No delivery from GitHub itself has reached cowork.** The payloads are fixtures in the shape of

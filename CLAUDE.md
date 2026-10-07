@@ -10,7 +10,7 @@ person's machine for Claude Code.
 2026-10-06 and are worked as tickets; phase 3 (UI v1) awaits the owner's reviews; the sign-in
 without a click is released as `0.8.0`, metrics, the chart's references with the migration Job and
 the GitHub webhook as `0.9.0`, the consistency check as `0.10.0`, the import and the export as
-`0.11.0`; 1.0 waits until every open question is answered, by the owner's rule of 2026-10-06
+`0.11.0`, the hardening that the review of the security pages found as `0.12.0`; 1.0 waits until every open question is answered, by the owner's rule of 2026-10-06
 (ADR 0003 D9)** — the work lists, each open phase a family ticket with its children, are in
 [docs/tickets/](docs/tickets/README.md). Every founding decision is an ADR, and the project plan
 was consumed into the phase tickets (ADR 0074).
