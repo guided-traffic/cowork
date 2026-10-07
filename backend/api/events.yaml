@@ -65,5 +65,21 @@ events:
           text/event-stream:
             schema:
               type: string
+            # The first lines of the tenant's stream: two acts on acme/WEB-42, a member
+            # added, and the comment every twenty seconds.
+            example: |
+              id: 01a110b2-f108-7b07-8514-a75fc430bb9f
+              event: ticket.changed
+              data: {"key":"acme/WEB-42","version":8,"kind":"updated"}
+
+              id: 01a110b3-79c0-77f9-8677-7f4a307c25dc
+              event: comment.changed
+              data: {"key":"acme/WEB-42","version":8,"kind":"commented"}
+
+              id: 01a110b3-eef0-78b3-aecf-33b6e003a0d5
+              event: membership.changed
+              data: {"tenant":"acme","person_id":"01a0e855-4ee0-7f87-8f19-0a5c9c75145e"}
+
+              : heartbeat
       default:
         $ref: './components/responses.yaml#/Problem'

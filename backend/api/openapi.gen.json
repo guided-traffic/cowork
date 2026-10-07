@@ -10753,6 +10753,7 @@
           "200": {
             "content": {
               "text/event-stream": {
+                "example": "id: 01a110b2-f108-7b07-8514-a75fc430bb9f\nevent: ticket.changed\ndata: {\"key\":\"acme/WEB-42\",\"version\":8,\"kind\":\"updated\"}\n\nid: 01a110b3-79c0-77f9-8677-7f4a307c25dc\nevent: comment.changed\ndata: {\"key\":\"acme/WEB-42\",\"version\":8,\"kind\":\"commented\"}\n\nid: 01a110b3-eef0-78b3-aecf-33b6e003a0d5\nevent: membership.changed\ndata: {\"tenant\":\"acme\",\"person_id\":\"01a0e855-4ee0-7f87-8f19-0a5c9c75145e\"}\n\n: heartbeat\n",
                 "schema": {
                   "type": "string"
                 }
