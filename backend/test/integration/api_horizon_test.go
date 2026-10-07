@@ -15,6 +15,7 @@ import (
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
+	"github.com/guided-traffic/cowork/backend/test/fakeissuer"
 	"github.com/guided-traffic/cowork/backend/test/fixture"
 )
 
@@ -228,6 +229,84 @@ func TestSettingTheHorizon(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), "\nhorizon: release\n", "the export names the horizon by its word")
 	assert.NotContains(t, string(raw), "urgency")
+}
+
+// docs/adr/0010 D3: the horizon set names the person who set it as a ticket
+// names its reporter, wherever a ticket is answered — the write that sets it,
+// the ticket, the project's list and the person-level lists: a local account
+// by its username and display name, a person of the identity provider by the
+// display name, the username null. Each sets the horizon of a ticket the
+// other filed, so the setter is never the reporter.
+func TestTheHorizonSetNamesThePersonWhoSetIt(t *testing.T) {
+	w := newWorld(t)
+	f := fixtures(t)
+	is := fakeissuer.Start(t)
+	e := ticketEnv{world: w, tk: issueTokens(t, w), ctx: context.Background(),
+		s: newAPI(t, withIdentity(fakeProvider(t, is), []string{"cowork-users"}, ""))}
+	require.NoError(t, f.Account(e.ctx, e.MemberA, testPassword, e.A, false))
+	yes := true
+	grace := providerPerson(t, f, is.URL, uniqueSlug("grace")+"@example.com", &yes, []string{"cowork-users"})
+	require.NoError(t, f.Member(e.ctx, e.A, grace, domain.RoleMember))
+	graceToken, _, err := f.Token(e.ctx, fixture.TokenSpec{UserID: grace})
+	require.NoError(t, err)
+	local, provider := caller{Token: e.tk.MemberA}, caller{Token: graceToken}
+
+	named := func(c caller) apigen.Person {
+		t.Helper()
+		res := e.s.do(t, c, http.MethodGet, "/api/v1/me", nil)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		me := decode[apigen.Me](t, res)
+		return apigen.Person{Id: me.Id, Username: me.Username, DisplayName: me.DisplayName}
+	}
+	byLocal, byProvider := named(local), named(provider)
+	require.False(t, byLocal.Username.IsNull(), "a local account has a username")
+	require.True(t, byProvider.Username.IsNull(), "a person of the identity provider has none")
+	require.NotEmpty(t, byProvider.DisplayName)
+
+	set := func(c caller, tk apigen.Ticket, value apigen.Horizon) apigen.Ticket {
+		t.Helper()
+		etag := strconv.Quote(strconv.Itoa(tk.Version))
+		res, err := e.s.client(t, c).SetHorizonWithResponse(e.ctx, e.SlugA, tk.Project, tk.Number,
+			&apigen.SetHorizonParams{IfMatch: &etag}, apigen.HorizonUpdate{Value: value})
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
+		return *res.JSON200
+	}
+	setter := func(tk apigen.Ticket) apigen.Person { return tk.HorizonSet.MustGet().By.MustGet() }
+
+	first := set(local, e.file(t, provider, "ALPHA", task("filed by a person of the identity provider")), apigen.HorizonNext)
+	second := set(provider, e.file(t, local, "ALPHA", task("filed by a local account")), apigen.HorizonNow)
+	expected := map[string]apigen.Person{first.Key: byLocal, second.Key: byProvider}
+	assert.Equal(t, byLocal, setter(first), "the answer of the write")
+	assert.Equal(t, byProvider, setter(second), "the answer of the write")
+
+	for _, tk := range []apigen.Ticket{first, second} {
+		res := e.get(t, local, tk.Project, tk.Number)
+		require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
+		assert.Equal(t, expected[tk.Key], setter(*res.JSON200), "the ticket %s", tk.Key)
+	}
+
+	res := e.s.do(t, local, http.MethodGet, e.projectTickets("ALPHA"), nil)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	listed := 0
+	for _, tk := range decode[apigen.TicketList](t, res).Items {
+		if person, ok := expected[tk.Key]; ok {
+			assert.Equal(t, person, setter(tk), "the project's list, %s", tk.Key)
+			listed++
+		}
+	}
+	assert.Equal(t, len(expected), listed, "the project's list holds both")
+
+	res = e.s.do(t, local, http.MethodGet, "/api/v1/me/next", nil)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	listed = 0
+	for _, it := range decode[apigen.MyTicketList](t, res).Items {
+		if person, ok := expected[it.Ticket.Key]; ok {
+			assert.Equal(t, person, setter(it.Ticket), "next for me, %s", it.Ticket.Key)
+			listed++
+		}
+	}
+	assert.Equal(t, len(expected), listed, "next for me holds both, assigned to nobody")
 }
 
 // docs/adr/0010 D1 as amended 2026-10-06: a filing names its horizon as

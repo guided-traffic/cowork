@@ -106,9 +106,8 @@ Ada Lovelace (the local account `ada`, a global administrator who administers `a
 and Alan Turing (persons of the identity provider, `grace@acme.example`, `alan@acme.example`) and
 Sam Rivera (the local account `sam`). An id the server makes is a UUIDv7 whose time is the entity's
 creation, one a client makes — the browser's idempotency key, the chat's conversation — a v4; times
-are RFC 3339 in UTC, values the handlers' own — `horizon_set.by` names its person by the id alone,
-as `horizonSetView` answers it. A text the server renders is the renderer's output for the example's
-input, not a hand-written guess: `body_html`, `options_html` and `answer_html` are what
+are RFC 3339 in UTC, values the handlers' own. A text the server renders is the renderer's output
+for the example's input, not a hand-written guess: `body_html`, `options_html` and `answer_html` are what
 [`internal/richtext`](../../backend/internal/richtext/richtext.go) makes of the Markdown beside them,
 the export and the context what [`internal/markdown`](../../backend/internal/markdown/markdown.go)
 writes for `acme/WEB-42`, and the two reports of `ImportJob` what

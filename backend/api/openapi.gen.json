@@ -5885,9 +5885,9 @@
                 "horizon_set": {
                   "at": "2026-10-02T09:14:00Z",
                   "by": {
-                    "display_name": "",
+                    "display_name": "Ada Lovelace",
                     "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
-                    "username": null
+                    "username": "ada"
                   },
                   "reason": "Customers cannot sign in",
                   "value": "now"
@@ -8160,9 +8160,9 @@
           "horizon_set": {
             "at": "2026-10-02T09:14:00Z",
             "by": {
-              "display_name": "",
+              "display_name": "Ada Lovelace",
               "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
-              "username": null
+              "username": "ada"
             },
             "reason": "Customers cannot sign in",
             "value": "now"
@@ -8572,9 +8572,9 @@
               "horizon_set": {
                 "at": "2026-10-02T09:14:00Z",
                 "by": {
-                  "display_name": "",
+                  "display_name": "Ada Lovelace",
                   "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
-                  "username": null
+                  "username": "ada"
                 },
                 "reason": "Customers cannot sign in",
                 "value": "now"
