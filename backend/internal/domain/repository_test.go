@@ -63,9 +63,28 @@ func TestSanitiseRemote(t *testing.T) {
 		"ssh://git@example.org/x":                     "ssh://git@example.org/x",
 		"git@github.com:org/repo.git":                 "git@github.com:org/repo.git",
 		" https://github.com/org/repo ":               "https://github.com/org/repo",
+		// A URL that url.Parse refuses loses everything up to the last @
+		// of its authority, for every character its user information must
+		// escape and a malformed escape alike.
+		"https://user:pa^ss@github.com/org/repo.git":     "https://github.com/org/repo.git",
+		"https://user:pa|ss@github.com/org/repo.git":     "https://github.com/org/repo.git",
+		"https://user:pa{ss}@github.com/org/repo.git":    "https://github.com/org/repo.git",
+		`https://user:pa"ss@github.com/org/repo.git`:     "https://github.com/org/repo.git",
+		"https://user:pa ss@github.com/org/repo.git":     "https://github.com/org/repo.git",
+		"https://user:päss@github.com/org/repo.git":      "https://github.com/org/repo.git",
+		"https://user:pa%zzss@github.com/org/repo.git":   "https://github.com/org/repo.git",
+		"https://user:pass%@github.com/org/repo.git":     "https://github.com/org/repo.git",
+		"https://to^ken@github.com/org/repo?a=1#b":       "https://github.com/org/repo?a=1#b",
+		"https://u^ser:pw@github.com:99999/org/repo.git": "https://github.com:99999/org/repo.git",
+		"https://us^er@pw@github.com/org/repo@v1":        "https://github.com/org/repo@v1",
+		"ssh://git:pa^ss@example.org/x":                  "ssh://example.org/x",
+		"https://ho^st/org/repo":                         "https://ho^st/org/repo",
 	} {
 		assert.Equal(t, want, SanitiseRemote(raw), raw)
 	}
+	identity, err := NormaliseRemote(SanitiseRemote("https://user:pa^ss@github.com/org/repo.git"))
+	require.NoError(t, err)
+	assert.Equal(t, "github.com/org/repo", identity, "a remote whose user information was its only flaw binds")
 }
 
 func TestNormaliseRepositoryPath(t *testing.T) {

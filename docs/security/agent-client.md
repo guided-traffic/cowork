@@ -76,9 +76,11 @@ the root and the sub-directory, the nearest `.cowork.yaml`, and for the Stop hoo
 
 - **The remotes' URLs**, at most ten, without credentials: an HTTP(S) URL loses its user
   information — where a token such as `https://ghp_…@github.com/…` would sit — and any other URL
-  its password, before the request is built ([`domain.SanitiseRemote`](../../backend/internal/domain/repository.go));
-  the server sanitises once more before it stores the last form of a bound remote, and normalises
-  every remote to its identity, `host/path` (ADR 0066 D1).
+  its password, and a URL that does not parse, whatever its scheme, everything up to the last `@`
+  of its authority, before the request is built
+  ([`domain.SanitiseRemote`](../../backend/internal/domain/repository.go), `TestSanitiseRemote`);
+  the server sanitises once more before it stores the last form of a bound remote or answers it in
+  the lookup, and normalises every remote to its identity, `host/path` (ADR 0066 D1).
 - **The sub-directory** of the working directory relative to the repository's root, for a
   monorepo's bindings.
 

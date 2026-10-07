@@ -40,9 +40,11 @@ and [`api/repositories.go`](../../backend/internal/api/repositories.go):
 - **The binding** (`project_repositories`, migration 23) holds the identity, an optional
   sub-directory of a monorepo (`NormaliseRepositoryPath`: relative, no `..`, `""` for the whole
   repository) and the remote as it was last given, without credentials (`SanitiseRemote`: an
-  HTTP(S) URL loses its user information, another URL its password). The identity and the
-  sub-directory are unique in the tenant: a repository is in at most one project of a tenant
-  ([ADR 0066] D6). Across tenants nothing holds it to one; the lookup reports several.
+  HTTP(S) URL loses its user information, another URL its password, and a URL `url.Parse` refuses
+  everything between its `://` and the last `@` of its authority, which ends at the first `/`, `?`
+  or `#` — such a remote is kept, cut, so it is still shown, and it binds once it parses). The
+  identity and the sub-directory are unique in the tenant: a repository is in at most one project
+  of a tenant ([ADR 0066] D6). Across tenants nothing holds it to one; the lookup reports several.
 - **Binding and unbinding** (`POST`, `DELETE …/projects/{project}/repositories`) are the act of
   creating a project (`creating`): an administrator, or a member while the tenant lets members
   create projects, judged by the role in the project; `write`; an agent with `create-project`

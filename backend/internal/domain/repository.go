@@ -137,14 +137,18 @@ func printable(s string) bool {
 // SanitiseRemote is a remote as cowork may store and show it, the last
 // original form a binding keeps (docs/adr/0066 D1): an HTTP(S) URL loses its
 // user information, which can carry a password or a token, and any other URL
-// loses a password. An scp-style remote carries no password and stays.
+// loses a password. An scp-style remote carries no password and stays. A URL
+// that url.Parse refuses loses its whole user information (withoutUserinfo).
 func SanitiseRemote(raw string) string {
 	raw = strings.TrimSpace(raw)
 	if !strings.Contains(raw, "://") {
 		return raw
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.User == nil {
+	if err != nil {
+		return withoutUserinfo(raw)
+	}
+	if u.User == nil {
 		return raw
 	}
 	switch strings.ToLower(u.Scheme) {
@@ -154,6 +158,27 @@ func SanitiseRemote(raw string) string {
 		u.User = url.User(u.User.Username())
 	}
 	return u.String()
+}
+
+// withoutUserinfo is a URL that url.Parse refuses — for a character its user
+// information must escape and does not, or an escape that is malformed —
+// without everything between its "://" and the last "@" of its authority,
+// which ends at the first "/", "?" or "#", as url.Parse and git read it.
+// Neither the user nor the password can be told apart in such a remote, so
+// both go, whatever the scheme. The remote is cut rather than left out: it is
+// still shown, and one whose user information was its only flaw now parses
+// and binds by its identity.
+func withoutUserinfo(raw string) string {
+	scheme, rest, _ := strings.Cut(raw, "://")
+	authority := rest
+	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
+		authority = rest[:i]
+	}
+	at := strings.LastIndex(authority, "@")
+	if at < 0 {
+		return raw
+	}
+	return scheme + "://" + rest[at+1:]
 }
 
 // NormaliseRepositoryPath is the sub-directory of a monorepo a binding names
