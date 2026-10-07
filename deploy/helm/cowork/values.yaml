@@ -399,6 +399,10 @@ metrics:
     # Labels added to every alert, for Alertmanager's routing, e.g.
     # team: platform; a severity here replaces the alert's own.
     alertLabels: {}
+    # How long the consistency check's counts may stay above zero before
+    # CoworkAttachmentsOutOfStep fires: the time a restore of the database
+    # and the bucket takes to be settled (docs/adr/0059 D5).
+    restoreWindow: 24h
   # A ConfigMap with the Grafana dashboard of the backend's metrics, for the
   # Grafana sidecar that loads labelled ConfigMaps.
   grafanaDashboard:

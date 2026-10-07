@@ -1,9 +1,11 @@
 {{- $metrics := include "cowork.metrics" . | fromYaml }}
 {{- /*
-The alerts of docs/adr/0060 D6, but for the two of the consistency family,
-which come with the consistency check. Each is narrowed to this release's
-backend pods and links its section of docs/operations/metrics.md at the
-version the chart installs. Needs the Prometheus Operator's CRDs.
+The alerts of docs/adr/0060 D6, but for the last export's age, which comes
+with the export. Each is narrowed to this release's backend pods and links its
+section of docs/operations/metrics.md at the version the chart installs. The
+consistency check's alert waits the restore window, a value: a restore leaves
+the counts above zero until it is settled (docs/adr/0059 D5). Needs the
+Prometheus Operator's CRDs.
 */}}
 {{- if $metrics.prometheusRule.enabled }}
 {{- if not (include "cowork.metricsEnabled" .) }}
@@ -68,4 +70,17 @@ spec:
             summary: A background job of cowork failed twice in a row.
             description: {{ quote `The job {{ $labels.name }} failed on {{ $labels.pod }} at its last two runs, an hour apart.` }}
             runbook_url: {{ $runbook }}#coworkjobfailing
+        - alert: CoworkAttachmentsOutOfStep
+          expr: |-
+            (
+              max by (namespace, tenant) (cowork_consistency_dangling_attachments{ {{- $sel -}} })
+                + max by (namespace, tenant) (cowork_consistency_orphaned_objects{ {{- $sel -}} })
+            ) > 0
+          for: {{ .Values.metrics.prometheusRule.restoreWindow | default "24h" }}
+          labels:
+            {{- include "cowork.alertLabels" (dict "root" . "severity" "warning") | nindent 12 }}
+          annotations:
+            summary: The attachments of a cowork tenant are out of step with the bucket.
+            description: {{ quote `The latest consistency check of the tenant with the id {{ $labels.tenant }} in {{ $labels.namespace }} found {{ $value }} files whose bytes are missing or objects no file names, and they have stayed for longer than the restore window. Its administrators see the lists on its settings page.` }}
+            runbook_url: {{ $runbook }}#coworkattachmentsoutofstep
 {{- end }}

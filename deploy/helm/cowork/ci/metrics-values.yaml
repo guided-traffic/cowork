@@ -31,6 +31,7 @@ metrics:
     alertLabels:
       team: platform
       severity: page
+    restoreWindow: 12h
   grafanaDashboard:
     enabled: true
     labels:
