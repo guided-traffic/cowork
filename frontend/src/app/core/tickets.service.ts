@@ -294,7 +294,12 @@ export class TicketsService {
     if (stale) {
       this.refetch(event.key);
     }
-    if (event.name !== 'comment.changed' && event.name !== 'interest.changed') {
+    // A pull request GitHub's webhook linked changes nothing a list shows (docs/adr/0071 D6).
+    if (
+      event.name !== 'comment.changed' &&
+      event.name !== 'interest.changed' &&
+      event.name !== 'pull_request.changed'
+    ) {
       this.reloadLists();
     }
   }

@@ -6,14 +6,47 @@ Accepted, amended 2026-10-03 (D2: the chart's backend NetworkPolicy), amended 20
 owner's decision on the routing recorded in
 [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 D3 (D1: the Ingress, not nginx, routes `/api/`; D2: the chart ships no NetworkPolicy, so the rule
-for the metrics port is the installation's again). Date: 2026-10-01. Decided
+for the metrics port is the installation's again), amended 2026-10-06 for what was built (below:
+D1–D7 but for the `consistency` family; what the record left open is made concrete in place, in
+D1, D3, D4, D6 and D7, by the implementer, open to the owner's objection). Date: 2026-10-01. Decided
 by the owner as the answer to the catalog question "metrics?": Prometheus on a separate port with `client_golang`, together with the
 kube-prometheus custom resources (`ServiceMonitor`/`PodMonitor`, `PrometheusRule`) rendered
 by the chart, over metrics on the main port behind authentication, over OpenTelemetry push,
 and over OpenTelemetry instruments with a Prometheus exporter. The rules of D5–D8 were put to
 the owner with the question and not objected to.
 
-**Not built.** No metrics listener, no instruments, no monitoring resources in the chart.
+~~**Not built.** No metrics listener, no instruments, no monitoring resources in the chart.~~
+
+**Built** (2026-10-06), but for the `consistency` family of D4 and its two alerts of D6 —
+consistency counts above zero, the last export too old —, which come with the consistency check of
+[ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4 that sets them:
+
+- **D1** — the registry and every instrument in [`internal/metrics`](../../backend/internal/metrics/metrics.go),
+  `client_golang` v1.24.1, a registry of its own and never the library's default, which no other
+  package imports (`TestOnlyThisPackageImportsTheClientLibrary`); the listener's handler
+  `httpserver.NewMetrics` and the one lifecycle of both listeners `httpserver.ServeAll`
+  ([`server.go`](../../backend/internal/httpserver/server.go)); `serve` and `bind` in
+  [`main.go`](../../backend/cmd/cowork/main.go) bind both before either serves.
+- **D2, D3** — `metrics.*` in the chart: the container port `metrics` on the backend pods and on no
+  Service; [`podmonitor.yaml`](../../deploy/helm/cowork/templates/podmonitor.yaml),
+  [`servicemonitor.yaml`](../../deploy/helm/cowork/templates/servicemonitor.yaml) with its headless
+  Service, [`prometheusrule.yaml`](../../deploy/helm/cowork/templates/prometheusrule.yaml) and
+  [`grafana-dashboard.yaml`](../../deploy/helm/cowork/templates/grafana-dashboard.yaml), each behind its
+  switch, all rendered by `ci/metrics-values.yaml`.
+- **D4, D5** — every instrument of the table but `consistency`, recorded by the HTTP pipeline, the
+  store, the hub and the API; the reference with every name and label is
+  [README.md, Metrics](../../README.md#metrics). A unit test walks every family and fails on a label
+  named for a person, a ticket, a key, a token or a request id, and on `tenant` outside a
+  `cowork_consistency_` family (`TestNoInstrumentCarriesAForbiddenLabel`); the route label is the
+  document's pattern (`TestTheRouteLabelIsTheDocumentsPattern`).
+- **D6** — four alerts, each linking its section of [docs/operations/metrics.md](../operations/metrics.md).
+- **D7** — `stub_status` on `127.0.0.1:8082` in [`default.conf`](../../frontend/nginx/default.conf),
+  `frontend.metrics.exporter.*` in the chart; run against the built image on 2026-10-06.
+- The integration tier runs the built binary with both listeners and scrapes it
+  (`TestServeAnswersAScrapeOnItsMetricsListener`). Not run: a Prometheus or a Grafana reading the
+  resources, and the chart in a cluster with the Prometheus Operator — `helm lint` and
+  `helm template` render them, nothing more.
 
 ## Context
 
@@ -33,7 +66,15 @@ kube-prometheus and wants the resources that wire scraping and alerting rendered
 **D1 — Metrics are Prometheus text on a second backend listener,** `COWORK_METRICS_ADDR`
 (default `:8081`), path `/metrics`, no authentication, implemented with `client_golang`. The
 listener shares the lifecycle of the API listener and is never ~~proxied by nginx~~ *(amended
-2026-10-04: routed by the Ingress)*. The health probes stay on `:8080`.
+2026-10-04: routed by the Ingress)*. The health probes stay on `:8080`. *(Made concrete
+2026-10-06 by the implementer, open to the owner's objection: the variable set to an empty value
+switches the listener off — the one variable where empty is not unset, so that an installation that
+scrapes nothing opens no unauthenticated port, and the chart renders it so with
+`metrics.enabled: false` —; a value is `host:port` and must differ from `COWORK_LISTEN_ADDR`, or
+the start is refused. Off, nothing is recorded. Both listeners are bound before either serves, so a
+taken port refuses the start; a signal shuts both down within `COWORK_SHUTDOWN_TIMEOUT`, and one
+that fails stops the other. The metrics listener answers `/metrics` and nothing else, writes no
+request log, serves at most four scrapes at once, and is no route of the HTTP instruments.)*
 
 **D2 — The chart exposes the port on the pod, not on the Service.** `metrics.enabled`
 (default `true`) adds the container port `metrics`; the backend Service does not list it. The
@@ -57,7 +98,16 @@ so the rule for port 8081 is the installation's policy, as this decision first s
 
 A `ServiceMonitor` variant exists for installations whose Prometheus discovers only Services
 (`metrics.serviceMonitor.enabled`), which then adds a separate headless Service for the
-metrics port alone, so the API Service still never carries it.
+metrics port alone, so the API Service still never carries it. *(Made concrete 2026-10-06 by the
+implementer, open to the owner's objection: the port is `metrics.port`, 8081, and must differ from
+`backend.containerPort`; a monitor's labels, interval and scrape timeout are values, the
+PrometheusRule's own labels and the labels every alert gets for the routing —
+`metrics.prometheusRule.alertLabels`, whose `severity` replaces an alert's — too; the
+`ServiceMonitor` variant scrapes the backend alone, the nginx exporter is the `PodMonitor`'s; a
+resource that needs the listener fails rendering without `metrics.enabled`. The dashboard's
+ConfigMap carries `grafana_dashboard: "1"` by default — kube-prometheus-stack's sidecar label — and
+its JSON is generated from [`internal/metrics/dashboard.go`](../../backend/internal/metrics/dashboard.go)
+into `deploy/helm/cowork/files/` by `make generate`, which `make generate-check` holds.)*
 
 **D4 — The instruments of the first release,** named `cowork_<subsystem>_<name>_<unit>`:
 
@@ -73,6 +123,28 @@ metrics port alone, so the API Service still never carries it.
 | `migrations` | current schema version, dirty flag |
 | Go runtime and process | the `client_golang` defaults |
 
+*(Made concrete 2026-10-06 by the implementer, open to the owner's objection; the names and labels
+are [README.md, Metrics](../../README.md#metrics):)* the latency histogram is by route **and
+method**, an operation being both, on the library's default buckets; a request no route matches is
+`route="unmatched"`, and a method HTTP does not define is `other`, so no client chooses a label
+value; the in-flight gauge counts the open event streams and turns of the chat, and a turn's tool
+calls are requests of their own. pgx tells no number of acquires waiting at a moment: the pool's
+"waiting" is the acquires that had to wait for a connection and the time they waited
+(`cowork_db_pool_wait_duration_seconds`, whose rate is the mean number waiting), and the acquire
+latency a count and a sum, read from the pool at the scrape; a query error's kind is a closed set
+of SQLSTATE meanings and client causes. The jobs' label is `name`, never `job`, which Prometheus
+gives the target and would rename the backend's to `exported_job`; a job is every `RunJob` — the
+five hourly ones and the bootstrap —, a run is one that took the job's lock or failed before it,
+and `cowork_jobs_consecutive_failures` is what D6's alert reads. The events' drops are by reason —
+`behind` (D4 of [ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)),
+`limit` (its D8), `resync` (the listener's recovery) — and a shutdown is none. An act counts once
+its transaction committed; its actor is `system` for a system actor's, `agent` for an act marked
+as an agent's, `person` otherwise. A login is `local` or `oidc` and ends `success`, `failure`,
+`locked`, `throttled` or `refused`; a token is refused `malformed`, `unknown`, `revoked`,
+`expired`, `not_allowed` or `session_only`. The schema's version and dirty flag are read at a
+scrape, at most once every ten seconds and within two, so a migration of a newer release that
+failed halfway beside a serving pod shows.
+
 **D5 — Cardinality discipline.** No label carries a person, a ticket key, a token or a
 request id; route labels are the pattern (`/tenants/{slug}/projects/{KEY}/tickets/{number}`),
 never the instance; the `tenant` label appears on the `consistency` family only.
@@ -80,11 +152,24 @@ never the instance; the `tenant` label appears on the `consistency` family only.
 **D6 — The alerts of the first release:** schema dirty; consistency counts above zero for
 longer than the restore window; last export older than a configurable number of days;
 sustained event-stream drops; pool exhaustion sustained; a background job failing twice in
-a row. Each alert's annotation links to the operations page's section for it.
+a row. Each alert's annotation links to the operations page's section for it. *(Made concrete
+2026-10-06 by the implementer, open to the owner's objection; the two of the consistency family come
+with it:)* `CoworkSchemaDirty`, critical, the dirty flag for ten minutes; `CoworkEventStreamDrops`,
+warning, a stream dropped `behind` in every ten minutes for fifteen; `CoworkDatabasePoolExhausted`,
+warning, every connection in use while acquires wait, for ten minutes; `CoworkJobFailing`, warning,
+two failures of a job in a row on one replica. Each is narrowed to the release's backend pods by
+namespace and pod name; the thresholds are the template's, not values; `runbook_url` is
+[docs/operations/metrics.md](../operations/metrics.md) on GitHub at the tag of the chart's
+`appVersion`, so a runbook speaks of the release installed.
 
 **D7 — nginx metrics are opt-in.** `stub_status` on `127.0.0.1` inside the frontend
 container; `frontend.metrics.exporter.enabled` adds the nginx exporter sidecar and the
-corresponding `PodMonitor` entry; default off.
+corresponding `PodMonitor` entry; default off. *(Made concrete 2026-10-06 by the implementer, open to
+the owner's objection: `stub_status` is on `127.0.0.1:8082` in every image — the configuration is a
+plain file, and nothing outside the pod reaches the loopback address —; the sidecar is
+`nginx/nginx-prometheus-exporter` 1.5.3, NGINX's own, on the container port `nginx-metrics`, 9113,
+run as the pod's user with a read-only root filesystem and no probe; it counts toward the pod's
+readiness like any container, so one that cannot start keeps the frontend pod out of its Service.)*
 
 **D8 — OpenTelemetry is the tracing record's.** When traces come, the OpenTelemetry SDK is
 introduced for them; whether metrics then move to it is decided there, not here.

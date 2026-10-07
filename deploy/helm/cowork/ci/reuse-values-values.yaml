@@ -1,0 +1,13 @@
+# The values of a release upgraded with `helm upgrade --reuse-values` from a
+# release before the metrics: no metrics block and no frontend.metrics block
+# (docs/operations/installation.md#upgrade). The chart must render as with its
+# defaults; the template target renders this file like every other.
+database:
+  existingSecret: cowork-database
+  owner:
+    existingSecret: cowork-database-owner
+session:
+  existingSecret: cowork-session
+metrics: null
+frontend:
+  metrics: null

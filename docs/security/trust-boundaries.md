@@ -1,6 +1,6 @@
 # Trust boundaries of the two containers
 
-What the backend, its migration init container and the frontend trust — the identity provider
+What the backend, its migration run — the init container, or the migration Job — and the frontend trust — the identity provider
 and the chat's model among it — whom they answer, and where the credentials they hold live, as
 built on 2026-10-04. Once a request is inside a tenant, how it is kept from other tenants and from
 what it may not see is [tenancy.md](tenancy.md); what a token or an agent may do is
@@ -8,19 +8,21 @@ what it may not see is [tenancy.md](tenancy.md); what a token or an agent may do
 writing with one is [local-accounts.md](local-accounts.md), [identity-provider.md](identity-provider.md),
 [sessions.md](sessions.md) and [csrf.md](csrf.md); what an upload may do is
 [attachments.md](attachments.md); what the chat in the UI may do, and what of a tenant reaches its
-model, is [chat.md](chat.md).
+model, is [chat.md](chat.md); what the metrics port tells whoever reaches it is
+[metrics.md](metrics.md).
 
 ## Components and what they trust
 
 | Component | Trusts | Verified in |
 |---|---|---|
 | The backend process | Its environment: every `COWORK_*` variable — the runtime role's database URL, the server key, the object storage's access key | [`backend/internal/config/config.go`](../../backend/internal/config/config.go) |
-| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the Ingress controller's pods, and every other pod of the cluster that reaches the backend Service, since the chart ships no NetworkPolicy — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
+| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the Ingress controller's pods, and every other pod of the cluster that reaches the backend Service, since the chart ships no NetworkPolicy — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)), and GitHub's webhook, `POST …/tenants/{tenant}/integrations/github/webhook`, which writes only what a body signed with the tenant's secret says and answers everybody else `404` or `401` ([github-webhook.md](github-webhook.md)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
+| The backend process | Every TCP peer that reaches `COWORK_METRICS_ADDR` (`:8081` by default) — every pod of the cluster that reaches the backend pods, which the chart puts on no Service the Ingress routes — for `/metrics`, the one path of that listener, unauthenticated: the installation's activity in counts, nothing of a tenant ([metrics.md](metrics.md), H-63) | [`main.go`](../../backend/cmd/cowork/main.go) `serve`, [`server.go`](../../backend/internal/httpserver/server.go) `NewMetrics` |
 | The backend process | The row of the presented token — its person, scope, restriction, agent flag and capabilities — or of the presented session cookie: its person, who is a global administrator or must change a temporary password, and for a person of the identity provider their groups as of their last login or refresh. It knows nothing else about the caller | [`authn.go`](../../backend/internal/api/authn.go), [`session.go`](../../backend/internal/api/session.go), [`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`, [`store/sessions.go`](../../backend/internal/store/sessions.go) `LookupSession` |
 | The backend process | The identity provider of `COWORK_OIDC_ISSUER`: its discovery document and the endpoints it names, its published keys, and what a verified ID token, a token answer and UserInfo say of a person — the subject, the groups, the name, the address and whether it is verified ([below](#the-identity-provider)) | [`backend/internal/oidc/oidc.go`](../../backend/internal/oidc/oidc.go), [identity-provider.md](identity-provider.md) |
 | The backend process | The chat's providers at their `COWORK_CHAT_<ID>_URL`, each with what a turn that picked it sends it — nothing it answers: its text goes to the person as text and its tool calls are requests the API judges as the person's agent's ([below](#the-chats-provider)) | [`backend/internal/llm`](../../backend/internal/llm/llm.go), [chat.md](chat.md) |
-| The migration init container | Its environment: the owner role's URL, and the runtime role's URL, whose user it grants to | [`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml), [`store/migrate.go`](../../backend/internal/store/migrate.go) `Migrate` |
-| The frontend (nginx) | Nothing from its environment: its configuration is a file in the image. Every TCP peer that reaches it, which through an Ingress is the internet; it serves the UI's files to anyone, answers `/api/` and `/auth/` with a `404` problem, proxies nothing and reaches no backend | [`frontend/nginx/default.conf`](../../frontend/nginx/default.conf) |
+| The migration run: the `migrate` init container, or the migration Job in job mode | Its environment: the owner role's connection, and the runtime role's, whose user it grants to — each a URL or its components; the Job also the local administrator's Secret and the bootstrap's values, for the bootstrap it runs after the schema step as the runtime role | [`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml), [`migrate-job.yaml`](../../deploy/helm/cowork/templates/migrate-job.yaml), [`store/migrate.go`](../../backend/internal/store/migrate.go) `Migrate`, [`main.go`](../../backend/cmd/cowork/main.go) `runMigrate` |
+| The frontend (nginx) | Nothing from its environment: its configuration is a file in the image. Every TCP peer that reaches it, which through an Ingress is the internet; it serves the UI's files to anyone, answers `/api/` and `/auth/` with a `404` problem, proxies nothing and reaches no backend. Its `stub_status` listens on the pod's loopback address, `127.0.0.1:8082`, for the pod's own containers; the exporter sidecar of `frontend.metrics.exporter.enabled` serves those counts on `:9113` to every pod that reaches the frontend pod ([metrics.md](metrics.md)) | [`frontend/nginx/default.conf`](../../frontend/nginx/default.conf) |
 | The Ingress controller (the installation's) | What the cluster administrator configures it with. It routes `/api/` and `/auth/` to the backend Service and everything else to the frontend Service for anyone, as the chart's Ingress says, and passes the `Authorization` and `Cookie` headers — and the backend's `Set-Cookie` — through; it checks nothing of cowork's. The trust rule for forwarded addresses needs it to write the address it saw as the last entry of `X-Forwarded-For`; ingress-nginx writes it in place of what the client sent | [`ingress.yaml`](../../deploy/helm/cowork/templates/ingress.yaml); ingress-nginx v1.15.1 in a kind cluster, 2026-10-04 ([installation.md](../operations/installation.md#expose-it)) |
 | The backend | `X-Forwarded-For`, and only from a TCP peer inside `COWORK_TRUSTED_PROXIES` — empty by default, and then never: the client address of a login is the first address, walking the header from the right, that is not a proxy of ours ([local-accounts.md](local-accounts.md) "The client address", H-17). `X-Forwarded-Proto` and `X-Real-IP` are read by nothing | [`backend/internal/api/clientaddr.go`](../../backend/internal/api/clientaddr.go) `clientAddress` |
 | The database | Two roles: the owner role, which owns every object and runs the migrations, and the runtime role the server connects as, which owns nothing and is subject to forced row-level security | [`store/migrate.go`](../../backend/internal/store/migrate.go), [`store/roles.go`](../../backend/internal/store/roles.go), [tenancy.md](tenancy.md) "Two database roles" |
@@ -41,7 +43,9 @@ Through the backend Service, from inside the cluster, additionally the backend's
 `/readyz`; `/readyz` says whether the database answers and nothing more — the ping's error,
 which can name the host and the user, goes to the log only
 ([`backend/internal/httpserver/server.go`](../../backend/internal/httpserver/server.go)
-`handleReadyz`). Every other route answers `401 unauthenticated` with
+`handleReadyz`). From inside the cluster as well, and on no Service: the metrics port of the backend
+pods, `/metrics`, which counts what the installation does and names no tenant, person, ticket or
+token ([metrics.md](metrics.md), H-63). Every other route answers `401 unauthenticated` with
 `WWW-Authenticate: Bearer realm="cowork"` before any tenant is looked up, so an anonymous
 caller learns nothing about which tenants exist. An unknown path answers `404` and a known
 path with the wrong method `405`, also before authentication; the route table is the
@@ -138,29 +142,32 @@ backend.
 
 | Credential | Source in the chart | Held by |
 |---|---|---|
-| The runtime role's URL, `COWORK_DATABASE_URL` | `database.existingSecret` (preferred), or `database.url` rendered into a release Secret | the serving container, and the migration init container, which needs the role's name for the grants |
-| The owner role's URL, `COWORK_DATABASE_OWNER_URL` | `database.owner.existingSecret` (preferred), or `database.owner.url` rendered into a release Secret | the migration init container only, and only while `backend.config.migrateOnStart` is true |
+| The runtime role's connection, `COWORK_DATABASE_URL` or its components `COWORK_DATABASE_HOST`, `_PORT`, `_NAME`, `_USER`, `_PASSWORD`, `_SSLMODE` | `database.existingSecret` (preferred) — the URL under `database.keys.url`, or the user and the password under their keys and the location there or in `database.existingConfigMap` —, or `database.url` rendered into a release Secret | the serving container, and the migration run, which needs the role's name for the grants; the migration Job connects as it for the bootstrap |
+| The owner role's connection, `COWORK_DATABASE_OWNER_URL` or its components `COWORK_DATABASE_OWNER_*` | `database.owner.existingSecret` (preferred, and the only source in job mode) with the same keys and `database.owner.existingConfigMap`, or `database.owner.url` rendered into a release Secret | the migration run only: the init container while `backend.config.migrateOnStart` is true in `onStart` mode, or the migration Job in job mode |
 | The server key, `COWORK_SESSION_KEY` | `session.existingSecret` only; the chart fails without it | the serving container |
 | The storage access key, `COWORK_S3_ACCESS_KEY_ID` and `COWORK_S3_SECRET_ACCESS_KEY` | `storage.existingSecret` only, required with `storage.endpoint` | the serving container |
-| The local administrator, `COWORK_LOCAL_ADMIN_USERNAME` and `COWORK_LOCAL_ADMIN_PASSWORD` | `localAdmin.existingSecret` (preferred; the key names are values), or `localAdmin.username` and `localAdmin.password` rendered into a release Secret | the serving container; the account follows it at every start ([local-accounts.md](local-accounts.md) H-20) |
-| The identity provider's client secret, `COWORK_OIDC_CLIENT_SECRET` | `auth.oidc.existingSecret` only — there is no inline value — under `auth.oidc.keys.clientSecret`; the client id is a value, or from the same Secret under `auth.oidc.keys.clientId` | the serving container, which sends it to the issuer's token endpoint |
+| The local administrator, `COWORK_LOCAL_ADMIN_USERNAME` and `COWORK_LOCAL_ADMIN_PASSWORD` | `localAdmin.existingSecret` (preferred; the key names are values), or `localAdmin.username` and `localAdmin.password` rendered into a release Secret | the serving container, and in job mode the migration Job, which runs the bootstrap before the pods; the account follows it at every start ([local-accounts.md](local-accounts.md) H-20) |
+| The identity provider's client secret, `COWORK_OIDC_CLIENT_SECRET` | `auth.oidc.existingSecret` only — there is no inline value — under `auth.oidc.keys.clientSecret`; the client id is a value, or from the same Secret under `auth.oidc.keys.clientId` | the serving container alone, which sends it to the issuer's token endpoint; the migration Job reads the issuer and the administrator group for the bootstrap and is not given it |
 | The issuer's refresh tokens | not in the chart; sealed in `sessions.refresh_token_sealed` under a key derived from the server key ([identity-provider.md](identity-provider.md#what-cowork-keeps-of-the-issuers-tokens)) | the issuer; whoever holds the database, the server key and the client secret ([identity-provider.md](identity-provider.md#h-27) H-27) |
 | A chat provider's API key, `COWORK_CHAT_<ID>_API_KEY` | that provider's `chat.providers[].existingSecret` only — one Secret per provider, there is no inline value — under its `keys.apiKey`; required for kind `anthropic`, optional for `openai` | the serving container, which sends it to that provider's host and to no other ([chat.md](chat.md#what-reaches-a-provider)) |
 | A login's state, nonce and PKCE verifier | not in the chart; the cookie `__Host-cowork-oidc`, sealed under a key derived from the server key, for ten minutes | the browser that began the login |
+| A tenant's GitHub webhook secret | not in the chart; made by a tenant administrator in the UI, sealed in `github_webhook_secrets` under a key derived from the server key and bound to the tenant ([github-webhook.md](github-webhook.md#the-secret-at-rest-and-who-can-open-it)) | GitHub, in every webhook it is set up in, and whoever holds the database and the server key together ([github-webhook.md](github-webhook.md#h-67) H-67) |
 | Personal access tokens | not in the chart; the database holds their SHA-256 ([tokens.md](tokens.md)) | whoever holds one |
 | Session cookies | not in the chart; the database holds their SHA-256 ([sessions.md](sessions.md)) | the browser that logged in, and whoever steals the cookie |
 | Local passwords | not in the chart (but the local administrator's); the database holds Argon2id hashes ([local-accounts.md](local-accounts.md)) | the person, and the administrator who set a temporary one |
 
 Each Secret value reaches its container through `secretKeyRef`
-([`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml)); the
-frontend container holds none of them. With an `existingSecret` the chart never sees the
+([`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml),
+[`migrate-job.yaml`](../../deploy/helm/cowork/templates/migrate-job.yaml)); a database role's
+location may come through `configMapKeyRef` instead, its user and password never do. The frontend
+container holds none of them. With an `existingSecret` the chart never sees the
 value. The inline `database.url`, `database.owner.url` and `localAdmin.username` with
 `localAdmin.password` put the credential in plain text
 into a release Secret and into `helm get values`; the chart notes warn at install time
 ([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt)). The identity provider's client
 secret and the chat providers' API keys have no inline path at all.
 
-The server key is one secret with six uses, each under a key derived from it by HKDF-SHA256 with a
+The server key is one secret with seven uses, each under a key derived from it by HKDF-SHA256 with a
 label of its own, so no two uses share a key:
 
 | Use | Label | Whoever holds the server key |
@@ -171,12 +178,15 @@ label of its own, so no two uses share a key:
 | hashing a login's client address for the throttle ([`api/login.go`](../../backend/internal/api/login.go) `newAddressKey`) | `cowork login address v1` | tests a guessed address against `login_attempts`, which keeps its rows fifteen minutes |
 | hashing the client address of an audit row (`newSourceKey`) | `cowork audit address v1` | reverses every IPv4 hash in the record ([tokens.md](tokens.md#h-30) H-30) |
 | sealing a login's state cookie and a session's refresh token ([`auth/seal.go`](../../backend/internal/auth/seal.go)) | `cowork oidc login v1`, `cowork oidc refresh token v1` | opens the stored refresh tokens ([identity-provider.md](identity-provider.md#h-27) H-27) |
+| sealing a tenant's GitHub webhook secret, bound to the tenant (`auth/seal.go`, `LabelGitHubWebhookSecret`) | `cowork github webhook secret v1` | opens every tenant's webhook secret and signs deliveries for any of them ([github-webhook.md](github-webhook.md#the-secret-at-rest-and-who-can-open-it)) |
 
 It signs no session: a session is a random value and a row. There is one key and no previous one
 kept beside it, so rotating it invalidates the cursors clients hold and the stored fingerprints,
 fails the logins in flight, gives every address another hash, and ends each session of the identity
 provider that holds a refresh token at its next refresh — a session of the local login, and one
-without a refresh token, stays.
+without a refresh token, stays —, and leaves every tenant's sealed GitHub webhook secret unopenable,
+so each tenant's webhook answers `404` until its administrator rotates the secret
+([github-webhook.md](github-webhook.md#the-secret-at-rest-and-who-can-open-it)).
 
 The backend does not log a credential. An error about a secret variable names the variable,
 never its value ([`config.go`](../../backend/internal/config/config.go) `Load`); the request
@@ -208,8 +218,10 @@ request, H-14 as well.
 ## The pods
 
 The backend image is `gcr.io/distroless/static-debian12:nonroot`, one static binary, no
-shell; the chart runs it as UID/GID 65532, and the migration init container runs the same
-image with the same security context. The frontend image is
+shell; the chart runs it as UID/GID 65532, and the migration init container and the migration
+Job run the same image with the same security contexts. The Job, which runs before the release's
+own ServiceAccount exists, runs as the namespace's `default` one — or as `serviceAccount.name` when
+the chart creates none —, with no token mounted either way. The frontend image is
 `nginxinc/nginx-unprivileged:1.31-alpine`, which has a shell; the chart runs it as UID/GID
 101. Both run with `runAsNonRoot`, a read-only root filesystem, all capabilities dropped,
 `allowPrivilegeEscalation: false`, the `RuntimeDefault` seccomp profile, and a ServiceAccount
@@ -222,13 +234,16 @@ The backend writes no files: an upload is buffered in memory under the container
 limit, 256 MiB by default ([attachments.md](attachments.md) H-12). nginx writes its pid and its
 temporary files under `/tmp`; the chart mounts an `emptyDir` there and nothing else is writable.
 It proxies nothing, so no request body and no answer of the backend passes through it — an
-upload is buffered, if at all, by the Ingress controller. When `backend.config.migrateOnStart` is true
-(the default), the init container `migrate` alone holds the owner credential; the serving
+upload is buffered, if at all, by the Ingress controller. In `migrations.mode: onStart`, when
+`backend.config.migrateOnStart` is true (the default), the init container `migrate` alone holds
+the owner credential; in `migrations.mode: job` the hook Job `<fullname>-migrate` alone holds it,
+for the time of one install or upgrade, and is deleted once it succeeded. In both the serving
 container gets `COWORK_MIGRATE_ON_START=false` and refuses to start on pending migrations or
-on a runtime role that could bypass row-level security. With the setting false, the chart
-renders no owner Secret and no container holds the owner credential, and running
+on a runtime role that could bypass row-level security. In `onStart` mode with the setting false,
+the chart renders no owner Secret and no container holds the owner credential, and running
 `cowork migrate` is the operator's step — but an inline `database.owner.url` stays in the
-release's values, readable with `helm get values`, so leave it empty.
+release's values, readable with `helm get values`, so leave it empty. Job mode takes no inline
+credential at all: a hook runs before the Secrets the chart would render exist.
 `backend.extraEnv` and `frontend.extraEnv` append variables verbatim: an owner URL added
 there reaches the serving container ([tenancy.md](tenancy.md) "The owner credential in the
 serving process").
@@ -338,7 +353,11 @@ second factor, a person who logs in through it has one; the local login has none
 TLS to the database (`sslmode`), backups, encryption at rest, who else may connect, and the
 roles' attributes beyond what the start-up check verifies ([tenancy.md](tenancy.md) "Two
 database roles") — all the database's, none enforced by cowork. The URLs are passed through
-as given. Who else may connect matters for the event channel: [tenancy.md](tenancy.md) H-4.
+as given; a URL composed of components carries the `sslmode` named, or none, and then the driver's
+default, `prefer`, which falls back to plain text and verifies no server. The chart mounts no
+authority for the database's certificate, so `verify-ca` and `verify-full` against a private
+authority — CloudNativePG's own, say — cannot be set through it: `require`, encrypted with the
+server unverified, is the strongest mode there. Who else may connect matters for the event channel: [tenancy.md](tenancy.md) H-4.
 
 ### The transport in front of the pods
 

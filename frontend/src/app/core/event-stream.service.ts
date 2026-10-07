@@ -2,13 +2,18 @@ import { DOCUMENT } from '@angular/common';
 import { DestroyRef, inject, Injectable, InjectionToken, signal } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 
-/** The events of docs/adr/0054 D2 that name a ticket. */
+/**
+ * The events of docs/adr/0054 D2 that name a ticket; `pull_request.changed` is a pull request or a
+ * commit GitHub's webhook linked to it, merged, closed or reopened, or a person removed
+ * (docs/adr/0071 D6) — the ticket's own fields stay as they were.
+ */
 export const ticketEventNames = [
   'ticket.changed',
   'comment.changed',
   'question.changed',
   'link.changed',
   'interest.changed',
+  'pull_request.changed',
 ] as const;
 export type TicketEventName = (typeof ticketEventNames)[number];
 

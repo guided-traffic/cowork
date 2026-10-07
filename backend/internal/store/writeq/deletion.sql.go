@@ -145,6 +145,25 @@ func (q *Queries) DeleteTicketNotifications(ctx context.Context, arg DeleteTicke
 	return result.RowsAffected(), nil
 }
 
+const deleteTicketPullRequests = `-- name: DeleteTicketPullRequests :execrows
+DELETE FROM ticket_pull_requests WHERE tenant_id = $1 AND ticket_id = $2
+`
+
+type DeleteTicketPullRequestsParams struct {
+	TenantID uuid.UUID
+	TicketID uuid.UUID
+}
+
+// The pull requests and commits GitHub's webhook linked to the ticket
+// (docs/adr/0071 D6), the removed links among them.
+func (q *Queries) DeleteTicketPullRequests(ctx context.Context, arg DeleteTicketPullRequestsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTicketPullRequests, arg.TenantID, arg.TicketID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteTicketQuestions = `-- name: DeleteTicketQuestions :execrows
 DELETE FROM questions WHERE tenant_id = $1 AND ticket_id = $2
 `

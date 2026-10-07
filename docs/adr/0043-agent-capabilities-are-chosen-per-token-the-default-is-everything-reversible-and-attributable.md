@@ -40,6 +40,10 @@ write on a saved filter hard-off,
 amended 2026-10-06 a sixth time, once the narrowing the contract left to a later release was built
 (D4's `set-horizon` row, the note on what is built of D4 and the Residual risks: both checks of the
 stored sets refuse the old name, and nothing drops it on read any more; no rule changes),
+amended 2026-10-06 a seventh time, for GitHub's webhook of ADR 0071, made concrete by the implementer and open
+to the owner's objection (D2: removing a link the webhook made is in the baseline, and stays; D3:
+the tenant's webhook secret is among the administration acts — built the same day, `administer` in
+[`api/integrations.go`](../../backend/internal/api/integrations.go)),
 amended 2026-10-03 (D4: `close` covers both ways to `done`
 of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
 that fills the last progress stage and done by hand — an agent's only from `in-progress` or
@@ -182,7 +186,11 @@ capability or a hard-off rule for each; the risk each leaves is named in the Res
 are an agent's:)* the baseline also holds saving, changing, sharing and unsharing its person's saved
 filter ([ADR 0018](0018-the-views-of-the-first-release.md) D5), each recorded with the agent mark
 and the capabilities the request held; the owner accepted the reach of sharing, named in the
-Residual risks. Deleting one is D3's.
+Residual risks. Deleting one is D3's. *(Made concrete 2026-10-06 by the implementer for GitHub's
+webhook of [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md),
+whose Residual risks say a wrong link is removed like any link, open to the owner's objection:)*
+removing the link of a pull request or a commit the webhook made is a link's removal and the
+baseline's; unlike a ticket's link, a removed one stays removed, and nothing brings it back.
 
 **D3 — The hard-off list: acts no agent token can be given.** ~~Answering a question~~
 *(amended 2026-10-01: recording a person's answer is the `record-answer` capability, ADR
@@ -191,7 +199,10 @@ Residual risks. Deleting one is D3's.
 time; overriding the prerequisite refusal on `done`; every administration act — members,
 mappings, grants, tokens, ~~projects~~ *(amended 2026-10-01: creating a project and binding a
 repository is the `create-project` capability, ADR 0066 D7; archiving, restricting and
-deleting projects stay here)*, tenants, time-period locks; `admin` scope; *(added 2026-10-06
+deleting projects stay here)*, tenants, time-period locks *(and, added 2026-10-06, the tenant's
+GitHub webhook secret — making, rotating and revoking it,
+[ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+D1)*; `admin` scope; *(added 2026-10-06
 by the owner)* assigning a confidential ticket to anyone but the agent's own person — the
 assignee is admitted to it ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
 D9), a disclosure no later act takes back —, at a filing and on a change, the change that makes

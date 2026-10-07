@@ -194,5 +194,13 @@ func seedEveryTenantTable(t *testing.T, w world) {
 			s.tenant, s.person, first))
 		require.NoError(t, f.Exec(ctx, `INSERT INTO saved_filters (tenant_id, owner_id, name, parameters, shared)
 			VALUES ($1, $2, 'seed', '{"state": ["filed"]}', true)`, s.tenant, s.person))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO github_webhook_secrets (tenant_id, secret, created_by)
+			VALUES ($1, '\x0000000000000000000000000000000000000000000000000000000000000000', $2)`, s.tenant, s.person))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO github_deliveries (tenant_id, delivery, received_at, expires_at)
+			VALUES ($1, $2, now(), now() + interval '1 day')`, s.tenant, uuid.Must(uuid.NewV7())))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO ticket_pull_requests (tenant_id, ticket_id, kind, repository, number,
+			title, state, url, found_in, first_seen_at, last_seen_at)
+			VALUES ($1, $2, 'pull_request', 'example.org/seed/repo', 1, 'seed', 'open', 'https://example.org/seed/repo/pull/1',
+			'subject', now(), now())`, s.tenant, first))
 	}
 }

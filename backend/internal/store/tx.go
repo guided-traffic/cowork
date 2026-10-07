@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 	"github.com/guided-traffic/cowork/backend/internal/store/writeq"
 )
@@ -41,6 +42,37 @@ type Writer struct {
 	// some, so the job commits.
 	caller  Caller
 	flushed bool
+	// written are the acts the transaction wrote, which the metrics count once
+	// it has committed (countActs).
+	written []writtenAct
+}
+
+// writtenAct is an act as the metrics count it: its action and who it is
+// attributed to (docs/adr/0060 D4).
+type writtenAct struct {
+	action string
+	actor  metrics.Actor
+}
+
+// actorOf is who an act is attributed to: a system actor's, a person's agent's
+// — a token flagged as an agent's or a request the agent header marks — or the
+// person's own (docs/adr/0036).
+func actorOf(caller Caller, e Event) metrics.Actor {
+	switch {
+	case e.System != "" || caller.System != "":
+		return metrics.ActorSystem
+	case caller.Agent != "":
+		return metrics.ActorAgent
+	}
+	return metrics.ActorPerson
+}
+
+// countActs records the acts of a transaction that has committed; the acts of
+// one that rolled back are never counted.
+func countActs(m *metrics.Metrics, w *Writer) {
+	for _, a := range w.written {
+		m.Act(a.action, a.actor)
+	}
 }
 
 // Event is one act, written as one audit row with the caller's facts in the
@@ -272,6 +304,7 @@ func (db *DB) mutateOnce(ctx context.Context, tenantID uuid.UUID, caller Caller,
 	if err := tx.Commit(ctx); err != nil {
 		return false, fmt.Errorf("commit transaction: %w", err)
 	}
+	countActs(db.metrics, w)
 	return true, nil
 }
 
@@ -332,6 +365,7 @@ func (w *Writer) writeEvents(ctx context.Context, tenantID uuid.UUID, caller Cal
 		if err := w.InsertAuditEvent(ctx, p); err != nil {
 			return fmt.Errorf("write audit row: %w", err)
 		}
+		w.written = append(w.written, writtenAct{action: e.Action, actor: actorOf(caller, e)})
 		if err := w.deliver(ctx, tenantID, id, caller, e); err != nil {
 			return err
 		}

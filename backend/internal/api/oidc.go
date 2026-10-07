@@ -17,6 +17,7 @@ import (
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/auth"
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/internal/requestid"
 	"github.com/guided-traffic/cowork/backend/internal/store"
@@ -117,6 +118,11 @@ func (s *Server) OidcCallback(ctx context.Context, req apigen.OidcCallbackReques
 	// failure sends the browser back with the path the person wanted.
 	st, opened, fresh := h.openLoginState(c.OIDCState, now)
 	fail := func(code, reason string, err error) (apigen.OidcCallbackResponseObject, error) {
+		outcome := metrics.LoginFailure
+		if code == loginNotAllowed || code == loginNotInitialised {
+			outcome = metrics.LoginRefused
+		}
+		h.opts.Metrics.Login(metrics.LoginOIDC, outcome)
 		args := []any{"request_id", requestid.From(ctx), "code", code, "reason", reason}
 		if err != nil {
 			args = append(args, "error", err)
@@ -155,6 +161,7 @@ func (s *Server) OidcCallback(ctx context.Context, req apigen.OidcCallbackReques
 	case store.OIDCNotInitialised:
 		return fail(loginNotInitialised, res.Reason, nil)
 	}
+	h.opts.Metrics.Login(metrics.LoginOIDC, metrics.LoginSuccess)
 	return redirect{location: st.ReturnTo, cookies: []string{sessionCookie(value, expires.Sub(now)), clearedStateCookie()}}, nil
 }
 

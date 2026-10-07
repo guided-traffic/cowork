@@ -17,30 +17,85 @@ serviceAccount:
   # Neither pod talks to the Kubernetes API.
   automountServiceAccountToken: false
 
-# Where the backend finds PostgreSQL.
+# Where the backend finds PostgreSQL: the runtime role, which owns nothing and
+# is held by row-level security, and below it the owner role, which owns the
+# database and runs the migrations (docs/adr/0021 D2). Each comes from a Secret
+# that exists before the release, as a URL or as its components, the key names
+# yours to choose (docs/adr/0058 D3, D4) — or, for a throw-away installation,
+# from an inline URL.
 database:
-  # Name of an existing Secret that holds the PostgreSQL connection URL
-  # (postgres://user:password@host:5432/db?sslmode=require). Preferred: the
-  # credential never enters the Helm values or the release history.
+  # Name of an existing Secret with the runtime role's connection. Preferred:
+  # the credential never enters the Helm values or the release history.
   existingSecret: ""
-  # Key inside that Secret.
-  existingSecretKey: databaseUrl
+  # The key names read from existingSecret. With url set, the Secret holds a
+  # connection URL under it (postgres://user:password@host:5432/db?sslmode=require),
+  # COWORK_DATABASE_URL. With url empty, the components instead,
+  # COWORK_DATABASE_HOST, _PORT, _NAME, _USER, _PASSWORD and _SSLMODE: the user
+  # and the password always from the Secret; the host, the port, the name and
+  # the sslmode from existingConfigMap when it is named, else from the Secret.
+  # The port and the sslmode are read only while their key is named — without
+  # them the port is 5432 and the sslmode the driver's default, prefer. The
+  # defaults fit a kubernetes.io/basic-auth Secret and the -app Secret of
+  # CloudNativePG (deploy/examples/cloudnative-pg-cluster.yaml).
+  keys:
+    url: databaseUrl
+    host: host
+    port: port
+    name: dbname
+    user: username
+    password: password
+    sslmode: ""
+  # The URL's key under its earlier name: set, it wins over keys.url. keys.url
+  # empty reads the components whatever this says.
+  existingSecretKey: ""
+  # Name of an existing ConfigMap with the non-secret components — host, port,
+  # name, sslmode, under the keys above; read only with keys.url empty.
+  existingConfigMap: ""
   # Inline URL, rendered into a Secret owned by this release. Only for local
   # and throw-away installations: the value is stored in plain text in the
   # release Secret and in every `helm get values` output.
   url: ""
-  # The runtime role above owns nothing and is subject to row-level
-  # security; the owner role owns the database and runs the migrations
-  # (docs/adr/0021 D2). Its credential reaches only the migration init
-  # container, never the serving container. One source is required.
+  # The owner role's connection, read only by the migration run — the
+  # migrate init container or the migration Job (migrations.mode) — never by
+  # the serving container. Required while the release migrates. Its blocks mean
+  # what the runtime role's above mean.
   owner:
-    # Name of an existing Secret with the owner role's connection URL. Preferred.
+    # Name of an existing Secret with the owner role's connection. Preferred,
+    # and the only source migrations.mode job takes.
     existingSecret: ""
-    existingSecretKey: databaseUrl
+    keys:
+      url: databaseUrl
+      host: host
+      port: port
+      name: dbname
+      user: username
+      password: password
+      sslmode: ""
+    existingSecretKey: ""
+    existingConfigMap: ""
     # Inline URL for throw-away installations, rendered into a release Secret
-    # while backend.config.migrateOnStart is true. It stays in the release's
-    # values either way (helm get values).
+    # while the init container migrates. It stays in the release's values
+    # either way (helm get values).
     url: ""
+
+# Where the schema migrations run (docs/adr/0057).
+#   onStart: the init container migrate of every backend pod runs them, as the
+#            owner role, before the server starts (D1); backend.config.migrateOnStart
+#            false turns it off, and nothing in the release migrates.
+#   job:     a Job, <fullname>-migrate, runs them as a Helm hook before every
+#            install and upgrade, and then the bootstrap — the local
+#            administrator and the bootstrap tenant (D2, D4). A failed Job fails
+#            the release before a new pod starts. The Job runs before the
+#            release's own Secrets exist, so it takes existingSecret references
+#            only: database.existingSecret, database.owner.existingSecret and,
+#            with a local administrator, localAdmin.existingSecret; rendering
+#            fails on an inline value. It runs as the namespace's default
+#            ServiceAccount, or as serviceAccount.name when the chart creates
+#            none, with no token mounted.
+# The serving container never migrates in either mode and refuses to start on
+# pending migrations (D3).
+migrations:
+  mode: onStart
 
 # The server key, COWORK_SESSION_KEY: standard base64 of at least 32 bytes
 # (`openssl rand -base64 32`). It signs the list cursors and keys the hash of a
@@ -166,13 +221,26 @@ auth:
     displayName: single sign-on
 
 # S3-compatible object storage for the attachments (docs/adr/0016,
-# docs/adr/0058 D3). Without an endpoint the backend refuses uploads.
+# docs/adr/0058 D3). Without an endpoint — a value, or one from
+# existingConfigMap — the backend refuses uploads.
 storage:
   # Secret with the access key of a bucket-scoped policy, never root keys.
   existingSecret: ""
   keys:
     accessKeyId: accessKeyId
     secretAccessKey: secretAccessKey
+    # The keys of existingConfigMap. A value whose key is named here is read
+    # from the ConfigMap; one whose key is empty is the literal value below.
+    # The region and the path style may be missing from the ConfigMap, and
+    # the backend's defaults apply: the server's region, path style on.
+    endpoint: endpoint
+    bucket: bucket
+    region: region
+    pathStyle: pathStyle
+  # Name of an existing ConfigMap with the endpoint, the bucket, the region and
+  # the path style; naming it turns the storage on, as the endpoint does, and
+  # its keys win over the values below.
+  existingConfigMap: ""
   # http:// or https:// with host and port, e.g. https://s3.example.com.
   endpoint: ""
   bucket: ""
@@ -285,6 +353,62 @@ ingress:
   #    hosts:
   #      - cowork.example.com
 
+# The backend's Prometheus metrics (docs/adr/0060): Prometheus text at
+# /metrics on a listener of their own, COWORK_METRICS_ADDR, without
+# authentication. The port is on the backend pods — the container port
+# `metrics` — and never on the backend Service, so the Ingress never reaches
+# it. The chart ships no NetworkPolicy: admitting only the monitoring
+# namespace to the port is a policy of the cluster's
+# (docs/operations/metrics.md). The resources below need the Prometheus
+# Operator's CRDs (monitoring.coreos.com/v1) or the Grafana sidecar; each is
+# off by default.
+metrics:
+  # COWORK_METRICS_ADDR=":<port>" and the container port `metrics`. false
+  # renders COWORK_METRICS_ADDR="", which switches the backend's listener off.
+  enabled: true
+  # The port of the listener; it must differ from backend.containerPort.
+  port: 8081
+  # A PodMonitor that scrapes the `metrics` port of the backend pods and, with
+  # frontend.metrics.exporter.enabled, the `nginx-metrics` port of the
+  # frontend pods.
+  podMonitor:
+    enabled: false
+    # Labels on the PodMonitor: what your Prometheus's podMonitorSelector
+    # matches, e.g. release: kube-prometheus-stack.
+    labels: {}
+    interval: 30s
+    scrapeTimeout: 10s
+  # For a Prometheus that discovers Services only: a ServiceMonitor and a
+  # headless Service <fullname>-backend-metrics with the metrics port alone,
+  # so the backend Service still never carries it. The nginx exporter is
+  # scraped through the PodMonitor only.
+  serviceMonitor:
+    enabled: false
+    # Labels on the ServiceMonitor: what your Prometheus's
+    # serviceMonitorSelector matches.
+    labels: {}
+    interval: 30s
+    scrapeTimeout: 10s
+  # A PrometheusRule with the alerts of docs/operations/metrics.md, each
+  # linking its section there.
+  prometheusRule:
+    enabled: false
+    # Labels on the PrometheusRule: what your Prometheus's ruleSelector
+    # matches.
+    labels: {}
+    # Labels added to every alert, for Alertmanager's routing, e.g.
+    # team: platform; a severity here replaces the alert's own.
+    alertLabels: {}
+  # A ConfigMap with the Grafana dashboard of the backend's metrics, for the
+  # Grafana sidecar that loads labelled ConfigMaps.
+  grafanaDashboard:
+    enabled: false
+    # The label the sidecar looks for; kube-prometheus-stack's default.
+    labels:
+      grafana_dashboard: "1"
+    # e.g. the folder annotation your sidecar reads.
+    annotations: {}
+
 backend:
   replicaCount: 1
   image:
@@ -299,11 +423,13 @@ backend:
     port: 8080
   # Server configuration; each key maps to one COWORK_* environment variable.
   config:
-    # Run the schema migrations in an init container of every backend pod,
-    # with the owner credential (docs/adr/0057 D1). Several replicas may start
-    # at once; golang-migrate serialises them with an advisory lock. The
-    # serving container never migrates (COWORK_MIGRATE_ON_START=false) and
-    # refuses to start on pending migrations.
+    # Read while migrations.mode is onStart: run the schema migrations in an
+    # init container of every backend pod, with the owner credential
+    # (docs/adr/0057 D1). Several replicas may start at once; golang-migrate
+    # serialises them with an advisory lock. false: nothing in the release
+    # migrates — run `cowork migrate` yourself. The serving container never
+    # migrates (COWORK_MIGRATE_ON_START=false) and refuses to start on pending
+    # migrations.
     migrateOnStart: true
     # COWORK_LOG_LEVEL: debug | info | warn | error
     logLevel: info
@@ -379,8 +505,8 @@ backend:
     requests:
       cpu: 50m
       memory: 128Mi
-  # Probes. The migrations run in the init container before the server
-  # starts; the startup probe covers the server's own start.
+  # Probes. The migrations run before the server starts, in the init
+  # container or the Job; the startup probe covers the server's own start.
   probes:
     startup:
       periodSeconds: 5
@@ -444,3 +570,23 @@ frontend:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # nginx's counts for Prometheus (docs/adr/0060 D7). The configuration in the
+  # image always serves stub_status on 127.0.0.1:8082 inside the pod, which
+  # nothing outside the pod reaches; the exporter sidecar reads it and serves
+  # Prometheus text on the container port `nginx-metrics`, which
+  # metrics.podMonitor scrapes. Like nginx it runs as 101 with a read-only root
+  # filesystem.
+  metrics:
+    exporter:
+      enabled: false
+      image:
+        repository: nginx/nginx-prometheus-exporter
+        tag: "1.5.3"
+        pullPolicy: IfNotPresent
+      port: 9113
+      resources:
+        limits:
+          memory: 32Mi
+        requests:
+          cpu: 5m
+          memory: 16Mi

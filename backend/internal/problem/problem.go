@@ -46,6 +46,7 @@ var (
 	TokenRevoked           = Code{"token_revoked", http.StatusUnauthorized, "Token revoked", "The token was revoked, or its person deactivated (docs/adr/0035 D6)"}
 	NotAllowed             = Code{"not_allowed", http.StatusUnauthorized, "Not allowed", "The token's person is outside the identity provider's gate: none of their groups, as of their last login or groups refresh, is in COWORK_OIDC_ALLOWED_GROUPS or is COWORK_ADMIN_GROUP, or the person belongs to another issuer than the configured one, or their groups were read longer ago than COWORK_OIDC_GROUPS_MAX_AGE, until a sign-in in the browser reads them again. The token is refused, not revoked, and works again once the person is back inside (docs/adr/0035 D8)"}
 	InvalidCredentials     = Code{"invalid_credentials", http.StatusUnauthorized, "Invalid credentials", "The local login failed: the same answer, in the same time, for an unknown username, a wrong password, a locked or a deactivated account (docs/adr/0033 D6)"}
+	SignatureInvalid       = Code{"signature_invalid", http.StatusUnauthorized, "Signature invalid", "A GitHub webhook delivery's `X-Hub-Signature-256` is missing or is not the HMAC of its body under the tenant's secret; nothing was read or written (docs/adr/0071 D3)"}
 	Forbidden              = Code{"forbidden", http.StatusForbidden, "Forbidden", "The person's role does not allow the act (docs/adr/0034)"}
 	InsufficientScope      = Code{"insufficient_scope", http.StatusForbidden, "Insufficient scope", "The token's scope does not reach the act (docs/adr/0035 D3)"}
 	AgentForbidden         = Code{"agent_forbidden", http.StatusForbidden, "Agent forbidden", "The act is on the agent hard-off list, needs a capability the token lacks, or lies outside what the capability grants — `close` closes from in-progress and review only; `detail` names which (docs/adr/0043 D4, D5)"}
@@ -90,7 +91,7 @@ var (
 // Catalogue lists every code; the generators read it.
 var Catalogue = []Code{
 	ValidationFailed, IdempotencyKeyRequired, InvalidCursor, PageTooDeep,
-	Unauthenticated, TokenExpired, TokenRevoked, NotAllowed, InvalidCredentials,
+	Unauthenticated, TokenExpired, TokenRevoked, NotAllowed, InvalidCredentials, SignatureInvalid,
 	Forbidden, InsufficientScope, AgentForbidden, SessionRequired, PasswordChangeRequired, NotInitialised, Csrf,
 	NotFound, PersonNotFound, MethodNotAllowed, UsernameTaken, TenantSlugTaken, ProjectKeyTaken, RepositoryBound,
 	PersonAmbiguous, GrantExists, MappingExists, LastAdmin,

@@ -243,7 +243,9 @@ administrator of the current tenant and an account that tenant manages, and the 
 configuration keeps ([ADR 0032](../adr/0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
 D1–D4, [`bootstrap/bootstrap.go`](../../backend/internal/bootstrap/bootstrap.go)). Both or neither: one alone
 refuses the start, naming the missing variable. At every start of `cowork serve`, after the
-migrations and under an advisory lock, as `system:bootstrap`:
+migrations and under an advisory lock, as `system:bootstrap` — and, in the chart's job mode, in the
+migration Job after the schema step as well, under the same lock
+([ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md) D4):
 
 - the account is **created** — a global administrator, display name its username;
 - a password that does not verify against the stored hash is **re-hashed**, every session of
@@ -356,10 +358,12 @@ person's tokens.
 <a id="h-20"></a>
 ### H-20 — The local administrator's password lives in a Secret and in the pod's environment
 
-Live whenever it is configured. The password reaches the process as an environment variable:
-anyone who can read the pod's spec or the Secret reads it, as with the database URL. A leaked
+Live whenever it is configured. The password reaches the process as an environment variable —
+the serving container's and, in the chart's job mode, the migration Job's —: anyone who can read
+the pod's spec or the Secret reads it, as with the database URL. A leaked
 password stays valid until the Secret is rotated **and** the backend restarted — the
-synchronisation reads the environment once, at start
+synchronisation reads the environment once, at start, and the migration Job's only at the next
+install or upgrade
 ([ADR 0032](../adr/0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
 residual risks). The inline chart values `localAdmin.username` and `localAdmin.password` put
 the credential in plain text into the release Secret and into `helm get values`

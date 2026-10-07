@@ -1,0 +1,43 @@
+# The monitoring shape (docs/adr/0060 D2, D3, D7): the backend's metrics port
+# on another port than the default, every monitoring resource of the chart on
+# — the PodMonitor with the nginx exporter's entry, the ServiceMonitor with its
+# headless Service, the PrometheusRule with routing labels and the Grafana
+# dashboard — rendered with the Prometheus Operator's CRDs assumed present.
+database:
+  existingSecret: cowork-database
+  owner:
+    existingSecret: cowork-database-owner
+session:
+  existingSecret: cowork-session
+metrics:
+  enabled: true
+  port: 9090
+  podMonitor:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+    interval: 15s
+    scrapeTimeout: 5s
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+    interval: 60s
+    scrapeTimeout: 20s
+  prometheusRule:
+    enabled: true
+    labels:
+      release: kube-prometheus-stack
+    alertLabels:
+      team: platform
+      severity: page
+  grafanaDashboard:
+    enabled: true
+    labels:
+      grafana_dashboard: "1"
+    annotations:
+      grafana_folder: cowork
+frontend:
+  metrics:
+    exporter:
+      enabled: true

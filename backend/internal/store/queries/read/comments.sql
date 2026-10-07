@@ -56,11 +56,13 @@ WHERE c.tenant_id = sqlc.arg(tenant_id) AND c.ticket_id = sqlc.arg(ticket_id) AN
 
 -- name: ListTicketActivity :many
 -- The ticket's acts (docs/adr/0015 D1, D6) without time entries
--- (docs/adr/0017 D9) and without data leaving the system (docs/adr/0026 D5),
--- and the sorts of its project's rank by the score that moved it: one act of
--- the project, which names every ticket it moved in its refs
--- (docs/adr/0014 D3). The caller has read the ticket through the predicate;
--- the refs of each act are checked against it before its payload is shown.
+-- (docs/adr/0017 D9), without data leaving the system (docs/adr/0026 D5) and
+-- without a pull request's title or page changed at GitHub, which its list
+-- shows (docs/adr/0071 D6), and the sorts of its project's rank by the score
+-- that moved it: one act of the project, which names every ticket it moved in
+-- its refs (docs/adr/0014 D3). The caller has read the ticket through the
+-- predicate; the refs of each act are checked against it before its payload
+-- is shown.
 SELECT a.id, a.actor_user_id, u.username AS actor_username, u.display_name AS actor_name, a.actor_system,
        a.agent, a.token_id, a.token_name, a.entity_type, a.entity_id, a.action::text AS action, a.before, a.after, a.reason, a.note,
        a.explained_by_comment_id, a.refs, a.created_at
@@ -70,6 +72,7 @@ WHERE a.tenant_id = sqlc.arg(tenant_id)
   AND (a.ticket_id = sqlc.arg(ticket_id)
        OR (a.entity_type = 'project' AND a.action = 'ranked' AND a.refs @> ARRAY[sqlc.arg(ticket_id)::uuid]))
   AND a.entity_type <> 'time_entry' AND a.action NOT IN ('downloaded', 'exported', 'booked', 'voided', 'locked')
+  AND NOT (a.entity_type = 'pull_request' AND a.action = 'updated')
   AND (sqlc.narg(after)::uuid IS NULL
        OR (sqlc.arg(descending)::boolean AND a.id < sqlc.narg(after)::uuid)
        OR (NOT sqlc.arg(descending)::boolean AND a.id > sqlc.narg(after)::uuid))

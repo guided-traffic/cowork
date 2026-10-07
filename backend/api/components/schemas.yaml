@@ -503,7 +503,7 @@ AuditAction:
     interest, ranked, overridden, asked, answered, booked, voided, locked, uploaded, downloaded,
     exported, deleted, restored, purged, revoked, refused, archived, confidential_set,
     confidential_lifted, expired, logged_in, logged_out, login_failed, unlocked, password_changed,
-    password_reset, deactivated, reactivated, read]
+    password_reset, deactivated, reactivated, read, merged, closed, reopened]
 AuditEvent:
   type: object
   required: [id, created_at, actor, entity_type, action]
@@ -1613,6 +1613,99 @@ LinkList:
         $ref: '#/Link'
     next_cursor:
       type: [string, 'null']
+PullRequestKind:
+  type: string
+  enum: [pull_request, commit]
+  description: A pull request, or a commit on the repository's default branch (docs/adr/0071 D6)
+PullRequestState:
+  type: string
+  enum: [open, closed, merged]
+  description: The pull request's state as GitHub last told it; a commit on the default branch is merged
+PullRequestFoundIn:
+  type: string
+  enum: [trailer, body, subject]
+  description: |
+    Where the key was read (docs/adr/0068 D1, D2, D5): a `Cowork-Ticket:` trailer line, a line of a pull
+    request's body that is a full key alone, or the short keys in parentheses at the end of a pull
+    request's title or a commit's subject
+PullRequest:
+  type: object
+  description: A pull request or a default-branch commit GitHub's webhook linked to the ticket (docs/adr/0071 D6)
+  required: [id, kind, repository, number, sha, title, state, url, author, merged_at, found_in, first_seen_at,
+    last_seen_at]
+  properties:
+    id: {type: string, format: uuid, description: The link's id}
+    kind:
+      $ref: '#/PullRequestKind'
+    repository: {type: string, description: 'The repository''s identity, host/path (docs/adr/0066 D1)'}
+    number: {type: [integer, 'null'], description: The pull request's number; null for a commit}
+    sha: {type: [string, 'null'], description: The commit's id; null for a pull request}
+    title: {type: string, description: 'The pull request''s title, or the commit''s subject, as GitHub sent it'}
+    state:
+      $ref: '#/PullRequestState'
+    url:
+      type: string
+      description: |
+        The pull request's or the commit's page at GitHub, written from the bound repository's
+        identity, never taken from a payload
+    author: {type: [string, 'null'], description: 'The author''s GitHub login, where GitHub named one'}
+    merged_at:
+      type: [string, 'null']
+      format: date-time
+      description: When the pull request was merged, or the commit reached the default branch; null otherwise
+    found_in:
+      $ref: '#/PullRequestFoundIn'
+    first_seen_at: {type: string, format: date-time, description: When a delivery first linked it to the ticket}
+    last_seen_at: {type: string, format: date-time, description: When a delivery last told of it}
+PullRequestList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/PullRequest'
+    next_cursor:
+      type: [string, 'null']
+GitHubSecret:
+  type: object
+  description: The tenant's GitHub webhook secret as its administrators read it — never the secret itself
+  required: [created_at, created_by]
+  properties:
+    created_at: {type: string, format: date-time, description: When it was made or last rotated}
+    created_by:
+      $ref: '#/Person'
+GitHubIntegration:
+  type: object
+  required: [secret, webhook_path, events]
+  properties:
+    secret:
+      description: The secret's metadata; null while the tenant has none, and then the endpoint answers like an unknown tenant
+      oneOf:
+        - $ref: '#/GitHubSecret'
+        - type: 'null'
+    webhook_path:
+      type: string
+      description: The endpoint's path, which GitHub posts to under the installation's `COWORK_BASE_URL`
+    events:
+      type: array
+      description: The events to choose in GitHub's webhook settings; every other is taken and passed over
+      items: {type: string}
+GitHubSecretCreated:
+  type: object
+  required: [secret, created_at, created_by, replaced]
+  properties:
+    secret:
+      type: string
+      description: |
+        The new secret, 64 hexadecimal characters, shown in this answer only: give it to GitHub as the
+        webhook's secret. cowork keeps it sealed and never shows it again (docs/adr/0071 D1)
+    created_at: {type: string, format: date-time}
+    created_by:
+      $ref: '#/Person'
+    replaced:
+      type: boolean
+      description: A secret existed and is replaced; a delivery signed with it is refused from now on
 PrerequisiteNode:
   type: object
   description: A ticket of a prerequisite tree, or of its upward reading, the dependents (docs/adr/0012 D6)
@@ -2157,12 +2250,13 @@ ChatCapabilitiesUpdate:
         $ref: '#/Capability'
 InboxReason:
   type: string
-  enum: [assigned, asked, answered, state_changed, blocker_closed, commented, urgent, mentioned]
+  enum: [assigned, asked, answered, state_changed, blocker_closed, commented, urgent, mentioned, merged]
   description: |
     Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
     question they asked answered, a ticket they watch changed state or got a comment, a ticket that
     blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a
-    comment that mentions them (docs/adr/0015 D5)
+    comment that mentions them (docs/adr/0015 D5), a pull request of a ticket they watch or that is
+    assigned to them merged (docs/adr/0071 D6) — its state unchanged, the move a person's
 InboxEntry:
   type: object
   required: [id, tenant, ticket, reason, act, blocker, withdrawn, read, created_at]

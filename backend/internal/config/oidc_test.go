@@ -98,8 +98,6 @@ func TestLoadRejectsBadOIDCValues(t *testing.T) {
 		env  map[string]string
 		want string
 	}{
-		"no client id":           {map[string]string{EnvOIDCClientID: ""}, EnvOIDCClientID + " is required"},
-		"no client secret":       {map[string]string{EnvOIDCClientSecret: ""}, EnvOIDCClientSecret + " is required"},
 		"no base URL":            {map[string]string{EnvBaseURL: ""}, EnvBaseURL + " is required while " + EnvOIDCIssuer},
 		"plain HTTP elsewhere":   {map[string]string{EnvOIDCIssuer: "http://login.example.com"}, "must be https://"},
 		"not a URL":              {map[string]string{EnvOIDCIssuer: "login.example.com"}, "is not a URL"},
@@ -126,6 +124,29 @@ func TestLoadRejectsBadOIDCValues(t *testing.T) {
 			assert.NotContains(t, err.Error(), testClientSecret, "the secret is never echoed")
 		})
 	}
+}
+
+// docs/adr/0057 D4: the client's id and secret are what `cowork serve` needs,
+// not what the configuration needs — the migration run reads the
+// administrator group for the bootstrap and holds no client secret.
+func TestTheClientIsRequiredByServeAlone(t *testing.T) {
+	cfg, err := Load(envOf(oidcEnv(map[string]string{EnvOIDCClientID: "", EnvOIDCClientSecret: "", EnvAdminGroup: "cowork-admins"})))
+	require.NoError(t, err)
+	require.NotNil(t, cfg.OIDC)
+	assert.Equal(t, "cowork-admins", cfg.OIDC.AdminGroup)
+
+	err = cfg.OIDC.RequireClient()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvOIDCClientID+" is required while "+EnvOIDCIssuer+" is set")
+	assert.Contains(t, err.Error(), EnvOIDCClientSecret+" is required while "+EnvOIDCIssuer+" is set: a public client without a secret is not supported")
+
+	cfg, err = Load(envOf(oidcEnv(nil)))
+	require.NoError(t, err)
+	assert.NoError(t, cfg.OIDC.RequireClient())
+	assert.NotContains(t, (&OIDC{ClientSecret: testClientSecret}).RequireClient().Error(), testClientSecret, "the secret is never echoed")
+
+	var none *OIDC
+	assert.NoError(t, none.RequireClient(), "without a provider there is no client to require")
 }
 
 // docs/adr/0032 D6 (amended): the bootstrap tenant needs somebody to administer

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -82,8 +83,21 @@ func (w *Writer) lock(ctx context.Context, namespace int32, key uuid.UUID, name 
 // policies of the job's tables admit. ran is false when another replica holds
 // the lock. A job that records no act commits nothing and is no error. A job
 // that works in the tenants one by one writes each tenant's acts there
-// (Writer.inTenant); the rest are installation-level acts.
+// (Writer.inTenant); the rest are installation-level acts. A run that took
+// the lock, or failed before it could, is recorded in the metrics by the
+// job's name — one another replica ran is not, nor one the end of ctx cut
+// short (docs/adr/0060 D4).
 func (db *DB) RunJob(ctx context.Context, name string, lockKey int32, fn func(w *Writer) error) (ran bool, err error) {
+	start := time.Now()
+	defer func() {
+		if (ran || err != nil) && ctx.Err() == nil {
+			db.metrics.JobRun(name, time.Since(start), err != nil)
+		}
+	}()
+	return db.runJob(ctx, name, lockKey, fn)
+}
+
+func (db *DB) runJob(ctx context.Context, name string, lockKey int32, fn func(w *Writer) error) (ran bool, err error) {
 	tx, err := db.pool.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("begin transaction: %w", err)
@@ -116,6 +130,7 @@ func (db *DB) RunJob(ctx context.Context, name string, lockKey int32, fn func(w 
 	if err := tx.Commit(ctx); err != nil {
 		return true, fmt.Errorf("commit job %s: %w", name, err)
 	}
+	countActs(db.metrics, w)
 	return true, nil
 }
 

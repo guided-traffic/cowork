@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/guided-traffic/cowork/backend/internal/auth"
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/requestid"
@@ -228,14 +229,14 @@ func (h *handler) tokenGate(r *http.Request, rec store.TokenRecord, now time.Tim
 		return nil
 	}
 	refused := func() *problem.Error {
-		h.recordRefusal(r, rec, "not_allowed")
+		h.recordRefusal(r, rec, metrics.TokenNotAllowed)
 		return unauthenticated(problem.NotAllowed, "the person is no longer admitted by the identity provider's groups")
 	}
 	if !h.ownIssuer(rec.Person.OidcIssuer) {
 		return refused()
 	}
 	if h.groupsTooOld(rec.Person.OidcGroupsAt, now) {
-		h.recordRefusal(r, rec, "not_allowed")
+		h.recordRefusal(r, rec, metrics.TokenNotAllowed)
 		return unauthenticated(problem.NotAllowed, "the person's groups were last read from the identity provider more than "+
 			h.opts.OIDC.GroupsMaxAge.String()+" ago: sign in to cowork in the browser once, and the token works again")
 	}

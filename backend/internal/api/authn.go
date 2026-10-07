@@ -9,6 +9,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 
 	"github.com/guided-traffic/cowork/backend/internal/auth"
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/requestid"
 	"github.com/guided-traffic/cowork/backend/internal/store"
@@ -54,6 +55,7 @@ func (h *handler) authenticate(r *http.Request, accepts credentials) (auth.Princ
 			return auth.Principal{}, perr
 		}
 		if !accepts.bearer {
+			h.opts.Metrics.TokenRefused(metrics.TokenSessionOnly)
 			return auth.Principal{}, problem.New(problem.SessionRequired, "this route is for a person in a browser session; a token cannot call it")
 		}
 		return p, nil
@@ -72,11 +74,13 @@ func (h *handler) authenticate(r *http.Request, accepts credentials) (auth.Princ
 func (h *handler) authenticateToken(r *http.Request) (auth.Principal, *problem.Error) {
 	plaintext, ok := bearer(r.Header.Get("Authorization"))
 	if !ok || !auth.WellFormedToken(plaintext) {
+		h.opts.Metrics.TokenRefused(metrics.TokenMalformed)
 		return auth.Principal{}, unauthenticated(problem.Unauthenticated, "a personal access token is required: Authorization: Bearer cwk_…")
 	}
 	ctx := r.Context()
 	rec, err := h.opts.DB.LookupToken(ctx, auth.HashToken(plaintext))
 	if errors.Is(err, store.ErrNotFound) {
+		h.opts.Metrics.TokenRefused(metrics.TokenUnknown)
 		return auth.Principal{}, unauthenticated(problem.Unauthenticated, "the token is not known")
 	}
 	if err != nil {
@@ -86,10 +90,10 @@ func (h *handler) authenticateToken(r *http.Request) (auth.Principal, *problem.E
 	now := h.opts.Now()
 	switch {
 	case rec.Token.RevokedAt != nil || rec.Person.DeactivatedAt != nil:
-		h.recordRefusal(r, rec, "revoked")
+		h.recordRefusal(r, rec, metrics.TokenRevoked)
 		return auth.Principal{}, unauthenticated(problem.TokenRevoked, "the token was revoked")
 	case !rec.Token.ExpiresAt.After(now):
-		h.recordRefusal(r, rec, "expired")
+		h.recordRefusal(r, rec, metrics.TokenExpired)
 		return auth.Principal{}, unauthenticated(problem.TokenExpired, "the token expired on "+rec.Token.ExpiresAt.UTC().Format("2006-01-02"))
 	}
 
@@ -140,12 +144,13 @@ func unauthenticated(code problem.Code, detail string) *problem.Error {
 }
 
 // recordRefusal records the use of a dead token, bounded per token, reason
-// and hour (docs/adr/0035 D9); the request log has every refusal. A failure
-// to record is logged and does not change the answer.
-func (h *handler) recordRefusal(r *http.Request, rec store.TokenRecord, reason string) {
+// and hour (docs/adr/0035 D9); the request log and the metrics have every
+// refusal. A failure to record is logged and does not change the answer.
+func (h *handler) recordRefusal(r *http.Request, rec store.TokenRecord, reason metrics.TokenRefusal) {
 	ctx := r.Context()
+	h.opts.Metrics.TokenRefused(reason)
 	h.logger.Info("token refused", "request_id", requestid.From(ctx), "token_id", rec.Token.ID, "reason", reason)
-	if err := h.opts.DB.RecordTokenRefusal(ctx, rec, reason, requestid.UUID(ctx), h.sourceHash(clientFrom(ctx).Client)); err != nil {
+	if err := h.opts.DB.RecordTokenRefusal(ctx, rec, string(reason), requestid.UUID(ctx), h.sourceHash(clientFrom(ctx).Client)); err != nil {
 		h.logger.Error("recording a token refusal failed", "request_id", requestid.From(ctx), "error", err)
 	}
 }

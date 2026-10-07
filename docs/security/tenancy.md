@@ -69,6 +69,16 @@ restricted to a tenant reads that tenant only, and one restricted to a project r
 project's bindings only ([`api/repositories.go`](../../backend/internal/api/repositories.go)
 `LookupRepository`, `TestLookingUpARepository`).
 
+**GitHub's webhook meets no boundary**, because no person sends it: the boundary admits persons.
+`POST …/tenants/{tenant}/integrations/github/webhook` reads the tenant by its slug and its sealed secret
+itself, in a transaction of the job `github-webhook` that the `tenants` policy admits to every tenant's
+row and that names no person, and answers an unknown tenant and one without a secret with the same
+`404` — but a tenant with a secret answers a delivery whose signature does not hold `401`, so its
+refusal tells that the tenant exists ([github-webhook.md](github-webhook.md#h-64) H-64). What a
+delivery writes stays in the tenant of its path: the secret is that tenant's, a key of another tenant
+is passed over, and its links are read under each ticket's predicate
+([github-webhook.md](github-webhook.md)).
+
 **A turn of the chat stays in its tenant** on top of the boundary. Its tool calls are the person's
 requests and could reach every tenant the person belongs to; the loopback that sends them refuses
 every path outside the turn's tenant — the person's other tenants and the `/api/v1/me` routes
@@ -138,7 +148,7 @@ layer does not repeat it.
 
 | Role | Owns | Holds | Used by |
 |---|---|---|---|
-| owner | every object of the schema | DDL | `cowork migrate`, the chart's migration init container, and `cowork serve` while `COWORK_MIGRATE_ON_START` is true |
+| owner | every object of the schema | DDL | `cowork migrate`, the chart's migration run — the init container, or the migration Job in job mode —, and `cowork serve` while `COWORK_MIGRATE_ON_START` is true |
 | runtime | nothing | only what the migrations grant it; the migration run names it in the session setting `cowork.runtime_role` | `cowork serve` |
 
 The runtime role's grants are narrow: `UPDATE` only where the API changes something — column
@@ -1018,7 +1028,8 @@ its own.
 
 The split of the two roles protects against a compromised serving process only while that
 process does not hold the owner credential (ADR 0021, residual risks). The chart keeps it in
-the migration init container. `cowork serve` with `COWORK_MIGRATE_ON_START=true` — the
+the migration run — the init container, or in job mode the migration Job, neither of which
+serves a request. `cowork serve` with `COWORK_MIGRATE_ON_START=true` — the
 binary's default, and `make run`'s — requires `COWORK_DATABASE_OWNER_URL` and holds it for its
 whole lifetime ([`cmd/cowork/main.go`](../../backend/cmd/cowork/main.go) `requireForServe`);
 so does a serving container given the owner URL through `backend.extraEnv`. Such an

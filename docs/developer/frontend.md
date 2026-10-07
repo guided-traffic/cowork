@@ -7,7 +7,7 @@ client, and the development loop.
 Read against the tree on 2026-10-04, the search, the rendered texts, the deleted tickets, the
 saved filters, the tenant's ticket list, the score and "next for me", the numbered pages of the members and the
 tokens, the tenant's tokens, the attachments' usage and the mentions on 2026-10-05, the saved filters on the tenant board on
-2026-10-06. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
+2026-10-06, a ticket's pull requests and GitHub's webhook in the settings on 2026-10-06. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
 the logo, the license, the content-security policy's build), [ADR 0053] (signals and services),
 [ADR 0054] (the event stream), [ADR 0055] (English, the browser's locale) and [ADR 0076] (the chat).
 
@@ -19,7 +19,7 @@ frontend/src/app/
 ├── core/         # services: session, projects, tickets, dashboard, event stream, inbox, chat, problems, entity cache, http
 ├── layout/       # the shell (top bar with the bell, navigation), the assistant's panel, the tenant scope, the live indicator
 ├── features/     # one folder per page family: auth, home, me (the person's tokens and the person-level pages), search, tenant, project, ticket, time
-├── shared/       # badges, rendered Markdown, the mark of an agent's or a token's act, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting, the note of a change made meanwhile
+├── shared/       # badges, rendered Markdown, the mark of an agent's or a token's act, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting, the note of a change made meanwhile, the names of GitHub's acts and pull requests and the merge hint
 └── dev/          # development-only pages (the design preview); replaced by an empty route list in production
 ```
 
@@ -84,7 +84,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`, to the ticket or to one of its comments) and time entries: booking, the correction with the entry's version as `If-Match`, voiding, an entry's earlier values |
 | `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (`setHorizon`, `PUT …/horizon` — `later` included, which clears the horizon set), the confidential flag, the sort of a project's rank by the score (`sortByScore`), after which the open lists load again, and a tenant administrator's deletion (`delete`, which drops the ticket from the cache) with the open tickets that wait on it first (`dependents`, the first step of `direction=up`). A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
-| `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links, the person's stake |
+| `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links, a person's removal of a link GitHub's webhook made (`removePullRequest`), the person's stake |
 | `AuthService` | `/auth/options`, `/auth/local` — whose success forgets the identity provider (`SignInMemory`) —, `/auth/logout` — which forgets it first, before the backend is asked, and hands back the identity provider's logout where the backend names one —, `hasSession` (`GET /api/v1/me` asked anew: an answer is yes, a `401` no, anything else thrown), the password change; the session cookie is `HttpOnly`, no script sees it |
 | `SignInMemory` | What the browser remembers of the sign-in, for [the login page](#the-login-page)'s own sign-in: `cowork.sign-in` in `localStorage`, `oidc` once the button started the provider's sign-in, forgotten by a local sign-in and a sign-out; `cowork.sign-in.attempt` in `sessionStorage`, noted when the page leaves for its own attempt, cleared once the tab has a session again. Every access in `try`/`catch`; storage that throws remembers nothing, says the tab tried, and notes no attempt ([`sign-in-memory.ts`](../../frontend/src/app/core/sign-in-memory.ts)) |
 | `KeepAliveService` | The session's idle clock while a person works without a write: the time of the last pointer press, key, wheel or touch, through passive listeners, and every five minutes — while the document is visible and there was input since it last asked — one `GET /api/v1/me` marked `PERSON_ACTIVITY`, the one read that moves the clock; the shell starts it and stops it with itself ([*the idle clock*](#the-idle-clock), below) |
@@ -230,7 +230,7 @@ another client's write ─► backend: NOTIFY at commit ─► SSE: event ticket
         ▼
 EventStreamService.events ─► TicketsService: cached and older? GET the ticket ─► cache entry ─► every view showing it
                          └─► every open list reloads once per burst (150 ms) ─► new or moved tickets appear
-TicketRelations (detail page): comment/question/link of its key ─► that part and the activity reload
+TicketRelations (detail page): comment/question/link/pull_request of its key ─► that part and the activity reload
                               link of its key, or ticket/link of a ticket its tree shows ─► the prerequisite tree reloads
 ```
 
@@ -255,7 +255,9 @@ membership event without `tenant`, from a backend that does not send it yet, cou
 tenant: a reload too many, never one too few.
 
 Lists hold keys and read the tickets through the cache, so one refetch updates the backlog, the
-boards, the person-level lists, the tenant's ticket list and the detail page at once; the dashboard holds no keys, it is
+boards, the person-level lists, the tenant's ticket list and the detail page at once; `pull_request.changed` — what GitHub's
+webhook linked or reported, or a person's removal of a link ([ADR 0071] D6) — reloads the detail page's list of pull requests and its
+activity and nothing else, since a ticket's version and the lists stay as they were; the dashboard holds no keys, it is
 counts the server makes, and loads again on its own ([the dashboard](#the-dashboard)). The backlog
 holds a reload back while a row is dragged and keeps its own
 moves on top of the answers that do not show them yet ([the backlog](#the-backlog)); a board holds
@@ -397,7 +399,7 @@ constructor() {
 
 | Page | Shows | Its predicate, besides what `reloadOn` follows for every page |
 |---|---|---|
-| Inbox | the notifications grouped by ticket, the groups in the order of their newest entry (`groupByTicket`): the tenant, the key and title as they are now, the state; per entry who acted — with the mark of an agent or a token — and what happened (`happening`: assigned it to you, asked you a question, answered your question, moved it to a state, closed the ticket that blocks it, commented, registered an urgent need, mentioned you in a comment), whether a comment or question was withdrawn since, and when; an unread entry has a dot and *Mark read*. *Mark all read* marks up to the newest entry shown, and opening a ticket from here marks its group's unread entries | `inbox.changed`, and a ticket deleted or restored in any tenant (`changesExistence`): no `inbox.changed` tells of either, and the server leaves a deleted ticket's notifications out |
+| Inbox | the notifications grouped by ticket, the groups in the order of their newest entry (`groupByTicket`): the tenant, the key and title as they are now, the state; per entry who acted — with the mark of an agent or a token; GitHub for its webhook's `system:github` — and what happened (`happening`: assigned it to you, asked you a question, answered your question, moved it to a state, closed the ticket that blocks it, commented, registered an urgent need, mentioned you in a comment, reported pull request #34 merged — the work may be ready to move), whether a comment or question was withdrawn since, and when; an unread entry has a dot and *Mark read*. *Mark all read* marks up to the newest entry shown, and opening a ticket from here marks its group's unread entries | `inbox.changed`, and a ticket deleted or restored in any tenant (`changesExistence`): no `inbox.changed` tells of either, and the server leaves a deleted ticket's notifications out |
 | Next for me | the person's open tickets and the unassigned open tickets of the projects they see, by score ([ADR 0014] D5): the tenant, the type, the key and title, the place in the backlog — `now #2`, the horizon and the place among its open tickets the person sees, with the score in its tooltip —, the severity, the state, `yours` or `unassigned`, the last change | `ticket.changed` of any tenant — an assignment, an unassignment, a move, a severity or a horizon —, `interest.changed` — a stake moves a score — and `project.changed` — a sort moves a place |
 | Assigned to me | the person's open tickets, by score: as "next for me", without `yours` | as "next for me" |
 | Open decisions | the open questions asked of the person or open in the tenant: the tenant, the ticket, its state, the question with its number, `asked of you` or `open in the tenant` and who asked | `question.changed` of any tenant, and a ticket deleted or restored in any tenant (`changesExistence`) |
@@ -791,9 +793,12 @@ The ticket's page ([`ticket-detail.ts`](../../frontend/src/app/features/ticket/t
 [ADR 0018] D2) shows the title as its heading, the body, the prerequisite tree, the questions, the
 comments and the activity, and beside them the fields, the stake, the links, the files and the time.
 An act of the activity reads as its person and its action (`describe`): the sort of the project's
-rank as *sorted the backlog by score*, and the act on the horizon, which the record keeps as
+rank as *sorted the backlog by score*, the act on the horizon, which the record keeps as
 `overridden`, as *set the horizon to now* or *returned the ticket to later* by its `after`
-([ADR 0010] D1). Its parts around the ticket are [`TicketRelations`](../../frontend/src/app/features/ticket/ticket-relations.ts),
+([ADR 0010] D1), and what GitHub's webhook linked and reported by the pull request's number or the
+commit's short id, its system actor named GitHub — *GitHub linked pull request #34*, *GitHub reported
+pull request #34 merged*, *Ada removed the link of commit 0d1a26e* (`actorName`, `codeName` in
+[`shared/pull-requests.ts`](../../frontend/src/app/shared/pull-requests.ts); [ADR 0071] D6). Its parts around the ticket are [`TicketRelations`](../../frontend/src/app/features/ticket/ticket-relations.ts),
 which the page provides; everything else reads the ticket through the cache. The body, a comment, a
 question's options and its answer show as the server rendered them, through
 [`RenderedText`](../../frontend/src/app/shared/rendered-text.ts) and Angular's sanitiser; the body's
@@ -812,7 +817,14 @@ a search hit's — scrolls the page to that part once it has loaded.
 | [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a tenant administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts, until a newer version of the comment — an edit, a withdrawal, which hides them as it hides the text — closes them. An edit sends the comment's mentions: those it holds, but one whose `@<name>` the text held and the edit took out, and the persons picked in the edit | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
 | [`EditQuestion`](../../frontend/src/app/features/ticket/conversation-forms.ts) | The asker changes an open question's text, options and recommendation over its version | As a comment |
 | [`TimeCard`](../../frontend/src/app/features/ticket/records-cards.ts) | The author corrects an entry in its row over its version, or voids it; *corrected* shows its earlier values | Time entries are not published: the card loads them again and shows the conflict note |
+| [`PullRequestsCard`](../../frontend/src/app/features/ticket/pull-requests-card.ts), in the side column after the links, shown while the ticket has a pull request ([ADR 0071] D6) | Each pull request by its number, each default-branch commit by its short id — a link to its page at GitHub, `rel="noopener noreferrer"` —, its state, its title as text, the repository, the author, when it merged or was last heard of, and where its key was read; a member removes a wrong link after the page's question, which says that the removal stays (`Conversation.removePullRequest`) | — the list loads again on `pull_request.changed` |
 | [`TicketDelete`](../../frontend/src/app/features/ticket/ticket-delete.ts), beside the moves for a tenant administrator | The deletion ([ADR 0024] D1, D7): the open tickets that wait on it read first (`TicketActions.dependents`), then the page's dialog names them — a deletion does not refuse over them — and says that the ticket can be restored from the deleted tickets for thirty days; confirmed, `DELETE …/{number}`, a toast, and the project's backlog | — |
+
+**The merge hint.** While the ticket is open — neither `done` nor `dropped` — and a pull request or a
+default-branch commit of it is merged, the header says so under the block and the threat: *Pull request
+#34 was merged — the work may be ready to move. Nothing moved it: moving it stays yours.*, or *A commit
+naming it reached the default branch* (`readyToMove`), in the tint of `--p-state-done`. It moves nothing
+([ADR 0071] D6, [ADR 0009] D5).
 
 **A ticket that goes while it is shown** — deleted, or out of the person's sight — leaves the cache
 when the refetch its event starts answers `404`, and the page says *No such ticket* as for a key that
@@ -1059,7 +1071,14 @@ the installation sets none — read by the page itself when it opens (`GET …/a
 [ADR 0016] D6) through a `ConditionalPages`, and again on an upload or a purge in the tenant, a
 `resync` and a `poll` (`changesUsage`) — a deletion moves nothing, because a deleted ticket's files
 count until the purge; anybody else sees nothing of it, because the sum counts files they may not
-see.
+see. Under it, for the administrators only, [`GitHubWebhook`](../../frontend/src/app/features/tenant/github-webhook.ts)
+shows whether the tenant takes GitHub's webhook ([ADR 0071] D1, D7): who made its secret and when, the
+payload URL — `document.location.origin` and the `webhook_path` the API answers — with a copy button, and
+what to set at GitHub; *Make the secret*, or *Rotate the secret* and *Revoke*, each of the last two after
+a question of the section's own `ConfirmationService`. A new secret shows once in
+[`SecretDialog`](../../frontend/src/app/shared/secret-dialog.ts) with the payload URL beside it, held in
+one signal until *I have stored it*; the section loads again after each act. Making and rotating go in the
+page's browser session, which the API asks of them.
 
 The settings form of a project starts again from the list only when another project or another
 value of its own fields arrives: the list loads again on events, and the restriction raises the
@@ -1211,4 +1230,5 @@ accessible names an element, are part of a page's contract, and `ng lint` covers
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
 [ADR 0055]: ../adr/0055-english-only-browser-locale-for-dates-and-numbers.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md
+[ADR 0071]: ../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md
 [ADR 0076]: ../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md

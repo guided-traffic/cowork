@@ -10,16 +10,19 @@ logs. The variables named here are explained one by one in
 
 `cowork serve` is the container command. In order:
 
-1. **Configuration.** Every `COWORK_*` variable is read. Invalid values and a missing
-   `COWORK_DATABASE_URL` end the process with exit code 1 and one message that lists them
-   all; `serve`'s own requirements — `COWORK_SESSION_KEY`, and `COWORK_DATABASE_OWNER_URL`
-   while `COWORK_MIGRATE_ON_START` is `true` — are listed the same way once the rest is valid.
+1. **Configuration.** Every `COWORK_*` variable is read. Invalid values and a runtime role
+   given neither as `COWORK_DATABASE_URL` nor as its components end the process with exit code 1
+   and one message that lists them all; the components are composed into the URL here
+   ([installation.md](installation.md#the-secrets)). `serve`'s own requirements —
+   `COWORK_SESSION_KEY`, the owner role's connection while `COWORK_MIGRATE_ON_START` is `true`,
+   and with `COWORK_OIDC_ISSUER` the client's `COWORK_OIDC_CLIENT_ID` and
+   `COWORK_OIDC_CLIENT_SECRET` — are listed the same way once the rest is valid.
    These messages go to stderr as `cowork: …`, before the log exists. They name the variable
-   and quote a rejected setting such as a size or a duration — never the value of a URL, a key
-   or a secret.
+   and quote a rejected setting such as a size, a duration or a port — never the value of a URL,
+   a key, a password or a secret.
 2. **The migration run**, unless `COWORK_MIGRATE_ON_START=false`; then the log says
-   `migrations skipped on start`. The chart always sets `false`: its pods migrate in an init
-   container before the server starts. See below.
+   `migrations skipped on start`. The chart always sets `false`: the migration runs before the
+   server starts, in an init container of the pod or in the migration Job. See below.
 3. **The connection pool** is opened as the runtime role and pinged. A database that cannot
    be reached ends the process with exit code 1; the pod restarts and tries again, which is the
    intended behaviour while a database is still coming up.
@@ -50,7 +53,9 @@ logs. The variables named here are explained one by one in
    advisory lock that makes replicas wait for each other
    ([installation.md](installation.md#the-local-administrator)). With neither variable set it
    deactivates an account it kept before and otherwise does nothing; a failure ends the process
-   with `bootstrap failed` and exit code 1.
+   with `bootstrap failed` and exit code 1. In the chart's job mode the migration Job has run the
+   same synchronisation before the pod started, and the start finds it in step
+   ([below](#the-migration-run)).
 7. **The event listener** starts: one connection of its own, outside the pool, listening on
    the channel `cowork_events`; it reconnects by itself when the connection drops
    ([the event stream](#the-event-stream)).
@@ -61,20 +66,26 @@ logs. The variables named here are explained one by one in
    the log says `the chat talks to a model` once per provider with its id, kind and model, and
    `the chat's limits`; it does not contact a provider, so a wrong URL or key shows at the first turn
    that picks it ([the chat's stream](#the-chats-stream), [chat.md](chat.md)).
-10. **The listener** opens on `COWORK_LISTEN_ADDR` and the log says `listening` with the
-    address, the version and the commit.
+10. **The listeners** open: `COWORK_LISTEN_ADDR`, and `COWORK_METRICS_ADDR` unless its empty value
+    switches it off — both before either serves, so a port that is taken ends the process with
+    `server stopped with error` and exit code 1. The log says `listening` with the address, the
+    version and the commit, and `metrics listening` with the metrics address — or `the metrics
+    listener is off` ([metrics.md](metrics.md)).
 
 From then on each replica, at start and once an hour, removes the idempotency records older
 than a day, the sessions past their absolute or their idle limit, the login's failed
-attempts and ended locks older than fifteen minutes, and the notifications read more than ninety
+attempts and ended locks older than fifteen minutes, the notifications read more than ninety
 days ago — an unread one stays ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)
-D6) —, and purges the tickets deleted more than thirty days ago, up to 200 a run, with their
+D6) — and the GitHub webhook's deliveries older than a day ([github.md](github.md#running-it)), and
+purges the tickets deleted more than thirty days ago, up to 200 a run, with their
 attachments' objects once the purge committed
 ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
 D2); each job holds a transaction-level
 advisory lock of its own that lets one replica at a time do it, and the log says
 `job removed expired rows` with the job and the count when there were any — the purge says
-`ticket purged` with each key first. A session past a
+`ticket purged` with each key first. A job is named in the log as in the metrics, by its system
+actor's name: `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`,
+`ticket-purge`. A session past a
 limit is refused at its next request whether or not the job has run; the job only keeps the
 table small. A purge is irreversible; an installation that must keep a deleted ticket longer has
 no setting for it yet.
@@ -83,17 +94,24 @@ no setting for it yet.
 
 The schema lives in the binary as numbered SQL files, forward only. A run applies every file
 newer than the version recorded in the `schema_migrations` table, each file in one
-transaction, as the **owner role** of `COWORK_DATABASE_OWNER_URL`. The runtime role — the user
-named in `COWORK_DATABASE_URL` — receives what each file grants it, and is checked before and
-after the run. Several runs at once take a PostgreSQL advisory lock in turn; the first applies,
-the rest log `database schema is current` with `applied=0`.
+transaction, as the **owner role** of `COWORK_DATABASE_OWNER_URL` (or of its components). The
+runtime role — the user of `COWORK_DATABASE_URL` or `COWORK_DATABASE_USER` — receives what each file
+grants it, and is checked before and after the run. Several runs at once take a PostgreSQL advisory
+lock in turn; the first applies, the rest log `database schema is current` with `applied=0`.
 
 Where a run happens:
 
-- **In the chart:** the `migrate` init container of every backend pod runs `cowork migrate`;
-  the server container starts after it succeeded and never migrates
-  ([installation.md](installation.md#how-the-schema-is-migrated)).
-- **`cowork migrate`**, run by hand or by a Job you write, with both URLs — what an
+- **In the chart, `migrations.mode: onStart`** (the default): the `migrate` init container of every
+  backend pod runs `cowork migrate`; the server container starts after it succeeded and never
+  migrates ([installation.md](installation.md#how-the-schema-is-migrated)).
+- **In the chart, `migrations.mode: job`:** the Helm hook Job `<fullname>-migrate` runs `cowork
+  migrate` with `COWORK_MIGRATE_BOOTSTRAP=true` before every install and upgrade: after the schema
+  step it opens a pool of the runtime role and runs the bootstrap of `cowork serve` — under the
+  bootstrap's own advisory lock, the one the pods take — and logs `the bootstrap ran after the
+  migration` ([installation.md](installation.md#job-mode)). Without the variable `cowork migrate`
+  never touches the bootstrap, which is why the init container, given no administrator, deactivates
+  none.
+- **`cowork migrate`**, run by hand or by a Job you write, with both roles' connections — what an
   installation with `backend.config.migrateOnStart: false` has to do before the pods start.
 - **`cowork serve` itself**, when `COWORK_MIGRATE_ON_START=true` and the owner URL is set —
   `make run` does this. A serving process that holds the owner credential keeps row-level
@@ -129,7 +147,7 @@ is not an error: the run applies nothing and logs
 
 | Probe | Path | Answers | The chart's default |
 |---|---|---|---|
-| startup | `/healthz` | 200 as soon as the listener is open. In the chart the migration ran before, in the init container, so this covers connecting and the database check | every 5 s, up to 36 failures — three minutes |
+| startup | `/healthz` | 200 as soon as the listener is open. In the chart the migration ran before, in the init container or the Job, so this covers connecting and the database check | every 5 s, up to 36 failures — three minutes |
 | liveness | `/healthz` | 200 while the process serves; says nothing about the database | every 10 s |
 | readiness | `/readyz` | 200 when a ping on the connection pool succeeds; otherwise 503 `not_ready` with the detail `the database does not answer` — the ping's error goes to the log (`not ready`), never into the body | every 10 s |
 
@@ -142,11 +160,15 @@ probe.
 
 ### Shutdown
 
-On `SIGTERM` the server stops accepting connections and, at the same moment, ends every open
+On `SIGTERM` the server stops accepting connections — on the API's port and the metrics port
+alike — and, at the same moment, ends every open
 event stream with `event: unavailable`, so the clients reconnect elsewhere instead of holding
 the drain open; it finishes in-flight requests for up to `COWORK_SHUTDOWN_TIMEOUT` (default
 15s), closes the pool and exits 0 — or 1, logging `server stopped with error`, when the drain
-does not finish in time. With a stream open, the process stopped in well under a second in
+does not finish in time. A drain waits up to five seconds, the Go HTTP server's own rule, for a
+connection a client opened and never sent a request on — a keep-alive client's spare dial is one —,
+so a timeout of five seconds or less can end a clean shutdown with exit 1 (seen in the integration
+tier on 2026-10-06). With a stream open, the process stopped in well under a second in
 the run of both images; no test measures it. Keep the timeout below the pod's `terminationGracePeriodSeconds` (chart
 default 30s); otherwise the kubelet kills what the server was still draining.
 
@@ -169,17 +191,20 @@ an alert or a look:
 | `token refused` | info | a presented token was expired, revoked, or — its person one of the identity provider's — outside the provider's gate, of another issuer than the configured one, or judged by groups older than `COWORK_OIDC_GROUPS_MAX_AGE` (`not_allowed`); the line names the token id and the reason |
 | the identity provider's lines | info, warn, error | discovery at start, failed logins, the groups refresh, the token gate ([below](#the-login-through-the-identity-provider)) |
 | `client addresses are read through trusted proxies` | info | at start, when `COWORK_TRUSTED_PROXIES` is set; the line lists the networks as parsed |
-| `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
+| `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something — or the migration Job's in job mode; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
+| `the bootstrap ran after the migration` | info | in the migration Job's log: `COWORK_MIGRATE_BOOTSTRAP` was `true` and the bootstrap succeeded after the schema step |
 | `a stored password hash cannot be verified` | error | an account's hash is damaged or foreign; the login answers its person like a wrong password, and the line carries the request id |
-| `job removed expired rows`, `job failed` | info, error | the hourly jobs ([above](#the-backend)) |
+| `job removed expired rows`, `job failed` | info, error | the hourly jobs ([above](#the-backend)); `job failed` twice in a row is the alert `CoworkJobFailing` ([metrics.md](metrics.md#coworkjobfailing)) |
+| `metrics listening`, `the metrics listener is off` | info | at start: the metrics listener's address, or `COWORK_METRICS_ADDR` empty ([metrics.md](metrics.md)) |
+| `the schema version could not be read for the metrics` | warn | a scrape's read of the version table failed; the line carries the error, the scrape goes without the schema's two series until the next read |
 | `ticket purged` | info | the purge job removed a ticket deleted thirty days ago; the line names its key and how many attachments it had |
 | `an attachment object of a purged ticket could not be removed`, `a purged ticket had attachments, and no object storage is configured to remove them from` | error, warn | a purge — the job's or an administrator's — committed and an object stays in the bucket that no row names; the line names the ticket and the object key, which the operator may remove by hand |
 | `the chat's provider failed`, `a turn of the chat failed` | warn, error | a turn of the chat ended on its provider — the kind, the status and a clip of the provider's message without the key — or on anything else ([the chat's stream](#the-chats-stream)) |
 | `no object storage configured; attachments cannot be uploaded` | warn | at start, without `COWORK_S3_*` |
 | `database schema is ahead of this binary; …` | warn | an image rollback over a newer schema |
 
-There is no metrics endpoint yet; [ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
-decides one, and it is not built.
+The numbers — requests, the database pool, the jobs, the event streams, the acts, the logins, the
+schema — are Prometheus text on the metrics listener, not lines of this log: [metrics.md](metrics.md).
 
 ## The login
 
@@ -529,6 +554,11 @@ What nginx does with a request:
 The policy keeps every script, style sheet, font, image and request of the UI on its own origin and
 runs no inline script ([trust-boundaries.md](../security/trust-boundaries.md#the-shells-content-security-policy)).
 A page that broke under it shows a violation in the browser's console, never in nginx's log.
+
+A second server listens on `127.0.0.1:8082`, the pod's loopback address, with nginx's
+`stub_status` and nothing else, and logs nothing: the counts the exporter sidecar of
+`frontend.metrics.exporter.enabled` reads. Without the sidecar nothing reads it, and nothing outside
+the pod reaches it ([metrics.md](metrics.md#nginxs-numbers)).
 
 The pod runs with a read-only root filesystem; the chart mounts an `emptyDir` at `/tmp`, which is
 all nginx writes — its pid and temporary files —, and `fsGroup: 101` is what makes it writable for

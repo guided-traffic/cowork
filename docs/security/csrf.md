@@ -76,6 +76,17 @@ Not verified against any particular browser: the tests send the headers a browse
 run no browser. A privacy-hardened browser that strips both `Origin` and `Referer` on
 same-origin requests is refused by the rule; the UI tells the person why.
 
+## GitHub's webhook is outside the check
+
+`POST /api/v1/tenants/{tenant}/integrations/github/webhook` is a public write that carries no
+cookie — a cookie sent with it is never looked at — and whose credential is the HMAC of its body
+under the tenant's secret, which no other site can compute
+([ADR 0037](../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md)
+D5 as amended 2026-10-06). GitHub sends no `Origin`, so it is not held to the origin half either: the
+API document marks it `x-cowork-signed` instead of `x-cowork-origin-check`, and the unit test over the
+document holds that mark to this route alone. A page of another site can post to it, as any client
+can, and gets `404` or `401` like anybody without the secret ([github-webhook.md](github-webhook.md)).
+
 ## What this does not cover
 
 <a id="h-21"></a>

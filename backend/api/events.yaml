@@ -9,7 +9,9 @@ events:
     summary: The tenant's events the caller may see, as server-sent events
     description: |
       `ticket.changed` (an upload included), `comment.changed`, `question.changed`,
-      `link.changed` and `interest.changed`, each with `data: {"key", "version", "kind"}` — a key
+      `link.changed`, `interest.changed` and `pull_request.changed` — a pull request or a commit
+      GitHub's webhook linked, merged, closed or reopened, or a person removed (docs/adr/0071 D6) —,
+      each with `data: {"key", "version", "kind"}` — a key
       and a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a
       project the caller cannot see, or of a confidential ticket they may not read, never
       arrives (D3).

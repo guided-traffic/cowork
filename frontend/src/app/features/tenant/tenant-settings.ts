@@ -23,6 +23,7 @@ import { ProblemService } from '../../core/problem.service';
 import { keepShown, refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
+import { GitHubWebhook } from './github-webhook';
 
 /** A count of bytes as people read it, in the binary units the configuration takes: `1.5 MiB`. */
 export function byteSize(bytes: number): string {
@@ -66,14 +67,14 @@ export function quotaShare(usage: AttachmentUsage): number | null {
 /**
  * The tenant's settings, for its administrators: the name, whether members create projects
  * (docs/adr/0034 D9) and whether members see each other's time (docs/adr/0017), written with
- * the version read (docs/adr/0050 D3); and what the tenant's attachments hold against the quota
+ * the version read (docs/adr/0050 D3); what the tenant's attachments hold against the quota
  * of the installation (docs/adr/0016 D6), read when the page opens and again on an upload or a
- * purge in the tenant.
+ * purge in the tenant; and GitHub's webhook with its secret (docs/adr/0071, {@link GitHubWebhook}).
  */
 @Component({
   selector: 'app-tenant-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, FormsModule, InputText, ToggleSwitch],
+  imports: [ButtonDirective, FormsModule, GitHubWebhook, InputText, ToggleSwitch],
   template: `
     <section class="page">
       <h1>Settings</h1>
@@ -170,6 +171,7 @@ export function quotaShare(usage: AttachmentUsage): number | null {
             <p class="muted" data-testid="attachment-usage-failure">{{ failure }}</p>
           }
         </section>
+        <app-github-webhook />
       }
     </section>
   `,

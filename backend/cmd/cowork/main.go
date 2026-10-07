@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/events"
 	"github.com/guided-traffic/cowork/backend/internal/httpserver"
 	"github.com/guided-traffic/cowork/backend/internal/llm"
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/internal/storage"
 	"github.com/guided-traffic/cowork/backend/internal/store"
@@ -36,7 +38,8 @@ const usageText = `Usage: cowork <command>
 
 Commands:
   serve     Apply pending migrations (unless COWORK_MIGRATE_ON_START=false), then serve the API.
-  migrate   Apply pending migrations under the owner role and exit.
+  migrate   Apply pending migrations under the owner role and exit; with
+            COWORK_MIGRATE_BOOTSTRAP=true, run the bootstrap afterwards.
   version   Print the build version and exit.
 
 Configuration is read from COWORK_* environment variables; the reference is README.md.
@@ -70,10 +73,17 @@ func run(ctx context.Context, args []string, lookup func(string) (string, bool),
 	}
 }
 
+// runMigrate applies the pending migrations as the owner role and, with
+// COWORK_MIGRATE_BOOTSTRAP=true, runs the bootstrap after the schema step, as
+// the runtime role and under the bootstrap's own advisory lock — the one
+// `cowork serve` takes at its start — with the same configuration
+// (docs/adr/0057 D4). Without it the run never touches the bootstrap: the
+// chart's init container, which is given no administrator, must not deactivate
+// the one the serving container keeps.
 func runMigrate(ctx context.Context, lookup func(string) (string, bool), stderr io.Writer) int {
 	cfg, err := config.Load(lookup)
 	if err == nil && cfg.DatabaseOwnerURL == "" {
-		err = fmt.Errorf("%s is required by cowork migrate", config.EnvDatabaseOwnerURL)
+		err = fmt.Errorf("%s is required by cowork migrate", config.OwnerConnection())
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "cowork: %v\n", err)
@@ -84,7 +94,44 @@ func runMigrate(ctx context.Context, lookup func(string) (string, bool), stderr 
 		logger.Error("migration failed", "error", err)
 		return 1
 	}
+	if !cfg.MigrateBootstrap {
+		return 0
+	}
+	if err := bootstrapAfterMigration(ctx, cfg, logger); err != nil {
+		logger.Error("bootstrap failed", "error", err)
+		return 1
+	}
 	return 0
+}
+
+// bootstrapAfterMigration runs the bootstrap of `cowork serve` in the
+// migration run: on a pool of the runtime role of its own, closed when it is
+// done.
+func bootstrapAfterMigration(ctx context.Context, cfg config.Config, logger *slog.Logger) error {
+	db, err := store.Open(ctx, cfg.DatabaseURL, store.Options{Logger: logger})
+	if err != nil {
+		return fmt.Errorf("connect as the runtime role: %w", err)
+	}
+	defer db.Close()
+	if err := bootstrap.Sync(ctx, db, bootstrapParams(cfg), logger); err != nil {
+		return err
+	}
+	logger.Info("the bootstrap ran after the migration", "variable", config.EnvMigrateBootstrap)
+	return nil
+}
+
+// bootstrapParams is what the configuration says the installation starts with
+// (docs/adr/0032): the local administrator, the bootstrap tenant and the
+// identity provider's administrator group.
+func bootstrapParams(cfg config.Config) bootstrap.Params {
+	params := bootstrap.Params{
+		Username: cfg.LocalAdminUsername, Password: cfg.LocalAdminPassword,
+		TenantSlug: cfg.BootstrapTenantSlug, TenantName: cfg.BootstrapTenantName,
+	}
+	if cfg.OIDC != nil {
+		params.AdminGroup = cfg.OIDC.AdminGroup
+	}
+	return params
 }
 
 func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io.Writer) int {
@@ -110,7 +157,8 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		logger.Info("migrations skipped on start", "reason", config.EnvMigrateOnStart+"=false")
 	}
 
-	db, err := store.Open(ctx, cfg.DatabaseURL, store.Options{Logger: logger})
+	m := metricsOf(cfg)
+	db, err := store.Open(ctx, cfg.DatabaseURL, store.Options{Logger: logger, Metrics: m})
 	if err != nil {
 		logger.Error("database connection failed", "error", err)
 		return 1
@@ -132,20 +180,16 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 	}
 
 	// The configured administrator and bootstrap tenant, after the migrations and
-	// before the first request (docs/adr/0032 D2, D8).
-	params := bootstrap.Params{
-		Username: cfg.LocalAdminUsername, Password: cfg.LocalAdminPassword,
-		TenantSlug: cfg.BootstrapTenantSlug, TenantName: cfg.BootstrapTenantName,
-	}
-	if cfg.OIDC != nil {
-		params.AdminGroup = cfg.OIDC.AdminGroup
-	}
-	if err := bootstrap.Sync(ctx, db, params, logger); err != nil {
+	// before the first request (docs/adr/0032 D2, D8). The migration Job of the
+	// chart has run it already when it migrated; a start that finds everything
+	// in step changes nothing, and a Secret rotated since reaches the account
+	// here, at the restart (docs/adr/0057 D4).
+	if err := bootstrap.Sync(ctx, db, bootstrapParams(cfg), logger); err != nil {
 		logger.Error("bootstrap failed", "error", err)
 		return 1
 	}
 
-	hub := events.New(cfg.SSEReplayWindow, cfg.SSEMaxStreamsPerPerson)
+	hub := events.New(cfg.SSEReplayWindow, cfg.SSEMaxStreamsPerPerson, m)
 	go db.Listen(ctx, hub.Publish, hub.SetUp)
 	objects, err := objectStorage(cfg, logger)
 	if err != nil {
@@ -192,21 +236,71 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		TrustedProxies:       cfg.TrustedProxies,
 		OIDC:                 identity,
 		Chat:                 chatOptions,
+		Metrics:              m,
 	})
 	if err != nil {
 		logger.Error("API setup failed", "error", err)
 		return 1
 	}
-	root = httpserver.New(httpserver.Options{Ready: db.Ping, API: apiHandler, Logger: logger})
+	root = httpserver.New(httpserver.Options{Ready: db.Ping, API: apiHandler, Logger: logger, Metrics: m})
 	go runJobs(ctx, db, objects, logger, cfg.SessionIdle)
 
-	logger.Info("listening", "addr", cfg.ListenAddr, "version", version, "commit", commit)
-	if err := httpserver.ListenAndServe(ctx, cfg.ListenAddr, root, cfg.ShutdownTimeout, hub.Close); err != nil {
+	if err := serve(ctx, cfg, root, m, hub, logger); err != nil {
 		logger.Error("server stopped with error", "error", err)
 		return 1
 	}
 	logger.Info("server stopped")
 	return 0
+}
+
+// metricsOf is the registry of the backend's instruments, or nil — nothing
+// recorded — while COWORK_METRICS_ADDR switches the listener that would serve
+// them off (docs/adr/0060 D1).
+func metricsOf(cfg config.Config) *metrics.Metrics {
+	if cfg.MetricsAddr == "" {
+		return nil
+	}
+	return metrics.New()
+}
+
+// serve binds the API listener and, unless COWORK_METRICS_ADDR switches it
+// off, the metrics listener, before either serves, so that a port that is
+// taken refuses the start; the two then share one lifecycle — the signal shuts
+// both down within the shutdown timeout, and one that fails stops the other
+// (docs/adr/0060 D1). The event streams end as the API listener's shutdown
+// begins (docs/adr/0054 D9).
+func serve(ctx context.Context, cfg config.Config, root http.Handler, m *metrics.Metrics, hub *events.Hub, logger *slog.Logger) error {
+	listeners, err := bind(cfg, root, m, logger)
+	if err != nil {
+		return err
+	}
+	listeners[0].OnShutdown = []func(){hub.Close}
+	logger.Info("listening", "addr", cfg.ListenAddr, "version", version, "commit", commit)
+	if m != nil {
+		logger.Info("metrics listening", "addr", cfg.MetricsAddr, "path", "/metrics")
+	} else {
+		logger.Info("the metrics listener is off", "variable", config.EnvMetricsAddr)
+	}
+	return httpserver.ServeAll(ctx, cfg.ShutdownTimeout, listeners...)
+}
+
+// bind opens the API listener, first, and the metrics listener when m is set.
+func bind(cfg config.Config, root http.Handler, m *metrics.Metrics, logger *slog.Logger) ([]httpserver.Listener, error) {
+	api, err := net.Listen("tcp", cfg.ListenAddr)
+	if err != nil {
+		return nil, err
+	}
+	listeners := make([]httpserver.Listener, 0, 2)
+	listeners = append(listeners, httpserver.Listener{Listener: api, Handler: root})
+	if m == nil {
+		return listeners, nil
+	}
+	scrape, err := net.Listen("tcp", cfg.MetricsAddr)
+	if err != nil {
+		_ = api.Close()
+		return nil, fmt.Errorf("the metrics listener (%s): %w", config.EnvMetricsAddr, err)
+	}
+	return append(listeners, httpserver.Listener{Listener: scrape, Handler: httpserver.NewMetrics(m.Handler(logger), logger)}), nil
 }
 
 // objectStorage is the configuration's object storage, or nil without one,
@@ -270,16 +364,21 @@ func discoverIssuer(ctx context.Context, cfg config.Config, logger *slog.Logger)
 		DisplayName: o.DisplayName}, nil
 }
 
-// requireForServe checks what only `cowork serve` needs: the server key, and
-// the owner role's URL while it migrates on start.
+// requireForServe checks what only `cowork serve` needs: the server key, the
+// owner role's connection while it migrates on start, and the client of a
+// configured identity provider, which the start's discovery and every login
+// use.
 func requireForServe(cfg config.Config) error {
 	var errs []error
 	if cfg.SessionKey == nil {
 		errs = append(errs, fmt.Errorf("%s is required by cowork serve", config.EnvSessionKey))
 	}
 	if cfg.MigrateOnStart && cfg.DatabaseOwnerURL == "" {
-		errs = append(errs, fmt.Errorf("%s is required while %s is true; the chart migrates in an init container and sets it to false",
-			config.EnvDatabaseOwnerURL, config.EnvMigrateOnStart))
+		errs = append(errs, fmt.Errorf("%s is required while %s is true; the chart migrates in an init container or a Job and sets it to false",
+			config.OwnerConnection(), config.EnvMigrateOnStart))
+	}
+	if err := cfg.OIDC.RequireClient(); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }
@@ -291,7 +390,8 @@ func requireForServe(cfg config.Config) error {
 // request, a lock that ended holds nothing at the next attempt. The purge of
 // the tickets deleted thirty days ago is here too (docs/adr/0024 D2): their
 // attachment objects go once the purge committed, and each purged key is
-// logged.
+// logged. A job's name in the log is its system actor's, which the metrics
+// name it by too (docs/adr/0060 D4).
 func runJobs(ctx context.Context, db *store.DB, objects *storage.Client, logger *slog.Logger, sessionIdle time.Duration) {
 	expiry := time.NewTicker(time.Hour)
 	defer expiry.Stop()
@@ -299,16 +399,17 @@ func runJobs(ctx context.Context, db *store.DB, objects *storage.Client, logger 
 		name string
 		run  func(ctx context.Context) (int64, error)
 	}{
-		{"idempotency expiry", db.ExpireIdempotencyKeys},
-		{"session expiry", func(ctx context.Context) (int64, error) { return db.ExpireSessions(ctx, time.Now(), sessionIdle) }},
-		{"login expiry", func(ctx context.Context) (int64, error) {
+		{"idempotency-expiry", db.ExpireIdempotencyKeys},
+		{"session-expiry", func(ctx context.Context) (int64, error) { return db.ExpireSessions(ctx, time.Now(), sessionIdle) }},
+		{"login-expiry", func(ctx context.Context) (int64, error) {
 			return db.ExpireLoginState(ctx, time.Now(), store.LoginWindow)
 		}},
-		{"notification expiry", func(ctx context.Context) (int64, error) { return db.ExpireNotifications(ctx, time.Now()) }},
-		{"ticket purge", func(ctx context.Context) (int64, error) {
+		{"notification-expiry", func(ctx context.Context) (int64, error) { return db.ExpireNotifications(ctx, time.Now()) }},
+		{"github-delivery-expiry", func(ctx context.Context) (int64, error) { return db.ExpireGitHubDeliveries(ctx, time.Now()) }},
+		{"ticket-purge", func(ctx context.Context) (int64, error) {
 			purged, err := db.PurgeDeletedTickets(ctx, time.Now())
 			for _, p := range purged {
-				logger.Info("ticket purged", "job", "ticket purge", "ticket", p.Key, "attachments", len(p.Attachments))
+				logger.Info("ticket purged", "job", "ticket-purge", "ticket", p.Key, "attachments", len(p.Attachments))
 			}
 			api.RemovePurgedObjects(ctx, objects, logger, purged)
 			return int64(len(purged)), err

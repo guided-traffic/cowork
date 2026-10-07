@@ -14,5 +14,6 @@ export const INBOX_REASON: InboxReason[] = [
   'blocker_closed',
   'commented',
   'urgent',
-  'mentioned'
+  'mentioned',
+  'merged'
 ];
