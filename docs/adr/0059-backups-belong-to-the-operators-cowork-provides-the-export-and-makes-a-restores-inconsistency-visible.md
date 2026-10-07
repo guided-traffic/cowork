@@ -12,12 +12,13 @@ not objected to.
 `/markdown`) and D4's honest `404` for an attachment whose bytes are missing; the project and
 tenant export, the consistency check, the restore steps and D6 arrive with the export.
 
-**Built** (2026-10-06): D4 and D6 for the consistency check, D1, D2 and D5 as the operations
+**Built** (2026-10-06): D4 and D6 — the consistency check —, and D1, D2 and D5 as the operations
 page [docs/operations/backups.md](../operations/backups.md). The project and the tenant export
-of D2 and D3 and the metric of the last export's age are the export's and are not part of this
-— the page describes the export as the release that brings both builds it. What the record left
-open is made concrete in place, in D4, D5 and D6, by the implementer, open to the owner's
-objection:
+of D2 and D3 come with the export of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4, which the
+same release brings and the page describes as built; the metric of the last export's age comes
+with it. What the record left open is made concrete in place, in D4, D5 and D6, by the
+implementer, open to the owner's objection:
 
 - **D4** — the job `consistency-check` ([`store/consistency.go`](../../backend/internal/store/consistency.go)),
   [migration 43](../../backend/internal/store/migrations/000043_attachment_consistency.up.sql),
