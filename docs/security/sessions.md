@@ -27,9 +27,12 @@ random value of 256 bits, stores its SHA-256 and sends the value once, as the co
   asserts by searching the row's text for it.
 - **The prefix does what the record asks of the cookie.** `__Host-` makes a browser refuse the
   cookie unless it is `Secure`, has `Path=/` and no `Domain` — and refuse it from a sibling
-  subdomain. `Secure` is set in every environment; browsers treat `localhost` as a secure
-  context, so development needs no exception. A browser does not store the cookie from a plain
-  `http://` page that is not `localhost`: an installation without TLS in front cannot log in.
+  subdomain. `Secure` is set in every environment, with no exception for development: a browser
+  does not store the cookie from a plain `http://` page that is not `localhost`, so an installation
+  without TLS in front cannot log in, and WebKit, Safari's engine, does not store it from
+  `http://localhost` either — measured with Playwright on 2026-10-03, while Chromium does —, so
+  `make dev` serves HTTPS and the end-to-end tier puts TLS in front of the images
+  ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D2).
 - **A session is made at login and never before, and its value is never reused.** A login
   that presents a session cookie ends that session in the transaction that makes the new one,
   whoever's it was (D5) — the local login and the identity provider's alike.
@@ -63,12 +66,15 @@ predicates — is the code a token's request runs.
   `LookupSession`; `TestSessionLookupFindsThePresentedRowOnly`).
 - **Two limits** ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D3):
   the absolute one, `COWORK_SESSION_LIFETIME` (12 hours) from the login, and the idle one,
-  `COWORK_SESSION_IDLE` (2 hours) from the last use. A request moves the idle clock — at most
-  once a minute, `store.SessionTouchInterval`, so the idle limit is exact to the minute and a
-  busy page costs one write a minute — and never past the absolute limit. The backend's clock
-  decides both (`sessionLive`; `TestSessionLifetimes` moves a fake clock past each). A person who
-  works in a page without a request of their own keeps the clock moving through the browser's
-  keep-alive ([below](#what-keeps-a-session-and-what-brings-a-person-back)).
+  `COWORK_SESSION_IDLE` (2 hours) from the person's last activity. **Only the person's activity
+  moves the idle clock**: a write that passes the CSRF check, or a read that carries
+  `X-Cowork-Activity: input`, which the browser's keep-alive sends after the person's input
+  ([below](#what-keeps-a-session-and-what-brings-a-person-back)); no other read moves it
+  ([`api/session.go`](../../backend/internal/api/session.go) `movesIdleClock`;
+  `TestWhatMovesTheIdleClock`, `TestOnlyThePersonsActivityMovesTheIdleClock`). Such a request moves
+  it at most once a minute, `store.SessionTouchInterval`, so the idle limit is exact to the minute
+  and a busy page costs one write a minute, and never past the absolute limit. The backend's clock
+  decides both (`sessionLive`; `TestSessionLifetimes` moves a fake clock past each).
 - **The job** `session-expiry` removes the rows past a limit, at start and hourly under its
   own advisory lock, and records one `expired` act by `system:session-expiry` when it removed
   any. It keeps the table small; it enforces nothing, because a session past a limit is refused
@@ -143,9 +149,10 @@ person's.
   that names a person takes either credential.
 - **A turn of the chat presents the session again with every tool call.** Each call is a request of
   its own through the whole pipeline with the person's cookie ([chat.md](chat.md)): it is
-  authenticated anew, moves the idle clock like any request and may run the groups refresh, and a
-  session that ends while a turn runs refuses the turn's next call, which the model reads as a
-  failed call.
+  authenticated anew — a call that writes moves the idle clock like any write, one that reads moves
+  nothing, as the turn's own `POST` moved it when the person sent it — and may run the groups
+  refresh, and a session that ends while a turn runs refuses the turn's next call, which the model
+  reads as a failed call.
 - **A temporary password gates the session.** While the account's password is one an
   administrator set, the session may read `GET /api/v1/me`, change the password and log out;
   every other route is `403 password_change_required`
@@ -156,9 +163,10 @@ person's.
 - **An open event stream checks its session at every heartbeat** — the session row exists,
   neither limit has passed, the person is not deactivated — and ends when one fails
   ([`api/events.go`](../../backend/internal/api/events.go) `stillAdmitted`;
-  `TestEventStreamEndsWithItsSession`). An open stream does not extend the idle limit: a tab
-  that is only open logs out — while its stream stays connected; a new connection of it, and the
-  stream's polling fallback, are requests, which do ([H-63](#h-63)).
+  `TestEventStreamEndsWithItsSession`). A stream does not extend the idle limit — neither its
+  connection, a reconnect included, nor its heartbeats, nor the reloads its events or its polling
+  fallback trigger: they are reads without the person's mark — so a tab that is only open logs
+  out (`TestOnlyThePersonsActivityMovesTheIdleClock`).
 
 ## How a session ends
 
@@ -182,16 +190,33 @@ a tenant's accounts, cached tickets — stays in memory for the next person in t
 
 ## What keeps a session, and what brings a person back
 
-**The keep-alive** ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D3 as
-amended 2026-10-06; [`keep-alive.service.ts`](../../frontend/src/app/core/keep-alive.service.ts)).
-Reading a ticket, scrolling a board or writing a long comment makes no request, and only a request
-moves the idle clock. While a page of the shell is open, the browser notes the time of the person's
-last pointer press, key, wheel or touch, and every five minutes — while the document is visible and
-there was such input since it last asked — makes one request of the session, `GET /api/v1/me`. A
-tab nobody works in makes none. So the idle limit now ends a session about two hours after the
-person's last input in a page — the keep-alive asks up to five minutes after it —, not two hours
-after their last request; anyone's input counts, the person's or not, as any request in their tab
-always did. The absolute limit is untouched.
+**Only the person's activity keeps a session**
+([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D3 as amended 2026-10-06;
+[`api/session.go`](../../backend/internal/api/session.go) `movesIdleClock`). A session's request
+moves the idle clock when it is a write that passes the CSRF check, or a read that carries
+`X-Cowork-Activity: input` — that value exactly; any other, or none, moves nothing. No other read
+moves it: not the event stream's connections and reconnects, not its polling fallback's reloads,
+not the reloads an event triggers, not a page that loads what it shows. So a tab that is only open
+reaches the idle limit, whatever its stream does. **No other site can keep a session alive this
+way**: a page of another origin cannot send the header, because a custom header needs a CORS
+preflight and the API answers none
+([ADR 0037](../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md)
+D3); a link or an image of another site is a read without it; and a write a page of the same site
+sends, where `SameSite=Lax` lets the cookie ride along, fails the CSRF check and moves nothing
+either — before this rule, any request moved the clock, a refused write among them.
+
+**The keep-alive** ([`keep-alive.service.ts`](../../frontend/src/app/core/keep-alive.service.ts)).
+Reading a ticket, scrolling a board or writing a long comment sends no write. While a page of the
+shell is open, the browser notes the time of the person's last pointer press, key, wheel or touch,
+and every five minutes — while the document is visible and there was such input since it last
+asked — makes one read of the session that carries the header, `GET /api/v1/me`
+(`PERSON_ACTIVITY` and the interceptor `personActivity` in
+[`http.ts`](../../frontend/src/app/core/http.ts); no other request of the UI sets it). A tab nobody
+works in makes none. So the idle limit ends a session about two hours after the person's last
+input or write in a page — the keep-alive asks up to five minutes after the input —; anyone's input
+at the browser counts, the person's or not. An idle limit of about six minutes or less cannot be
+held by the keep-alive's reads, five minutes apart, for a person who only reads. The absolute limit
+is untouched.
 
 **Coming back after a limit ended the session**
 ([ADR 0029](../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
@@ -242,7 +267,8 @@ logged in. `HttpOnly` keeps a script in the page from reading it, and `Secure` a
 `__Host-` prefix keep it off plain HTTP and away from sibling subdomains; but whoever obtains
 the value — from a compromised machine, from a proxy in front that logs request headers, from
 a browser extension — presents it from anywhere and acts as the person until the idle limit
-(two hours without a request), the absolute limit (twelve hours) or an end. The row holds the
+(two hours without a write or a read marked as the person's activity, either of which whoever holds
+the cookie can send), the absolute limit (twelve hours) or an end. The row holds the
 SHA-256 of the `User-Agent` it was made with (`sessions.user_agent_hash`) and nothing compares
 it. A person cannot list their sessions, and ends the others only by changing their password;
 an administrator ends a managed account's through `DELETE …/accounts/{username}/sessions`, and
@@ -253,29 +279,12 @@ when the issuer refuses the refresh token or the gate no longer admits them — 
 disabling the person or taking them out of the allowed groups is the way. Shorter limits (`COWORK_SESSION_LIFETIME`, `COWORK_SESSION_IDLE`) shrink the
 window; a TLS-terminating proxy that does not log headers keeps the cookie off its disk.
 
-<a id="h-63"></a>
-### H-63 — A tab whose event stream reconnects or fell back to polling keeps its session without a person
-
-Live whenever the event stream falls back to polling — three failures in a row or the server's
-`unavailable`, an Ingress or a proxy that does not hold a stream open among the causes
-([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
-D7) —, and wherever something ends the stream's connection more often than the idle limit. An open
-stream moves no idle clock at its heartbeats, and the keep-alive asks only after a person's input.
-But the stream's request is authenticated like any (`authenticateSession`), so each new connection
-of it — the browser's own reconnect after a proxy ended one, the fallback's attempt every minute —
-moves the clock; and the fallback emits a `poll` every fifteen seconds while the tab is visible, on
-which the services load again what the page shows, `GET /api/v1/me` among it, each a request that
-moves the clock too. Such a tab keeps its session up to the absolute limit, twelve hours by default,
-with nobody at it. Read from the code
-([`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts) `fallBack`, the
-services' reloads on `poll`, [`api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`), not run
-in a browser. It was so before the keep-alive and is not its doing. Mitigation: a shorter
-`COWORK_SESSION_LIFETIME`; an Ingress that holds the stream open, so that neither happens.
-
 The gaps of the identity provider's sessions — stale groups while the issuer cannot be reached, a
 session that never learns the groups anew without a refresh token, the stored refresh tokens, the
 issuer's own session after a logout, and the sign-in without a click while that session lives — are
 [identity-provider.md](identity-provider.md) H-24, H-25, H-27, H-28 and H-62. Not a gap of its own:
-the lifetimes are the installation's, not a tenant's. Not verified: that Safari stores a `Secure`
-cookie from `http://localhost` — Chromium and Firefox do; the integration tier tests the rule and
-sets the cookie by hand, it runs no browser.
+the lifetimes are the installation's, not a tenant's. Which browser stores a `Secure` cookie from
+`http://localhost` is measured, not assumed: Chromium does, WebKit does not
+([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D2, with Playwright on
+2026-10-03); Firefox was not measured. The integration tier tests the rule and sets the cookie by
+hand; it runs no browser.

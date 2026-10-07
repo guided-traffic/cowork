@@ -131,6 +131,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge` | `system:identity-provider` |
 | Local account origin | `config` — the one account `COWORK_LOCAL_ADMIN_*` names — or `tenant` — one a tenant administrator created and that tenant manages | — |
 | Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
+| Activity header | `X-Cowork-Activity: input` on a read of a session: the person's activity, which moves the idle clock; any other value, or none, moves nothing | `X-Cowork-Activity: input` |
 | Agent header of the chat | `chat/<model>/<conversation>`: the picked provider's model, its `/` written `:`, and the conversation's id the browser made | `chat/qwen:qwen3-30b-a3b-2507/0199a3c2-1d2e-7f00-8000-000000000042` |
 | Chat provider id | 1–32 characters of `a-z`, `0-9` and `-`, a dash neither first nor last; named once in `COWORK_CHAT_PROVIDERS` | `lmstudio`, `claude-work` |
 | The chat's browser storage | `localStorage`: `cowork.chat.<person id>` (`open` or `closed`), `cowork.chat.provider.<person id>` (the picked provider's id) | — |
@@ -478,7 +479,7 @@ Chart values are in [Helm chart values](#helm-chart-values); the pages are
 | `COWORK_LOGIN_ADDRESS_LIMIT` | `20` `# default` | a count; `0` disables | Login attempts of one client address — an IPv6 client by its /64 — within a minute before `429 too_many_attempts`. The client address is the TCP peer's unless the peer is inside `COWORK_TRUSTED_PROXIES` ([H-17](docs/security/local-accounts.md#h-17)); with that list empty, behind an Ingress the peer is a controller pod and the limit holds for every browser behind it |
 | `COWORK_TRUSTED_PROXIES` | empty `# default` | comma-separated CIDRs, IPv4 and IPv6; `10.244.0.0/16,fd00:10:244::/48` `# example` | The networks of the proxies in front of the backend. The client address — which the login throttle counts and whose keyed hash every audit row of a request carries — is found by walking `X-Forwarded-For` from the right: from the TCP peer, while the current address is inside these networks the entry to its left becomes the current one; the first address outside them is the client, and nothing to its left is read. Empty: the peer is the client and the header is never read. A single host is `/32` or `/128`; an entry that is no CIDR refuses the start, naming the variable and that entry. The proxy in front of the backend is the Ingress controller. **Security:** name the proxies and no more — a client inside a trusted network chooses its own address, which defeats the throttle and lets it fill another client's bucket; a network that holds other pods lets each of them that reaches the backend do the same, which only a network policy of the cluster's prevents — the chart ships none; an empty list leaves one address for every browser behind a controller pod ([installation.md](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)) |
 | `COWORK_SESSION_LIFETIME` | `12h` `# default` | a positive duration | The absolute lifetime of a session; it is also the cookie's `Max-Age` |
-| `COWORK_SESSION_IDLE` | `2h` `# default` | a positive duration | How long a session may lie unused; a request within it extends the session up to the lifetime. The idle clock moves at most once a minute. The UI makes such a request every five minutes while a person works in a page, and none for a tab nobody works in |
+| `COWORK_SESSION_IDLE` | `2h` `# default` | a positive duration | How long a session may lie unused; the person's activity within it — a write, or a read with `X-Cowork-Activity: input`, which the UI sends every five minutes while a person works in a page — extends the session up to the lifetime, and no other read does, the event stream's included. The idle clock moves at most once a minute. Below about six minutes the keep-alive's requests, five minutes apart, cannot hold a session that is only read |
 | `COWORK_TOKEN_DEFAULT_LIFETIME` | `2160h` (90 days) `# default` | a positive duration, not above the maximum | The lifetime of a token whose creator named none |
 | `COWORK_TOKEN_MAX_LIFETIME` | `8760h` (one year) `# default` | a positive duration | The longest lifetime a token may have; a longer request is shortened to it and the answer says what the token got |
 
@@ -671,7 +672,11 @@ full.
   [tokens](docs/security/tokens.md#what-only-a-session-does)). A **write of a session** must come
   from `COWORK_BASE_URL` — its `Origin`, or without one its `Referer` — and carry
   `X-Requested-With: cowork`, else `403 csrf`; a token's writes need neither
-  ([CSRF](docs/security/csrf.md)). A session whose account has a temporary password can only read
+  ([CSRF](docs/security/csrf.md)). A session's **idle clock** moves only for the person's
+  activity: a write that passes that check, or a read with `X-Cowork-Activity: input`, which the
+  UI sends every five minutes while a person works in a page — no other read moves it, the event
+  stream's included ([sessions](docs/security/sessions.md#what-keeps-a-session-and-what-brings-a-person-back)).
+  A session whose account has a temporary password can only read
   `GET /api/v1/me`, change the password and log out; everything else is
   `403 password_change_required`. `X-Cowork-Agent: <name>/<model>/<session>` marks a request as an
   agent's; a token with the agent flag makes it one with or without the header.

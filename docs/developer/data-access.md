@@ -413,7 +413,10 @@ Three groups of store code run outside `Mutate`, by design, and each is small
   result goes in.
 - **`LookupSession` and `TouchSession`**, as `LookupToken` and `TouchTokenLastUsed` are for
   tokens: the first finds the row of a cookie's hash through `app.session_hash` and reads its
-  person; the second moves `last_seen_at` at most once per `SessionTouchInterval`.
+  person; the second moves `last_seen_at` at most once per `SessionTouchInterval`, and only for a
+  request of the person's activity — a write that passes the CSRF check, or a read with
+  `X-Cowork-Activity: input` (`movesIdleClock` in
+  [`api/session.go`](../../backend/internal/api/session.go)).
 
 Everything else of the login is `Mutate`: `CreateSession` ends the session the login presented,
 inserts the new one and records `logged_in` as the person, whose `Caller` carries the replaced

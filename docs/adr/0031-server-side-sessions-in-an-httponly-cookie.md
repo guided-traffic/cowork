@@ -24,9 +24,10 @@ D3; nothing of the decision changes), and on 2026-10-05 by the decision on the p
 recommendation
 ([ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
 D7; D6: seventeen routes), and on 2026-10-06 on the owner's request that cowork keep his session
-while he works and not ask for a click where the identity provider's session runs anyway (D3: the
-browser's input keeps the idle clock moving through a keep-alive, the stream's heartbeats still
-move none, and what of the stream does — a new connection, the polling fallback — is named; the
+while he works and not ask for a click where the identity provider's session runs anyway, and by the
+coordinator's decision of the same night that the idle limit hold for a tab nobody uses (D3: only
+the person's activity — a write, or a read the browser's keep-alive marks after the person's input
+— moves the idle clock, replacing "a request within the idle window extends the session"; the
 sign-in that follows an ended provider session is
 [ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
 D6). Date: 2026-10-01. Decided by the owner as the answer to the
@@ -142,10 +143,13 @@ certificate on `https://localhost:4200`, and the end-to-end tier's WebKit run ne
 of the images. `Secure` stays unconditional; there is no development exception.)*
 
 **D3 — Lifetimes:** an absolute lifetime (`COWORK_SESSION_LIFETIME`, default twelve hours)
-and an idle timeout (`COWORK_SESSION_IDLE`, default two hours); a request within the idle
-window extends the session up to the absolute limit. Expired rows are removed by a job
+and an idle timeout (`COWORK_SESSION_IDLE`, default two hours); ~~a request within the idle
+window extends the session up to the absolute limit~~ *(amended 2026-10-06, below: the person's
+activity within the idle window — a write, or a read the keep-alive marks — extends the session up
+to the absolute limit)*. Expired rows are removed by a job
 ([ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md)
-D5). *(Amended 2026-10-03: a request moves the idle clock at most once a minute, never past the
+D5). *(Amended 2026-10-03: ~~a request~~ *(2026-10-06: a request of the person's activity, below)*
+moves the idle clock at most once a minute, never past the
 absolute limit, and the backend's clock decides both limits. The job is `session-expiry`, at
 start and hourly; it keeps the table small and enforces nothing — a session past a limit is
 refused at its next request whether or not the job has run. An open event stream checks its
@@ -160,23 +164,33 @@ claims it by a thirty-second lease on the row, in a short transaction; the issue
 connection and no lock held, and a second short transaction applies the answer under the row's lock
 while the lease is the claimant's. Concurrent requests and replicas find the lease taken and are
 served on the session's groups without waiting.)* *(Amended 2026-10-06, on the owner's request of
-that day: **the browser's input keeps the idle clock moving.** Reading a ticket, scrolling a board or
-writing a long comment makes no request, so the idle limit ended sessions under the person's hands.
-While a page of the shell is open, the browser notes the time of the person's last pointer press,
-key, wheel or touch, and every five minutes, while the document is visible and there was such input
-since it last asked, it makes one request of the session — `GET /api/v1/me`
-([`keep-alive.service.ts`](../../frontend/src/app/core/keep-alive.service.ts)) — which moves the clock
-as any request does. A tab nobody works in makes none, and an open event stream still does not
-extend the idle limit at its heartbeats, so a tab that is only open reaches it — while its stream
-stays connected: each new connection of the stream is a request that moves the clock, and the
-stream's polling fallback of
-[ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md) D7
-reloads what a visible page shows every fifteen seconds and tries the stream again every minute,
-each a request too, so a tab whose stream reconnects often or fell back to polling keeps its session
-up to the absolute limit without a person, read from the code
-([sessions.md](../security/sessions.md) H-63). Where a limit
-ends a session of the identity provider, the login page signs the person in again at their first
-input while the provider's own session lives
+that day and the coordinator's decision of the same night: **only the person's activity moves the
+idle clock.** A session's request moves it when it is a write that passes the CSRF check of
+[ADR 0037](0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md) D1, or a
+read that carries the header `X-Cowork-Activity` with the value `input` — any other value, or none,
+moves nothing ([`api/session.go`](../../backend/internal/api/session.go) `movesIdleClock`,
+`ActivityHeader`, `ActivityInput`). The browser's keep-alive sends that read: while a page of the
+shell is open, it notes the time of the person's last pointer press, key, wheel or touch, and every
+five minutes, while the document is visible and there was such input since it last asked, it asks
+`GET /api/v1/me` with the header
+([`keep-alive.service.ts`](../../frontend/src/app/core/keep-alive.service.ts), the interceptor
+`personActivity` in [`http.ts`](../../frontend/src/app/core/http.ts); no other request of the UI
+sets it). No other read moves the clock — not the event stream's connections and reconnects, not its
+heartbeats, not the polling fallback's reloads of
+[ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md) D7,
+not the reloads an event triggers —, so a tab that is only open reaches the idle limit whatever its
+stream does, and the guarantee "a tab that is only open logs out" holds. Why: reading a ticket,
+scrolling a board or writing a long comment sends no write, so the idle limit ended sessions under
+the person's hands; and while every request moved the clock, the stream's reconnects and its
+fallback's reloads — requests every fifteen seconds to every minute — kept a session that nobody
+used up to the absolute limit (`TestOnlyThePersonsActivityMovesTheIdleClock` fails against the old
+rule on a plain read, the stream's connection and a refused write; no browser ran it). No other site
+can keep a session alive with the header: a page of another origin cannot send it, because a custom header
+needs a CORS preflight and the API answers none (ADR 0037 D3); and a write that a page of the same
+site sends, where `SameSite=Lax` lets the cookie ride along, fails the CSRF check and moves nothing
+either — before this rule, a refused write moved the clock too. Where a limit ends a session of the
+identity provider, the login page signs the person in again at their first input while the
+provider's own session lives
 ([ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
 D6); a local session gets only the keep-alive, which needs the person's input.)*
 
@@ -274,6 +288,11 @@ administrator flag or memberships.)*
 - One indexed lookup per request; a cleanup job; one Secret more in the chart.
 - `SameSite=Lax` alone is not CSRF protection for the API; the CSRF record adds the origin
   check and the custom header on unsafe methods.
+- *(Added 2026-10-06, D3.)* A person who only reads keeps the session through the keep-alive, whose
+  reads come five minutes apart at most: an idle limit of about six minutes or less cannot be held
+  that way, and such a person is signed out between two of them. A tab nobody uses ends at the idle
+  limit whatever its stream does. Whoever holds a stolen cookie keeps it alive as the browser would,
+  with the header or a write ([docs/security/sessions.md](../security/sessions.md) H-15).
 - The groups refresh of ADR 0030 D5 is a column update on the row and a UserInfo call every
   fifteen minutes per active session. *(Amended 2026-10-04: a refresh grant at the issuer's token
   endpoint — and UserInfo where the refreshed ID token lacks the groups — inside the session's

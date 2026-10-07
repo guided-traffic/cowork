@@ -167,8 +167,11 @@ administrator's view of the installation's clients, which a token of theirs does
   groups are due runs its groups refresh first — the request that claims it waits for the issuer,
   the session's others are served on its groups — and a refresh that ends it is that `401` too
   ([architecture.md](architecture.md#the-groups-refresh-in-the-request-path)). A live session moves
-  its idle clock at most once a minute (`DB.TouchSession`, bookkeeping outside `Mutate`; a failure
-  is logged).
+  its idle clock only for the person's activity — a write that passes the CSRF check, or a read
+  that carries `X-Cowork-Activity: input` (`api.ActivityHeader`, `api.ActivityInput`), which the
+  UI's keep-alive sends after the person's input; no other read, the event stream's included
+  ([ADR 0031] D3; `movesIdleClock`) — and then at most once a minute (`DB.TouchSession`,
+  bookkeeping outside `Mutate`; a failure is logged).
   The principal has `Session: true`, the cookie's hash in `SessionHash`, the scope `admin` — a
   session has no scope, the role decides — no agent mark but the header's, `GlobalAdmin` and
   `PasswordChangeRequired` from the person. `callerOf` puts the hash into `store.Caller`, which
