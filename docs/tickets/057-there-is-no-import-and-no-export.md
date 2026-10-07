@@ -7,6 +7,7 @@ security: none
 threat:
 urgency: release      # rule 2: phase 6 is released with it
 effort: L
+blocked-by: human     # the owner's look at the pages and the owner's imports
 filed-from: the start of phase 6, 2026-10-06
 opened: 2026-10-06
 decided: 2026-10-06
@@ -15,53 +16,63 @@ done:
 
 ## Current state
 
-The API of phase 6 is built ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md),
+The import and the export of phase 6 are built, in the API and in the UI
+([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md),
 [ADR 0063](../adr/0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md),
-[ADR 0064](../adr/0064-one-direction-import-and-export-no-synchronisation.md)): the dry run, the
-read of a job and its execution, the project's and the tenant's export
-([`imports.yaml`](../../backend/api/imports.yaml)); migration 41 with the job and the ticket's
-source; the importer ([`internal/importer`](../../backend/internal/importer/)); `cowork-mcp export`;
-`COWORK_MAX_IMPORT_BYTES` and `backend.config.maxImportBytes`; the pages
-[docs/operations/import-and-export.md](../operations/import-and-export.md),
-[docs/security/import-and-export.md](../security/import-and-export.md) and
-[docs/developer/import-and-export.md](../developer/import-and-export.md). The integration tier reads
-this repository's whole `docs/tickets/`, the archive included, without an error, and its
-open tickets after the execution are as many as its open `state:` lines; a project exported,
-imported into an empty project and exported again is the same archive up to the keys and the times.
+[ADR 0064](../adr/0064-one-direction-import-and-export-no-synchronisation.md)):
 
-What a person cannot do yet:
+- **The API**: the dry run, the read of a job and its execution, the project's and the tenant's
+  export ([`imports.yaml`](../../backend/api/imports.yaml)); migration 41 with the job and the
+  ticket's source; the importer ([`internal/importer`](../../backend/internal/importer/));
+  `cowork-mcp export`; `COWORK_MAX_IMPORT_BYTES` and `backend.config.maxImportBytes`. The integration
+  tier reads this repository's whole `docs/tickets/`, the archive included, without an error, and its
+  open tickets after the execution are as many as its open `state:` lines; a project exported,
+  imported into an empty project and exported again is the same archive up to the keys and the times.
+- **The UI**: a tenant administrator's import page of a project, `/t/<tenant>/p/<KEY>/imports`, its
+  job at `…/imports/<id>` — reached from the upload icon of the project's header: the files dropped
+  or chosen, the dry run, the report with its summary, what blocks the execution and *Leave them
+  out*, every file with its outcome, title, type and why, state, assignee, confidential flag and
+  reason, links, questions, warnings and errors with their lines, the corrections per file (left
+  out, type, state with its block, assignee), the execution after a question that says it cannot be
+  undone as a whole, its refusals on the files they name, the executed job leading to the backlog,
+  an expired dry run offering a new one
+  ([`project-import.ts`](../../frontend/src/app/features/project/project-import.ts)); the export of a
+  project from the download icon of its header for whoever reads it, and of the tenant from its
+  settings for its administrators, each saying how many confidential tickets the archive leaves out
+  ([`imports.service.ts`](../../frontend/src/app/core/imports.service.ts)). The dashboard and the open
+  decisions load again on an executed import. Unit tests beside each part; the end-to-end path
+  [`import.spec.ts`](../../frontend/e2e/import.spec.ts).
+- **The pages**: [docs/operations/import-and-export.md](../operations/import-and-export.md),
+  [docs/security/import-and-export.md](../security/import-and-export.md),
+  [docs/developer/import-and-export.md](../developer/import-and-export.md) and
+  [docs/developer/frontend.md](../developer/frontend.md#the-import-and-the-export).
 
-- **The UI has no import page and no export button.** Everything goes through the API with a token,
-  as the operations page shows. The client is generated (`frontend/src/app/api/fn/imports/`, the
-  `Import*` and `Export*` models).
-- **Nothing has been imported for real.** Neither the sibling project's tickets nor this
-  repository's, so ADR 0064 D4's note in `docs/tickets/README.md` is not written either.
+What has not happened:
+
+- **Nothing has been imported for real.** Neither the sibling project's tickets nor this repository's,
+  so ADR 0064 D4's note in `docs/tickets/README.md` is not written either.
+- **Nobody has looked at the pages** in a browser.
 
 ## Required changes
 
-1. **The import page**, for a tenant administrator in a project
-   ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
-   Consequences):
-   - the upload: one or more files, a `tar.gz`, a `zip` or Markdown files, to
-     `POST …/projects/{project}/imports` as parts named `file`;
-   - the report: `summary`, then `files` in their order, each with `outcome`, `reason`, `title`,
-     `key`, `type` with `type_reason`, `state`, `block` or `block_candidate`, `columns`, `assignee`,
-     `parent`, `note`, `questions`, `links`, `confidential` with `confidential_reason`, and the
-     `warnings` and `errors` with their `line`;
-   - the corrections per file — exclude, `type`, `state` with its `block`, `assignee` —, sent with
-     `POST …/imports/{import}/execution`, and the refusals: `400` at `/corrections/<i>/…`,
-     `409 import_conflict` naming each file as `file:<path>`, `409 import_executed`, `404` for a dry
-     run past its twenty-four hours;
-   - the executed job's report, every `create` now `created`.
-   The comment on `project.changed` in
-   [`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts) names the sort by
-   the score only; an import sends it too, with the kind `imported`, and the client reloads on either.
-2. **The export button** on the project — `GET …/projects/{project}/export`, a download — and, for the
-   tenant, `GET /api/v1/tenants/{tenant}/export`; the manifest's `confidential_not_included` is worth
-   saying beside the button.
-3. **The owner imports the sibling project's tickets**, then **this repository's**, by the steps of
-   the operations page, and writes ADR 0064 D4's note into `docs/tickets/README.md` the same day.
-4. **The checks at scale** (below).
+1. **The owner looks at the import page and the exports** under `make dev`, in both schemes, and
+   says what changes:
+   - the entry: an upload icon, *Import tickets*, in the project's header beside the download icon
+     of the export and the settings' cog — rather than a card in the project's settings;
+   - the report as one table with the corrections in place — type, state and assignee as selects in
+     every row of a file to create or with an error, the block in the file's lines once the state is
+     `blocked` —, a select button narrowing it to one outcome, and the execution's bar sticky at the
+     bottom of the page;
+   - *Leave them out*, which leaves out every file that blocks at one click, beside each row's
+     *Leave out*;
+   - every warning, error, link, note and reason of a file as a line under it;
+   - the corrections live in the page until the execution: a reload keeps the job's address and its
+     report, not the corrections;
+   - the export's toast in the project's header, and the line beside the tenant's export card.
+2. **The owner imports the sibling project's tickets**, then **this repository's**, on the import
+   page or by the steps of the operations page, and writes ADR 0064 D4's note into
+   `docs/tickets/README.md` the same day.
+3. **The checks at scale** (below).
 
 ## Open questions
 
@@ -145,11 +156,33 @@ purge of ADR 0024 D2 empties the ticket and its audit rows.
 
 **Answer:** _open_
 
+### Q7: Does the UI offer the tenant's export to every member, as the API does?
+
+The API serves `GET /api/v1/tenants/{tenant}/export` to every reader of the tenant, each archive
+holding what its reader reads (ADR 0051 D6). The UI offers it in the tenant's settings to the
+tenant's administrators only; every member exports each project they read from its header.
+
+- (a) **The administrators only, in the settings** — recommended and built: the tenant's archive is
+  the backup's second line (ADR 0059 D2), an administrator's concern, and the settings are the
+  administrators' page; a member loses nothing they cannot reach project by project, and a member's
+  scheduled export keeps the API.
+- (b) Every member, in the settings or the navigation — the UI as wide as the API, for an act a
+  member rarely needs.
+
+**Answer:** _open_
+
 ## Not verified
 
+- **The end-to-end path of the import** — written and type-checked, not run here: it needs the built
+  images (`make docker-build e2e`). It is what would show that the shell's content-security policy
+  lets the export's download — an object URL clicked as a link — through in Chromium and WebKit.
+- **How the pages look and respond in a browser**, in either scheme, and how a report of hundreds of
+  files renders: every file to create holds three selects. The unit tests render the page in jsdom
+  only.
 - **A large import.** Measured only at this repository's 56 files (412 KiB), dry run and execution
   under a second together. An upload of 50 MiB — its memory against the chart's 256 MiB limit, the
-  dry run and the execution against the 30-second request timeout — was not tried.
+  dry run and the execution against the 30-second request timeout — was not tried, nor its upload
+  from the browser.
 - **The Ingress at `51m`.** The body limit the chart's notes and the operations page now name for
   the default `maxImportBytes` was not run through a controller, and the stand-in
   [`hack/ingress/default.conf`](../../hack/ingress/default.conf), raised to `51m` with it, was not run
