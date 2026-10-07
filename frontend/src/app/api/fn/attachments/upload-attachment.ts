@@ -31,7 +31,13 @@ export interface UploadAttachment$Params {
  * agent's POST requires one (docs/adr/0045 D3, D4).
  */
   'Idempotency-Key'?: string;
-      body: {
+  
+    /**
+     * Two parts and no other: `file`, the one file, whose `filename` in its `Content-Disposition`
+     * becomes the attachment's `file_name`, sanitised (docs/adr/0016 D1); and `comment_id`,
+     * optional, the id of a comment of the ticket the file belongs to.
+     */
+    body: {
 'comment_id'?: string;
 'file': Blob;
 }

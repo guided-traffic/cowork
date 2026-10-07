@@ -13191,7 +13191,7 @@
               }
             }
           },
-          "description": "Two parts and no other: `file`, the one file, whose `filename` in its `Content-Disposition`\nbecomes the attachment's `file_name`, sanitised (docs/adr/0016 D1); and `comment_id`,\noptional, the id of a comment of the ticket the file belongs to. A file's bytes have no\nexample here.\n",
+          "description": "Two parts and no other: `file`, the one file, whose `filename` in its `Content-Disposition`\nbecomes the attachment's `file_name`, sanitised (docs/adr/0016 D1); and `comment_id`,\noptional, the id of a comment of the ticket the file belongs to.\n",
           "required": true
         },
         "responses": {

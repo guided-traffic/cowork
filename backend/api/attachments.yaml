@@ -47,8 +47,7 @@ attachments:
       description: |
         Two parts and no other: `file`, the one file, whose `filename` in its `Content-Disposition`
         becomes the attachment's `file_name`, sanitised (docs/adr/0016 D1); and `comment_id`,
-        optional, the id of a comment of the ticket the file belongs to. A file's bytes have no
-        example here.
+        optional, the id of a comment of the ticket the file belongs to.
       content:
         multipart/form-data:
           schema:
