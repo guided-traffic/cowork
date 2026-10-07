@@ -15,7 +15,9 @@ is accountable.
 > 2026-10-06; phase 3 — the UI on the core domain — awaits the owner's reviews, its parts released
 > from `0.2.0` to `0.7.0`; phase 4 — the login through an identity provider — and phase 5 — the LLM
 > interface and the chat in the UI — released as `0.3.0`; the sign-in without a click as `0.8.0`;
-> metrics, the chart's references with the migration Job and GitHub's webhook as `0.9.0`.** Tenants,
+> metrics, the chart's references with the migration Job and GitHub's webhook as `0.9.0`; the
+> consistency check after a restore as `0.10.0`; the import of Markdown tickets and the export as
+> `0.11.0`. 1.0 comes once every open question is answered.** Tenants,
 > projects and tickets — with links, state transitions, open questions, comments, interest,
 > progress, time entries and attachments — the audit record and the event stream exist behind a
 > JSON API, tested against PostgreSQL 18, MinIO and Dex. A person logs in through any OpenID Connect
