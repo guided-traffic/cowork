@@ -5576,6 +5576,37 @@
         "type": "string"
       },
       "Question": {
+        "example": {
+          "answer": null,
+          "answer_html": null,
+          "answered_at": null,
+          "answered_by": null,
+          "answered_by_token": null,
+          "asked_by": {
+            "display_name": "Grace Hopper",
+            "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+            "username": null
+          },
+          "asked_by_agent": null,
+          "asked_by_token": null,
+          "asked_of": {
+            "display_name": "Ada Lovelace",
+            "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+            "username": "ada"
+          },
+          "created_at": "2026-10-05T14:55:00Z",
+          "id": "01a10c8f-99a0-7cd1-bb0b-c187d4e41c04",
+          "number": 1,
+          "options": "- A: trim nowhere: a password is sent and stored as typed.\n- B: trim on both ends, and say so at sign-up.",
+          "options_html": "\u003cul\u003e\n\u003cli\u003eA: trim nowhere: a password is sent and stored as typed.\u003c/li\u003e\n\u003cli\u003eB: trim on both ends, and say so at sign-up.\u003c/li\u003e\n\u003c/ul\u003e",
+          "question": "Do we trim passwords on the server as well?",
+          "recommendation": "A: a space is a character like any other; trimming would lock out who chose one.",
+          "recorded_by_agent": false,
+          "status": "open",
+          "updated_at": "2026-10-05T14:55:00Z",
+          "version": 1,
+          "withdrawn_at": null
+        },
         "properties": {
           "answer": {
             "description": "Markdown",
@@ -5753,6 +5784,42 @@
         "type": "object"
       },
       "QuestionList": {
+        "example": {
+          "items": [
+            {
+              "answer": null,
+              "answer_html": null,
+              "answered_at": null,
+              "answered_by": null,
+              "answered_by_token": null,
+              "asked_by": {
+                "display_name": "Grace Hopper",
+                "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                "username": null
+              },
+              "asked_by_agent": null,
+              "asked_by_token": null,
+              "asked_of": {
+                "display_name": "Ada Lovelace",
+                "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                "username": "ada"
+              },
+              "created_at": "2026-10-05T14:55:00Z",
+              "id": "01a10c8f-99a0-7cd1-bb0b-c187d4e41c04",
+              "number": 1,
+              "options": "- A: trim nowhere: a password is sent and stored as typed.\n- B: trim on both ends, and say so at sign-up.",
+              "options_html": "\u003cul\u003e\n\u003cli\u003eA: trim nowhere: a password is sent and stored as typed.\u003c/li\u003e\n\u003cli\u003eB: trim on both ends, and say so at sign-up.\u003c/li\u003e\n\u003c/ul\u003e",
+              "question": "Do we trim passwords on the server as well?",
+              "recommendation": "A: a space is a character like any other; trimming would lock out who chose one.",
+              "recorded_by_agent": false,
+              "status": "open",
+              "updated_at": "2026-10-05T14:55:00Z",
+              "version": 1,
+              "withdrawn_at": null
+            }
+          ],
+          "next_cursor": null
+        },
         "properties": {
           "items": {
             "items": {
@@ -12974,6 +13041,12 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "asked_of": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                "options": "- A: trim nowhere: a password is sent and stored as typed.\n- B: trim on both ends, and say so at sign-up.",
+                "question": "Do we trim passwords on the server as well?",
+                "recommendation": "A: a space is a character like any other; trimming would lock out who chose one."
+              },
               "schema": {
                 "$ref": "#/components/schemas/QuestionCreate"
               }
@@ -13063,6 +13136,9 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "recommendation": "A: a space is a character like any other; trimming would lock out who chose one."
+              },
               "schema": {
                 "$ref": "#/components/schemas/QuestionPatch"
               }
@@ -13122,6 +13198,9 @@
         "requestBody": {
           "content": {
             "application/json": {
+              "example": {
+                "answer": "A: we keep the password as typed, and the form says that a space counts."
+              },
               "schema": {
                 "$ref": "#/components/schemas/AnswerSet"
               }
@@ -13133,6 +13212,41 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "answer": "A: we keep the password as typed, and the form says that a space counts.",
+                  "answer_html": "\u003cp\u003eA: we keep the password as typed, and the form says that a space counts.\u003c/p\u003e",
+                  "answered_at": "2026-10-06T08:52:00Z",
+                  "answered_by": {
+                    "display_name": "Ada Lovelace",
+                    "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                    "username": "ada"
+                  },
+                  "answered_by_token": null,
+                  "asked_by": {
+                    "display_name": "Grace Hopper",
+                    "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                    "username": null
+                  },
+                  "asked_by_agent": null,
+                  "asked_by_token": null,
+                  "asked_of": {
+                    "display_name": "Ada Lovelace",
+                    "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                    "username": "ada"
+                  },
+                  "created_at": "2026-10-05T14:55:00Z",
+                  "id": "01a10c8f-99a0-7cd1-bb0b-c187d4e41c04",
+                  "number": 1,
+                  "options": "- A: trim nowhere: a password is sent and stored as typed.\n- B: trim on both ends, and say so at sign-up.",
+                  "options_html": "\u003cul\u003e\n\u003cli\u003eA: trim nowhere: a password is sent and stored as typed.\u003c/li\u003e\n\u003cli\u003eB: trim on both ends, and say so at sign-up.\u003c/li\u003e\n\u003c/ul\u003e",
+                  "question": "Do we trim passwords on the server as well?",
+                  "recommendation": "A: a space is a character like any other; trimming would lock out who chose one.",
+                  "recorded_by_agent": false,
+                  "status": "answered",
+                  "updated_at": "2026-10-06T08:52:00Z",
+                  "version": 2,
+                  "withdrawn_at": null
+                },
                 "schema": {
                   "$ref": "#/components/schemas/Question"
                 }
@@ -13177,6 +13291,37 @@
           "200": {
             "content": {
               "application/json": {
+                "example": {
+                  "answer": null,
+                  "answer_html": null,
+                  "answered_at": null,
+                  "answered_by": null,
+                  "answered_by_token": null,
+                  "asked_by": {
+                    "display_name": "Grace Hopper",
+                    "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                    "username": null
+                  },
+                  "asked_by_agent": null,
+                  "asked_by_token": null,
+                  "asked_of": {
+                    "display_name": "Ada Lovelace",
+                    "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                    "username": "ada"
+                  },
+                  "created_at": "2026-10-05T14:55:00Z",
+                  "id": "01a10c8f-99a0-7cd1-bb0b-c187d4e41c04",
+                  "number": 1,
+                  "options": "- A: trim nowhere: a password is sent and stored as typed.\n- B: trim on both ends, and say so at sign-up.",
+                  "options_html": "\u003cul\u003e\n\u003cli\u003eA: trim nowhere: a password is sent and stored as typed.\u003c/li\u003e\n\u003cli\u003eB: trim on both ends, and say so at sign-up.\u003c/li\u003e\n\u003c/ul\u003e",
+                  "question": "Do we trim passwords on the server as well?",
+                  "recommendation": "A: a space is a character like any other; trimming would lock out who chose one.",
+                  "recorded_by_agent": false,
+                  "status": "withdrawn",
+                  "updated_at": "2026-10-06T08:47:00Z",
+                  "version": 2,
+                  "withdrawn_at": "2026-10-06T08:47:00Z"
+                },
                 "schema": {
                   "$ref": "#/components/schemas/Question"
                 }

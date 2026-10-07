@@ -1781,6 +1781,30 @@ Question:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-question
+    id: 01a10c8f-99a0-7cd1-bb0b-c187d4e41c04
+    number: 1
+    question: Do we trim passwords on the server as well?
+    options: |-
+      - A: trim nowhere: a password is sent and stored as typed.
+      - B: trim on both ends, and say so at sign-up.
+    options_html: "<ul>\n<li>A: trim nowhere: a password is sent and stored as typed.</li>\n<li>B: trim on both ends, and say so at sign-up.</li>\n</ul>"
+    recommendation: 'A: a space is a character like any other; trimming would lock out who chose one.'
+    answer: null
+    answer_html: null
+    status: open
+    asked_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    asked_by_agent: null
+    asked_by_token: null
+    asked_of: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+    answered_by: null
+    answered_at: null
+    recorded_by_agent: false
+    answered_by_token: null
+    withdrawn_at: null
+    version: 1
+    created_at: '2026-10-05T14:55:00Z'
+    updated_at: '2026-10-05T14:55:00Z'
 QuestionCreate:
   type: object
   additionalProperties: false
@@ -1818,6 +1842,10 @@ QuestionList:
         $ref: '#/Question'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-question
+    next_cursor: null
 LinkType:
   type: string
   enum: [blocks, relates-to, duplicates, found-in]
