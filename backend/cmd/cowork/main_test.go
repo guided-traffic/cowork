@@ -60,7 +60,8 @@ func TestCheckConsistencyNeedsTheDatabaseAndTheStorage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{"check-consistency"}, envOf(nil), &stdout, &stderr)
 	assert.Equal(t, 1, code)
-	assert.Contains(t, stderr.String(), config.EnvDatabaseURL+" is required")
+	assert.Contains(t, stderr.String(), config.EnvDatabaseURL+", or its components")
+	assert.Contains(t, stderr.String(), "is required")
 
 	stderr.Reset()
 	env := envOf(map[string]string{config.EnvDatabaseURL: "postgres://cowork_app@db/cowork"})
