@@ -61,8 +61,8 @@ scrape's size does not grow with the data.
 
 ## What this does not cover
 
-<a id="h-62"></a>
-### H-62 — The metrics port answers every pod of the cluster
+<a id="h-63"></a>
+### H-63 — The metrics port answers every pod of the cluster
 
 Live by default, and accepted with ADR 0060 D1, D2: the listener has no authentication,
 `metrics.enabled` is `true`, and the chart ships no NetworkPolicy
