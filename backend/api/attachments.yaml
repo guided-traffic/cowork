@@ -44,6 +44,10 @@ attachments:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
       required: true
+      description: |
+        Two parts and no other: `file`, the one file, whose `filename` in its `Content-Disposition`
+        becomes the attachment's `file_name`, sanitised (docs/adr/0016 D1); and `comment_id`,
+        optional, the id of a comment of the ticket the file belongs to.
       content:
         multipart/form-data:
           schema:
@@ -154,10 +158,6 @@ attachmentUsage:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/AttachmentUsage'
-            example:
-              used_bytes: 73400320
-              attachments: 41
-              quota_bytes: 10737418240
       '304':
         $ref: './components/responses.yaml#/NotModified'
       default:
@@ -222,6 +222,8 @@ orphanRemoval:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/ConsistencyCheckRef'
+          example:
+            check_id: 01a10f27-5b80-71db-8b7c-37825a4703a9
     responses:
       '200':
         description: What the removal did
@@ -229,10 +231,6 @@ orphanRemoval:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/OrphanRemoval'
-            example:
-              removed: 2
-              kept: 1
-              failed: 0
       default:
         $ref: './components/responses.yaml#/Problem'
 danglingAcceptance:
@@ -257,6 +255,8 @@ danglingAcceptance:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/ConsistencyCheckRef'
+          example:
+            check_id: 01a10f27-5b80-71db-8b7c-37825a4703a9
     responses:
       '200':
         description: What the acceptance did
@@ -264,7 +264,5 @@ danglingAcceptance:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/DanglingAcceptance'
-            example:
-              accepted: 3
       default:
         $ref: './components/responses.yaml#/Problem'

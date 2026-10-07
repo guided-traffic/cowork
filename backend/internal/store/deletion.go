@@ -75,6 +75,9 @@ func (w *Writer) PurgeTicket(ctx context.Context, slug string, ticketID uuid.UUI
 	if err != nil {
 		return Purged{}, err
 	}
+	if err := w.forgetImportedFile(ctx, tenantID, row.ImportedFromJob, key, removed); err != nil {
+		return Purged{}, err
+	}
 	if err := w.releaseBlocksOn(ctx, slug, tenantID, ticketID, key); err != nil {
 		return Purged{}, err
 	}
@@ -166,6 +169,24 @@ func (w *Writer) removeWhatBelongsTo(ctx context.Context, tenantID, ticketID uui
 		}
 	}
 	return removed, nil
+}
+
+// forgetImportedFile takes a ticket an import created out of the report of
+// its job, which keeps every file's text for good (docs/adr/0051 D3) and
+// would keep what the purge removes; removed counts it as the purge's act
+// records the rest.
+func (w *Writer) forgetImportedFile(ctx context.Context, tenantID uuid.UUID, job *uuid.UUID, key string, removed map[string]int64) error {
+	if job == nil {
+		return nil
+	}
+	n, err := w.ForgetPurgedImportFile(ctx, writeq.ForgetPurgedImportFileParams{TenantID: tenantID, ID: *job, TicketKey: key})
+	if err != nil {
+		return fmt.Errorf("take the purged ticket out of its import's report: %w", err)
+	}
+	if n > 0 {
+		removed["import_report"] = n
+	}
+	return nil
 }
 
 // releaseBlocksOn turns every block that waits on the purged ticket into a

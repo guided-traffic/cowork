@@ -13,10 +13,6 @@ version:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/Version'
-            example:
-              version: 0.4.0
-              commit: 540e9df
-              build_time: '1759363200'
       default:
         $ref: './components/responses.yaml#/Problem'
 coworkYamlSchema:
@@ -37,6 +33,20 @@ coworkYamlSchema:
           application/json:
             schema:
               type: object
+            examples:
+              schema:
+                summary: The schema, its descriptions left out
+                value:
+                  $schema: https://json-schema.org/draft/2020-12/schema
+                  title: .cowork.yaml
+                  type: object
+                  additionalProperties: false
+                  required: [tenant, project]
+                  properties:
+                    tenant: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
+                    project: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}$'}
+                    path: {type: string, maxLength: 512}
+                    url: {type: string, maxLength: 2000, pattern: '^https?://'}
       default:
         $ref: './components/responses.yaml#/Problem'
 document:
@@ -53,5 +63,26 @@ document:
           application/json:
             schema:
               type: object
+            examples:
+              document:
+                summary: The document, cut after its first path
+                value:
+                  openapi: 3.1.0
+                  info:
+                    title: cowork
+                    version: 0.7.0
+                    description: A multi-tenant backlog for people and the agents that work for them.
+                  servers:
+                    - url: /
+                  security:
+                    - bearerToken: []
+                    - sessionCookie: []
+                  paths:
+                    /api/v1/version:
+                      get:
+                        operationId: getVersion
+                        tags: [meta]
+                        summary: The backend build
+                        security: []
       default:
         $ref: './components/responses.yaml#/Problem'

@@ -20,7 +20,9 @@ FieldError:
   properties:
     pointer:
       type: string
-      description: A JSON pointer into the body, or query:<name> / header:<name>
+      description: |
+        A JSON pointer into the body, or query:<name> / header:<name>; the refused execution of an
+        import names a file of its upload as file:<path>
     message: {type: string}
     current:
       type: [string, number, integer, boolean, object, array, 'null']
@@ -33,6 +35,10 @@ Version:
     version: {type: string}
     commit: {type: string}
     build_time: {type: string}
+  example:
+    version: 0.7.0
+    commit: b4ceb2e
+    build_time: '1791273600'
 Role:
   type: string
   enum: [viewer, member, admin]
@@ -99,6 +105,12 @@ TenantSummaryList:
         $ref: '#/TenantSummary'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - slug: acme
+        name: Acme
+        role: admin
+    next_cursor: null
 Membership:
   type: object
   required: [tenant, role, origins]
@@ -153,6 +165,19 @@ Me:
       type: array
       items:
         $ref: '#/Membership'
+  example:
+    id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3
+    username: ada
+    display_name: Ada Lovelace
+    global_admin: true
+    local: true
+    password_change_required: false
+    memberships:
+      - tenant: {slug: acme, name: Acme}
+        role: admin
+        origins:
+          - source: grant
+            role: admin
 TokenState:
   type: string
   enum: [active, expired, revoked]
@@ -198,6 +223,21 @@ Token:
       format: date-time
     state:
       $ref: '#/TokenState'
+  # An agent token restricted to a project; the deprecated restricted_project_id is still answered.
+  example: &example-token
+    id: 01a0a40b-5040-78e5-8344-63ccb2705d84
+    name: Claude Code on the laptop
+    scope: write
+    agent: true
+    capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+    restricted_tenant: acme
+    restricted_project: WEB
+    restricted_project_id: 019cadcb-2e60-7116-9641-67b17d11d0ef
+    created_at: '2026-09-15T07:50:00Z'
+    expires_at: '2026-12-14T07:50:00Z'
+    last_used_on: '2026-10-06'
+    revoked_at: null
+    state: active
 TokenCreate:
   type: object
   additionalProperties: false
@@ -250,6 +290,21 @@ TokenCreated:
             The plaintext, `cwk_` and 43 base62 characters, shown once: cowork
             keeps its SHA-256 only (docs/adr/0035 D1). An answer replayed for an
             `Idempotency-Key` leaves it out.
+  # The plaintext is an example that no installation accepts.
+  example:
+    id: 01a0a40b-5040-78e5-8344-63ccb2705d84
+    name: Claude Code on the laptop
+    scope: write
+    agent: true
+    capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+    restricted_tenant: acme
+    restricted_project: WEB
+    restricted_project_id: 019cadcb-2e60-7116-9641-67b17d11d0ef
+    created_at: '2026-09-15T07:50:00Z'
+    expires_at: '2026-12-14T07:50:00Z'
+    revoked_at: null
+    state: active
+    token: cwk_EXAMPLE000000000000000000000000000000000000
 TokenList:
   type: object
   required: [items, next_cursor]
@@ -264,6 +319,22 @@ TokenList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  example:
+    items:
+      - *example-token
+      - id: 019fc77e-be00-7f86-be5e-47b14273332f
+        name: Release notes script
+        scope: read
+        agent: false
+        capabilities: []
+        restricted_tenant: acme
+        restricted_project: null
+        created_at: '2026-08-03T12:00:00Z'
+        expires_at: '2026-11-01T12:00:00Z'
+        last_used_on: '2026-09-29'
+        revoked_at: '2026-09-30T08:00:00Z'
+        state: revoked
+    next_cursor: null
 MemberToken:
   type: object
   description: |
@@ -320,6 +391,37 @@ MemberTokenList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  # An unrestricted token of Grace Hopper, which reaches every tenant she belongs to, and the
+  # agent token Ada Lovelace restricted to acme/WEB.
+  example:
+    items:
+      - id: 01a0bef4-a820-745b-88d0-ad43226cfc47
+        name: Release checks
+        person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+        scope: read
+        agent: false
+        capabilities: []
+        restricted_tenant: null
+        restricted_project: null
+        created_at: '2026-09-20T13:15:00Z'
+        expires_at: '2026-12-19T13:15:00Z'
+        last_used_on: '2026-10-05'
+        revoked_at: null
+        state: active
+      - id: 01a0a40b-5040-78e5-8344-63ccb2705d84
+        name: Claude Code on the laptop
+        person: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        scope: write
+        agent: true
+        capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+        restricted_tenant: acme
+        restricted_project: WEB
+        created_at: '2026-09-15T07:50:00Z'
+        expires_at: '2026-12-14T07:50:00Z'
+        last_used_on: '2026-10-06'
+        revoked_at: null
+        state: active
+    next_cursor: null
 CurrentToken:
   description: The token a request presents, and what it makes of the request (docs/adr/0043 D6)
   allOf:
@@ -329,6 +431,24 @@ CurrentToken:
       properties:
         request:
           $ref: '#/RequestMark'
+  example:
+    id: 01a0a40b-5040-78e5-8344-63ccb2705d84
+    name: Claude Code on the laptop
+    scope: write
+    agent: true
+    capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+    restricted_tenant: acme
+    restricted_project: WEB
+    restricted_project_id: 019cadcb-2e60-7116-9641-67b17d11d0ef
+    created_at: '2026-09-15T07:50:00Z'
+    expires_at: '2026-12-14T07:50:00Z'
+    last_used_on: '2026-10-06'
+    revoked_at: null
+    state: active
+    request:
+      agent: true
+      agent_mark: claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911
+      capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
 RequestMark:
   type: object
   required: [agent, agent_mark, capabilities]
@@ -367,6 +487,15 @@ Tenant:
       description: Members create projects; off, only administrators do (docs/adr/0034 D9)
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example:
+    slug: acme
+    name: Acme
+    version: 4
+    time_visible_to_members: true
+    time_locked_until: '2026-09-30'
+    members_create_projects: false
+    created_at: '2026-03-02T08:45:00Z'
+    updated_at: '2026-10-06T07:55:00Z'
 TenantCreate:
   type: object
   additionalProperties: false
@@ -411,6 +540,15 @@ Member:
     local:
       type: boolean
       description: The person has a local account — a username and a password of their own — rather than an identity of the identity provider (docs/adr/0033)
+  # As the tenant's administrators read a member: the address is theirs to see.
+  example: &example-member
+    person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    email: grace@acme.example
+    role: member
+    origins:
+      - source: mapping
+        role: member
+    local: false
 MemberList:
   type: object
   required: [items, next_cursor]
@@ -425,6 +563,24 @@ MemberList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  example:
+    items:
+      - person: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        email: null
+        role: admin
+        origins:
+          - source: grant
+            role: admin
+        local: true
+      - *example-member
+      - person: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+        email: null
+        role: member
+        origins:
+          - source: grant
+            role: member
+        local: true
+    next_cursor: null
 MemberAdd:
   type: object
   additionalProperties: false
@@ -467,6 +623,14 @@ GroupMapping:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-group-mapping
+    id: 019cb813-5280-79b9-b1f7-13a618f296e0
+    group: acme-engineering
+    role: member
+    includes_caller: false
+    version: 1
+    created_at: '2026-03-04T09:00:00Z'
+    updated_at: '2026-03-04T09:00:00Z'
 GroupMappingCreate:
   type: object
   additionalProperties: false
@@ -497,13 +661,24 @@ GroupMappingList:
         $ref: '#/GroupMapping'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - id: 019cb814-3ce0-7455-8a46-3f00097c193b
+        group: acme-admins
+        role: admin
+        includes_caller: false
+        version: 1
+        created_at: '2026-03-04T09:01:00Z'
+        updated_at: '2026-03-04T09:01:00Z'
+      - *example-group-mapping
+    next_cursor: null
 AuditAction:
   type: string
   enum: [created, updated, transitioned, linked, unlinked, commented, edited, withdrawn, assigned,
     interest, ranked, overridden, asked, answered, booked, voided, locked, uploaded, downloaded,
     exported, deleted, restored, purged, revoked, refused, archived, confidential_set,
     confidential_lifted, expired, logged_in, logged_out, login_failed, unlocked, password_changed,
-    password_reset, deactivated, reactivated, read, merged, closed, reopened, accepted]
+    password_reset, deactivated, reactivated, read, merged, closed, reopened, accepted, imported]
 AuditEvent:
   type: object
   required: [id, created_at, actor, entity_type, action]
@@ -566,6 +741,52 @@ AuditList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  example:
+    items:
+      - id: 01a1108c-69c0-708c-a456-d344b487f663
+        created_at: '2026-10-06T09:30:00Z'
+        actor:
+          person: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+          system: null
+        agent: null
+        agent_capabilities: null
+        token_id: null
+        token_name: null
+        entity_type: ticket
+        entity_id: 01a1108c-69c0-748d-8363-132fa3f8667c
+        ticket_key: acme/WEB-43
+        action: created
+        after:
+          type: bug
+          title: The password reset mail links to the old domain
+          effort: S
+          urgency: later
+          security: none
+          severity: medium
+        reason: null
+        note: null
+        request_id: 01a1108c-69c0-7a3e-9c21-5b7d0f4e8a16
+        idempotency_key: 2f6d9a41-7c3b-4e8f-9d15-0b6a8c4e2f73
+      - id: 01a0fbe2-7f00-7f00-a107-cc0e604f9a75
+        created_at: '2026-10-02T09:12:00Z'
+        actor:
+          person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+          system: null
+        agent: null
+        agent_capabilities: null
+        token_id: null
+        token_name: null
+        entity_type: ticket
+        entity_id: 01a0f687-f3a0-7516-87ab-709ca2b1c1e6
+        ticket_key: acme/WEB-42
+        action: transitioned
+        before: {state: decided}
+        after: {state: in-progress}
+        reason: null
+        note: null
+        request_id: 01a0fbe2-7f00-779f-a8b1-4da03f48c675
+        idempotency_key: null
+    next_cursor: eyJvIjoibGlzdEF1ZGl0IiwicyI6IjAxOWNhZGI4LWRlZTAtNzlhYy04YTRmLWVjYTU3MzFjYjM4NiIsImEiOiIwMWEwZmJlMi03ZjAwLTdmMDAtYTEwNy1jYzBlNjA0ZjlhNzUifQ.lIk3xBcDAMSBR357tHdkBYPo4uFvWgIKZre5ql9IWvQ
 WipLimits:
   type: object
   additionalProperties: false
@@ -597,6 +818,17 @@ Project:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-project
+    id: 019cadcb-2e60-7116-9641-67b17d11d0ef
+    key: WEB
+    name: Website
+    description: The public website and the customer sign-in
+    restricted: false
+    wip_limits: {in-progress: 4, review: 2}
+    archived_at: null
+    version: 2
+    created_at: '2026-03-02T09:05:00Z'
+    updated_at: '2026-09-14T11:20:00Z'
 ProjectCreate:
   type: object
   additionalProperties: false
@@ -632,6 +864,10 @@ ProjectList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  example:
+    items:
+      - *example-project
+    next_cursor: null
 ProjectRestrictionSet:
   type: object
   additionalProperties: false
@@ -660,6 +896,11 @@ ProjectAccessEntry:
     role:
       $ref: '#/ProjectAccessRole'
     created_at: {type: string, format: date-time}
+  example: &example-access-entry
+    person: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+    email: null
+    role: viewer
+    created_at: '2026-10-06T11:25:00Z'
 ProjectAccessSet:
   type: object
   additionalProperties: false
@@ -677,6 +918,10 @@ ProjectAccessList:
         $ref: '#/ProjectAccessEntry'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-access-entry
+    next_cursor: null
 ProjectRef:
   type: object
   required: [key, name]
@@ -699,6 +944,13 @@ Repository:
       description: The remote as it was last given, without credentials
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-repository
+    id: 019cadcb-2e60-777c-8a62-7ace634e20bf
+    identity: github.com/acme/website
+    path: ''
+    remote: git@github.com:acme/website.git
+    created_at: '2026-03-02T09:05:00Z'
+    updated_at: '2026-03-02T09:05:00Z'
 RepositoryBind:
   type: object
   additionalProperties: false
@@ -724,6 +976,10 @@ RepositoryList:
         $ref: '#/Repository'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-repository
+    next_cursor: null
 LookupRemote:
   type: object
   required: [remote, identity]
@@ -807,6 +1063,24 @@ RepositoryLookup:
     proposal_unavailable:
       type: [string, 'null']
       description: Why an unbound repository has no proposal, when it has none
+  # A repository no project binds yet, looked up by a person who may create projects in acme only.
+  example:
+    status: unbound
+    remotes:
+      - remote: git@github.com:acme/mobile-app.git
+        identity: github.com/acme/mobile-app
+    bindings: []
+    proposal:
+      identity: github.com/acme/mobile-app
+      remote: git@github.com:acme/mobile-app.git
+      name: mobile-app
+      tenant: acme
+      tenants:
+        - slug: acme
+          name: Acme
+          key: MA
+      reason: only-tenant
+    proposal_unavailable: null
 TicketType:
   type: string
   enum: [task, bug, feature, decision, question]
@@ -974,6 +1248,56 @@ Ticket:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-ticket
+    id: 01a0f687-f3a0-7516-87ab-709ca2b1c1e6
+    key: acme/WEB-42
+    project: WEB
+    number: 42
+    type: bug
+    title: Sign-in fails in Safari when the password contains a space
+    body: |-
+      ## Current state
+
+      Safari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.
+
+      ## Required changes
+
+      - Send the password as typed.
+      - An end-to-end test that signs in with a trailing space in Safari.
+    state: in-progress
+    block: null
+    severity: high
+    security: none
+    threat: null
+    horizon: now
+    horizon_set:
+      value: now
+      reason: Customers cannot sign in
+      # The handler names the person who set it by the id alone (tickets.go, horizonSetView).
+      by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: null, display_name: ''}
+      at: '2026-10-02T09:14:00Z'
+    effort: S
+    progress: 60
+    progress_refinement: 100
+    progress_review: 0
+    progress_derived: false
+    parent: acme/WEB-40
+    reporter: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+    reporter_agent: claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911
+    reporter_token: {id: 01a0a40b-5040-78e5-8344-63ccb2705d84, name: Claude Code on the laptop}
+    assignee: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    confidential: false
+    opened_at: '2026-10-01T08:15:00Z'
+    decided_at: '2026-10-02T09:05:00Z'
+    done_at: null
+    done_from: null
+    done_by_hand: false
+    open_prerequisites: 1
+    score: 14.2
+    score_version: 1
+    version: 8
+    created_at: '2026-10-01T08:15:00Z'
+    updated_at: '2026-10-06T10:12:05Z'
 TicketCreate:
   type: object
   additionalProperties: false
@@ -1059,6 +1383,18 @@ TicketBody:
       description: |
         The body rendered and sanitised on the server (docs/adr/0011 D6); empty for an empty body
     version: {type: integer, description: The ticket's version the body belongs to}
+  example:
+    body: |-
+      ## Current state
+
+      Safari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.
+
+      ## Required changes
+
+      - Send the password as typed.
+      - An end-to-end test that signs in with a trailing space in Safari.
+    body_html: "<h2>Current state</h2>\n<p>Safari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with <code>invalid_credentials</code>.</p>\n<h2>Required changes</h2>\n<ul>\n<li>Send the password as typed.</li>\n<li>An end-to-end test that signs in with a trailing space in Safari.</li>\n</ul>"
+    version: 8
 TicketBodyReplace:
   type: object
   additionalProperties: false
@@ -1150,6 +1486,9 @@ ProjectRankSorted:
     score_version:
       type: integer
       description: The version of the score function the rank was sorted by (docs/adr/0014 D4)
+  example:
+    moved: 3
+    score_version: 1
 BlockSet:
   type: object
   additionalProperties: false
@@ -1200,6 +1539,26 @@ Comment:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-comment
+    id: 01a10c96-0240-79ce-bd04-bc6c377cbc17
+    author: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    agent: null
+    token: null
+    body: |-
+      Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.
+
+      ![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)
+
+      @Ada Lovelace, see Q1 before we change the form.
+    body_html: "<p>Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.</p>\n<p><img src=\"/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content\" alt=\"The failed sign-in\"></p>\n<p>@Ada Lovelace, see Q1 before we change the form.</p>"
+    withdrawn: false
+    withdrawn_at: null
+    edited: false
+    explains: []
+    mentions: [019cadb4-4b00-7719-ade7-c2d450e9b5f3]
+    version: 1
+    created_at: '2026-10-05T15:02:00Z'
+    updated_at: '2026-10-05T15:02:00Z'
 CommentWrite:
   type: object
   additionalProperties: false
@@ -1229,6 +1588,10 @@ CommentList:
         $ref: '#/Comment'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-comment
+    next_cursor: null
 CommentRevision:
   type: object
   required: [body, edited_by, agent, token, at]
@@ -1253,6 +1616,15 @@ CommentRevisionList:
         $ref: '#/CommentRevision'
     next_cursor:
       type: [string, 'null']
+  # The text before an agent's edit of a comment of Ada Lovelace, made through her token.
+  example:
+    items:
+      - body: The fix sends the password as typed.
+        edited_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        agent: claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911
+        token: {id: 01a0a40b-5040-78e5-8344-63ccb2705d84, name: Claude Code on the laptop}
+        at: '2026-10-06T08:50:00Z'
+    next_cursor: null
 Activity:
   type: object
   required: [id, at, actor, actor_system, agent, token, action, entity_type, entity_id, before, after, reason, note,
@@ -1287,6 +1659,22 @@ Activity:
     redacted:
       type: boolean
       description: The act names a ticket the caller cannot see; its payload, reason and note are withheld
+  example: &example-activity
+    id: 01a10c96-0240-7fdd-bbe7-eb2168110b66
+    at: '2026-10-05T15:02:00Z'
+    actor: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    actor_system: null
+    agent: null
+    token: null
+    action: commented
+    entity_type: comment
+    entity_id: 01a10c96-0240-79ce-bd04-bc6c377cbc17
+    before: null
+    after: null
+    reason: null
+    note: null
+    explained_by_comment: null
+    redacted: false
 ActivityList:
   type: object
   required: [items, next_cursor]
@@ -1297,6 +1685,41 @@ ActivityList:
         $ref: '#/Activity'
     next_cursor:
       type: [string, 'null']
+  # The acts of acme/WEB-42, oldest first.
+  example:
+    items:
+      - id: 01a0fbe2-7f00-7f00-a107-cc0e604f9a75
+        at: '2026-10-02T09:12:00Z'
+        actor: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+        actor_system: null
+        agent: null
+        token: null
+        action: transitioned
+        entity_type: ticket
+        entity_id: 01a0f687-f3a0-7516-87ab-709ca2b1c1e6
+        before: {state: decided}
+        after: {state: in-progress}
+        reason: null
+        note: null
+        explained_by_comment: null
+        redacted: false
+      - id: 01a0fbe4-53c0-7730-b386-e3a9864a24b0
+        at: '2026-10-02T09:14:00Z'
+        actor: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        actor_system: null
+        agent: null
+        token: null
+        action: overridden
+        entity_type: ticket
+        entity_id: 01a0f687-f3a0-7516-87ab-709ca2b1c1e6
+        before: {urgency_override: null}
+        after: {urgency_override: now}
+        reason: Customers cannot sign in
+        note: null
+        explained_by_comment: null
+        redacted: false
+      - *example-activity
+    next_cursor: null
 Attachment:
   type: object
   required: [id, file_name, size, sha256, content_type, comment, uploaded_by, agent, token, created_at, content_url]
@@ -1320,6 +1743,18 @@ Attachment:
         - type: 'null'
     created_at: {type: string, format: date-time}
     content_url: {type: string, description: 'The download, through the backend only (docs/adr/0016 D4)'}
+  example: &example-attachment
+    id: 01a10c89-3100-77d9-8eb9-8c1723d7d64c
+    file_name: safari-sign-in.png
+    size: 186779
+    sha256: 178dc8d5850d206cfc74209ad760d7e77ef20652ebf109f04e3efdb59f6b4122
+    content_type: image/png
+    comment: null
+    uploaded_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    agent: null
+    token: null
+    created_at: '2026-10-05T14:48:00Z'
+    content_url: /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content
 AttachmentUsage:
   type: object
   description: What the tenant's attachments hold against its quota (docs/adr/0016 D6)
@@ -1331,6 +1766,10 @@ AttachmentUsage:
       type: [integer, 'null']
       format: int64
       description: COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota
+  example:
+    used_bytes: 73400320
+    attachments: 41
+    quota_bytes: 10737418240
 AttachmentConsistency:
   type: object
   description: |
@@ -1366,6 +1805,31 @@ AttachmentConsistency:
       oneOf:
         - $ref: '#/OrphanRemovalRecord'
         - type: 'null'
+  # The night after a restore that brought the database back from an earlier point than the bucket.
+  example:
+    check_id: 01a10f27-5b80-71db-8b7c-37825a4703a9
+    checked_at: '2026-10-06T03:00:00Z'
+    dangling: 1
+    accepted: 0
+    orphans: 2
+    orphan_bytes: 3145728
+    dangling_attachments:
+      - id: 019d8b83-2140-7968-843e-7c8e68771ec8
+        file_name: invoice-2026-03.pdf
+        size: 48213
+        content_type: application/pdf
+        ticket: acme/WEB-12
+        ticket_deleted: false
+        uploaded_at: '2026-04-14T10:22:00Z'
+        accepted: false
+    orphaned_objects:
+      - key: 019cadb8-dee0-79ac-8a4f-eca5731cb386/01a108f7-7ec0-75ec-850e-015e6ae32ec8
+        size: 2097152
+        last_modified: '2026-10-04T22:10:00Z'
+      - key: 019cadb8-dee0-79ac-8a4f-eca5731cb386/01a108f8-de50-7530-855f-d311b7302475
+        size: 1048576
+        last_modified: '2026-10-04T22:11:30Z'
+    orphan_removal: null
 DanglingAttachment:
   type: object
   description: A file whose metadata is there and whose bytes the bucket lacks; its download answers 404 saying so
@@ -1411,12 +1875,18 @@ OrphanRemoval:
     removed: {type: integer, description: 'Objects removed, or gone already'}
     kept: {type: integer, description: 'Objects that had gained metadata since the check: no orphans any more, kept'}
     failed: {type: integer, description: 'Objects whose removal failed; the log names each, and the next check lists them again'}
+  example:
+    removed: 2
+    kept: 0
+    failed: 0
 DanglingAcceptance:
   type: object
   description: What an acceptance of the missing files did
   required: [accepted]
   properties:
     accepted: {type: integer, description: The files whose loss was accepted now}
+  example:
+    accepted: 1
 AttachmentList:
   type: object
   required: [items, next_cursor]
@@ -1427,6 +1897,10 @@ AttachmentList:
         $ref: '#/Attachment'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-attachment
+    next_cursor: null
 TimeEntry:
   type: object
   required: [id, ticket, person, author, token, minutes, day, note, voided, voided_at, edited, version, created_at,
@@ -1452,6 +1926,21 @@ TimeEntry:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-time-entry
+    id: 01a10d1d-81c0-77f6-82f0-6d35a8aef0d0
+    ticket: acme/WEB-42
+    person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    author: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    token: null
+    minutes: 90
+    day: '2026-10-05'
+    note: Reproduced in Safari 18 and traced the trimmed field
+    voided: false
+    voided_at: null
+    edited: false
+    version: 1
+    created_at: '2026-10-05T17:30:00Z'
+    updated_at: '2026-10-05T17:30:00Z'
 TimeEntryCreate:
   type: object
   additionalProperties: false
@@ -1482,6 +1971,12 @@ TimeEntryList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  # A ticket's entries, which come with their total; the tenant's list has its own example.
+  example:
+    items:
+      - *example-time-entry
+    next_cursor: null
+    total_minutes: 90
 TimeEntryRevision:
   type: object
   required: [minutes, day, note, edited_by, token, at]
@@ -1507,6 +2002,16 @@ TimeEntryRevisionList:
         $ref: '#/TimeEntryRevision'
     next_cursor:
       type: [string, 'null']
+  # The values an entry of Sam Rivera on acme/WEB-39 had before he corrected it.
+  example:
+    items:
+      - minutes: 30
+        day: '2026-10-06'
+        note: Listed the reasons
+        edited_by: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+        token: null
+        at: '2026-10-06T16:30:00Z'
+    next_cursor: null
 TimeReport:
   type: object
   required: [group_by, items, total_minutes]
@@ -1522,6 +2027,16 @@ TimeReport:
           label: {type: string}
           minutes: {type: integer}
     total_minutes: {type: integer}
+  example:
+    group_by: ticket
+    items:
+      - key: acme/WEB-39
+        label: Log the sign-in failures with their reason
+        minutes: 45
+      - key: acme/WEB-42
+        label: Sign-in fails in Safari when the password contains a space
+        minutes: 90
+    total_minutes: 135
 InterestWeight:
   type: string
   enum: [watch, need, urgent]
@@ -1546,6 +2061,15 @@ Interest:
     since: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
     settled: {type: boolean, description: The ticket is done or dropped; the stake stays on record (docs/adr/0013 D5)}
+  example: &example-interest
+    person: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+    weight: need
+    note: Support answers three calls a day from customers who cannot sign in.
+    agent: null
+    token: null
+    since: '2026-10-01T09:00:00Z'
+    updated_at: '2026-10-01T09:00:00Z'
+    settled: false
 InterestSet:
   type: object
   additionalProperties: false
@@ -1564,6 +2088,10 @@ InterestList:
         $ref: '#/Interest'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-interest
+    next_cursor: null
 QuestionStatus:
   type: string
   enum: [open, answered, withdrawn]
@@ -1621,6 +2149,30 @@ Question:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-question
+    id: 01a10c8f-99a0-7cd1-bb0b-c187d4e41c04
+    number: 1
+    question: Do we trim passwords on the server as well?
+    options: |-
+      - A: trim nowhere: a password is sent and stored as typed.
+      - B: trim on both ends, and say so at sign-up.
+    options_html: "<ul>\n<li>A: trim nowhere: a password is sent and stored as typed.</li>\n<li>B: trim on both ends, and say so at sign-up.</li>\n</ul>"
+    recommendation: 'A: a space is a character like any other; trimming would lock out who chose one.'
+    answer: null
+    answer_html: null
+    status: open
+    asked_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    asked_by_agent: null
+    asked_by_token: null
+    asked_of: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+    answered_by: null
+    answered_at: null
+    recorded_by_agent: false
+    answered_by_token: null
+    withdrawn_at: null
+    version: 1
+    created_at: '2026-10-05T14:55:00Z'
+    updated_at: '2026-10-05T14:55:00Z'
 QuestionCreate:
   type: object
   additionalProperties: false
@@ -1658,6 +2210,10 @@ QuestionList:
         $ref: '#/Question'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-question
+    next_cursor: null
 LinkType:
   type: string
   enum: [blocks, relates-to, duplicates, found-in]
@@ -1689,6 +2245,15 @@ Link:
     created_by:
       $ref: '#/Person'
     created_at: {type: string, format: date-time}
+  # The link as acme/WEB-39 reads it, its source: PUT …/tickets/39/links/blocks/WEB-42.
+  example:
+    id: 01a0f68c-8780-7b4f-be55-ff44fa945045
+    type: blocks
+    direction: outgoing
+    name: blocks
+    ticket: {key: acme/WEB-42, title: Sign-in fails in Safari when the password contains a space, state: in-progress}
+    created_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+    created_at: '2026-10-01T08:20:00Z'
 LinkList:
   type: object
   required: [items, next_cursor]
@@ -1699,6 +2264,24 @@ LinkList:
         $ref: '#/Link'
     next_cursor:
       type: [string, 'null']
+  # The links of acme/WEB-42, the target of both.
+  example:
+    items:
+      - id: 01a0f68c-8780-7b4f-be55-ff44fa945045
+        type: blocks
+        direction: incoming
+        name: blocked by
+        ticket: {key: acme/WEB-39, title: Log the sign-in failures with their reason, state: analysed}
+        created_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+        created_at: '2026-10-01T08:20:00Z'
+      - id: 01a0f68d-71e0-7ada-9dcc-c3feda69e27a
+        type: blocks
+        direction: incoming
+        name: blocked by
+        ticket: {key: acme/WEB-41, title: Pick the SameSite mode of the session cookie, state: done}
+        created_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+        created_at: '2026-10-01T08:21:00Z'
+    next_cursor: null
 PullRequestKind:
   type: string
   enum: [pull_request, commit]
@@ -1743,6 +2326,20 @@ PullRequest:
       $ref: '#/PullRequestFoundIn'
     first_seen_at: {type: string, format: date-time, description: When a delivery first linked it to the ticket}
     last_seen_at: {type: string, format: date-time, description: When a delivery last told of it}
+  example: &example-pull-request
+    id: 01a11185-9ea0-7025-a5c9-d7ff9a0dcc8e
+    kind: pull_request
+    repository: github.com/acme/website
+    number: 118
+    sha: null
+    title: Send the password as typed (WEB-42)
+    state: merged
+    url: https://github.com/acme/website/pull/118
+    author: grace-hopper
+    merged_at: '2026-10-06T16:40:03Z'
+    found_in: trailer
+    first_seen_at: '2026-10-06T14:02:12Z'
+    last_seen_at: '2026-10-06T16:40:03Z'
 PullRequestList:
   type: object
   required: [items, next_cursor]
@@ -1753,6 +2350,23 @@ PullRequestList:
         $ref: '#/PullRequest'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - *example-pull-request
+      - id: 01a11216-2a88-789b-9a95-0865acfc9150
+        kind: commit
+        repository: github.com/acme/website
+        number: null
+        sha: 4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281
+        title: Send the password as typed (WEB-42) (#118)
+        state: merged
+        url: https://github.com/acme/website/commit/4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281
+        author: grace-hopper
+        merged_at: '2026-10-06T16:40:05Z'
+        found_in: trailer
+        first_seen_at: '2026-10-06T16:40:05Z'
+        last_seen_at: '2026-10-06T16:40:05Z'
+    next_cursor: null
 GitHubSecret:
   type: object
   description: The tenant's GitHub webhook secret as its administrators read it — never the secret itself
@@ -1777,6 +2391,12 @@ GitHubIntegration:
       type: array
       description: The events to choose in GitHub's webhook settings; every other is taken and passed over
       items: {type: string}
+  example:
+    secret:
+      created_at: '2026-10-06T13:55:00Z'
+      created_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+    webhook_path: /api/v1/tenants/acme/integrations/github/webhook
+    events: [pull_request, push]
 GitHubSecretCreated:
   type: object
   required: [secret, created_at, created_by, replaced]
@@ -1792,6 +2412,12 @@ GitHubSecretCreated:
     replaced:
       type: boolean
       description: A secret existed and is replaced; a delivery signed with it is refused from now on
+  # The first secret of acme; its value is an example that signs nothing.
+  example:
+    secret: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0
+    created_at: '2026-10-06T13:55:00Z'
+    created_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+    replaced: false
 PrerequisiteNode:
   type: object
   description: A ticket of a prerequisite tree, or of its upward reading, the dependents (docs/adr/0012 D6)
@@ -1838,6 +2464,35 @@ PrerequisiteTree:
       type: integer
       minimum: 0
       description: The open tickets of the whole tree the caller can see, each counted once, on every page
+  # What blocks acme/WEB-42, siblings in the order they were filed.
+  example:
+    items:
+      - key: acme/WEB-41
+        title: Pick the SameSite mode of the session cookie
+        state: done
+        blocked_from: null
+        assignee: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        progress: 100
+        progress_refinement: 100
+        progress_review: 100
+        progress_derived: false
+        depth: 1
+        settled: true
+        repeated: false
+      - key: acme/WEB-39
+        title: Log the sign-in failures with their reason
+        state: analysed
+        blocked_from: null
+        assignee: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+        progress: 0
+        progress_refinement: 40
+        progress_review: 0
+        progress_derived: false
+        depth: 1
+        settled: false
+        repeated: false
+    next_cursor: null
+    open: 1
 TicketList:
   type: object
   required: [items, next_cursor]
@@ -1851,6 +2506,10 @@ TicketList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
+  example:
+    items:
+      - *example-ticket
+    next_cursor: null
 DeletedTicket:
   type: object
   description: |
@@ -1884,6 +2543,19 @@ DeletedTicketList:
         $ref: '#/DeletedTicket'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - key: acme/WEB-17
+        project: WEB
+        number: 17
+        type: task
+        title: Remove the spring sale banner
+        state: analysed
+        confidential: false
+        deleted_at: '2026-10-02T16:45:00Z'
+        deleted_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        purge_at: '2026-11-01T16:45:00Z'
+    next_cursor: null
 SavedFilterParameters:
   type: object
   description: |
@@ -1944,6 +2616,21 @@ SavedFilter:
     version: {type: integer}
     created_at: {type: string, format: date-time}
     updated_at: {type: string, format: date-time}
+  example: &example-saved-filter
+    id: 01a08a54-ac00-7810-8c32-61553065ae1e
+    name: My bugs, now and for the release
+    owner: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+    shared: true
+    parameters:
+      project: [WEB]
+      type: [bug]
+      horizon: [now, release]
+      assignee: [me]
+    redacted: false
+    warnings: []
+    version: 2
+    created_at: '2026-09-10T08:00:00Z'
+    updated_at: '2026-09-12T10:00:00Z'
 SavedFilterCreate:
   type: object
   additionalProperties: false
@@ -1972,6 +2659,21 @@ SavedFilterList:
         $ref: '#/SavedFilter'
     next_cursor:
       type: [string, 'null']
+  # The second, shared by Grace Hopper, names a project the caller cannot see: it is redacted.
+  example:
+    items:
+      - *example-saved-filter
+      - id: 01a0d3d2-c240-76ce-bab6-3f01e5081b32
+        name: Payments, what blocks
+        owner: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+        shared: true
+        parameters: {}
+        redacted: true
+        warnings: []
+        version: 1
+        created_at: '2026-09-24T14:30:00Z'
+        updated_at: '2026-09-24T14:30:00Z'
+    next_cursor: null
 AuthOptions:
   type: object
   required: [local, oidc, oidc_name, password_min_length, token_max_lifetime_days]
@@ -2000,6 +2702,12 @@ AuthOptions:
         down (docs/adr/0035 D4): a longer `lifetime_days` is shortened to the maximum. 0 when the
         maximum is shorter than a day, and then only the default, `lifetime_days` left out, fits. A
         form that asks for a lifetime offers at most this and the 3650 days `lifetime_days` takes
+  example:
+    local: true
+    oidc: true
+    oidc_name: Acme SSO
+    password_min_length: 12
+    token_max_lifetime_days: 365
 LocalLoginRequest:
   type: object
   additionalProperties: false
@@ -2021,6 +2729,8 @@ LocalLoginResult:
     password_change_required:
       type: boolean
       description: The password is temporary and has to be changed before anything else (docs/adr/0033 D4)
+  example:
+    password_change_required: false
 LogoutResult:
   type: object
   required: [end_session_url]
@@ -2031,6 +2741,8 @@ LogoutResult:
         The issuer's `end_session_endpoint` with `client_id` and
         `post_logout_redirect_uri`; the browser navigates there to end its
         session at the identity provider too (docs/adr/0031 D4)
+  example:
+    end_session_url: https://login.acme.example/oidc/logout?client_id=cowork&post_logout_redirect_uri=https%3A%2F%2Fcowork.acme.example%2Flogin
 PasswordChange:
   type: object
   additionalProperties: false
@@ -2067,6 +2779,16 @@ Account:
       type: [string, 'null']
       format: date-time
     created_at: {type: string, format: date-time}
+  # The account Ada Lovelace made for Sam Rivera, its password still the temporary one.
+  example:
+    id: 019e165f-39c0-7937-931a-d0fa7735df32
+    username: sam
+    display_name: Sam Rivera
+    role: member
+    password_change_required: true
+    locked: false
+    deactivated_at: null
+    created_at: '2026-05-11T09:30:00Z'
 AccountList:
   type: object
   required: [items, next_cursor]
@@ -2077,6 +2799,17 @@ AccountList:
         $ref: '#/Account'
     next_cursor:
       type: [string, 'null']
+  example:
+    items:
+      - id: 019e165f-39c0-7937-931a-d0fa7735df32
+        username: sam
+        display_name: Sam Rivera
+        role: member
+        password_change_required: false
+        locked: false
+        deactivated_at: null
+        created_at: '2026-05-11T09:30:00Z'
+    next_cursor: null
 AccountCreate:
   type: object
   additionalProperties: false
@@ -2153,6 +2886,18 @@ ChatAvailability:
       oneOf:
         - $ref: '#/ChatUnavailableReason'
         - type: 'null'
+  example:
+    available: true
+    providers:
+      - id: lmstudio
+        name: LM Studio
+        kind: openai
+        model: qwen/qwen3-30b-a3b-2507
+      - id: claude
+        name: Claude
+        kind: anthropic
+        model: claude-sonnet-4-5
+    reason: null
 ChatRole:
   type: string
   enum: [user, assistant, tool]
@@ -2322,6 +3067,9 @@ ChatCapabilities:
       description: |
         The person chose the set; false is the default, every capability but decide, close, drop and
         record-answer
+  example:
+    capabilities: [rank, set-horizon, interest, upload, create-project]
+    chosen: false
 ChatCapabilitiesUpdate:
   type: object
   additionalProperties: false
@@ -2379,11 +3127,27 @@ InboxList:
     unread:
       type: integer
       description: The person's unread notifications in the tenants the request reaches
+  # Ada Lovelace told that Grace Hopper's comment on acme/WEB-42 mentions her.
+  example:
+    items:
+      - id: 01a10c96-0240-7196-85bb-eeab014066b7
+        tenant: {slug: acme, name: Acme}
+        ticket: {key: acme/WEB-42, title: Sign-in fails in Safari when the password contains a space, state: in-progress}
+        reason: mentioned
+        act: *example-activity
+        blocker: null
+        withdrawn: false
+        read: false
+        created_at: '2026-10-05T15:02:00Z'
+    next_cursor: null
+    unread: 1
 InboxState:
   type: object
   required: [unread]
   properties:
     unread: {type: integer}
+  example:
+    unread: 0
 InboxReadThrough:
   type: object
   additionalProperties: false
@@ -2418,6 +3182,13 @@ MyTicketList:
         $ref: '#/MyTicket'
     next_cursor:
       type: [string, 'null']
+  # What Grace Hopper reads: acme/WEB-42 is assigned to her.
+  example:
+    items:
+      - tenant: {slug: acme, name: Acme}
+        ticket: *example-ticket
+        place: 1
+    next_cursor: null
 Decision:
   type: object
   required: [tenant, ticket, question]
@@ -2438,6 +3209,13 @@ DecisionList:
         $ref: '#/Decision'
     next_cursor:
       type: [string, 'null']
+  # What Ada Lovelace reads: Q1 of acme/WEB-42 is asked of her.
+  example:
+    items:
+      - tenant: {slug: acme, name: Acme}
+        ticket: {key: acme/WEB-42, title: Sign-in fails in Safari when the password contains a space, state: in-progress}
+        question: *example-question
+    next_cursor: null
 Dashboard:
   type: object
   description: |
@@ -2515,6 +3293,68 @@ Dashboard:
         the counted projects updated last, newest first (the later id on a tie).
       items:
         $ref: '#/DashboardRecent'
+  # Acme's dashboard as an administrator reads it on 2026-10-06, the default period: fourteen
+  # open tickets in WEB, the confidential finding among them.
+  example:
+    period: {from: '2026-09-07', to: '2026-10-06'}
+    open_by_state:
+      - {project: WEB, state: filed, count: 4}
+      - {project: WEB, state: analysed, count: 3}
+      - {project: WEB, state: decided, count: 2}
+      - {project: WEB, state: in-progress, count: 3}
+      - {project: WEB, state: review, count: 1}
+      - {project: WEB, state: blocked, count: 1}
+    open_by_severity:
+      - {severity: critical, count: 0}
+      - {severity: high, count: 3}
+      - {severity: medium, count: 6}
+      - {severity: low, count: 4}
+      - {severity: cosmetic, count: 1}
+    security:
+      - {class: live, count: 0, oldest: null}
+      - class: boundary
+        count: 1
+        oldest: {key: acme/WEB-31, title: A password reset link works twice, since: '2026-09-02T11:40:00Z'}
+    blocked:
+      count: 1
+      oldest: {key: acme/WEB-36, title: Move the sign-in page to the new domain, since: '2026-09-29T15:00:00Z', kind: external}
+    age:
+      - {from_days: 0, to_days: 7, count: 4}
+      - {from_days: 7, to_days: 30, count: 7}
+      - {from_days: 30, to_days: 90, count: 2}
+      - {from_days: 90, to_days: 365, count: 1}
+      - {from_days: 365, to_days: null, count: 0}
+    throughput:
+      - {week: 2026-W34, from: '2026-08-17', to: '2026-08-23', done: 2}
+      - {week: 2026-W35, from: '2026-08-24', to: '2026-08-30', done: 3}
+      - {week: 2026-W36, from: '2026-08-31', to: '2026-09-06', done: 1}
+      - {week: 2026-W37, from: '2026-09-07', to: '2026-09-13', done: 2}
+      - {week: 2026-W38, from: '2026-09-14', to: '2026-09-20', done: 4}
+      - {week: 2026-W39, from: '2026-09-21', to: '2026-09-27', done: 1}
+      - {week: 2026-W40, from: '2026-09-28', to: '2026-10-04', done: 3}
+      - {week: 2026-W41, from: '2026-10-05', to: '2026-10-06', done: 1}
+    lead_time: {from: '2026-09-07', to: '2026-10-06', done: 11, median_seconds: 410400}
+    decisions:
+      count: 1
+      oldest:
+        key: acme/WEB-42
+        title: Sign-in fails in Safari when the password contains a space
+        number: 1
+        question: Do we trim passwords on the server as well?
+        since: '2026-10-05T14:55:00Z'
+    time:
+      total_minutes: 135
+      projects:
+        - {project: WEB, name: Website, minutes: 135}
+    recent:
+      - {key: acme/WEB-42, type: bug, title: Sign-in fails in Safari when the password contains a space, state: in-progress, updated_at: '2026-10-06T10:12:05Z'}
+      - {key: acme/WEB-43, type: bug, title: The password reset mail links to the old domain, state: filed, updated_at: '2026-10-06T09:30:00Z'}
+      - {key: acme/WEB-39, type: task, title: Log the sign-in failures with their reason, state: analysed, updated_at: '2026-10-06T08:20:00Z'}
+      - {key: acme/WEB-40, type: feature, title: Customer sign-in, state: in-progress, updated_at: '2026-10-05T17:00:00Z'}
+      - {key: acme/WEB-38, type: task, title: Show the cookie notice in German, state: review, updated_at: '2026-10-05T11:45:00Z'}
+      - {key: acme/WEB-36, type: task, title: Move the sign-in page to the new domain, state: blocked, updated_at: '2026-10-03T16:10:00Z'}
+      - {key: acme/WEB-35, type: bug, title: The footer covers the last line of the price table, state: decided, updated_at: '2026-10-02T13:25:00Z'}
+      - {key: acme/WEB-31, type: bug, title: A password reset link works twice, state: in-progress, updated_at: '2026-10-01T09:50:00Z'}
 DashboardPeriod:
   type: object
   description: |
@@ -2714,3 +3554,665 @@ SearchHitList:
         $ref: '#/SearchHit'
     next_cursor:
       type: [string, 'null']
+  # q=macOS, which only a comment of acme/WEB-42 holds.
+  example:
+    items:
+      - tenant: {slug: acme, name: Acme}
+        key: acme/WEB-42
+        title: Sign-in fails in Safari when the password contains a space
+        type: bug
+        state: in-progress
+        found_in: comment
+        comment: 01a10c96-0240-79ce-bd04-bc6c377cbc17
+        question: null
+        snippet:
+          - {text: 'Reproduced with Safari 18.0 on ', match: false}
+          - {text: macOS, match: true}
+          - {text: ' 15: the request carries the password without its trailing space.', match: false}
+    next_cursor: null
+ImportStatus:
+  type: string
+  enum: [dry_run, executed]
+  description: |
+    `dry_run`: the report of what the execution would do, kept for twenty-four hours and executed at
+    most once (docs/adr/0051 D2, D3, D7); `executed`: the import committed, and the report says what
+    it created
+ImportOutcome:
+  type: string
+  enum: [create, conflict, error, skip, exclude, created]
+  description: |
+    What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its
+    number is a ticket of the project already, deleted ones in the bin included, or was one that was
+    purged — a repeated import is a duplicate, not an update, and a number is never handed out twice
+    (docs/adr/0064 D3, docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors` says
+    why (docs/adr/0051 D2). `skip`: it is no ticket file, or it is a manifest of an export the import
+    reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it out
+    (docs/adr/0063 D1). `created`: the execution created its ticket. A dry run is not executed while
+    a file it would import is `conflict` or `error`: exclude the file, or correct the source and make
+    a new dry run
+ImportFormat:
+  type: string
+  enum: [repository, export, plain]
+  description: |
+    The grammar a file was read in. `repository`: a ticket file of a repository's docs/tickets/ —
+    `id: T<n>`, `urgency`, `blocked-by`, `filed-from`, the `local_` prefix (docs/adr/0063 D3).
+    `export`: cowork's own grammar v1, `key: <tenant>/<PROJECT>-<n>` (docs/adr/0044 D1). `plain`: a
+    file without frontmatter, an archived record that becomes one done task (docs/adr/0063 D4)
+ImportMessage:
+  type: object
+  required: [field, line, message]
+  properties:
+    field:
+      type: [string, 'null']
+      description: |
+        The frontmatter key, or the part of the file — `file`, `body`, `Q<n>`, `links.json` — the
+        message is about
+    line:
+      type: [integer, 'null']
+      description: The line of the file, from 1, where one applies
+    message: {type: string}
+ImportBlock:
+  type: object
+  description: The block of a ticket the import creates as blocked (docs/adr/0009 D2)
+  required: [kind, reason, from, ticket]
+  properties:
+    kind:
+      $ref: '#/BlockKind'
+    reason: {type: string}
+    from:
+      $ref: '#/TicketState'
+    ticket:
+      type: [string, 'null']
+      description: The key of the ticket a block of kind `ticket` waits on
+ImportColumns:
+  type: object
+  description: |
+    The ticket's columns as the import reads them (docs/adr/0010 D5); a value outside its vocabulary
+    is an error of the file and null here, never a guess
+  required: [severity, security, threat, horizon, effort, progress_refinement, progress, progress_review,
+    opened, decided, done]
+  properties:
+    severity:
+      oneOf:
+        - $ref: '#/Severity'
+        - type: 'null'
+    security:
+      oneOf:
+        - $ref: '#/SecurityClass'
+        - type: 'null'
+    threat: {type: [string, 'null']}
+    horizon:
+      description: The horizon, read from `horizon` or `urgency`; `later` where the source names none (docs/adr/0010 D3)
+      oneOf:
+        - $ref: '#/Horizon'
+        - type: 'null'
+    effort:
+      oneOf:
+        - $ref: '#/Effort'
+        - type: 'null'
+    progress_refinement: {type: integer, description: The refinement stage; 0 where the source names none}
+    progress: {type: integer, description: The implementation stage; 0 where the source names none}
+    progress_review: {type: integer, description: The review stage; 0 where the source names none}
+    opened:
+      type: [string, 'null']
+      format: date
+      description: The `opened` date; null where the source names none, and the ticket is then opened at the execution
+    decided: {type: [string, 'null'], format: date}
+    done: {type: [string, 'null'], format: date, description: The `done` date of a ticket imported as done}
+ImportAssignee:
+  type: object
+  required: [source, person]
+  properties:
+    source:
+      type: string
+      description: The assignee as the file writes it, `Name <identity>` (docs/adr/0044 D1)
+    person:
+      description: |
+        The member it is: the identity resolved — `local:<username>`, or `oidc:<issuer>#<subject>` of the
+        configured issuer — to a member who can see the project. Null when it resolves to nobody, never
+        guessed by the name: the ticket is then imported without an assignee, unless a correction names
+        one (docs/adr/0044 D1)
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+ImportQuestion:
+  type: object
+  description: An open question the import creates as an entity of the ticket (docs/adr/0011 D2, D4)
+  required: [number, question, status]
+  properties:
+    number: {type: integer}
+    question: {type: string}
+    status:
+      $ref: '#/QuestionStatus'
+ImportLink:
+  type: object
+  description: A link the import creates, read from this file's end (docs/adr/0012)
+  required: [type, direction, key, source]
+  properties:
+    type:
+      $ref: '#/LinkType'
+    direction:
+      type: string
+      enum: [outgoing, incoming]
+      description: Outgoing when this file's ticket is the link's source
+    key: {type: string, description: The other end's key in the project}
+    source:
+      type: string
+      enum: [blocked-by, filed-from, links.json]
+      description: Where the import read the link
+ImportBlockCorrection:
+  type: object
+  additionalProperties: false
+  description: The block a correction to the state `blocked` gives the ticket (docs/adr/0009 D2)
+  required: [kind, reason]
+  properties:
+    kind:
+      $ref: '#/BlockKind'
+    reason: {type: string, minLength: 1, maxLength: 2000}
+    from:
+      $ref: '#/TicketState'
+ImportCorrection:
+  type: object
+  additionalProperties: false
+  description: |
+    A person's correction of one file before the execution (docs/adr/0051 D2, docs/adr/0063 D1,
+    docs/adr/0008 D5): leave it out, or change its type, its state or its assignee. A file that
+    names `exclude: true` takes no other correction; a skipped file takes none at all. The state
+    `blocked` takes `block`, whose kind is not `ticket` — a block on a ticket is a `blocks` link, made
+    after the import — and whose `from` is the file's own state unless that is `blocked`, `done` or
+    `dropped`, when it is required; `block` with another state is refused. A correction to `done`
+    takes the file's `shipped` line, or the import note `imported from archive; the source carried no
+    verification note` (docs/adr/0063 D2); one to `dropped` the file's `dropped-reason`, or `imported
+    from archive; the source carried no reason`. `assignee` is a person id — a member who can see the
+    project — or null for nobody
+  required: [path]
+  properties:
+    path: {type: string, minLength: 1, maxLength: 1024, description: The file's path as the report names it}
+    exclude: {type: boolean}
+    type:
+      $ref: '#/TicketType'
+    state:
+      $ref: '#/TicketState'
+    block:
+      $ref: '#/ImportBlockCorrection'
+    assignee:
+      type: [string, 'null']
+      format: uuid
+ImportFile:
+  type: object
+  description: |
+    One file of the upload as the import reads it (docs/adr/0051 D2, docs/adr/0063). The fields after
+    `reason` are null, or empty, for a skipped file and for one whose frontmatter cannot be read at all
+  required: [path, outcome, reason, format, number, key, conflict, title, type, type_reason, state,
+    block_candidate, block, columns, assignee, parent, note, questions, links, attachments, confidential,
+    confidential_reason, warnings, errors, correction]
+  properties:
+    path: {type: string, description: 'The file''s path in the upload, `/`-separated'}
+    outcome:
+      $ref: '#/ImportOutcome'
+    reason:
+      type: [string, 'null']
+      description: Why the file is skipped or excluded
+    format:
+      oneOf:
+        - $ref: '#/ImportFormat'
+        - type: 'null'
+    number:
+      type: [integer, 'null']
+      description: |
+        The ticket's number, kept from the source (docs/adr/0007 D6): `id: T<n>` or the `NNN` of the
+        file name, or the number of an export's key
+    key:
+      type: [string, 'null']
+      description: The key the ticket gets — or got — in the project, `<tenant>/<PROJECT>-<n>`
+    conflict:
+      type: [string, 'null']
+      description: The key of the project's ticket that holds the number — a deleted one included — or held it until it was purged
+    title: {type: [string, 'null']}
+    type:
+      oneOf:
+        - $ref: '#/TicketType'
+        - type: 'null'
+    type_reason:
+      type: [string, 'null']
+      description: Why the import chose the type — named by the file, or detected by its content and open to correction (docs/adr/0008 D5)
+    state:
+      oneOf:
+        - $ref: '#/TicketState'
+        - type: 'null'
+    block_candidate:
+      description: |
+        The kind a repository's `blocked-by` names beside a state that is not `blocked`: the import never
+        infers `blocked` (docs/adr/0009); a correction to `blocked` with this kind confirms it
+      oneOf:
+        - $ref: '#/BlockKind'
+        - type: 'null'
+    block:
+      oneOf:
+        - $ref: '#/ImportBlock'
+        - type: 'null'
+    columns:
+      oneOf:
+        - $ref: '#/ImportColumns'
+        - type: 'null'
+    assignee:
+      oneOf:
+        - $ref: '#/ImportAssignee'
+        - type: 'null'
+    parent:
+      type: [string, 'null']
+      description: The key of the parent in the project
+    note:
+      type: [string, 'null']
+      description: |
+        The verification note of a ticket imported as done, or the reason of one imported as dropped,
+        which the import records on the state's act (docs/adr/0009 D5, docs/adr/0063 D2)
+    questions:
+      type: array
+      items:
+        $ref: '#/ImportQuestion'
+    links:
+      type: array
+      items:
+        $ref: '#/ImportLink'
+    attachments:
+      type: array
+      description: The file names the source lists; an export carries no bytes, and the import brings no file (docs/adr/0051 D4)
+      items: {type: string}
+    confidential:
+      type: boolean
+      description: The ticket is created confidential (docs/adr/0065 D7)
+    confidential_reason:
+      type: [string, 'null']
+      description: |
+        Why it is confidential — or why it is not where the source might suggest it: a
+        `publication-accepted` date, a `shipped` line that names the fix
+    warnings:
+      type: array
+      description: What the import reads in a way the person should know, or leaves out — nothing is dropped silently
+      items:
+        $ref: '#/ImportMessage'
+    errors:
+      type: array
+      description: Why the file cannot be imported as it stands
+      items:
+        $ref: '#/ImportMessage'
+    correction:
+      description: The correction the execution applied to the file; null in a dry run and where none was sent
+      oneOf:
+        - $ref: '#/ImportCorrection'
+        - type: 'null'
+ImportSummary:
+  type: object
+  required: [files, create, conflict, error, skip, exclude, created, open, confidential, highest_number]
+  properties:
+    files: {type: integer, description: Every file of the upload}
+    create: {type: integer}
+    conflict: {type: integer}
+    error: {type: integer}
+    skip: {type: integer}
+    exclude: {type: integer}
+    created: {type: integer}
+    open:
+      type: integer
+      description: The tickets to create, or created, in a state that is not `done` or `dropped`
+    confidential:
+      type: integer
+      description: The tickets to create, or created, confidential
+    highest_number:
+      type: [integer, 'null']
+      description: The highest number to create, or created; the project's sequence advances past it (docs/adr/0007 D6)
+ImportJob:
+  type: object
+  description: |
+    An import job on a project (docs/adr/0051 D1): a dry run's report until it is executed or
+    twenty-four hours pass, then the report of the execution
+  required: [id, project, status, created_by, created_at, expires_at, executed_by, executed_at, summary, files]
+  properties:
+    id: {type: string, format: uuid}
+    project: {type: string, description: The project's key}
+    status:
+      $ref: '#/ImportStatus'
+    created_by:
+      $ref: '#/Person'
+    created_at: {type: string, format: date-time}
+    expires_at:
+      type: [string, 'null']
+      format: date-time
+      description: When the dry run is gone; null once it is executed
+    executed_by:
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+    executed_at: {type: [string, 'null'], format: date-time}
+    summary:
+      $ref: '#/ImportSummary'
+    files:
+      type: array
+      description: |
+        Every file of the upload, in the order the upload carried them. Once a ticket the execution
+        created is purged, its file is no longer listed, and `summary` still counts it
+        (docs/adr/0024 D2)
+      items:
+        $ref: '#/ImportFile'
+  # The dry run of an upload of a repository's docs/tickets/ into WEB, read by the importer itself:
+  # a file to skip, one whose number acme/WEB-41 holds, one with an error, three to create.
+  example:
+    id: 01a1156e-1ba0-7aa7-b9fb-d1b5399ba6fa
+    project: WEB
+    status: dry_run
+    created_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+    created_at: '2026-10-07T08:15:00Z'
+    expires_at: '2026-10-08T08:15:00Z'
+    executed_by: null
+    executed_at: null
+    summary:
+      files: 6
+      create: 3
+      conflict: 1
+      error: 1
+      skip: 1
+      exclude: 0
+      created: 0
+      open: 2
+      confidential: 1
+      highest_number: 47
+    files:
+      - path: docs/tickets/README.md
+        outcome: skip
+        reason: 'not a ticket file: its name is neither NNN-<slug>.md, local_NNN-<slug>.md nor <PROJECT>-<n>.md (docs/adr/0063 D5)'
+        format: null
+        number: null
+        key: null
+        conflict: null
+        title: null
+        type: null
+        type_reason: null
+        state: null
+        block_candidate: null
+        block: null
+        columns: null
+        assignee: null
+        parent: null
+        note: null
+        questions: []
+        links: []
+        attachments: []
+        confidential: false
+        confidential_reason: null
+        warnings: []
+        errors: []
+        correction: null
+      - path: docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md
+        outcome: conflict
+        reason: null
+        format: repository
+        number: 41
+        key: acme/WEB-41
+        conflict: acme/WEB-41
+        title: pick the SameSite mode of the session cookie
+        type: task
+        type_reason: 'detected: the title names no question, defect, decision or missing capability'
+        state: decided
+        block_candidate: null
+        block: null
+        columns:
+          severity: medium
+          security: hardening
+          threat: a cross-site request could carry the session cookie
+          horizon: next
+          effort: XS
+          progress_refinement: 0
+          progress: 0
+          progress_review: 0
+          opened: '2026-09-22'
+          decided: '2026-09-25'
+          done: null
+        assignee: null
+        parent: null
+        note: null
+        questions: []
+        links: []
+        attachments: []
+        confidential: false
+        confidential_reason: null
+        warnings: []
+        errors: []
+        correction: null
+      - path: docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md
+        outcome: create
+        reason: null
+        format: repository
+        number: 44
+        key: acme/WEB-44
+        conflict: null
+        title: the newsletter form accepts an empty address
+        type: task
+        type_reason: 'detected: the title names no question, defect, decision or missing capability'
+        state: filed
+        block_candidate: null
+        block: null
+        columns:
+          severity: low
+          security: none
+          threat: null
+          horizon: later
+          effort: XS
+          progress_refinement: 0
+          progress: 0
+          progress_review: 0
+          opened: '2026-10-03'
+          decided: null
+          done: null
+        assignee:
+          source: Grace Hopper <oidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw>
+          person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+        parent: null
+        note: null
+        questions: []
+        links: []
+        attachments: []
+        confidential: false
+        confidential_reason: null
+        warnings: []
+        errors: []
+        correction: null
+      - path: docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md
+        outcome: error
+        reason: null
+        format: repository
+        number: 45
+        key: acme/WEB-45
+        conflict: null
+        title: the price table is unreadable on a phone
+        type: task
+        type_reason: 'detected: the title names no question, defect, decision or missing capability'
+        state: analysed
+        block_candidate: null
+        block: null
+        columns:
+          severity: null
+          security: none
+          threat: null
+          horizon: now
+          effort: S
+          progress_refinement: 0
+          progress: 0
+          progress_review: 0
+          opened: '2026-10-04'
+          decided: null
+          done: null
+        assignee: null
+        parent: null
+        note: null
+        questions: []
+        links: []
+        attachments: []
+        confidential: false
+        confidential_reason: null
+        warnings: []
+        errors:
+          - field: severity
+            line: 5
+            message: 'severity: "urgent" is outside the vocabulary (docs/adr/0010 D5)'
+        correction: null
+      - path: docs/tickets/archive/046-move-the-images-to-the-cdn.md
+        outcome: create
+        reason: null
+        format: repository
+        number: 46
+        key: acme/WEB-46
+        conflict: null
+        title: move the images to the CDN
+        type: task
+        type_reason: 'detected: the title names no question, defect, decision or missing capability'
+        state: done
+        block_candidate: null
+        block: null
+        columns:
+          severity: low
+          security: none
+          threat: null
+          horizon: later
+          effort: S
+          progress_refinement: 0
+          progress: 0
+          progress_review: 0
+          opened: '2026-09-01'
+          decided: '2026-09-02'
+          done: '2026-09-15'
+        assignee: null
+        parent: null
+        note: the images load from cdn.acme.example since release 2.3; the home page fell from 2.1 MB to 0.6 MB
+        questions: []
+        links: []
+        attachments: []
+        confidential: false
+        confidential_reason: null
+        warnings: []
+        errors: []
+        correction: null
+      - path: docs/tickets/local_047-the-contact-form-sends-its-fields-to-a-third-party.md
+        outcome: create
+        reason: null
+        format: repository
+        number: 47
+        key: acme/WEB-47
+        conflict: null
+        title: the contact form sends its fields to a third party
+        type: bug
+        type_reason: 'detected: a security finding, security boundary'
+        state: analysed
+        block_candidate: null
+        block: null
+        columns:
+          severity: high
+          security: boundary
+          threat: a visitor's message reaches the form provider's analytics, which the privacy notice does not name
+          horizon: now
+          effort: M
+          progress_refinement: 0
+          progress: 0
+          progress_review: 0
+          opened: '2026-10-05'
+          decided: null
+          done: null
+        assignee: null
+        parent: null
+        note: null
+        questions:
+          - number: 1
+            question: Do we host the form ourselves?
+            status: open
+        links: []
+        attachments: []
+        confidential: true
+        confidential_reason: the file name carries the local_ prefix of an open finding's embargo (docs/adr/0065 D7)
+        warnings: []
+        errors: []
+        correction: null
+ImportExecution:
+  type: object
+  additionalProperties: false
+  properties:
+    corrections:
+      type: array
+      maxItems: 10000
+      items:
+        $ref: '#/ImportCorrection'
+ExportManifest:
+  type: object
+  description: '`manifest.json` of an export archive (docs/adr/0051 D4)'
+  required: [format, tenant, projects, exported_at, exported_by, tickets, confidential_not_included]
+  properties:
+    format:
+      type: string
+      enum: [cowork export v1]
+    tenant: {type: string, description: 'The tenant''s slug'}
+    projects:
+      type: array
+      description: The project of a project export; every project the caller sees, by key, of a tenant export
+      items:
+        $ref: '#/ExportManifestProject'
+    exported_at: {type: string, format: date-time}
+    exported_by:
+      type: string
+      description: The exporter as grammar v1 writes a person, `Name <identity>` (docs/adr/0044 D1)
+    tickets: {type: integer, description: The documents the archive holds}
+    confidential_not_included:
+      type: integer
+      description: |
+        The confidential tickets of these projects the exporter cannot see, which the archive leaves out
+        — "n confidential tickets not included" (docs/adr/0065 D5)
+  # A member's export of WEB after the import: two confidential tickets are not theirs to read.
+  example:
+    format: cowork export v1
+    tenant: acme
+    projects:
+      - key: WEB
+        name: Website
+        archived: false
+        tickets: 43
+        confidential_not_included: 2
+    exported_at: '2026-10-07T09:00:00Z'
+    exported_by: 'Sam Rivera <local:sam>'
+    tickets: 43
+    confidential_not_included: 2
+ExportManifestProject:
+  type: object
+  required: [key, name, archived, tickets, confidential_not_included]
+  properties:
+    key: {type: string, description: The project's key}
+    name: {type: string}
+    archived: {type: boolean}
+    tickets: {type: integer, description: The documents of this project the archive holds}
+    confidential_not_included: {type: integer}
+ExportLink:
+  type: object
+  description: One link of `links.json`, once (docs/adr/0051 D4, docs/adr/0012 D1)
+  required: [source, type, target]
+  properties:
+    source: {type: string, description: 'The source''s key, <tenant>/<PROJECT>-<n>'}
+    type:
+      $ref: '#/LinkType'
+    target: {type: string, description: 'The target''s key; relates-to is stored and written once'}
+  example:
+    source: acme/WEB-39
+    type: blocks
+    target: acme/WEB-42
+ExportAttachment:
+  type: object
+  description: One attachment of `attachments.json` — its metadata and URL, never its bytes (docs/adr/0016 D5)
+  required: [ticket, name, type, size, url]
+  properties:
+    ticket: {type: string, description: 'The ticket''s key'}
+    name: {type: string}
+    type: {type: string, description: The stored content type}
+    size: {type: integer, format: int64}
+    url: {type: string, description: 'The path of its bytes, `…/attachments/{attachment}/content`'}
+  example:
+    ticket: acme/WEB-42
+    name: safari-sign-in.png
+    type: image/png
+    size: 186779
+    url: /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content

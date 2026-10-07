@@ -54,7 +54,7 @@ tenants:
             $ref: './components/schemas.yaml#/TenantCreate'
           example:
             slug: acme
-            name: Acme Corp
+            name: Acme
     responses:
       '201':
         description: The tenant
@@ -67,6 +67,15 @@ tenants:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/Tenant'
+            example:
+              slug: acme
+              name: Acme
+              version: 1
+              time_visible_to_members: false
+              time_locked_until: null
+              members_create_projects: true
+              created_at: '2026-03-02T08:45:00Z'
+              updated_at: '2026-03-02T08:45:00Z'
       default:
         $ref: './components/responses.yaml#/Problem'
 # Everything under one tenant, /api/v1/tenants/{tenant}/… (docs/adr/0023 D1).
@@ -185,6 +194,10 @@ audit:
           text/csv:
             schema:
               type: string
+            example: |
+              id,created_at,actor_user_id,actor_system,agent,token_id,entity_type,entity_id,ticket_key,action,reason,note,request_id,before,after,token_name
+              01a1108c-69c0-708c-a456-d344b487f663,2026-10-06T09:30:00Z,019cadb4-4b00-7719-ade7-c2d450e9b5f3,,,,ticket,01a1108c-69c0-748d-8363-132fa3f8667c,acme/WEB-43,created,,,01a1108c-69c0-7a3e-9c21-5b7d0f4e8a16,,"{""type"": ""bug"", ""title"": ""The password reset mail links to the old domain"", ""effort"": ""S"", ""urgency"": ""later"", ""security"": ""none"", ""severity"": ""medium""}",
+              01a0fbe2-7f00-7f00-a107-cc0e604f9a75,2026-10-02T09:12:00Z,019cb855-3d80-7d3c-a80d-97fa1e50d59e,,,,ticket,01a0f687-f3a0-7516-87ab-709ca2b1c1e6,acme/WEB-42,transitioned,,,01a0fbe2-7f00-779f-a8b1-4da03f48c675,"{""state"": ""decided""}","{""state"": ""in-progress""}",
       default:
         $ref: './components/responses.yaml#/Problem'
 projects:
@@ -242,11 +255,12 @@ projects:
           schema:
             $ref: './components/schemas.yaml#/ProjectCreate'
           example:
-            key: COW
-            name: cowork
-            description: The backlog of cowork itself
+            key: WEB
+            name: Website
+            description: The public website and the customer sign-in
+            wip_limits: {in-progress: 4, review: 2}
             repository:
-              remote: git@github.com:guided-traffic/cowork.git
+              remote: git@github.com:acme/website.git
     responses:
       '200':
         description: A project of the tenant binds the repository already; that project
@@ -308,6 +322,9 @@ project:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/ProjectPatch'
+          example:
+            description: The public website and the customer sign-in
+            wip_limits: {in-progress: 4, review: 2}
     responses:
       '200':
         description: The changed project
@@ -343,6 +360,17 @@ projectArchive:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/Project'
+            example:
+              id: 019cadcb-2e60-7116-9641-67b17d11d0ef
+              key: WEB
+              name: Website
+              description: The public website and the customer sign-in
+              restricted: false
+              wip_limits: {in-progress: 4, review: 2}
+              archived_at: '2026-10-06T11:00:00Z'
+              version: 3
+              created_at: '2026-03-02T09:05:00Z'
+              updated_at: '2026-10-06T11:00:00Z'
       default:
         $ref: './components/responses.yaml#/Problem'
 projectRank:
@@ -526,10 +554,11 @@ projectTickets:
             $ref: './components/schemas.yaml#/TicketCreate'
           example:
             type: bug
-            title: The export drops attachments
+            title: The password reset mail links to the old domain
             severity: medium
             security: none
             effort: S
+            parent: WEB-40
     responses:
       '201':
         description: The new ticket
@@ -542,6 +571,43 @@ projectTickets:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/Ticket'
+            example:
+              id: 01a1108c-69c0-748d-8363-132fa3f8667c
+              key: acme/WEB-43
+              project: WEB
+              number: 43
+              type: bug
+              title: The password reset mail links to the old domain
+              body: ''
+              state: filed
+              block: null
+              severity: medium
+              security: none
+              threat: null
+              horizon: later
+              horizon_set: null
+              effort: S
+              progress: 0
+              progress_refinement: 0
+              progress_review: 0
+              progress_derived: false
+              parent: acme/WEB-40
+              reporter: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+              reporter_agent: null
+              reporter_token: null
+              assignee: null
+              confidential: false
+              opened_at: '2026-10-06T09:30:00Z'
+              decided_at: null
+              done_at: null
+              done_from: null
+              done_by_hand: false
+              open_prerequisites: 0
+              score: 4.0
+              score_version: 1
+              version: 1
+              created_at: '2026-10-06T09:30:00Z'
+              updated_at: '2026-10-06T09:30:00Z'
       default:
         $ref: './components/responses.yaml#/Problem'
 ticket:
@@ -597,6 +663,9 @@ ticket:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/TicketPatch'
+          example:
+            progress: 60
+            comment: The fix sends the password as typed; the test in Safari is next.
     responses:
       '200':
         description: The changed ticket
@@ -739,10 +808,6 @@ ticketBody:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/TicketBody'
-            example:
-              body: "## Current state\n\nThe gate fails on `readyReplicas` — see [the run](https://ci.example/run/7)."
-              body_html: "<h2>Current state</h2>\n<p>The gate fails on <code>readyReplicas</code> — see <a href=\"https://ci.example/run/7\" rel=\"noopener noreferrer nofollow\" target=\"_blank\">the run</a>.</p>"
-              version: 4
       default:
         $ref: './components/responses.yaml#/Problem'
   put:
@@ -758,6 +823,17 @@ ticketBody:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/TicketBodyReplace'
+          example:
+            body: |-
+              ## Current state
+
+              Safari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.
+
+              ## Required changes
+
+              - Send the password as typed.
+              - An end-to-end test that signs in with a trailing space in Safari.
+            comment: Rewritten after the reproduction in Safari 18.
     responses:
       '200':
         description: The ticket with its new body
@@ -797,8 +873,8 @@ ticketHorizon:
           schema:
             $ref: './components/schemas.yaml#/HorizonUpdate'
           example:
-            value: next
-            reason: Taken up once the import works
+            value: now
+            reason: Customers cannot sign in
     responses:
       '200':
         description: The ticket
@@ -831,6 +907,9 @@ ticketConfidential:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/ConfidentialSet'
+          example:
+            confidential: false
+            reason: The fix is released; every member may read the finding now.
     responses:
       '200':
         description: The ticket

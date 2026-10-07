@@ -25,8 +25,11 @@ objected to.
 previous and the new text on the act, questions as entities (migration 10) with their number,
 the person asked, the answer only a person decides and an agent may record with
 `record-answer`; D4's export half in [ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)'s
-`/markdown`. D3's person-level list arrives with the person-level views, D4's import with the
-importer, D6's sanitiser with the first rendered Markdown. *(2026-10-04.)* In the browser the
+`/markdown`. D3's person-level list arrives with the person-level views, ~~D4's import with the
+importer~~ *(D4's import built 2026-10-06 with the importer of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md): the last `## Open questions` heading outside fenced code
+holds the questions, an earlier one stays in the body and the report warns of it, as the Residual
+risks foresee)*, D6's sanitiser with the first rendered Markdown. *(2026-10-04.)* In the browser the
 body is edited as Markdown and replaced as a whole over the version its editor began with
 ([ADR 0050](0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md)
 D3), and the asker edits an open question's text; the body is still shown as text.

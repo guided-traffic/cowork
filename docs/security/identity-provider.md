@@ -221,8 +221,9 @@ in the member list and a project's access list
 ([tenancy.md](tenancy.md#members-grants-and-group-mappings)).
 
 The pair leaves the system together in one place: a ticket's canonical Markdown writes its
-assignee as `Name <oidc:<issuer>#<subject>>`, so that the importer can resolve the person by the
-stable key rather than by a name
+assignee as `Name <oidc:<issuer>#<subject>>` — on its own and in the project and tenant export,
+whose manifest writes the exporter so as well ([import-and-export.md](import-and-export.md#h-75)) —,
+so that the importer can resolve the person by the stable key rather than by a name
 ([ADR 0044](../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
 D1, [`person`](../../backend/internal/markdown/markdown.go)). Every reader of the ticket reads it
 there — any role, a `read` token, and through the context an agent and a configured chat

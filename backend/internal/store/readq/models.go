@@ -60,6 +60,7 @@ const (
 	AuditActionReopened           AuditAction = "reopened"
 	AuditActionChecked            AuditAction = "checked"
 	AuditActionAccepted           AuditAction = "accepted"
+	AuditActionImported           AuditAction = "imported"
 )
 
 func (e *AuditAction) Scan(src interface{}) error {
@@ -863,6 +864,20 @@ type IdempotencyKey struct {
 	ExpiresAt       time.Time
 }
 
+type ImportJob struct {
+	ID         uuid.UUID
+	TenantID   uuid.UUID
+	ProjectID  uuid.UUID
+	Status     string
+	CreatedBy  uuid.UUID
+	CreatedAt  time.Time
+	ExpiresAt  *time.Time
+	ExecutedBy *uuid.UUID
+	ExecutedAt *time.Time
+	Report     []byte
+	Source     []byte
+}
+
 type LocalAccount struct {
 	UserID                 uuid.UUID
 	PasswordHash           string
@@ -1062,6 +1077,8 @@ type Ticket struct {
 	DeletedBy                 *uuid.UUID
 	ScoreKey                  float64
 	ScoreVersion              int16
+	ImportedFromFile          *string
+	ImportedFromJob           *uuid.UUID
 }
 
 type TicketCounter struct {

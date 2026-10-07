@@ -48,5 +48,6 @@ export const AUDIT_ACTION: AuditAction[] = [
   'merged',
   'closed',
   'reopened',
-  'accepted'
+  'accepted',
+  'imported'
 ];

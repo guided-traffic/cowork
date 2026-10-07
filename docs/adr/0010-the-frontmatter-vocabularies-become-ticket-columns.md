@@ -60,7 +60,10 @@ after it ([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before
 
 **Built** (phase 2, 2026-10-02): D1–D3 — the columns and enums (migration 8), the threat rule
 as a CHECK and in the API, rule set v1 (`DeriveUrgency`, removed 2026-10-04),
-the override and its end. D4's `found-in` link exists; D5 arrives with the importer. The
+the override and its end. D4's `found-in` link exists; ~~D5 arrives with the importer~~ D5 is
+built with the importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) (2026-10-06): a value outside its
+vocabulary is an error of the file naming the key and its line, and the execution waits until the
+file is corrected or excluded. The
 amendment of 2026-10-03 is built (2026-10-03): ~~an input change derives the value and its rule
 again beside a standing override, which stays, and records no act of its own (`rederive` in
 `links.go`)~~ *(removed 2026-10-04 with the derivation)*; the reason is optional for a person and

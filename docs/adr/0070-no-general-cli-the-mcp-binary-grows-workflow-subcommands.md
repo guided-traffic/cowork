@@ -7,12 +7,25 @@ beside the MCP server?": workflow subcommands on the MCP binary, case by case, o
 all, over a full command-line client, and over a third-party OpenAPI CLI. The rules of D4–D6
 were put to the owner with the question and not objected to.
 
-**Partly built** (phase 5, 2026-10-04): D1, D3 and D4; of D2 `token check` and `lookup`, each
+~~**Partly built**~~ **Built** *(whole since 2026-10-06, with `export`)* (phase 5, 2026-10-04): D1, D3 and D4; of D2 `token check` and `lookup`, each
 with `--json` — `token check` reads `GET /api/v1/me/token` with an agent header, as the server
-does, so it reports the capabilities a session holds. `export` waits for the project export
+does, so it reports the capabilities a session holds. ~~`export` waits for the project export
 of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md),
-which does not exist; D5 with it. D6 — the integration tier runs the subcommands by their
+which does not exist; D5 with it.~~ D6 — the integration tier runs the subcommands by their
 command line against the fixture environment, and once by running the built binary.
+
+**Built** (phase 6, 2026-10-06): D2's `export` and D5 —
+`cowork-mcp export <tenant>/<PROJECT> <dir>` ([`mcpcli/export.go`](../../backend/internal/mcpcli/export.go))
+fetches the project export of ADR 0051 D4 through the generated client and unpacks it: the
+documents at `<dir>/<tenant>/<PROJECT>-<n>.md` and the three manifests at its root. *(Made concrete
+2026-10-06 by the implementer, open to the owner's objection:)* it refuses a target that is a file
+or a directory that is not empty before it asks the server; it writes regular files only, each at
+a path inside the directory, never over a file — `O_EXCL` —, the directories `0700` and the files
+`0600`, since an export may hold confidential tickets; it prints the count of documents and of the
+confidential tickets left out, and has no `--json`: its result is the directory, whose
+`manifest.json` is the structured form. Its requests carry the agent mark
+`cowork-mcp/unknown/export`, like every request of the binary, so the export's act names it. The
+integration tier runs it by its command line and as the built binary (D6).
 
 ## Context
 

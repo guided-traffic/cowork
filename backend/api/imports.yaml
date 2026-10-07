@@ -1,0 +1,434 @@
+# Import and export (docs/adr/0051): an import is a job on a project in two
+# phases — a dry run whose report a person corrects, then its execution in one
+# transaction —, and the export is its mirror, an archive of the project's or
+# the tenant's tickets in grammar v1 (docs/adr/0044 D1) with three manifests.
+imports:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  post:
+    operationId: createImport
+    tags: [imports]
+    summary: Read an upload of ticket files into a dry run's report
+    description: |
+      The first phase of an import (docs/adr/0051 D1, D2): every file of the upload is read, and the
+      answer is the new job, a dry run whose report says per file what the execution would do.
+      Nothing is imported yet. The upload is `multipart/form-data` with one or more parts named
+      `file`: one archive — a `tar.gz` or a `zip`, known by its bytes, not its name — or Markdown
+      files, one per part, named by the part's file name.
+
+      A file is read as a ticket file of a repository (`NNN-<slug>.md`, `local_NNN-<slug>.md`,
+      docs/adr/0063 D3), as cowork's own export (`<PROJECT>-<n>.md`, grammar v1), or, without
+      frontmatter, as an archived record that becomes one done task (D4); everything else is listed
+      as skipped (D5), the manifests of an export — `manifest.json`, `links.json`,
+      `attachments.json` — as read beside the tickets. A `/context` document is an error
+      (docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of
+      the project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is
+      detected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred
+      (docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);
+      the confidential flag follows the rule of the source (docs/adr/0065 D7).
+
+      An administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never
+      an agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`
+      (docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of
+      multipart overhead is `413 payload_too_large`, and so are files that hold more than
+      `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived
+      project is `409 project_archived`. Recorded as the act `created` on the `import_job`; the
+      dry run is kept for twenty-four hours, after which its read and its execution answer `404`.
+    requestBody:
+      required: true
+      description: |
+        One part or more, each named `file`: one archive — a `tar.gz` or a `zip`, known by its bytes,
+        such as an export of cowork or a repository's `docs/tickets/` packed — or Markdown files, one
+        per part, each named by its part's file name.
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [file]
+            properties:
+              file:
+                type: array
+                minItems: 1
+                items: {type: string, format: binary}
+    responses:
+      '201':
+        description: The dry run with its report
+        headers:
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ImportJob'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+import:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/ImportID'
+  get:
+    operationId: getImport
+    tags: [imports]
+    summary: An import job with its report
+    description: |
+      A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
+      the tenant's administrators, a token's `read` scope, never an agent — a flagged token and a
+      request with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a
+      dry run older than twenty-four hours, is `404`.
+    responses:
+      '200':
+        description: The job
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ImportJob'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+importExecution:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/ImportID'
+  post:
+    operationId: executeImport
+    tags: [imports]
+    summary: Execute a dry run, with corrections per file
+    description: |
+      The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the
+      corrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008
+      D5) — against the project as it stands now, and every ticket, question and link is created in
+      one transaction, the project's sequence advanced past the highest number, or nothing is. The
+      tickets keep their numbers and take their places at the bottom of the project's rank in number
+      order; the importer is their reporter; the dates, the stages, the horizon and the block are the
+      source's, and a ticket imported as done or dropped carries its note or reason on its act
+      (docs/adr/0063 D2). Every ticket records the file it came from and the job.
+
+      Each created row is an act of the importer naming the job: `created` on each ticket, with
+      `confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`
+      on each question, `linked` on both ends of each link; and `imported` on the job. The event
+      streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
+      nobody's inbox is told.
+
+      A dry run is executed at most once: a second execution is `409 import_executed`. A file the
+      execution would import that has an error, or whose number is a ticket of the project by now,
+      refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
+      `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
+      correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
+      its pointer. The same administrators, never an agent; an archived project is `409
+      project_archived`; a dry run older than twenty-four hours is `404`.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ImportExecution'
+          # The corrections of the dry run of ImportJob's example: the conflict and the error
+          # left out, a type the content did not show, an assignee the file did not name.
+          example:
+            corrections:
+              - path: docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md
+                exclude: true
+              - path: docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md
+                type: bug
+              - path: docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md
+                exclude: true
+              - path: docs/tickets/archive/046-move-the-images-to-the-cdn.md
+                assignee: 019e165f-39c0-7937-931a-d0fa7735df32
+    responses:
+      '200':
+        description: The executed job, its report naming the key of every ticket created
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ImportJob'
+            # The dry run of the schema's example executed with the request's corrections.
+            example:
+              id: 01a1156e-1ba0-7aa7-b9fb-d1b5399ba6fa
+              project: WEB
+              status: executed
+              created_by: &id001 {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+              created_at: '2026-10-07T08:15:00Z'
+              expires_at: null
+              executed_by: *id001
+              executed_at: '2026-10-07T08:24:00Z'
+              summary:
+                files: 6
+                create: 0
+                conflict: 0
+                error: 0
+                skip: 1
+                exclude: 2
+                created: 3
+                open: 2
+                confidential: 1
+                highest_number: 47
+              files:
+                - path: docs/tickets/README.md
+                  outcome: skip
+                  reason: 'not a ticket file: its name is neither NNN-<slug>.md, local_NNN-<slug>.md nor <PROJECT>-<n>.md (docs/adr/0063 D5)'
+                  format: null
+                  number: null
+                  key: null
+                  conflict: null
+                  title: null
+                  type: null
+                  type_reason: null
+                  state: null
+                  block_candidate: null
+                  block: null
+                  columns: null
+                  assignee: null
+                  parent: null
+                  note: null
+                  questions: []
+                  links: []
+                  attachments: []
+                  confidential: false
+                  confidential_reason: null
+                  warnings: []
+                  errors: []
+                  correction: null
+                - path: docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md
+                  outcome: exclude
+                  reason: excluded by the correction
+                  format: repository
+                  number: 41
+                  key: acme/WEB-41
+                  conflict: null
+                  title: pick the SameSite mode of the session cookie
+                  type: null
+                  type_reason: null
+                  state: null
+                  block_candidate: null
+                  block: null
+                  columns: null
+                  assignee: null
+                  parent: null
+                  note: null
+                  questions: []
+                  links: []
+                  attachments: []
+                  confidential: false
+                  confidential_reason: null
+                  warnings: []
+                  errors: []
+                  correction:
+                    exclude: true
+                    path: docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md
+                - path: docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md
+                  outcome: created
+                  reason: null
+                  format: repository
+                  number: 44
+                  key: acme/WEB-44
+                  conflict: null
+                  title: the newsletter form accepts an empty address
+                  type: bug
+                  type_reason: corrected
+                  state: filed
+                  block_candidate: null
+                  block: null
+                  columns:
+                    severity: low
+                    security: none
+                    threat: null
+                    horizon: later
+                    effort: XS
+                    progress_refinement: 0
+                    progress: 0
+                    progress_review: 0
+                    opened: '2026-10-03'
+                    decided: null
+                    done: null
+                  assignee:
+                    source: Grace Hopper <oidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw>
+                    person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+                  parent: null
+                  note: null
+                  questions: []
+                  links: []
+                  attachments: []
+                  confidential: false
+                  confidential_reason: null
+                  warnings: []
+                  errors: []
+                  correction:
+                    path: docs/tickets/044-the-newsletter-form-accepts-an-empty-address.md
+                    type: bug
+                - path: docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md
+                  outcome: exclude
+                  reason: excluded by the correction
+                  format: repository
+                  number: 45
+                  key: acme/WEB-45
+                  conflict: null
+                  title: the price table is unreadable on a phone
+                  type: null
+                  type_reason: null
+                  state: null
+                  block_candidate: null
+                  block: null
+                  columns: null
+                  assignee: null
+                  parent: null
+                  note: null
+                  questions: []
+                  links: []
+                  attachments: []
+                  confidential: false
+                  confidential_reason: null
+                  warnings: []
+                  errors:
+                    - field: severity
+                      line: 5
+                      message: 'severity: "urgent" is outside the vocabulary (docs/adr/0010 D5)'
+                  correction:
+                    exclude: true
+                    path: docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md
+                - path: docs/tickets/archive/046-move-the-images-to-the-cdn.md
+                  outcome: created
+                  reason: null
+                  format: repository
+                  number: 46
+                  key: acme/WEB-46
+                  conflict: null
+                  title: move the images to the CDN
+                  type: task
+                  type_reason: 'detected: the title names no question, defect, decision or missing capability'
+                  state: done
+                  block_candidate: null
+                  block: null
+                  columns:
+                    severity: low
+                    security: none
+                    threat: null
+                    horizon: later
+                    effort: S
+                    progress_refinement: 0
+                    progress: 0
+                    progress_review: 0
+                    opened: '2026-09-01'
+                    decided: '2026-09-02'
+                    done: '2026-09-15'
+                  assignee:
+                    source: ''
+                    person: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+                  parent: null
+                  note: the images load from cdn.acme.example since release 2.3; the home page fell from 2.1 MB to 0.6 MB
+                  questions: []
+                  links: []
+                  attachments: []
+                  confidential: false
+                  confidential_reason: null
+                  warnings: []
+                  errors: []
+                  correction:
+                    assignee: 019e165f-39c0-7937-931a-d0fa7735df32
+                    path: docs/tickets/archive/046-move-the-images-to-the-cdn.md
+                - path: docs/tickets/local_047-the-contact-form-sends-its-fields-to-a-third-party.md
+                  outcome: created
+                  reason: null
+                  format: repository
+                  number: 47
+                  key: acme/WEB-47
+                  conflict: null
+                  title: the contact form sends its fields to a third party
+                  type: bug
+                  type_reason: 'detected: a security finding, security boundary'
+                  state: analysed
+                  block_candidate: null
+                  block: null
+                  columns:
+                    severity: high
+                    security: boundary
+                    threat: a visitor's message reaches the form provider's analytics, which the privacy notice does not name
+                    horizon: now
+                    effort: M
+                    progress_refinement: 0
+                    progress: 0
+                    progress_review: 0
+                    opened: '2026-10-05'
+                    decided: null
+                    done: null
+                  assignee: null
+                  parent: null
+                  note: null
+                  questions:
+                    - number: 1
+                      question: Do we host the form ourselves?
+                      status: open
+                  links: []
+                  attachments: []
+                  confidential: true
+                  confidential_reason: the file name carries the local_ prefix of an open finding's embargo (docs/adr/0065 D7)
+                  warnings: []
+                  errors: []
+                  correction: null
+      default:
+        $ref: './components/responses.yaml#/Problem'
+projectExport:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  get:
+    operationId: exportProject
+    tags: [imports]
+    summary: The project's tickets as an archive
+    description: |
+      A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done
+      and dropped ones included, deleted ones not —, its `…/markdown` document named by its key,
+      `<tenant>/<PROJECT>-<n>.md`; and three manifests at the root:
+
+      - `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of
+        tickets, the time, the exporter, and the confidential tickets the caller cannot see and the
+        archive therefore leaves out, as a count (docs/adr/0065 D5);
+      - `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends
+        the caller can see, once, by its source key, its type and its target key;
+      - `attachments.json`, an array of `ExportAttachment`: every attachment of those tickets by its
+        ticket, name, type, size and URL — never its bytes (docs/adr/0016 D5).
+
+      The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
+      an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
+      is `404`. Every export is recorded, one act `exported` on the project — data left the system
+      (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+    responses:
+      '200':
+        description: The archive
+        headers:
+          Content-Disposition:
+            description: '`attachment; filename="<tenant>-<PROJECT>-<YYYYMMDD>.tar.gz"`'
+            schema: {type: string}
+        content:
+          application/gzip:
+            schema: {type: string, format: binary}
+      default:
+        $ref: './components/responses.yaml#/Problem'
+tenantExport:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+  get:
+    operationId: exportTenant
+    tags: [imports]
+    summary: The tenant's tickets as an archive, the union over its projects
+    description: |
+      The export of every project of the tenant the caller can see, archived ones included, in one
+      `tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all
+      of them under `<tenant>/`, and one `manifest.json`, `links.json` and `attachments.json` over
+      all of them, each link once. A restricted project the caller cannot see is absent, without a
+      count; the confidential tickets left out are counted per project and in total. Any member, an
+      agent too; a token restricted to a project is refused, as on every route of the tenant outside
+      a project. One act `exported` on the tenant, never published.
+    responses:
+      '200':
+        description: The archive
+        headers:
+          Content-Disposition:
+            description: '`attachment; filename="<tenant>-<YYYYMMDD>.tar.gz"`'
+            schema: {type: string}
+        content:
+          application/gzip:
+            schema: {type: string, format: binary}
+      default:
+        $ref: './components/responses.yaml#/Problem'

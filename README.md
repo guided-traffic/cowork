@@ -11,9 +11,11 @@ the analysis, the open decisions and the verification, and an LLM such as Claude
 it through the same API people use in the browser — with a personal access token that says who
 is accountable.
 
-> **Status: phase 4 — the login through an identity provider — and phase 5 — the LLM interface and
-> the chat in the UI — released as `0.3.0`; phase 3 — the UI on the core domain — in progress, its
-> parts released with `0.2.0` and `0.3.0`.** Tenants,
+> **Status: phase 6 — import and cut-over — and phase 7 — hardening and 1.0 — started on
+> 2026-10-06; phase 3 — the UI on the core domain — awaits the owner's reviews, its parts released
+> from `0.2.0` to `0.7.0`; phase 4 — the login through an identity provider — and phase 5 — the LLM
+> interface and the chat in the UI — released as `0.3.0`; the sign-in without a click as `0.8.0`;
+> metrics, the chart's references with the migration Job and GitHub's webhook as `0.9.0`.** Tenants,
 > projects and tickets — with links, state transitions, open questions, comments, interest,
 > progress, time entries and attachments — the audit record and the event stream exist behind a
 > JSON API, tested against PostgreSQL 18, MinIO and Dex. A person logs in through any OpenID Connect
@@ -26,8 +28,9 @@ is accountable.
 > tools as the person's agent, with a model of the providers the operator lists — LM Studio on the
 > operator's machine, a server of the OpenAI format or Anthropic — and the capabilities the person
 > chooses for it; its acts run at once, and Stop ends a turn at once
-> ([the chat](docs/operations/chat.md)). What comes next is
-> [the project plan](docs/planning/project-plan.md).
+> ([the chat](docs/operations/chat.md)). What comes next is in the work lists of
+> [docs/tickets/](docs/tickets/README.md), a family ticket for each open phase; 1.0 waits until
+> every open question there is answered.
 
 ```mermaid
 flowchart LR
@@ -65,6 +68,7 @@ flowchart LR
 - 🔖 **Saved filters** — the list filters under a name, the person's own or shared with the tenant with its owner beside it, applied, saved and shared from the filter bars of the backlog, of the tenant board and of the tenant's ticket list — every project's tickets in one table, whose address is its filter, so a filtered list is a link; a value that no longer holds is a warning, a shared filter that names what the reader cannot see is shown without its conditions, and a tenant administrator unshares or deletes a shared one — of a person who left, say — and changes nothing else of it.
 - 🔎 **Search with snippets** — PostgreSQL full text over titles, bodies, comments, questions and file names, keys by their beginning and titles by trigram, one ranked hit per ticket with the words found marked; a tenant's from its pages, every tenant's of the person from anywhere, each hit held to what the reader may see.
 - 📝 **Markdown rendered on the server** — the body, comments, options and answers rendered with goldmark and held to an allow-list by bluemonday: raw HTML shown as text, links with `rel="noopener noreferrer nofollow"`, images only of the ticket's own raster attachments; Angular's sanitiser runs over it again.
+- 📦 **Import and export** — a repository's Markdown tickets, open and archived, or an earlier export come into a project through a dry run whose report names every file's outcome, type, state and warnings for a tenant administrator to correct, on the project's import page or through the API, then one transaction that keeps their numbers, or nothing; a project or a whole tenant leaves as an archive of the tickets' Markdown with manifests of their links and attachments, fetched by anyone who reads it — from the project's header, the tenant's settings or the API — the backup's second line, and the round trip a test.
 - 🔔 **An inbox and the lists across tenants** — a notification for an assignment, a mention in a comment (`@` picks the person), a question asked of you, your question answered, a state change or a comment on a ticket you watch, a blocker closed and an urgent need, written with the act and shown from it; a bell with the unread count, live; and "next for me" — the start page —, "assigned to me" and "open decisions" across every tenant of the person, each item beside its tenant.
 - 🔗 **Pull requests on their tickets** — optional per tenant and on trial: a GitHub webhook signed with the tenant's secret links the pull requests and default-branch commits whose titles, bodies and messages name a ticket, tells its watchers of a merge and hints that the work may be ready to move — and never moves a ticket; cowork calls nothing at GitHub.
 - 📊 **A dashboard per tenant** — its front page: nine fixed tiles — open tickets by state and by severity, open security findings, the blocked, their age, done per week, lead time, open decisions, time booked — filtered by project and period, counted only over what the reader may see, and live.
@@ -138,7 +142,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Username | 1–63 characters of `a-z`, `0-9`, `.`, `_` and `-`, starting with a letter or a digit; unique in the installation; the identity is `local:<username>`, which `POST …/members` takes as well | `ada.lovelace` |
 | Person of the identity provider | the issuer and the ID token's `sub`; no username | — |
 | Group name | as the provider's groups claim carries it, matched exactly, case and all; in a mapping 1–256 characters with no white space at either end | `cowork-users` `# example` |
-| System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge`, `consistency-check` | `system:identity-provider` |
+| System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge`, `consistency-check`, `import-expiry` | `system:identity-provider` |
 | Local account origin | `config` — the one account `COWORK_LOCAL_ADMIN_*` names — or `tenant` — one a tenant administrator created and that tenant manages | — |
 | Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
 | Activity header | `X-Cowork-Activity: input` on a read of a session: the person's activity, which moves the idle clock; any other value, or none, moves nothing | `X-Cowork-Activity: input` |
@@ -191,6 +195,8 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Ticket (interim, in this repository) | `docs/tickets/NNN-<kebab-slug>.md`, `id: T<n>` | rules in [docs/tickets/README.md](docs/tickets/README.md) |
 | API document | `backend/api/openapi.yaml` and one file per path family, bundled by `make generate` into `backend/api/openapi.gen.json` | served at `/api/v1/openapi.json` |
 | `cowork-mcp` release binary | `cowork-mcp-<version>-<os>-<arch>`, `.exe` on windows, beside it `<file>.sha256`; os `linux`, `darwin`, `windows`, arch `amd64`, `arm64`; attached to the GitHub release, each with a build provenance attestation (`gh attestation verify <file> --repo guided-traffic/cowork`) | `cowork-mcp-0.3.0-darwin-arm64` |
+| Export archive | `<tenant>-<PROJECT>-<YYYYMMDD>.tar.gz` for a project, `<tenant>-<YYYYMMDD>.tar.gz` for a tenant, the day in UTC: `manifest.json`, `links.json` and `attachments.json` at its root, each ticket at `<tenant>/<PROJECT>-<number>.md` | `acme-COW-20261006.tar.gz` |
+| Ticket files an import reads | `NNN-<slug>.md` and `local_NNN-<slug>.md` of a repository — `id: T<n>` naming the same number —, `<PROJECT>-<number>.md` of an export; anything else is skipped | `117-the-export-is-slow.md` `# example` |
 | Binding file | `.cowork.yaml`, the nearest at or above the working directory within the repository; schema at `/api/v1/schemas/cowork-yaml.json` | `tenant: acme`, `project: APP` |
 | Session memory of `cowork-mcp` | `<user cache directory>/cowork-mcp/<host and path of COWORK_URL>_<tenant>_<PROJECT>.json`, other characters than letters, digits, `.` and `-` as `_` | `~/.cache/cowork-mcp/cowork.example.com_acme_APP.json` |
 | Model of the session, for the mark of `cowork-mcp serve` | `<user cache directory>/cowork-mcp/model-<the first 16 hex characters of the SHA-256 of CLAUDE_PROJECT_DIR>.json`, holding `project_dir` and `model`; written by the `SessionStart` and `PostModelSwitch` hooks | `~/.cache/cowork-mcp/model-5289543d4663e377.json` for `/home/ada/src/app` |
@@ -217,11 +223,12 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 |---|---|
 | `application/json` | request bodies and responses |
 | `application/problem+json; charset=utf-8` | every error |
-| `multipart/form-data` | an upload: the part `file`, optionally the part `comment_id` |
+| `multipart/form-data` | an upload: the part `file`, optionally the part `comment_id`; an import: one or more parts `file` |
 | `text/csv` | on `Accept: text/csv`: the audit record, the tenant's time entries, the time report |
 | `text/markdown; charset=utf-8` | a ticket's canonical Markdown and its context |
 | `text/event-stream` | the event stream, a turn of the chat |
 | `text/plain` | a scrape of `/metrics` on the metrics listener, the Prometheus text format |
+| `application/gzip` | the project's and the tenant's export, with `Content-Disposition: attachment` |
 
 ## 📚 Documentation
 
@@ -229,13 +236,12 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
 | [docs/developer/development-credentials.md](docs/developer/development-credentials.md) | Every development-only username, password, key and token of `make dev`, its containers and the test tiers, with the file that sets it |
-| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; [upgrading](docs/operations/upgrade.md); [backups, the consistency check and a restore](docs/operations/backups.md); runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation; [GitHub's webhook](docs/operations/github.md) per repository |
+| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; [upgrading](docs/operations/upgrade.md); [backups, the consistency check and a restore](docs/operations/backups.md); runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation; [GitHub's webhook](docs/operations/github.md) per repository; [importing tickets and the export as a backup](docs/operations/import-and-export.md) |
 | [deploy/examples/](deploy/examples/) | A CloudNativePG cluster and a MinIO bucket to copy and adapt — examples checked for syntax against the operators' CRD schemas, not supported deployments |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
 | [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [Dex](https://dexidp.io/docs/) | The standard the login through an identity provider follows, and the issuer it is developed and tested against |
-| [docs/tickets/](docs/tickets/README.md) | The interim work lists and their rules |
-| [docs/planning/](docs/planning/) | The project plan — consumed into ADRs and tickets as work proceeds; the question catalog and the VS Code workflow plan are consumed already |
+| [docs/tickets/](docs/tickets/README.md) | The interim work lists and their rules — the plan among them, a family ticket for each open phase, since the project plan was consumed into them |
 | [CLAUDE.md](CLAUDE.md) | The working rules for an LLM session in this repository |
 
 ## 🚀 Fast start
@@ -554,6 +560,7 @@ refuses the start, naming itself. Chart values are `auth.oidc.*` in
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` `# default` | a size; `0` disables | The largest upload; above it `413`, before anything is stored. Uploads are buffered in memory: with `0` one upload at a time is read whole, whatever its size ([docs/security/attachments.md](docs/security/attachments.md#h-12)) |
 | `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` `# default` | a count; `0` disables | The attachments one ticket takes; one more is `409 attachment_limit` |
 | `COWORK_ATTACHMENT_TENANT_QUOTA` | `0` `# default` | a size such as `10GiB`; `0` sets none | The bytes one tenant's attachments hold together — every ticket's, confidential ones included, and a deleted ticket's until the purge; an upload that would go above it is `409 attachment_quota` before anything is stored. Off by default: an installation of several tenants sets it, or one tenant can fill the storage all of them share ([docs/security/attachments.md](docs/security/attachments.md#h-10)) |
+| `COWORK_MAX_IMPORT_BYTES` | `50MiB` `# default` | a size; `0` disables | An import's upload — a `tar.gz`, a `zip` or Markdown files — and what its files hold unpacked, the ones it skips by the size their archive declares; above it `413 payload_too_large`, and so above 10 000 files. An import is read in memory, one at a time per replica ([ADR 0051](docs/adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D7, [docs/security/import-and-export.md](docs/security/import-and-export.md)) |
 
 **Object storage** ([ADR 0016](docs/adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)) —
 the endpoint, the bucket and both keys together, or none of them. Without them uploads answer
@@ -645,11 +652,12 @@ open: [docs/security/agent-client.md](docs/security/agent-client.md).
 | `cowork-mcp model-switch` | The `PostModelSwitch` hook (Claude Code 2.1.251 or later): reads the hook's JSON on standard input (`to_model`, `agent_id`) and records `to_model` as the session's model, which the server of the same `CLAUDE_PROJECT_DIR` puts into the mark of its next act. Records nothing for an input with an `agent_id` — a switch inside a subagent — or without `to_model`, without the two variables or without `CLAUDE_PROJECT_DIR`; sends no request. Prints nothing on standard output, which Claude Code would add to the model's context; a malformed variable or a failed write is one line on standard error, which Claude Code keeps in its debug log. Exit 0 always |
 | `cowork-mcp token check` | Whether the token works against the installation: its person, name, scope, restriction, capabilities and expiry; `--json` for the same as an object. Exit 1 when it does not work, with the installation's answer and the token page |
 | `cowork-mcp lookup` | The working directory's remotes, binding file and binding — or the proposal, or why there is none; `--json` for the same as an object |
+| `cowork-mcp export <tenant>/<PROJECT> <dir>` | The project's export, unpacked into `<dir>`, which must not exist or be empty: `<dir>/<tenant>/<PROJECT>-<n>.md` per ticket and the three manifests, written as new files — directories `0700`, files `0600`, never over a file —; prints the count of tickets and of the confidential tickets left out. Exit 1 on a target that is a file or not empty, before anything is asked, and on the installation's refusal, `2` on a malformed `<tenant>/<PROJECT>`. Recorded as an export by the agent `cowork-mcp/unknown/export` ([ADR 0070](docs/adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md) D2, D5) |
 | `cowork-mcp version` | `cowork-mcp <version> (commit <sha>, built <epoch>, API /api/v1: <n> operations)` |
 | `cowork-mcp help` | The usage (also `-h`, `--help`) |
 
-Exit codes: `0` success, `1` configuration or runtime error, `2` unknown command, no command or
-`--json` where a command takes none.
+Exit codes: `0` success, `1` configuration or runtime error, `2` unknown command, no command,
+arguments a command does not take, or `--json` where a command takes none.
 
 #### The tools
 
@@ -1036,6 +1044,29 @@ setting it up is [docs/operations/github.md](docs/operations/github.md), what it
 
 </details>
 
+<details>
+<summary>Import and export — 5 routes</summary>
+
+An import is a job on a project in two phases: a dry run that reads every file and imports nothing,
+then its execution with the person's corrections, every ticket, question and link in one
+transaction or nothing ([ADR 0051](docs/adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md),
+[ADR 0063](docs/adr/0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md)).
+It is a tenant administrator's act with `admin` scope and never an agent's — a flagged token and a
+request with `X-Cowork-Agent` alike are `403 agent_forbidden` (`hard-off: administration`). An
+export follows the reader: it holds what they may read. Steps and the CronJob of a backup:
+[docs/operations/import-and-export.md](docs/operations/import-and-export.md); what passes:
+[docs/security/import-and-export.md](docs/security/import-and-export.md).
+
+| Method and path | Does |
+|---|---|
+| `POST …/projects/{project}/imports` | the dry run: `multipart/form-data` with one or more parts `file` — a `tar.gz` or a `zip`, known by its bytes, or one Markdown file each —, bounded by `COWORK_MAX_IMPORT_BYTES` and 10 000 files (`413`); a part of another name, a path twice or above 1 024 bytes, or an upload that is no archive is `400` at `/file`; an archived project `409 project_archived`. Reads every ticket file — a repository's `NNN-<slug>.md` and `local_NNN-<slug>.md`, an export's `<PROJECT>-<n>.md` with its `manifest.json` and `links.json` — against the project as it stands and keeps the files for the execution. `201` with the job and `Location`: `id`, `project`, `status` `dry_run`, `created_by`, `created_at`, `expires_at` (twenty-four hours later), `executed_by`, `executed_at`, `summary` — `files`, `create`, `conflict`, `error`, `skip`, `exclude`, `created`, `open`, `confidential`, `highest_number` — and `files[]`, one per file of the upload in its order: `path`, `outcome` (`create`, `conflict`, `error`, `skip`, `exclude`, `created`), `reason`, `format`, `number`, `key`, `conflict`, `title`, `type` with `type_reason`, `state`, `block_candidate`, `block`, `columns`, `assignee` (`source` and the member it resolved to), `parent`, `note`, `questions`, `links`, `attachments`, `confidential` with `confidential_reason`, `warnings`, `errors` (each with `field`, `line`, `message`), `correction`. Recorded as `created` on the job |
+| `GET …/projects/{project}/imports/{import}` | the job with its report; `admin` role, `read` scope, never an agent; a file whose ticket was purged since is out of the report, which the summary still counts. A dry run past its twenty-four hours, or a job of another project, is `404`; the job `import-expiry` deletes the expired ones within the hour |
+| `POST …/projects/{project}/imports/{import}/execution` | execute the dry run: optionally `{"corrections": [...]}`, each `{"path", "exclude", "type", "state", "block": {"kind", "reason", "from"}, "assignee"}` — `exclude` alone; `block` with the state `blocked` only, its kind not `ticket`; `assignee` a member's id who can see the project, or `null` —, a broken rule `400` at `/corrections/<i>/…`. The files are analysed again under the project's rank lock; a file to import that has an error or a conflict — a number the project holds, a deleted ticket's or a purged one's included — refuses the whole execution, `409 import_conflict`, each named in `errors[]` as `file:<path>`. Otherwise every ticket keeps its number and its source's state, dates, stages, horizon, block, notes and questions, the person who executes is its reporter, the assignee only by identity, the confidential flag by the source's rule, the links within the project made, the sequence advanced past the highest number; `200` with the executed job, `status` `executed`, every `create` now `created`. Every ticket, question and link has an act naming the job; one act `imported` on the job, published once as `project.changed` with the kind `imported`. A second execution is `409 import_executed` |
+| `GET …/projects/{project}/export` | the project's tickets the caller may read, done and dropped ones included, as `application/gzip` — a `tar.gz` named `<tenant>-<PROJECT>-<YYYYMMDD>.tar.gz` holding `manifest.json` (`format` `cowork export v1`, `tenant`, `projects[]` each with `key`, `name`, `archived`, `tickets` and `confidential_not_included`, `exported_at`, `exported_by` as `Name <identity>`, the totals `tickets` and `confidential_not_included`), `links.json` (`source`, `type`, `target` of every link whose two ends the caller sees, once), `attachments.json` (`ticket`, `name`, `type`, `size`, `url` — never the bytes) and each ticket's `/markdown` document at `<tenant>/<PROJECT>-<n>.md`; `read` on the project, an agent too. Recorded as `exported` on the project |
+| `GET /api/v1/tenants/{tenant}/export` | the same for every project of the tenant the caller sees, archived ones included, each link once, named `<tenant>-<YYYYMMDD>.tar.gz`; `read` in the tenant; a token restricted to a project gets `404`. Recorded as `exported` on the tenant |
+
+</details>
+
 #### Problem codes
 
 Generated by `make generate` from [`backend/internal/problem`](backend/internal/problem/problem.go);
@@ -1077,6 +1108,8 @@ every error body carries one of these as `code`.
 | `parent_cycle` | 409 | The new parent is the ticket itself or one of its descendants (docs/adr/0008 D2) |
 | `link_cycle` | 409 | The blocks link would close a cycle of prerequisites (docs/adr/0012 D4) |
 | `open_prerequisites` | 409 | Tickets that block this one are not done or dropped; `errors[]` lists them, and a person may override with a reason (docs/adr/0012 D7) |
+| `import_executed` | 409 | The dry run was executed already; a dry run is executed at most once (docs/adr/0051 D3) |
+| `import_conflict` | 409 | A file the execution would import has an error, or its number is a ticket of the project — or was one, purged; `errors[]` names each as `file:<path>`, and nothing was imported: exclude the file, or correct the source and make a new dry run (docs/adr/0064 D3, docs/adr/0051 D2) |
 | `period_locked` | 409 | The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8) |
 | `attachment_limit` | 409 | The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6) |
 | `attachment_quota` | 409 | The tenant's attachments would hold more bytes than COWORK_ATTACHMENT_TENANT_QUOTA allows; nothing was stored (docs/adr/0016 D6) |
@@ -1301,6 +1334,7 @@ backend:
     attachmentMaxBytes: 10485760      # COWORK_ATTACHMENT_MAX_BYTES, bytes; 0 disables (the notes then ask the controller for no body limit either)
     attachmentMaxPerTicket: 100       # COWORK_ATTACHMENT_MAX_PER_TICKET; 0 disables
     attachmentTenantQuota: 0          # COWORK_ATTACHMENT_TENANT_QUOTA, bytes a tenant's attachments hold together; 0, the default, sets none — set it with several tenants
+    maxImportBytes: 52428800          # COWORK_MAX_IMPORT_BYTES, bytes of an import's upload and of its files unpacked; 0 disables (the notes then ask the controller for no body limit either)
     requestTimeout: 30                # COWORK_REQUEST_TIMEOUT, seconds; 0 disables; the event stream is exempt
     maxPageSize: 200                  # COWORK_MAX_PAGE_SIZE; 0 disables
     maxQueryLength: 256               # COWORK_MAX_QUERY_LENGTH, characters; 0 disables

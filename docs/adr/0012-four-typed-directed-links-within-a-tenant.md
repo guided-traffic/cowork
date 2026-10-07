@@ -49,6 +49,11 @@ first, and as a `repeated` leaf under each other one, and `open` counts each tic
 keeps each link once per depth instead of each path — the context's walk before it carried each
 path and took seconds on a few dozen densely linked tickets — and the context shows this tree, each
 prerequisite once.
+*(2026-10-06.)* The importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) makes the links of the
+Consequences — `blocked-by: T<n>` a `blocks` link, `filed-from: T<n>` a `found-in` link — and an
+export's links manifest's: each once, never to its own ticket, a `blocks` link that would close a
+cycle among the imported tickets left out by the analysis and one through the project's tickets by
+D4's walk under the tenant's lock, each named in the report.
 
 ## Context
 

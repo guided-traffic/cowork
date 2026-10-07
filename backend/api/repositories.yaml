@@ -44,23 +44,6 @@ lookup:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/RepositoryLookup'
-            example:
-              status: unbound
-              remotes:
-                - remote: git@github.com:guided-traffic/valkey-operator.git
-                  identity: github.com/guided-traffic/valkey-operator
-              bindings: []
-              proposal:
-                identity: github.com/guided-traffic/valkey-operator
-                remote: git@github.com:guided-traffic/valkey-operator.git
-                name: valkey-operator
-                tenant: guided-traffic
-                reason: remote-owner
-                tenants:
-                  - slug: guided-traffic
-                    name: Guided Traffic
-                    key: VO
-              proposal_unavailable: null
       default:
         $ref: './components/responses.yaml#/Problem'
 repositories:
@@ -105,7 +88,7 @@ repositories:
           schema:
             $ref: './components/schemas.yaml#/RepositoryBind'
           example:
-            remote: git@github.com:guided-traffic/cowork.git
+            remote: git@github.com:acme/website.git
     responses:
       '200':
         description: The project binds the repository already

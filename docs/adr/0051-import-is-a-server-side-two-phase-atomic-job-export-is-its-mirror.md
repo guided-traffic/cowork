@@ -8,6 +8,11 @@ over the importer as a client of the ordinary routes, over a generic batch API, 
 import job without the export. The rules of D6–D9 were put to the owner with the question
 and not objected to.
 
+Amended 2026-10-06 (the References: the project plan whose phase 6 held the cut-over is consumed
+into the phase tickets and deleted,
+[ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D4; the cut-over is this record's Consequences; no rule changes).
+
 Amended 2026-10-06 by the owner (D4: the links manifest), answering whether the links enter the
 export: into the project export only, as a links manifest beside the tickets, each link once,
 over `/markdown`'s frontmatter, which would write a link at both its ends and change what one
@@ -20,7 +25,45 @@ it (D4's second paragraph) is the implementer's, made concrete the same day and 
 owner's objection. The Residual risks name what follows from D2 and D9 as they stand: a restore
 keeps the links within a project only.
 
-**Not built.** No import, no export, no job entity.
+Made concrete 2026-10-06 by the implementer where the record left the detail open, each marked
+in place and open to the owner's objection: the shape of the upload (D1); the two phases as two
+routes, what a correction names, what the dry run keeps for its execution, and that an error
+refuses an execution as a conflict does (D2); where a ticket records its source (D3); the
+archive's layout, and that the links manifest holds a link only where the reader sees both its
+ends (D4); what the round trip compares (D5); who reads a job (D6); the bounds beside D7's variable
+(D7).
+
+~~**Not built.** No import, no export, no job entity.~~ **Built** (phase 6, 2026-10-06, in the API;
+~~the UI's import page and export button outstanding~~ *(built 2026-10-07, below)*): D1–D9 — the routes of
+[`imports.yaml`](../../backend/api/imports.yaml): `POST …/projects/{project}/imports` (the dry
+run), `GET …/imports/{import}` (the job and its report), `POST …/imports/{import}/execution` (the
+execution with its corrections), `GET …/projects/{project}/export` and
+`GET /api/v1/tenants/{tenant}/export`; the table `import_jobs` and the ticket's
+`imported_from_file` and `imported_from_job`
+([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql)); the reading
+and the analysis in [`internal/importer`](../../backend/internal/importer/); the handlers
+[`imports.go`](../../backend/internal/api/imports.go),
+[`importwrite.go`](../../backend/internal/api/importwrite.go) and
+[`exports.go`](../../backend/internal/api/exports.go); the job `import-expiry`
+([`store/imports.go`](../../backend/internal/store/imports.go)). D5 is
+`TestTheExportRoundTripsThroughTheImport`, and a dry run and an execution of this repository's
+whole `docs/tickets/` is `TestImportThisRepositorysTickets`. How it works:
+[docs/developer/import-and-export.md](../developer/import-and-export.md); what an administrator
+does: [docs/operations/import-and-export.md](../operations/import-and-export.md); what it lets in
+and out: [docs/security/import-and-export.md](../security/import-and-export.md).
+
+*(2026-10-07.)* The Consequences' import page and export button are built in the UI: a tenant
+administrator's import page of a project at `/t/{slug}/p/{KEY}/imports`, its job at
+`…/imports/{import}` — the report with its summary, what blocks the execution, every file with its
+outcome and the correction fields of D2 (left out, type, state with its block, assignee), the
+execution after a question, its refusals on the files they name —; the export of a project from
+its header for whoever reads it, and of the tenant from its settings for its administrators, each
+saying how many confidential tickets the archive leaves out
+([`project-import.ts`](../../frontend/src/app/features/project/project-import.ts),
+[`imports.service.ts`](../../frontend/src/app/core/imports.service.ts)). How it is built:
+[docs/developer/frontend.md](../developer/frontend.md#the-import-and-the-export). That the UI offers the
+tenant's export to its administrators alone, while the API serves it to every reader of the tenant
+(D6), is the implementer's choice of the same day, open to the owner's objection.
 
 ## Context
 
@@ -42,7 +85,12 @@ exists anyway: the export writes the same grammar.
 **D1 — Import is a job on a project:** `POST /api/v1/tenants/{slug}/projects/{KEY}/imports`
 takes an archive (`tar.gz` or `zip`) or a multipart set of Markdown files in the
 `/markdown` grammar, creates an **import job** (an entity with status, report and the
-actor), and answers with it.
+actor), and answers with it. *(Made concrete 2026-10-06 by the implementer, open to the owner's
+objection:)* the request is `multipart/form-data` with one or more parts named `file`, each a
+`tar.gz` or a `zip` archive — known by its first bytes, whatever its name — or one Markdown file
+named by the part's file name; the answer is `201` with the job and its `Location`. The files of
+a repository's ticket grammar and the documents of an export are read alike
+([ADR 0063](0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md)).
 
 **D2 — Two phases, the first a dry run.** `dry_run=true` parses everything and produces the
 report: per file the detected type, the state, the columns, the questions, the links
@@ -52,11 +100,33 @@ omitted), and errors (an out-of-vocabulary value, a malformed frontmatter, a `/c
 document). `dry_run=false` with the id of a dry run executes it, with optional corrections
 per file (type, state, assignee) — the correctable report of ADR 0008 D5.
 
+*(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* the two phases are
+two routes, not a parameter: `POST …/imports` is always the dry run, and
+`POST …/imports/{import}/execution` executes one, so no request imports without a dry run before
+it. The dry run keeps the files it read, compressed, with the job; the execution reads them again
+— never a second upload — and analyses them anew, with the corrections, against the project as it
+stands then. A correction names a file by its path in the upload and sets its type, its state —
+with the block when the state is `blocked` —, its assignee or none, or excludes it. A file the
+execution would import that has an error or a conflict refuses the whole execution,
+`409 import_conflict` naming each such file: the person excludes it, or corrects the source and
+makes a new dry run. The importer never leaves a file out on its own.
+
 **D3 — Execution is atomic per job.** All tickets, questions, links and the sequence advance
 in one transaction ([ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md)
 D3) or none; the numbers of ADR 0007 D6 are kept; every created row has an audit entry with
 the actor and the `import_job_id`; each ticket records `imported_from` (file name, job id).
 A dry run is executed at most once; a second execution of the same dry run answers `409`.
+*(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* `imported_from` is
+two columns of the ticket, `imported_from_file`, the file's path in the upload, and
+`imported_from_job`; the API does not answer them on a ticket, and the ticket's `created` act
+carries both. The audit rows name the job as `import_job`; the acts on what the execution creates
+are written and not published, and the job's one act `imported` announces the import to the
+streams as `project.changed`
+([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D2). The second execution is `409 import_executed`. The job's report is kept for good, and the purge
+of a ticket the import created takes that ticket's file out of it
+([ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D2), the summary still counting it.
 
 **D4 — Export is the mirror:** `GET /api/v1/tenants/{slug}/projects/{KEY}/export` returns an
 archive with every ticket of the project as its `/markdown` document, named by key, plus an
@@ -67,24 +137,56 @@ project, the export time and the exporter. A tenant export is the union over its
 (the backup record's second line).
 
 *(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* the links
-manifest lists every link with an end in the project, by its source key, its type and its target
-key, and a tenant export lists each link once. The importer reads it with the tickets under D2
+manifest lists every link with an end in the project *(built 2026-10-06: and whose other end the
+reader sees too — a link to a ticket the reader cannot see would tell them it exists,
+[ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D5)*, by its source key, its type and its target key, and a tenant export lists each link once. The importer reads it with the tickets under D2
 and D9, so a restore through it keeps the links between the tickets of the project. A link to a
 ticket of another project ([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2) is
 listed, and the import reports it and omits it: its other end is neither in the archive nor in
 the project (D2, D9).
 
+*(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* the archive is a
+`tar.gz`, answered as `application/gzip` with a file name of the tenant, the project and the day.
+At its root are `manifest.json` — the format `cowork export v1`, the tenant, each project with its
+key, name, whether it is archived, its count of documents and its count of the confidential
+tickets left out (ADR 0065 D5), the time, the exporter written as grammar v1 writes a person, and
+the totals —, `links.json` and `attachments.json` — each attachment's ticket, name, type, size
+and the path of its bytes, which only a reader of the ticket fetches —; each ticket the reader sees
+is `<tenant>/<PROJECT>-<n>.md`, its key, done and dropped ones included, deleted ones not. A tenant
+export holds every project the reader sees, archived ones included.
+
 **D5 — The round trip is the proof.** The integration tier exports a project, imports it into
 an empty project, exports again and asserts the two archives are equal up to keys and times;
-that test is what keeps the grammar of ADR 0044 D1 honest.
+that test is what keeps the grammar of ADR 0044 D1 honest. *(Made concrete 2026-10-06 by the
+implementer, open to the owner's objection:)* "up to keys and times" takes out the export's time
+and the project's key and name; every document, the links manifest — a `relates-to` link's ends in
+order, as it is stored once — and the attachments manifest must be equal. The test's project
+holds no attachment: an import brings no attachment's bytes (D4), so a project with attachments
+comes back without them (Residual risks).
 
 **D6 — Import is an administrator's act and never an agent's.** Role `admin` in the tenant;
 a flagged token ([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
-D3) is refused. Export follows the project's read permission.
+D3) is refused. Export follows the project's read permission. *(Made concrete 2026-10-06 by the
+implementer, open to the owner's objection:)* a dry run and an execution need the role `admin`
+and a token's `admin` scope and refuse every agent, a flagged token and a request with the agent
+header alike (`403 agent_forbidden`, the hard-off rule "administration"); reading a job needs the
+role `admin` and the `read` scope and is never an agent's either, since its report holds what the
+upload's files say, of those the import left out too. The tenant export follows the tenant's read permission and holds the
+projects the reader sees; an agent exports as its person reads.
 
 **D7 — Sizes and validity.** `COWORK_MAX_IMPORT_BYTES` (default 50 MiB, `0` disables,
 [ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
 D2) bounds the archive; a dry run's report is valid for twenty-four hours and then expires.
+*(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* the variable bounds
+the request's body, with 64 KiB for the multipart framing, and the bytes the upload's files hold
+together once unpacked, a file the import does not read counted by the size its archive declares
+— both `413`. Beside it, fixed: at most 10,000 files an upload, a path of at most 1,024 bytes, and
+one import at a time per replica, a dry run or an execution, since each holds its upload in memory;
+the request timeout ([ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
+D2) bounds both. A dry run past its day answers `404` to a read and to an execution, and the job
+`import-expiry` deletes it with its files within the hour; an executed job stays, its report
+without the files, because its tickets name it.
 
 **D8 — No generic batch API.** No `POST …/tickets:batch`, no transactional operation list.
 A bulk need beyond import is a question of its own.
@@ -97,8 +199,10 @@ omitted; the person adds it after the import if it belongs.
 
 - The importer is server code with tests, not a script; the parser is shared with the
   export; atomicity and numbers are the server's.
-- One job entity, two routes, an archive handler bounded by D7; the UI gets an import page
-  that shows the report with the correction fields and an export button on the project.
+- One job entity, ~~two routes~~ five routes *(2026-10-06: the dry run, the read and the
+  execution of a job, the project's and the tenant's export)*, an archive handler bounded by D7;
+  the UI gets an import page that shows the report with the correction fields and an export
+  button on the project.
 - The round trip of D5 doubles as the backup verification the operations page can recommend.
 - The owner's cut-over of the sibling project (phase 6) is: export nothing, import the
   directory, read the report, correct, execute, verify the count.
@@ -125,6 +229,19 @@ omitted; the person adds it after the import if it belongs.
   import is a job on one project (D1), and a link whose other end is outside the archive and
   the project is reported and omitted (D2, D9); a tenant export carries the link, but no tenant
   import exists that would resolve it. The person adds it again after the import, as D9 says.
+- *(2026-10-06.)* What the archive does not carry does not come back through the importer: the
+  comments, the time entries, the activity, the attachments' bytes, the rank — the open tickets
+  of an import join the bottom of the rank, parents first and otherwise by number —, the interest,
+  and the reporter, since the person who executes the import is the reporter of every ticket it
+  creates. The export is the second line of a backup for the tickets themselves, not for
+  everything around them ([ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)).
+- *(2026-10-06.)* D7's bounds are not measured at their size. An import of this repository's
+  56 ticket files (412 KiB) ran its dry run and its execution in under a second together in the
+  integration tier; an upload of 50 MiB is held in memory several times over — its files, their
+  compressed copy, the parsed text, the report — and its execution runs within the request
+  timeout, 30 seconds by default, or rolls back. One import at a time per replica bounds the
+  memory; the operations page says to keep the backend's memory limit well above the variable
+  and to split an import by directory.
 
 ## References
 
@@ -132,4 +249,3 @@ omitted; the person adds it after the import if it belongs.
 - [ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D6, [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D5, [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md), [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D5, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) — what the import must do
 - [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D3, [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) — who may import
 - [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md) D2 — the backup's second line, whose links within a project the links manifest keeps
-- [docs/planning/project-plan.md](../planning/project-plan.md) — phase 6, the cut-over

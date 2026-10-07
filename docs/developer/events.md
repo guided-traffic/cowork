@@ -20,7 +20,9 @@ Mutate ─► audit row ─► pg_notify('cowork_events') ─(at commit)─► D
 `Writer.publish` ([`notify.go`](../../backend/internal/store/notify.go)) runs inside `Mutate`
 for every act of a tenant that names a ticket, except the actions `downloaded` and `exported`
 and the entity `time_entry` — data leaving the system changes nothing a client shows, and time
-follows its own visibility. It sends `pg_notify('cowork_events', <json>)` in the act's
+follows its own visibility — and except an act marked `Event.Quiet`, which `writeEvents` in
+[`tx.go`](../../backend/internal/store/tx.go) records and never publishes: another act of the
+transaction announces it, as an import's one act announces the tickets it creates. It sends `pg_notify('cowork_events', <json>)` in the act's
 transaction: PostgreSQL delivers it at commit and never after a rollback (D4). The payload,
 `store.Notification`, is what the filter needs and what the event tells: the audit row's id, the
 tenant, the project, the entity, the action, the ticket key, the ticket's version, and the
@@ -54,7 +56,11 @@ client is told of it — `Filter.Admits` refuses it, so it is neither sent nor r
 `project-rank` (`store.EntityProjectRank`), with the tenant, the project and the project's key,
 `<tenant>/<PROJECT>` (`Event.ProjectRank`, set by `SortProjectRank` in
 [`score.go`](../../backend/internal/api/score.go)): the filter admits it as it admits the project's
-tickets, and the stream sends it as `project.changed` ([the handler](#the-handler)).
+tickets, and the stream sends it as `project.changed` ([the handler](#the-handler)). **An import's
+execution** is published the same way, by the act `imported` on its job (`finish` in
+[`importwrite.go`](../../backend/internal/api/importwrite.go)): the acts on the tickets, questions
+and links it creates are `Quiet`, and a link to a ticket the project held before is published on
+that ticket as any link is.
 
 **A membership act** is published too — any act of a tenant whose `Event.Membership` is set, written
 by `Mutate` or by the identity provider's transactions ([data-access.md](data-access.md#the-identity-providers-transactions)):
@@ -218,11 +224,14 @@ data: {"tenant":"acme","person_id":"0199a3c2-1d2e-7f00-8000-000000000002","proje
 (`# example`, an access entry). The client reloads what it shows of members, mappings and access
 lists of the tenant it shows, its projects when `project_id` is there, and `GET /api/v1/me` for
 that tenant's acts and for any act that names the person
-([frontend.md](frontend.md#how-a-change-reaches-the-screen)). An act on a project's rank as a whole
-— the sort by the score ([domain.md](domain.md#rank)) — is `project.changed` with the project's key
-and the kind and no version, since it is no ticket's; the filter admits it as it admits the
-project's tickets, and the client loads the project's open lists and the person's lists of tickets
-again:
+([frontend.md](frontend.md#how-a-change-reaches-the-screen)). An act on a project's tickets as a whole
+— the sort by the score ([domain.md](domain.md#rank)), kind `ranked`, and an import's execution,
+kind `imported`, whose acts on the tickets it creates are `Quiet` and publish nothing
+([import-and-export.md](import-and-export.md#the-execution)) — is `project.changed` with the
+project's key and the kind and no version, since it is no ticket's; the filter admits it as it
+admits the project's tickets, and the client loads the project's open lists and the person's lists
+of tickets again — and, for an import, the dashboard and the open decisions, whose questions publish
+nothing either:
 
 ```
 id: 0199a3c2-1d2e-7f00-8000-0000000000ac

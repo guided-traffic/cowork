@@ -116,6 +116,18 @@ describe('changesDashboard', () => {
     expect(changesDashboard(membership({ projectId: 'x' }), 'acme', 'p1')).toBe(true);
   });
 
+  it('reloads on an import executed into a project of the tenant shown, and not on a sort of its rank', () => {
+    const project = (key: string, kind: string): StreamEvent => ({
+      name: 'project.changed',
+      id: 'e',
+      key,
+      kind,
+    });
+    expect(changesDashboard(project('acme/ALPHA', 'imported'), 'acme', 'p1')).toBe(true);
+    expect(changesDashboard(project('other/ALPHA', 'imported'), 'acme', 'p1')).toBe(false);
+    expect(changesDashboard(project('acme/ALPHA', 'ranked'), 'acme', 'p1')).toBe(false);
+  });
+
   it('leaves the unread count alone', () => {
     expect(changesDashboard({ name: 'inbox.changed', unread: 3 }, 'acme', 'p1')).toBe(false);
   });

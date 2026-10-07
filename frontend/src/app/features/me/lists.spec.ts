@@ -445,5 +445,19 @@ describe('the person-level lists', () => {
 
       expect(invoke).toHaveBeenCalledOnce();
     });
+
+    it('loads again on an import, whose questions come without an event of their own, and not on a sort', async () => {
+      configure(() => list);
+      const { fixture } = await render(Decisions);
+      invoke.mockClear();
+
+      stream.next({ name: 'project.changed', id: 'e1', key: 'globex/OPS', kind: 'ranked' });
+      await fixture.whenStable();
+      expect(invoke).not.toHaveBeenCalled();
+
+      stream.next({ name: 'project.changed', id: 'e2', key: 'globex/OPS', kind: 'imported' });
+      await fixture.whenStable();
+      expect(invoke).toHaveBeenCalledOnce();
+    });
   });
 });

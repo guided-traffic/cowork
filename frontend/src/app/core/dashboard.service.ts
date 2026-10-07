@@ -8,6 +8,7 @@ import {
   changesMemberships,
   changesVisibility,
   EventStreamService,
+  isImport,
   ofTenant,
   StreamEvent,
 } from './event-stream.service';
@@ -33,9 +34,11 @@ export const dashboardReloadDelay = 1000;
  * on one of its tickets — its state, its fields, its filing, its deletion and restoration — or on a
  * question of one ({@link ofTenant}); a change of who sees a project of it, the person's own role
  * among them ({@link changesMemberships}, {@link changesVisibility}); a gap in the stream or the
- * fallback's tick. The person-level stream carries every tenant of the person (docs/adr/0054 D1):
- * another tenant's event changes nothing here. A comment, a stake or a link changes no tile, and
- * time entries are not published (D4): a booking shows at the next reload.
+ * fallback's tick; an import executed into one of its projects, whose tickets and questions come
+ * without an event of their own ({@link isImport}). The person-level stream carries every tenant of
+ * the person (docs/adr/0054 D1): another tenant's event changes nothing here. A comment, a stake, a
+ * link and a sort of a rank change no tile, and time entries are not published (D4): a booking
+ * shows at the next reload.
  */
 export function changesDashboard(
   event: StreamEvent,
@@ -50,6 +53,8 @@ export function changesDashboard(
     case 'resync':
     case 'poll':
       return ofTenant(event, tenant);
+    case 'project.changed':
+      return isImport(event) && ofTenant(event, tenant);
     default:
       return false;
   }

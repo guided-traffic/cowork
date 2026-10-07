@@ -6,11 +6,13 @@ backend (`backend/`, the API, PostgreSQL 18 migrated on start) and an nginx fron
 (`frontend/`, the Angular bundle and nothing else); one Helm chart, whose Ingress routes `/api/`
 and `/auth/` to the backend and the rest to the frontend; and a third binary, `cowork-mcp`, on a
 person's machine for Claude Code.
-**Status: phases 4 (the identity provider) and 5 (`cowork-mcp` and the chat in the UI) are
-released as `0.3.0`; phase 3 (UI v1) is in progress and comes next, by the owner's choice of
-2026-10-04, before phase 6** — the work lists are in
-[docs/tickets/](docs/tickets/README.md). Every founding decision is an ADR, and what comes after
-is [the project plan](docs/planning/project-plan.md).
+**Status: phases 6 (import and cut-over) and 7 (hardening and 1.0), the plan's last, started on
+2026-10-06 and are worked as tickets; phase 3 (UI v1) awaits the owner's reviews; the sign-in
+without a click is released as `0.8.0`, metrics, the chart's references with the migration Job and
+the GitHub webhook as `0.9.0`; 1.0 waits until every open question is answered, by the owner's
+rule of 2026-10-06** — the work lists, each open phase a family ticket with its children, are in
+[docs/tickets/](docs/tickets/README.md). Every founding decision is an ADR, and the project plan
+was consumed into the phase tickets (ADR 0074).
 
 ## Language policy
 
@@ -31,7 +33,7 @@ A statement has exactly one home
 | Work still outstanding | a [ticket](docs/tickets/README.md), archived when the work lands |
 | The reference tables (configuration, CLI, API, Helm values) | [README.md](README.md) and nowhere else |
 | An open decision | the `## Open questions` section of a [ticket](docs/tickets/README.md) |
-| The plan | [docs/planning/](docs/planning/) — transitional, consumed into ADRs and tickets |
+| The plan | a phase's family ticket and its children in [docs/tickets/](docs/tickets/README.md) — the project plan was consumed into them (ADR 0074) |
 
 **Read the page for a subsystem before you change it, and update it in the same change.**
 
@@ -53,8 +55,8 @@ A statement has exactly one home
 
 ## Open decisions are worked one question at a time
 
-[docs/planning/questions.md](docs/planning/questions.md) is consumed: every founding question
-became an ADR (ADR 0074). A new open decision lives in a ticket's `## Open questions` section.
+The founding question catalog is consumed: every founding question became an ADR (ADR 0074).
+A new open decision lives in a ticket's `## Open questions` section.
 Present **one** question per turn to the owner, with the options researched against this tree
 and the recommended one justified. An answered question becomes an ADR (or an amendment) in
 the same session. A question that needs code to answer becomes a ticket. Do not build on an
@@ -171,7 +173,7 @@ of `semantic-release`; a new job is added there in the same change.
   discuss, then implement and document the tradeoff if the owner accepts it.
 - Separate verified from unverified in every report. "Not verified, and this is the gap" is a
   complete sentence.
-- The planning documents describe intent; the code and the ADRs describe fact. When they
+- A ticket describes the work as intended; the code and the ADRs describe fact. When they
   disagree, the code wins and the disagreement is named.
 
 ## graphify

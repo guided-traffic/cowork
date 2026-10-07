@@ -8,9 +8,13 @@ reference a ticket; decisions live in [docs/adr/](../adr/) and may be referenced
 The rule and the reasoning behind it are
 [ADR 0002](../adr/0002-documentation-has-five-homes-and-tickets-are-work-lists-that-get-archived.md).
 
-This directory is the **interim backlog**: cowork itself is meant to host tickets once it can,
-and the plan to get there is [docs/planning/project-plan.md](../planning/project-plan.md). Until
-then the rules below hold, and they are the same rules the importer will have to understand.
+This directory is the **interim backlog**, and the tickets are the plan as well: the project plan
+was consumed into them when its last phases started, and what is left of a phase is its family
+ticket and that ticket's children
+([ADR 0074](../adr/0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D2, D4). cowork hosts them once the owner imports them
+([ADR 0069](../adr/0069-rules-stay-in-git-work-moves-to-cowork.md) D6). Until then the rules below
+hold, and they are the same rules the importer will have to understand.
 
 Before archiving a ticket, move anything durable out of it — the decision into an
 [ADR](../adr/), the operator-visible consequence into [README.md](../../README.md) or

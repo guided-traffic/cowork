@@ -14,7 +14,10 @@ the installation provides them, and the chart takes references to them.
 ([`.github/workflows/build.yml`](../../.github/workflows/build.yml)): the chart to the Helm
 repository `https://guided-traffic.github.io/cowork/`, the images to Docker Hub as
 `guidedtraffic/cowork-backend` and `guidedtraffic/cowork-frontend`. The chart's image tags
-default to its `appVersion`, so a chart version brings its own images. The first release is
+default to its `appVersion`, so a chart version brings its own images. The images are built for
+`linux/amd64` alone: a node of another architecture — an arm64 node of a kind cluster on a Mac, say —
+cannot pull them (`no match for platform in manifest`) and runs them only under emulation, from
+images pulled with `--platform linux/amd64` and loaded by hand (seen 2026-10-07). The first release is
 `0.1.0`. Installing from the checked-out tree, with images you built with `make docker-build`,
 works the same way with `deploy/helm/cowork` and the image values set. The values reference is
 [README.md, Helm chart values](../../README.md#helm-chart-values).
@@ -623,7 +626,7 @@ and what it makes, and the chart's values for it.
 
 | File | Written against | What it makes |
 |---|---|---|
-| [`cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml) | CloudNativePG 1.30.1, PostgreSQL 18.6 | a `Cluster` whose `initdb` bootstrap makes the database, the owner role, the runtime role with the attributes [above](#the-database-and-its-two-roles), the three extensions and `CONNECT` for the two roles only; the runtime role's `basic-auth` Secret; a ConfigMap with the location. Never applied to a cluster here |
+| [`cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml) | CloudNativePG 1.30.1, PostgreSQL 18.6 | a `Cluster` whose `initdb` bootstrap makes the database, the owner role, the runtime role with the attributes [above](#the-database-and-its-two-roles), the three extensions and `CONNECT` for the two roles only; the runtime role's `basic-auth` Secret; a ConfigMap with the location. Applied on 2026-10-07 to a kind cluster with CloudNativePG 1.30.1, with only the password changed, for the upgrade from 0.8.0 to 0.9.0; the runtime role's Secret carries `cnpg.io/reload`, so a changed password reaches the role at once — without the label CloudNativePG applies it only at a later reconciliation and the old password stays valid meanwhile |
 | [`minio-tenant.yaml`](../../deploy/examples/minio-tenant.yaml) | the MinIO Operator v7.1.1 | a `Tenant` with one pool and the bucket — and no user: the operator gives every user of its `users` field the policy `consoleAdmin`, an administrator of the whole store. Never applied to a cluster here |
 | [`minio-bucket.sh`](../../deploy/examples/minio-bucket.sh) | `mc` RELEASE.2025-08-13T08-35-41Z | the bucket, the bucket-scoped policy, the access key with that policy alone and the Secret `cowork-storage`, for an existing MinIO or the Tenant above. Run on 2026-10-07 against the MinIO of `make minio-up`: the key put, read, listed and deleted objects in its bucket and was refused listing another bucket and the administration |
 
@@ -875,7 +878,7 @@ in `ingress.annotations` or in the controller's own configuration. What any cont
 
 | What | Must be | Otherwise |
 |---|---|---|
-| request body limit | above the backend's larger limit: `max(maxJsonBody, attachmentMaxBytes)` rounded up to MiB, plus 1 MiB — `11m` with the defaults; none when either is `0`. The chart's notes print the figure | an upload or a body above the controller's limit gets the controller's own `413` page, not the backend's problem |
+| request body limit | above the backend's largest limit: `max(maxJsonBody, attachmentMaxBytes, maxImportBytes)` rounded up to MiB, plus 1 MiB — `51m` with the defaults; none when any of them is `0`. The chart's notes print the figure | an upload, an import or a body above the controller's limit gets the controller's own `413` page, not the backend's problem |
 | read timeout | above `backend.config.requestTimeout` plus 10 s — `40` seconds with the default; an hour when it is `0`. The chart's notes print the figure. The two streams send something at least every twenty seconds — the event stream's heartbeat, the chat's comment every ten — so they stay open within any timeout above that | a slow request gets the controller's `504` page instead of the backend's `504` problem with its request id; below twenty seconds the streams are cut |
 | buffering of `text/event-stream` | off. The backend answers the event stream and a turn of the chat with `X-Accel-Buffering: no`; a controller that honours that header — nginx does — needs no setting, one that does not must be told not to buffer | events arrive late and in bursts, a turn's text all at once at its end |
 | `X-Forwarded-For` | the address the controller saw as the header's last entry, written in place of the client's header or appended to it | `backend.config.trustedProxies` finds the wrong client ([below](#the-client-address-and-the-trusted-proxies)) |
@@ -895,7 +898,7 @@ ingress:
   enabled: true
   className: nginx                                       # example
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: 11m     # example: the figure for the default limits
+    nginx.ingress.kubernetes.io/proxy-body-size: 51m     # example: the figure for the default limits
     nginx.ingress.kubernetes.io/proxy-read-timeout: "40" # example: the figure for the default requestTimeout
   hosts:
     - host: cowork.example.com                           # example
@@ -908,8 +911,8 @@ ingress:
 its Ingress: the controller routed `/api/`, `/auth/` and `/auth/callback` to the backend and the
 rest to the frontend; its generated configuration had `client_max_body_size 1m`,
 `proxy_read_timeout 60s` and `proxy_buffering off` by default, and a 2 MiB body got the
-controller's `413` page until `proxy-body-size: 11m` let it through to the backend's own `413`
-problem; the event stream delivered an event within 50 ms and stayed open past a read timeout of
+controller's `413` page until `proxy-body-size: 11m` — the figure for the limits of that day, before
+the import's — let it through to the backend's own `413` problem; the event stream delivered an event within 50 ms and stayed open past a read timeout of
 60 s and of 40 s on its heartbeats — with `proxy-buffering: "on"` forced as well, so the backend's
 header alone keeps it unbuffered. The chat's stream carries the same header and was not run through
 the controller. No other controller was tried here: give yours the four settings above in its own

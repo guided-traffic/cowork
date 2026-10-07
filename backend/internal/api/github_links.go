@@ -27,7 +27,6 @@ const (
 	actionMerged      = "merged"
 	actionClosed      = "closed"
 	actionReopened    = "reopened"
-	fieldNumber       = "number"
 	fieldFoundIn      = "found_in"
 	fieldSHA          = "sha"
 )

@@ -123,7 +123,7 @@ wrapper's transaction; an empty value leaves a setting unset.
 | `app.tenant_id` | the wrapper's tenant | `app_tenant_id()`: every `tenant_isolation` policy, the policies of `tenants`, `memberships`, `users`, `audit_events`, the visibility functions |
 | `app.user_id` | `Caller.UserID` | `app_user_id()`: the person's own user row, memberships, tenants, tokens, idempotency keys and installation-level audit rows; the visibility functions |
 | `app.restricted_project_id` | `Caller.RestrictedProjectID` | `app_restricted_project_id()` in `app_project_visible` |
-| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`); `github-webhook` for GitHub's webhook's transactions (`WebhookSecret`, `ReceiveDelivery`); `consistency-check` for its job, and for the read-only transactions of `jobRead` that read its results across the tenants — the schedule's and a scrape's | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30, 32, 41 and 42 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry`, `ticket-purge`, `github-webhook`, `github-delivery-expiry` and `consistency-check` for the rows those system actors keep (`app_job()`) |
+| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`); `github-webhook` for GitHub's webhook's transactions (`WebhookSecret`, `ReceiveDelivery`); `consistency-check` for its job, and for the read-only transactions of `jobRead` that read its results across the tenants — the schedule's and a scrape's | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30, 32, 41, 42 and 43 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry`, `ticket-purge`, `github-webhook`, `github-delivery-expiry`, `consistency-check` and `import-expiry` for the rows those system actors keep (`app_job()`) |
 | `app.token_hash` | `LookupToken`, the hex SHA-256 of the presented token | the `tokens` policy admits exactly that row |
 | `app.session_hash` | `LookupSession`, and `Caller.SessionHash` in every transaction of a session's request: the hex SHA-256 of the presented cookie; in the identity provider's transactions the session a login replaces or a refresh holds | `app_session_hash()`: the `sessions` policies admit exactly that row — to read it, to end it |
 | `app.person_lookup` | `FindPerson` only: the address or username an administrator adds a member by | `app_person_lookup()`: the `users` policy admits the persons it names to an administrator of the current tenant, and no other person of the installation (migration 20) |
@@ -199,7 +199,17 @@ shared filter into one that is not shared, deleting it, and reading it back unsh
 parameters, which a policy cannot see; the queries `UnshareSavedFilter` and `DeleteSharedSavedFilter`
 name `shared` as the policies do, and the unshare runs only through `Writer.UnshareAnothersFilter`
 ([`store/filters.go`](../../backend/internal/store/filters.go)), which names the filter
-(`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`).
+(`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`). `import_jobs` carries `tenant_id`
+and the canonical policy, restrictive ones that admit reading to an administrator of the current
+tenant (`app_is_tenant_admin()`), the job `import-expiry` and the purge (`ticket-purge`), inserting to
+the administrator, and changing to the administrator and the purge — which takes a purged ticket's
+file out of its job's report —, and a restrictive delete that admits only the expiry job and only a
+dry run; the expiry job's own permissive read and delete reach the dry runs of every tenant with no
+tenant set
+([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql);
+`TestTheImportJobPoliciesAdmitTheTenantsAdministratorsOnly`). A dry run holds the content of the files
+it read, an embargoed finding's among them, so a query that forgot its caller's role must show a
+member nothing ([import-and-export.md](import-and-export.md)).
 
 GitHub's webhook ([migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql),
 [ADR 0071]) adds three tables, each with `tenant_id` and the canonical policy. `github_webhook_secrets`
@@ -258,7 +268,8 @@ which names no person, finds the tenant its path names (`GetTenantBySlug`).
 | `System` | a system actor, `system:<name>`, whose act this is though the request's transaction records it; empty for the caller's own act |
 | `Membership` | a `MembershipChange` — the person, the project, the mapping, the audience — which publishes the act as `membership.changed` ([events.md](events.md)); nil for every other act |
 | `NewProject` | the project the act created, published so that the streams admit its events at once and sent to no client ([events.md](events.md#publication)); `uuid.Nil` for every other act |
-| `ProjectRank` | a `ProjectChange` — the project and its key — which publishes an act on a project's rank as a whole, the sort by the score, as `project.changed`; nil for every other act |
+| `ProjectRank` | a `ProjectChange` — the project and its key — which publishes an act on a project's tickets as a whole, the sort by the score and an import's execution, as `project.changed`; nil for every other act |
+| `Quiet` | the act is written and never published: another act of the transaction announces it — an import's acts on what it creates, which the job's act `imported` announces |
 | `Notices` | whom the act tells in their inbox and why ([notifications](#notifications)); none for an act that tells nobody |
 | `InboxOf` | the person whose inbox the act changed without a notice — their own notifications marked read — whose person-level streams hear `inbox.changed` |
 | `Published` | what the act's publication tells of its ticket — the project, the version, the confidential rule's inputs — where the ticket is gone when the act is written: a purge's; nil reads them at publication (`TicketFacts`) |
@@ -299,6 +310,8 @@ the one on the ticket the query reads.
 | `GetScoreInputs` | the inputs of the score of a ticket the caller read through the predicate in this transaction, read again after the write that changed one ([domain.md](domain.md#the-score)) |
 | `ResolveTicketKeys` | GitHub's webhook's system actor, who has no person, resolves the keys a signed delivery names; whoever reads a link is held to the ticket's predicate (`ListTicketPullRequests`) |
 | `UpdatePullRequestFacts` | the webhook brings a pull request's facts up to date on every ticket it is linked to; it answers the rows' state before for the acts and shows nobody anything — exempt from the deletion filter too, since a deleted ticket's link keeps the facts, without an act |
+| `ImportNumbersTaken` | a number's existence in the project an import goes into, unique whether or not the caller sees the ticket that holds it — a deleted one's included, also exempt from the deletion filter ([import-and-export.md](import-and-export.md#the-dry-run)) |
+| `ExportHiddenConfidential` | the count of the confidential tickets of the projects the caller sees that an export leaves out, which the manifest says ([ADR 0065](../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md) D5); it asks the predicate `IS NOT TRUE`, since it answers `NULL` for a ticket without an assignee |
 
 The search (`SearchTickets`, [search.md](search.md#the-query)) reads tickets in seven places — the
 ticket's text, a title by trigram, the key, a comment, a question, a file name, the page's hits — and
@@ -325,7 +338,7 @@ which a deleted ticket's file has its row and its object until the purge; `GetTi
 through the filter in the same transaction; and the rank keys of `LastRank`, `ListUnrankedTickets`,
 `NextRankedTicket`, `PreviousRankedTicket` and `ListRankKeys`, because a deleted ticket keeps its
 key, which its restoration brings back — a rebalancing spreads it with the others —, and no key may
-be handed out twice. The ticket's columns count `open_prerequisites` in a subquery with
+be handed out twice; and `ImportNumbersTaken`, because a deleted ticket keeps its number. The ticket's columns count `open_prerequisites` in a subquery with
 the predicate on every prerequisite, `GetWrittenTicket` included: a hidden one is never counted.
 The prerequisite tree (`ListPrerequisites`, `ListDependents`) is the one walk that returns
 tickets: it calls the predicate on every ticket it steps to, so it never passes a hidden one, and
@@ -521,11 +534,13 @@ consistency check, key `8` (`CheckConsistency`, `system:consistency-check`,
 installation-level act after them; it is not hourly: `runJobs` asks every hour whether it is due
 (`LastConsistencyCheck`, `ConsistencyCheckDue` — no result yet, or the last run before the latest
 03:00 UTC) and runs it then, and never without object storage. Each job holds a key of its own; a
-unit test reads every `RunJob` call of the backend and refuses a key two jobs share.
+unit test reads every `RunJob` call of the backend and refuses a key two jobs share. The import expiry, key `9` (`ExpireImportJobs`, [`store/imports.go`](../../backend/internal/store/imports.go)),
+deletes the dry runs past their twenty-four hours in every tenant with the files they hold and
+records one `expired` act on `import_jobs` when it removed any; an executed job stays.
 `runJobs` in [`main.go`](../../backend/cmd/cowork/main.go)
 runs them at start and then every hour, on every replica; each lock lets one of them work. Its log
 lines name a job as the metrics do, by its system actor's name: `idempotency-expiry`,
-`session-expiry`, `login-expiry`, `notification-expiry`, `github-delivery-expiry`, `ticket-purge`,
+`session-expiry`, `login-expiry`, `notification-expiry`, `github-delivery-expiry`, `import-expiry`, `ticket-purge`,
 `consistency-check`. The
 bootstrap of [`internal/bootstrap`](../../backend/internal/bootstrap/bootstrap.go) is a `RunJob`
 too — key `4`, `system:bootstrap` — run once at start, and retried until the lock is free
@@ -665,8 +680,9 @@ ticket's predicate, and `GetGitHubWebhook`, the secret's time and maker.
 `Writer.publish` ([`notify.go`](../../backend/internal/store/notify.go)) runs for every act
 written — by `Mutate`, by a job in a tenant and by the identity provider's transactions alike — that belongs to a tenant
 and carries an `Event.Membership`, carries an `Event.NewProject` or an `Event.ProjectRank`, or names
-a ticket, except the actions `downloaded` and `exported` and the entity `time_entry`. The sort of a
-project's rank sends the project and its key, as `project.changed`. A ticket's act reads the ticket's
+a ticket, except the actions `downloaded` and `exported`, the entity `time_entry`, and an act marked
+`Event.Quiet`, which `writeEvents` in [`tx.go`](../../backend/internal/store/tx.go) skips. The sort of
+a project's rank and an import's execution send the project and its key, as `project.changed`. A ticket's act reads the ticket's
 project, version and confidential facts (`TicketFacts`, which reads a deleted ticket too), or takes
 them from `Event.Published` for a purged one; a membership act sends the keys of its
 `MembershipChange` and its audience. Either way it calls `pg_notify('cowork_events', <json>)` in the same transaction;

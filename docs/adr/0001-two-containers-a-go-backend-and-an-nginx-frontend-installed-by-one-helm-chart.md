@@ -83,8 +83,11 @@ building and are recorded here so they can be argued with.
   pod gave the controller's `503` page; the UI signed in and ran live in Chromium.
 
 **Open:** everything that makes this a product — tenants, projects, tickets, users,
-authentication, authorization, the API, the MCP interface — is not decided by this record. Those decisions are the question catalog in
-[docs/planning/questions.md](../planning/questions.md) and become ADRs of their own.
+authentication, authorization, the API, the MCP interface — is not decided by this record. ~~Those decisions are the question catalog in
+`docs/planning` and become ADRs of their own.~~ *(Amended 2026-10-06, the catalog's tombstone
+deleted with its directory; no rule changes:)* those decisions were the founding question catalog,
+which became ADR 0004 to ADR 0073
+([ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)).
 
 ## Context
 

@@ -17,7 +17,9 @@ one `session_start` offers an agent; D4: the tenant board's columns are the proj
 2026-10-05 (D6: one route, the definition of each tile, what the period bounds, the front page
 beside the tiles; a time booking reaches the dashboard at its next reload, settled on the
 recommendation, the owner reviewing the result), and amended 2026-10-06 by the owner (D5: a tenant
-administrator unshares or deletes another person's shared filter).
+administrator unshares or deletes another person's shared filter), and made concrete 2026-10-06
+(D8: no mobile client, the project plan's exclusion moved here when the plan was consumed; no rule
+changes).
 Date: 2026-09-29. Decided by the owner as the answer to the catalog question "which views are
 v1?": the widest option — the minimum the earlier records require, plus a
 tenant-wide board with swimlanes per project, saved filters, and dashboards. The
@@ -312,7 +314,9 @@ on top and the other tenants' under them — was not built, since it shows anoth
 before the person asks for it.
 
 **D8 — Not in the first release, by this record:** custom dashboards, a portfolio view across
-tenants beyond D3, Gantt or timeline views, a calendar.
+tenants beyond D3, Gantt or timeline views, a calendar. *(Made concrete 2026-10-06 when the project
+plan was consumed, which listed mobile clients as deliberately not planned; no rule changes:)* nor a
+mobile client — these views are the browser's.
 
 ## Consequences
 

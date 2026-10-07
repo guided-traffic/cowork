@@ -56,7 +56,7 @@ func (s *Server) ExportTicket(ctx context.Context, req apigen.ExportTicketReques
 	}
 	_, err = s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		w.Record(store.Event{EntityType: entityTicket, EntityID: tc.row.ID, TicketID: tc.row.ID, TicketKey: doc.Key,
-			Action: "exported", After: map[string]any{"format": "markdown v1", fieldVersion: tc.row.Version}})
+			Action: actionExported, After: map[string]any{fieldFormat: "markdown v1", fieldVersion: tc.row.Version}})
 		return nil
 	})
 	if err != nil {
@@ -71,7 +71,8 @@ func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, tc tick
 	stages := stagesOf(row)
 	doc := markdown.Ticket{
 		Key: ticketKey(t, row), Title: row.Title, Type: string(row.Type), State: string(row.State), Severity: string(row.Severity),
-		Security: string(row.Security), Threat: deref(row.Threat), Horizon: string(horizonOf(row)), Effort: string(row.Effort),
+		Security: string(row.Security), Threat: deref(row.Threat), Confidential: row.Confidential,
+		Horizon: string(horizonOf(row)), Effort: string(row.Effort),
 		ProgressRefinement: stages.Refinement, Progress: stages.Implementation, ProgressReview: stages.Review,
 		Opened: row.OpenedAt, Decided: row.DecidedAt, Done: row.DoneAt, Body: row.Body,
 	}

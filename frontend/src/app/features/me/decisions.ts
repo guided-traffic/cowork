@@ -20,7 +20,7 @@ import { keepShown } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
 import { StateBadge } from '../../shared/badges';
 import { ago, Clock, count } from '../../shared/time';
-import { changesExistence } from '../../core/event-stream.service';
+import { changesExistence, isImport } from '../../core/event-stream.service';
 import { reloadOn, shortKey, ticketRoute } from './person-list';
 
 /** Whom a decision waits for: the person, or anybody of the tenant (docs/adr/0011 D2). */
@@ -143,7 +143,10 @@ export class Decisions {
   });
 
   constructor() {
-    reloadOn(this.list, (event) => event.name === 'question.changed' || changesExistence(event));
+    reloadOn(
+      this.list,
+      (event) => event.name === 'question.changed' || changesExistence(event) || isImport(event),
+    );
   }
 
   protected ago(iso: string): string {

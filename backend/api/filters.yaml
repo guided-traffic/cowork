@@ -51,6 +51,14 @@ savedFilters:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/SavedFilterCreate'
+          example:
+            name: My bugs, now and for the release
+            parameters:
+              project: [WEB]
+              type: [bug]
+              horizon: [now, release]
+              assignee: [me]
+            shared: true
     responses:
       '201':
         description: The saved filter
@@ -108,6 +116,8 @@ savedFilter:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/SavedFilterPatch'
+          example:
+            shared: true
     responses:
       '200':
         description: The changed filter

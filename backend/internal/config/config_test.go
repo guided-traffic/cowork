@@ -158,6 +158,7 @@ func TestLoadLimitsDefaultsAndOverrides(t *testing.T) {
 	assert.Equal(t, 30*time.Second, cfg.RequestTimeout)
 	assert.Equal(t, 200, cfg.MaxPageSize)
 	assert.Equal(t, 256, cfg.MaxQueryLength)
+	assert.EqualValues(t, 50<<20, cfg.MaxImportBytes, "docs/adr/0051 D7")
 	assert.Nil(t, cfg.SessionKey)
 
 	cfg, err = Load(envOf(map[string]string{
@@ -166,6 +167,7 @@ func TestLoadLimitsDefaultsAndOverrides(t *testing.T) {
 		EnvRequestTimeout: "0",
 		EnvMaxPageSize:    "0",
 		EnvMaxQueryLength: "100",
+		EnvMaxImportBytes: "0",
 		EnvSessionKey:     "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
 	}))
 	require.NoError(t, err)
@@ -173,7 +175,12 @@ func TestLoadLimitsDefaultsAndOverrides(t *testing.T) {
 	assert.Zero(t, cfg.RequestTimeout, "0 disables the timeout")
 	assert.Zero(t, cfg.MaxPageSize)
 	assert.Equal(t, 100, cfg.MaxQueryLength)
+	assert.Zero(t, cfg.MaxImportBytes, "0 disables the bound of an import")
 	assert.Len(t, cfg.SessionKey, 32)
+
+	cfg, err = Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvMaxImportBytes: "200MiB"}))
+	require.NoError(t, err)
+	assert.EqualValues(t, 200<<20, cfg.MaxImportBytes)
 }
 
 func TestLoadRejectsBadLimitsAndNeverEchoesTheKey(t *testing.T) {
@@ -183,11 +190,13 @@ func TestLoadRejectsBadLimitsAndNeverEchoesTheKey(t *testing.T) {
 		EnvRequestTimeout: "-1s",
 		EnvMaxPageSize:    "-3",
 		EnvMaxQueryLength: "x",
+		EnvMaxImportBytes: "plenty",
 		EnvSessionKey:     "dG9vLXNob3J0",
 	}))
 	require.Error(t, err)
 	msg := err.Error()
-	for _, want := range []string{EnvMaxJSONBody, EnvRequestTimeout, EnvMaxPageSize, EnvMaxQueryLength, EnvSessionKey + " must decode to at least 32 bytes"} {
+	for _, want := range []string{EnvMaxJSONBody, EnvRequestTimeout, EnvMaxPageSize, EnvMaxQueryLength,
+		EnvMaxImportBytes + `: "plenty" is not a size such as 50MiB or 0`, EnvSessionKey + " must decode to at least 32 bytes"} {
 		assert.Contains(t, msg, want)
 	}
 	assert.NotContains(t, msg, "dG9vLXNob3J0", "the key is a secret and never echoed")

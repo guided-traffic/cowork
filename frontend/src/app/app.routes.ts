@@ -90,6 +90,18 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./features/project/project-settings').then((m) => m.ProjectSettings),
           },
+          // An import into the project, mirroring POST …/imports and GET …/imports/{import}
+          // (docs/adr/0051, docs/adr/0023 D4): the dry run, then its job at an address of its own.
+          {
+            path: 'p/:project/imports',
+            loadComponent: () =>
+              import('./features/project/project-import').then((m) => m.ProjectImport),
+          },
+          {
+            path: 'p/:project/imports/:job',
+            loadComponent: () =>
+              import('./features/project/project-import').then((m) => m.ProjectImport),
+          },
           {
             path: 'settings',
             loadComponent: () =>

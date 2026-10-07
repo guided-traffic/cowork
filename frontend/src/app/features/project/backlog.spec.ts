@@ -12,10 +12,12 @@ import { Tooltip } from 'primeng/tooltip';
 import type { Mock, MockInstance } from 'vitest';
 import { Horizon, Problem, Project, SavedFilter, Ticket, TicketState } from '../../api/models';
 import { EntityCache } from '../../core/entity-cache';
+import { ImportsService } from '../../core/imports.service';
 import { MembersService } from '../../core/members.service';
 import { ProjectsService } from '../../core/projects.service';
 import { SavedFiltersService } from '../../core/saved-filters.service';
 import { SessionService } from '../../core/session.service';
+import { TenantService } from '../../core/tenant.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
 import { ProjectTicketPagesParams, TicketPage, TicketsService } from '../../core/tickets.service';
 import { Clock, dateTime } from '../../shared/time';
@@ -176,6 +178,9 @@ describe('Backlog', () => {
           useValue: { create: vi.fn(), rank, setHorizon, sortByScore },
         },
         { provide: MembersService, useValue: { list: signal([]) } },
+        // The header's export and its way to the import (docs/adr/0051).
+        { provide: ImportsService, useValue: {} },
+        { provide: TenantService, useValue: { isAdmin: signal(false) } },
         {
           provide: SessionService,
           useValue: { tenant, membership, person: signal({ id: 'p-ada' }) },

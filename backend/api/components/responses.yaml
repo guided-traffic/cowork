@@ -17,11 +17,47 @@ Problem:
     application/problem+json:
       schema:
         $ref: './schemas.yaml#/Problem'
-      example:
-        type: https://cowork.dev/problems/not-found
-        title: Not found
-        status: 404
-        detail: no such tenant
-        instance: /api/v1/tenants/acme
-        code: not_found
-        request_id: 0199a3c2-1d2e-7f00-8000-0000000000ff
+      # The three shapes of the body every operation's errors share
+      # (docs/adr/0047 D2): a problem alone, one whose errors[] names the
+      # invalid fields, and a stale If-Match's, whose errors[] carries each
+      # field's current value (docs/adr/0050 D5).
+      examples:
+        notFound:
+          summary: What the caller cannot see answers like what does not exist (docs/adr/0047 D5)
+          value:
+            type: https://cowork.dev/problems/not-found
+            title: Not found
+            status: 404
+            detail: no such ticket
+            instance: /api/v1/tenants/acme/projects/WEB/tickets/99
+            code: not_found
+            request_id: 01a110ac-0398-7d72-b4ee-206f685cdb1c
+        validationFailed:
+          summary: A request the document refuses; errors[] names each field
+          value:
+            type: https://cowork.dev/problems/validation-failed
+            title: Validation failed
+            status: 400
+            detail: the request does not match the API document
+            instance: /api/v1/tenants/acme/projects/WEB/tickets
+            code: validation_failed
+            request_id: 01a110ac-a3c0-7d6d-a591-30264213ae84
+            errors:
+              - pointer: /severity
+                message: 'value is not one of the allowed values ["critical","high","medium","low","cosmetic"]'
+              - pointer: /title
+                message: minimum string length is 1
+        preconditionFailed:
+          summary: A stale If-Match; errors[] carries the current value of each field the request changes
+          value:
+            type: https://cowork.dev/problems/precondition-failed
+            title: Precondition failed
+            status: 412
+            detail: the entity changed since you read it; merge and send the current ETag
+            instance: /api/v1/tenants/acme/projects/WEB/tickets/42
+            code: precondition_failed
+            request_id: 01a110ad-fb80-70f4-94a5-137ba232ac0c
+            errors:
+              - pointer: /progress
+                message: changed since you read it
+                current: 60

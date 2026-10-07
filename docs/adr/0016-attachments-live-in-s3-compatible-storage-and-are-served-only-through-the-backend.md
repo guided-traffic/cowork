@@ -57,6 +57,11 @@ recorded download.
 `409 attachment_quota`, the usage at `GET /api/v1/tenants/{tenant}/attachment-usage` and on the
 tenant's settings page in the browser.
 
+*(2026-10-06.)* The project and the tenant export carry the attachment manifest of the
+Consequences ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4): each attachment's ticket, name, type, size
+and the path of its bytes, never the bytes (D5). The importer uploads nothing: a document's
+`attachments:` list is reported and not brought.
+
 ## Context
 
 A bug ticket wants a screenshot, an agent wants to leave a diagram, a client's member wants to

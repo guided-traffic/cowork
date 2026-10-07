@@ -12,10 +12,12 @@ import type { Mock, MockInstance } from 'vitest';
 import { ListProjectTickets$Params } from '../../api/fn/tickets/list-project-tickets';
 import { Block, Horizon, Problem, Project, Ticket, TicketState } from '../../api/models';
 import { EntityCache } from '../../core/entity-cache';
+import { ImportsService } from '../../core/imports.service';
 import { MembersService } from '../../core/members.service';
 import { ProblemView } from '../../core/problem.service';
 import { ProjectsService } from '../../core/projects.service';
 import { SessionService } from '../../core/session.service';
+import { TenantService } from '../../core/tenant.service';
 import { StaleWrite, TicketActions } from '../../core/ticket-actions.service';
 import { ProjectTicketPagesParams, TicketPage, TicketsService } from '../../core/tickets.service';
 import { Clock } from '../../shared/time';
@@ -174,6 +176,9 @@ describe('Board', () => {
           },
         },
         { provide: MembersService, useValue: { list: signal([]) } },
+        // The header's export and its way to the import (docs/adr/0051).
+        { provide: ImportsService, useValue: {} },
+        { provide: TenantService, useValue: { isAdmin: signal(false) } },
         { provide: SessionService, useValue: { tenant } },
         {
           provide: ProjectsService,

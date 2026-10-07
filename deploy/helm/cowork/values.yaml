@@ -322,8 +322,9 @@ chat:
 # The controller stands in front of the backend itself, and the chart does not
 # know which controller it is: its settings are yours, in annotations or in the
 # controller's own configuration. It must
-#   - pass a request body above the backend's larger limit (maxJsonBody,
-#     attachmentMaxBytes, rounded up to MiB, plus 1 MiB: 11m with the defaults),
+#   - pass a request body above the backend's largest limit (maxJsonBody,
+#     attachmentMaxBytes, maxImportBytes, rounded up to MiB, plus 1 MiB: 51m
+#     with the defaults),
 #   - wait for an answer longer than backend.config.requestTimeout plus ten
 #     seconds (40 with the default; the two streams send something at least
 #     every twenty seconds, so they stay open within it),
@@ -340,7 +341,7 @@ chat:
 # the worked example — 1m is its own body limit, 60 seconds its read timeout,
 # and it buffers no response and writes the address it saw by default:
 #   annotations:
-#     nginx.ingress.kubernetes.io/proxy-body-size: 11m
+#     nginx.ingress.kubernetes.io/proxy-body-size: 51m
 #     nginx.ingress.kubernetes.io/proxy-read-timeout: "40"
 ingress:
   enabled: false
@@ -474,6 +475,11 @@ backend:
     # tenants sets one, so that no tenant fills the storage all of them share
     # (docs/adr/0016 D6, docs/security/attachments.md H-10).
     attachmentTenantQuota: 0
+    # COWORK_MAX_IMPORT_BYTES, in bytes: an import's upload — a tar.gz, a zip
+    # or Markdown files — and what its files hold unpacked; 0 for no bound
+    # (docs/adr/0051 D7). An import is read in memory, one at a time per
+    # replica: keep the backend's memory limit well above it.
+    maxImportBytes: 52428800
     # COWORK_REQUEST_TIMEOUT, in seconds; the event stream is exempt.
     requestTimeout: 30
     # COWORK_MAX_PAGE_SIZE: the largest page a list returns.

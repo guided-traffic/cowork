@@ -25,6 +25,8 @@ func init() {
 	// The Markdown export is text; the validator reads it as such
 	// (docs/adr/0044 D1).
 	openapi3filter.RegisterBodyDecoder("text/markdown", openapi3filter.PlainBodyDecoder)
+	// An export is an archive, bytes (docs/adr/0051 D4).
+	openapi3filter.RegisterBodyDecoder("application/gzip", openapi3filter.FileBodyDecoder)
 	// format: uuid is checked at the boundary, so a malformed id in a path
 	// names nothing and answers 404 (docs/adr/0047 D5). Any version: the
 	// ids are UUIDv7, which the validator's RFC 4122 pattern refuses.
@@ -32,16 +34,21 @@ func init() {
 		`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`))
 }
 
-// limitBody holds a JSON body to COWORK_MAX_JSON_BODY and an upload to
-// COWORK_ATTACHMENT_MAX_BYTES with its multipart overhead (docs/adr/0039 D2):
-// a declared length above it is refused before the body is read, and a body
-// that turns out longer fails while it is read.
-func (h *handler) limitBody(w http.ResponseWriter, r *http.Request) *problem.Error {
+// limitBody holds a JSON body to COWORK_MAX_JSON_BODY, an upload to
+// COWORK_ATTACHMENT_MAX_BYTES and an import's upload to
+// COWORK_MAX_IMPORT_BYTES, each with its multipart overhead (docs/adr/0039 D2,
+// docs/adr/0051 D7): a declared length above it is refused before the body is
+// read, and a body that turns out longer fails while it is read.
+func (h *handler) limitBody(w http.ResponseWriter, r *http.Request, operationID string) *problem.Error {
 	limit := h.opts.MaxJSONBody
 	if isMultipart(r) {
+		max := h.opts.AttachmentMaxBytes
+		if operationID == opCreateImport {
+			max = h.opts.MaxImportBytes
+		}
 		limit = 0
-		if h.opts.AttachmentMaxBytes > 0 {
-			limit = h.opts.AttachmentMaxBytes + multipartOverhead
+		if max > 0 {
+			limit = max + multipartOverhead
 		}
 	}
 	if r.Body == nil || r.Body == http.NoBody || limit <= 0 {

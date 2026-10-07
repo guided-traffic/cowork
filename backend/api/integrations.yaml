@@ -129,6 +129,27 @@ githubWebhook:
         application/json:
           schema:
             type: object
+          examples:
+            pullRequestOpened:
+              summary: 'X-GitHub-Event: pull_request, opened; the payload cut to the fields cowork reads'
+              value:
+                action: opened
+                number: 118
+                pull_request:
+                  number: 118
+                  title: Send the password as typed (WEB-42)
+                  body: |-
+                    The form no longer trims the password before it sends it.
+
+                    Cowork-Ticket: acme/WEB-42
+                  state: open
+                  merged: false
+                  merged_at: null
+                  updated_at: '2026-10-06T14:02:10Z'
+                  user: {login: grace-hopper}
+                repository:
+                  clone_url: https://github.com/acme/website.git
+                  default_branch: main
     responses:
       '200':
         description: The tenant took this delivery before; nothing happened again

@@ -8,7 +8,16 @@ over configurable types, and over a parent expressed as a link.
 
 **Partly built** (phase 2, 2026-10-02): D1 and D2 — the five types and the parent in the same
 project (a composite key; a cycle refused by a walk under a per-project lock). The views of
-D3 and the importer's mapping arrive with them. *(2026-10-04.)* The browser chooses the parent,
+D3 ~~and the importer's mapping~~ arrive with them. *(2026-10-06.)* D5 is built with the importer
+of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md), except the family: the type comes from the title — a
+question mark, a `live` or `boundary` finding, the words of a decision, a defect or a missing
+capability, else a task, made concrete by the implementer and open to the owner's objection
+([ADR 0063](0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md) D3) —, the report names the rule that matched, a correction
+sets another, and an `## Open questions` section becomes question entities. A family ticket does
+not become a parent with its findings as children: a repository's ticket file names no parent, and
+no rule says which files are a family's, so the importer guesses none and reads a parent only from
+a `parent:` key, which an export writes. Whether it should recognise a family is open to the owner; until then the
+person sets the parents after the import. *(2026-10-04.)* The browser chooses the parent,
 on filing and on the detail page, among the project's open tickets.
 
 ## Context

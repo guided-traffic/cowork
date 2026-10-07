@@ -11,7 +11,8 @@ export interface FieldError {
   message: string;
 
   /**
-   * A JSON pointer into the body, or query:<name> / header:<name>
+   * A JSON pointer into the body, or query:<name> / header:<name>; the refused execution of an
+   * import names a file of its upload as file:<path>
    */
   pointer: string;
 }

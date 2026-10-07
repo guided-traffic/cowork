@@ -20,6 +20,7 @@ import { MyTickets } from './features/me/my-tickets';
 import { Tokens } from './features/me/tokens';
 import { Backlog } from './features/project/backlog';
 import { Board } from './features/project/board';
+import { ProjectImport } from './features/project/project-import';
 import { ProjectSettings } from './features/project/project-settings';
 import { SearchResults } from './features/search/search';
 import { Accounts } from './features/tenant/accounts';
@@ -50,6 +51,9 @@ function place(tree: Route[], parent = ''): Placed[] {
   });
 }
 
+/** An import job's id, the last segment of its page's address (docs/adr/0051 D1). */
+const job = '0199a3c2-1d2e-7f00-8000-00000000000a';
+
 /** Every route that loads its page on demand, with the page it has to load. */
 const pages: [string, Type<unknown>][] = [
   ['login', Login],
@@ -67,6 +71,8 @@ const pages: [string, Type<unknown>][] = [
   ['t/:tenant/p/:project/backlog', Backlog],
   ['t/:tenant/p/:project/board', Board],
   ['t/:tenant/p/:project/settings', ProjectSettings],
+  ['t/:tenant/p/:project/imports', ProjectImport],
+  ['t/:tenant/p/:project/imports/:job', ProjectImport],
   ['t/:tenant/settings', TenantSettings],
   ['t/:tenant/tickets/:key', TicketDetail],
   ['t/:tenant/search', SearchResults],
@@ -177,6 +183,8 @@ describe('the routes', () => {
       named('/t/acme/p/COW/backlog', Shell, TenantScope, Backlog),
       named('/t/acme/p/COW/board', Shell, TenantScope, Board),
       named('/t/acme/p/COW/settings', Shell, TenantScope, ProjectSettings),
+      named('/t/acme/p/COW/imports', Shell, TenantScope, ProjectImport),
+      named(`/t/acme/p/COW/imports/${job}`, Shell, TenantScope, ProjectImport),
       named('/t/acme/tickets/COW-12', Shell, TenantScope, TicketDetail),
       named('/dev/design', Shell, DesignPreview),
       named('/t', Shell, NotFound),
@@ -209,6 +217,8 @@ describe('the routes', () => {
       ['/t/acme/p/COW/backlog', 2, { project: 'COW' }],
       ['/t/acme/p/COW/board', 2, { project: 'COW' }],
       ['/t/acme/p/COW/settings', 2, { project: 'COW' }],
+      ['/t/acme/p/COW/imports', 2, { project: 'COW' }],
+      [`/t/acme/p/COW/imports/${job}`, 2, { project: 'COW', job }],
       ['/t/acme/tickets/COW-12', 2, { key: 'COW-12' }],
     ] as [string, number, Record<string, string>][])(
       'reads the parameters of %s',
@@ -224,6 +234,8 @@ describe('the routes', () => {
       '/t/acme/p/COW/backlog',
       '/t/acme/p/COW/board',
       '/t/acme/p/COW/settings',
+      '/t/acme/p/COW/imports',
+      `/t/acme/p/COW/imports/${job}`,
       '/t/acme/tickets/COW-12',
     ])('has an input for each parameter of the path of every page of %s', async (url) => {
       for (const step of await navigate(url)) {

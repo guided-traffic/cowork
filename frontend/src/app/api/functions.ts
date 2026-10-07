@@ -173,6 +173,16 @@ export type { ResolveTicket$Params as ResolveTicket$Params } from './fn/tickets/
 export { resolveTicket as resolveTicket } from './fn/tickets/resolve-ticket';
 export type { StreamEvents$Params as StreamEvents$Params } from './fn/events/stream-events';
 export { streamEvents as streamEvents } from './fn/events/stream-events';
+export type { ExportTenant$Params as ExportTenant$Params } from './fn/imports/export-tenant';
+export { exportTenant as exportTenant } from './fn/imports/export-tenant';
+export type { ExportProject$Params as ExportProject$Params } from './fn/imports/export-project';
+export { exportProject as exportProject } from './fn/imports/export-project';
+export type { CreateImport$Params as CreateImport$Params } from './fn/imports/create-import';
+export { createImport as createImport } from './fn/imports/create-import';
+export type { GetImport$Params as GetImport$Params } from './fn/imports/get-import';
+export { getImport as getImport } from './fn/imports/get-import';
+export type { ExecuteImport$Params as ExecuteImport$Params } from './fn/imports/execute-import';
+export { executeImport as executeImport } from './fn/imports/execute-import';
 export type { ListSavedFilters$Params as ListSavedFilters$Params } from './fn/filters/list-saved-filters';
 export { listSavedFilters as listSavedFilters } from './fn/filters/list-saved-filters';
 export type { CreateSavedFilter$Params as CreateSavedFilter$Params } from './fn/filters/create-saved-filter';

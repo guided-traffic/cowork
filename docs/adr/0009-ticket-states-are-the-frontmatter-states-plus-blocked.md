@@ -44,6 +44,11 @@ done by hand, each with the note, the prerequisite refusal and `close` from `in-
 `review` only; the withdrawal with a reason, the lowering of a stage that reopens, and
 `done_from` and `done_by_hand` ([migration 19](../../backend/internal/store/migrations/000019_progress_stages.up.sql)).
 The board's columns of D1 are the views' ([ADR 0018](0018-the-views-of-the-first-release.md)).
+*(2026-10-06.)* The importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) maps the states one to one and
+infers `blocked` from nothing: a ticket is created blocked only where its file or a correction says
+so, with the kind, the reason and the state it came from that D2 needs. A ticket it creates as done
+is done from `in-progress`, by its stages only while all three are full and it has no children, by
+hand otherwise (D5).
 
 ## Context
 

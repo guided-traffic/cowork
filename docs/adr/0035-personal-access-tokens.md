@@ -102,10 +102,14 @@ tenant's page *Tokens* ([`features/tenant/tenant-tokens.ts`](../../frontend/src/
 the person's token list in the browser reads numbered pages
 ([ADR 0048](0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D4).
 
+Amended 2026-10-06 (the Context: the project plan it cited is consumed and deleted,
+[ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D4; no rule changes).
+
 ## Context
 
-An LLM operates cowork before any UI exists ([project plan](../planning/project-plan.md),
-phase 2), and it does so with a token that must say who is accountable
+An LLM operates cowork before any UI exists (phase 2 of the project plan, which was consumed into
+the phase tickets on 2026-10-06), and it does so with a token that must say who is accountable
 ([ADR 0004](0004-cowork-is-a-team-product.md) D1). One resolver serves cookies and tokens
 ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D6), every audit row carries
 the token id ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md)
