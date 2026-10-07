@@ -955,10 +955,10 @@ a page makes none. [`KeepAliveService`](../../frontend/src/app/core/keep-alive.s
 client when `document.visibilityState` is `visible` and the last input is no older than the last ask;
 the answer is dropped, a failure too, and a `401` reaches `signInOnUnauthorised` like any. A pointer
 that only moves is no work, and the event stream is untouched, so a tab nobody works in still
-reaches the idle limit — while its stream is open: the polling fallback's reloads are requests
-([sessions.md](../security/sessions.md#h-63), H-63). The shell starts it in its constructor and
-stops it on its `DestroyRef`, so it runs exactly while a page of the shell is shown; `start` twice
-runs one interval, and the root injector's end stops it too.
+reaches the idle limit — while its stream stays connected: a new connection of it and the polling
+fallback's reloads are requests ([sessions.md](../security/sessions.md#h-63), H-63). The shell
+starts it in its constructor and stops it on its `DestroyRef`, so it runs exactly while a page of
+the shell is shown; `start` twice runs one interval, and the root injector's end stops it too.
 
 ## The tenant's administration
 

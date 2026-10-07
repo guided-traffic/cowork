@@ -25,8 +25,9 @@ recommendation
 ([ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
 D7; D6: seventeen routes), and on 2026-10-06 on the owner's request that cowork keep his session
 while he works and not ask for a click where the identity provider's session runs anyway (D3: the
-browser's input keeps the idle clock moving through a keep-alive, the stream still moves none, and
-its polling fallback is named; the sign-in that follows an ended provider session is
+browser's input keeps the idle clock moving through a keep-alive, the stream's heartbeats still
+move none, and what of the stream does — a new connection, the polling fallback — is named; the
+sign-in that follows an ended provider session is
 [ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
 D6). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "browser session mechanism?": server-side sessions, over the identity
@@ -166,12 +167,14 @@ key, wheel or touch, and every five minutes, while the document is visible and t
 since it last asked, it makes one request of the session — `GET /api/v1/me`
 ([`keep-alive.service.ts`](../../frontend/src/app/core/keep-alive.service.ts)) — which moves the clock
 as any request does. A tab nobody works in makes none, and an open event stream still does not
-extend the idle limit, so a tab that is only open reaches it — while its stream stays open: the
+extend the idle limit at its heartbeats, so a tab that is only open reaches it — while its stream
+stays connected: each new connection of the stream is a request that moves the clock, and the
 stream's polling fallback of
 [ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md) D7
-reloads what the page shows every fifteen seconds and tries the stream again every minute, each a
-request that moves the clock, so a tab in that fallback keeps its session up to the absolute limit
-without a person, read from the code ([sessions.md](../security/sessions.md) H-63). Where a limit
+reloads what a visible page shows every fifteen seconds and tries the stream again every minute,
+each a request too, so a tab whose stream reconnects often or fell back to polling keeps its session
+up to the absolute limit without a person, read from the code
+([sessions.md](../security/sessions.md) H-63). Where a limit
 ends a session of the identity provider, the login page signs the person in again at their first
 input while the provider's own session lives
 ([ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)

@@ -157,8 +157,8 @@ person's.
   neither limit has passed, the person is not deactivated — and ends when one fails
   ([`api/events.go`](../../backend/internal/api/events.go) `stillAdmitted`;
   `TestEventStreamEndsWithItsSession`). An open stream does not extend the idle limit: a tab
-  that is only open logs out — while its stream stays open; the stream's polling fallback is
-  requests, which do ([H-63](#h-63)).
+  that is only open logs out — while its stream stays connected; a new connection of it, and the
+  stream's polling fallback, are requests, which do ([H-63](#h-63)).
 
 ## How a session ends
 
@@ -254,20 +254,23 @@ disabling the person or taking them out of the allowed groups is the way. Shorte
 window; a TLS-terminating proxy that does not log headers keeps the cookie off its disk.
 
 <a id="h-63"></a>
-### H-63 — A tab whose event stream fell back to polling keeps its session without a person
+### H-63 — A tab whose event stream reconnects or fell back to polling keeps its session without a person
 
 Live whenever the event stream falls back to polling — three failures in a row or the server's
 `unavailable`, an Ingress or a proxy that does not hold a stream open among the causes
 ([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
-D7). The open stream itself moves no idle clock, and the keep-alive asks only after a person's
-input. But the fallback emits a `poll` every fifteen seconds, on which the services load again what
-the page shows — `GET /api/v1/me` among it — and tries the stream again every minute: each is a
-request of the session and moves the idle clock, so a tab in that fallback keeps its session up to
-the absolute limit, twelve hours by default, with nobody at it. Read from the code
+D7) —, and wherever something ends the stream's connection more often than the idle limit. An open
+stream moves no idle clock at its heartbeats, and the keep-alive asks only after a person's input.
+But the stream's request is authenticated like any (`authenticateSession`), so each new connection
+of it — the browser's own reconnect after a proxy ended one, the fallback's attempt every minute —
+moves the clock; and the fallback emits a `poll` every fifteen seconds while the tab is visible, on
+which the services load again what the page shows, `GET /api/v1/me` among it, each a request that
+moves the clock too. Such a tab keeps its session up to the absolute limit, twelve hours by default,
+with nobody at it. Read from the code
 ([`event-stream.service.ts`](../../frontend/src/app/core/event-stream.service.ts) `fallBack`, the
-services' reloads on `poll`), not run in a browser. It was so before the keep-alive and is not its
-doing. Mitigation: a shorter `COWORK_SESSION_LIFETIME`; an Ingress that holds the stream open, so
-that the fallback stays the exception.
+services' reloads on `poll`, [`api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`), not run
+in a browser. It was so before the keep-alive and is not its doing. Mitigation: a shorter
+`COWORK_SESSION_LIFETIME`; an Ingress that holds the stream open, so that neither happens.
 
 The gaps of the identity provider's sessions — stale groups while the issuer cannot be reached, a
 session that never learns the groups anew without a refresh token, the stored refresh tokens, the
