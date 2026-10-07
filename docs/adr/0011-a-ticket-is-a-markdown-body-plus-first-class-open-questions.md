@@ -25,8 +25,11 @@ objected to.
 previous and the new text on the act, questions as entities (migration 10) with their number,
 the person asked, the answer only a person decides and an agent may record with
 `record-answer`; D4's export half in [ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)'s
-`/markdown`. D3's person-level list arrives with the person-level views, D4's import with the
-importer, D6's sanitiser with the first rendered Markdown. *(2026-10-04.)* In the browser the
+`/markdown`. D3's person-level list arrives with the person-level views, ~~D4's import with the
+importer~~ *(D4's import built 2026-10-06 with the importer of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md): the last `## Open questions` heading outside fenced code
+holds the questions, an earlier one stays in the body and the report warns of it, as the Residual
+risks foresee)*, D6's sanitiser with the first rendered Markdown. *(2026-10-04.)* In the browser the
 body is edited as Markdown and replaced as a whole over the version its editor began with
 ([ADR 0050](0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md)
 D3), and the asker edits an open question's text; the body is still shown as text.
@@ -38,7 +41,11 @@ it is, a link keeps an `http`, `https`, `mailto` or relative address and carries
 attachment of the same ticket (ADR 0016 D7). The body is answered on `GET …/body`, beside the Markdown
 elsewhere; the detail page shows it through Angular's own sanitiser. The library and the allow-list,
 a test fixture as D6 asks, are recorded on [docs/security/rendered-markdown.md](../security/rendered-markdown.md),
-as the residual risk below foresaw.
+as the residual risk below foresaw. *(2026-10-07.)* D6 made concrete by the implementer and built the
+same day, open to the owner's objection: what the rendering reads of a text is bounded
+([`richtext/bounds.go`](../../backend/internal/richtext/bounds.go)), and the database holds a body, a
+question's options and its answer to the lengths the API takes
+([migration 44](../../backend/internal/store/migrations/000044_text_length_checks.up.sql)).
 
 ## Context
 
@@ -97,7 +104,14 @@ attachment mechanism exists~~ *(amended 2026-09-29)* only from the installation'
 attachment endpoint, for raster-image attachments of the same ticket
 ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
 D7). The sanitiser's allow-list is a test fixture, and a change to it is a change to the
-security page of the UI.
+security page of the UI. *(Made concrete 2026-10-07 by the implementer, open to the owner's
+objection:)* what the rendering reads of a text is bounded, since a text is rendered on every read
+that answers it: a text longer than the longest the API takes, 200,000 characters, is shown as
+written, escaped, and not parsed; below that, blocks nest at most 32 deep, and the markers read as
+emphasis, links and raw HTML are bounded per text, a marker beyond a bound being text — the values
+are [docs/security/rendered-markdown.md](../security/rendered-markdown.md#what-a-rendering-reads)'s.
+The database holds a body to 200,000 characters and a question's options and its answer to 100,000,
+the lengths the API takes, as it holds a comment's.
 
 ## Consequences
 

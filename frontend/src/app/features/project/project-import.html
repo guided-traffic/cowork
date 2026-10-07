@@ -1,0 +1,565 @@
+<app-confirm-dialog />
+
+<section class="page">
+  <header class="title">
+    <span class="key" data-testid="import-project">{{ project() }}</span>
+    <h1 id="import-heading" tabindex="-1">Import tickets</h1>
+    <span class="spacer"></span>
+    @if (job() !== undefined && tenantInfo.isAdmin() && session.tenant(); as tenant) {
+      <a
+        pButton
+        [text]="true"
+        size="small"
+        severity="secondary"
+        [routerLink]="['/t', tenant, 'p', project(), 'imports']"
+        data-testid="import-new"
+        ><i class="pi pi-upload"></i>New dry run</a
+      >
+    }
+  </header>
+
+  @if (tenantInfo.isAdmin()) {
+    @if (job() === undefined) {
+      <p class="muted lead">
+        Bring a repository's Markdown tickets, or an earlier export of cowork, into {{ project() }}.
+        A dry run reads every file and imports nothing: you read its report, leave files out or
+        correct them, and then execute it, which creates every ticket at once. The tickets keep
+        their numbers, so a number {{ project() }} holds already is a conflict.
+      </p>
+
+      <section class="card upload" aria-labelledby="upload-heading">
+        <h2 id="upload-heading">The files</h2>
+        <p class="muted small">
+          A <code>tar.gz</code> or a <code>zip</code> of a repository's
+          <code>docs/tickets/</code> or of an export, or the Markdown ticket files themselves. Only
+          ticket files are read — <code>NNN-&lt;slug&gt;.md</code>,
+          <code>local_NNN-&lt;slug&gt;.md</code> and an export's
+          <code>&lt;PROJECT&gt;-&lt;n&gt;.md</code> —; the report lists everything else as skipped.
+        </p>
+        <div
+          class="drop"
+          [class.over]="dragging()"
+          (dragover)="over($event)"
+          (dragleave)="leave($event)"
+          (drop)="drop($event)"
+          data-testid="import-drop"
+        >
+          <i class="pi pi-cloud-upload" aria-hidden="true"></i>
+          <span>Drop the files here, or</span>
+          <button
+            pButton
+            type="button"
+            size="small"
+            severity="secondary"
+            [outlined]="true"
+            (click)="picker.click()"
+            data-testid="import-choose"
+          >
+            Choose files
+          </button>
+          <input
+            #picker
+            type="file"
+            class="picker"
+            multiple
+            accept=".md,.markdown,.zip,.gz,.tgz"
+            aria-label="Ticket files"
+            (change)="pick(picker)"
+            data-testid="import-input"
+          />
+        </div>
+
+        @if (chosen().length > 0) {
+          <ul class="chosen" aria-label="Chosen files" data-testid="import-chosen">
+            @for (file of chosen(); track file.name) {
+              <li>
+                <i class="pi pi-file muted" aria-hidden="true"></i>
+                <span class="name">{{ file.name }}</span>
+                <span class="muted small tabular">{{ size(file.size) }}</span>
+                <button
+                  pButton
+                  type="button"
+                  size="small"
+                  [text]="true"
+                  [rounded]="true"
+                  severity="secondary"
+                  [iconOnly]="true"
+                  [attr.aria-label]="'Remove ' + file.name"
+                  (click)="remove(file)"
+                >
+                  <i class="pi pi-times"></i>
+                </button>
+              </li>
+            }
+          </ul>
+        }
+
+        @if (droppedFolders().length > 0) {
+          <p class="note" role="status" data-testid="import-folders">
+            A folder is not uploaded ({{ droppedFolders().join(', ') }}): pack it —
+            <code>tar czf tickets.tar.gz docs/tickets</code> — and drop the archive, or drop the
+            Markdown files it holds.
+          </p>
+        }
+
+        @if (uploadRefusal(); as refusal) {
+          <p class="refusal" role="alert" data-testid="import-upload-refusal">
+            <strong>{{ refusal.title }}.</strong> {{ refusal.fields['file'] ?? refusal.detail }}
+          </p>
+        }
+
+        <div class="actions">
+          @if (chosen().length > 0) {
+            <span class="muted small tabular"
+              >{{ count(chosen().length, 'file') }}, {{ size(chosenBytes()) }}</span
+            >
+          }
+          <button
+            pButton
+            type="button"
+            [disabled]="chosen().length === 0 || uploading()"
+            (click)="startDryRun()"
+            data-testid="import-dry-run"
+          >
+            @if (uploading()) {
+              <i class="pi pi-spinner pi-spin"></i>
+            } @else {
+              <i class="pi pi-search"></i>
+            }
+            Start the dry run
+          </button>
+        </div>
+      </section>
+    } @else if (gone()) {
+      <section class="card notice" data-testid="import-gone" aria-labelledby="gone-heading">
+        <h2 id="gone-heading">This dry run is gone</h2>
+        <p>
+          A dry run is kept for twenty-four hours: this one has expired, or the address names no
+          import of {{ project() }}. Nothing of it was imported. Make a new dry run with the files.
+        </p>
+        @if (session.tenant(); as tenant) {
+          <a
+            pButton
+            [routerLink]="['/t', tenant, 'p', project(), 'imports']"
+            data-testid="import-gone-new"
+            ><i class="pi pi-upload"></i>Make a new dry run</a
+          >
+        }
+      </section>
+    } @else if (report(); as job) {
+      <p class="muted lead" data-testid="import-status">
+        @if (job.status === 'dry_run') {
+          A dry run by {{ job.created_by.display_name }}, {{ ago(job.created_at) }}. Nothing is
+          imported until it is executed; it is kept until
+          {{ job.expires_at ? dateTime(job.expires_at) : '—' }}.
+        } @else {
+          Executed by {{ job.executed_by?.display_name }}
+          {{ job.executed_at ? 'on ' + dateTime(job.executed_at) : '' }}, from a dry run by
+          {{ job.created_by.display_name }}.
+        }
+      </p>
+
+      @if (executedElsewhere()) {
+        <p class="note" role="status" data-testid="import-executed-elsewhere">
+          This dry run was executed already, in another tab or by another administrator: the report
+          below is what that execution created.
+        </p>
+      }
+
+      @if (job.status === 'executed') {
+        <section class="card done" aria-labelledby="import-done-heading" data-testid="import-done">
+          <h2 id="import-done-heading" tabindex="-1">
+            {{ count(job.summary.created, 'ticket') }} imported into {{ job.project }}
+          </h2>
+          <p>
+            Every ticket was created at once, with its questions and the links among them. A ticket
+            that should not be there is deleted on its own page.
+          </p>
+          @if (session.tenant(); as tenant) {
+            <p class="links">
+              <a
+                pButton
+                [routerLink]="['/t', tenant, 'p', job.project, 'backlog']"
+                data-testid="import-backlog"
+                ><i class="pi pi-list"></i>Open the backlog</a
+              >
+              <a
+                pButton
+                severity="secondary"
+                [outlined]="true"
+                [routerLink]="['/t', tenant, 'p', job.project, 'board']"
+                data-testid="import-board"
+                ><i class="pi pi-objects-column"></i>Open the board</a
+              >
+            </p>
+          }
+        </section>
+      }
+
+      <dl class="summary" aria-label="Summary" data-testid="import-summary">
+        <div class="tile">
+          <dt>files</dt>
+          <dd class="tabular" data-testid="summary-files">{{ job.summary.files }}</dd>
+        </div>
+        @for (tile of tiles(); track tile.outcome) {
+          <div
+            class="tile"
+            [class.zero]="tile.count === 0"
+            [style.--accent]="outcomeAccents[tile.outcome]"
+            [pTooltip]="outcomeMeanings[tile.outcome]"
+            [showDelay]="400"
+          >
+            <dt>{{ tile.outcome }}</dt>
+            <dd class="tabular" [attr.data-testid]="'summary-' + tile.outcome">{{ tile.count }}</dd>
+          </div>
+        }
+      </dl>
+      <p class="muted small" data-testid="import-totals">{{ totals() }}</p>
+
+      @if (lapsed()) {
+        <p class="note" role="status" data-testid="import-lapsed">
+          This dry run's twenty-four hours are over: its execution would be refused. Make a new dry
+          run with the files.
+        </p>
+      }
+
+      @if (refusal(); as refused) {
+        <section class="card danger" role="alert" data-testid="import-refusal">
+          <h2 id="import-refusal-heading" tabindex="-1">
+            The execution was refused — nothing was imported
+          </h2>
+          <p>
+            {{ refused.title }}: {{ refused.detail }}. The execution reads every file again with
+            your corrections, against {{ project() }} as it stands now.
+          </p>
+          <ul>
+            @for (entry of refusedFiles(); track entry.path) {
+              <li>
+                <code>{{ entry.path }}</code> — {{ entry.messages.join('; ') }}
+              </li>
+            }
+          </ul>
+          <button
+            pButton
+            type="button"
+            size="small"
+            severity="danger"
+            [outlined]="true"
+            (click)="excludeAll(refused.files.keys())"
+            data-testid="exclude-refused"
+          >
+            Leave these files out
+          </button>
+        </section>
+      }
+
+      @if (blockingFiles().length > 0) {
+        <section
+          class="card danger"
+          data-testid="import-blocking"
+          aria-labelledby="blocking-heading"
+        >
+          <h2 id="blocking-heading">
+            {{ count(blockingFiles().length, 'file') }}
+            {{ blockingFiles().length === 1 ? 'blocks' : 'block' }} the execution
+          </h2>
+          <p>
+            A conflict's number is a ticket of {{ project() }} already, or was one: leave the file
+            out, and the project's ticket stays as it is. A file with an error cannot be imported as
+            it stands: leave it out, correct it where a correction answers its error, or fix its
+            source and make a new dry run.
+          </p>
+          <ul>
+            @for (file of blockingFiles(); track file.path) {
+              <li>
+                <code>{{ file.path }}</code> — {{ file.outcome }}:
+                {{
+                  file.errors[0]?.message ??
+                    (file.conflict ? shortKey(file.conflict) + ' holds its number' : '')
+                }}
+              </li>
+            }
+          </ul>
+          <button
+            pButton
+            type="button"
+            size="small"
+            severity="danger"
+            [outlined]="true"
+            (click)="excludeAll(blockingFiles().map((file) => file.path))"
+            data-testid="exclude-blocking"
+          >
+            Leave {{ blockingFiles().length === 1 ? 'it' : 'them' }} out
+          </button>
+        </section>
+      }
+
+      <div class="toolbar">
+        <h2 id="files-heading">Files</h2>
+        <p-selectbutton
+          [options]="filters()"
+          optionLabel="label"
+          optionValue="value"
+          [ngModel]="filter()"
+          (ngModelChange)="filter.set($event)"
+          [allowEmpty]="false"
+          size="small"
+          ariaLabel="Show the files of an outcome"
+          data-testid="import-filter"
+        />
+      </div>
+
+      <div class="panel">
+        <table class="files" aria-labelledby="files-heading" data-testid="import-files">
+          <thead>
+            <tr>
+              @if (dryRun()) {
+                <th class="col-exclude">Leave out</th>
+              }
+              <th>Ticket</th>
+              <th class="col-outcome">Outcome</th>
+              <th class="col-type">Type</th>
+              <th class="col-state">State</th>
+              <th class="col-assignee">Assignee</th>
+              <th class="col-questions">Questions</th>
+            </tr>
+          </thead>
+          @for (row of rows(); track row.file.path) {
+            <tbody
+              [attr.data-testid]="'file-' + row.file.path"
+              [attr.data-outcome]="row.file.outcome"
+              [class.excluded]="row.draft?.exclude"
+            >
+              <tr>
+                @if (dryRun()) {
+                  <td class="col-exclude">
+                    @if (row.file.outcome !== 'skip') {
+                      <p-checkbox
+                        [binary]="true"
+                        [ngModel]="row.draft?.exclude ?? false"
+                        (ngModelChange)="exclude(row.file, $event)"
+                        [ariaLabel]="'Leave out ' + row.file.path"
+                        [attr.data-testid]="'exclude-' + row.file.path"
+                      />
+                    }
+                  </td>
+                }
+                <td class="ticket">
+                  <div class="line">
+                    @if (row.file.key; as key) {
+                      @if (row.file.outcome === 'created' && session.tenant(); as tenant) {
+                        <a
+                          class="number tabular"
+                          [routerLink]="['/t', tenant, 'tickets', shortKey(key)]"
+                          >{{ shortKey(key) }}</a
+                        >&ngsp;
+                      } @else {
+                        <span class="number tabular">{{ shortKey(key) }}</span
+                        >&ngsp;
+                      }
+                    }
+                    <span class="name">{{ row.file.title ?? '—' }}</span>
+                    @if (row.file.confidential) {
+                      <span class="pill lock" [pTooltip]="row.file.confidential_reason ?? ''"
+                        ><i class="pi pi-lock"></i>confidential</span
+                      >
+                    }
+                  </div>
+                  <div class="path muted">
+                    {{ row.file.path }}{{ row.file.format ? ' · ' + row.file.format : '' }}
+                  </div>
+                </td>
+                <td class="col-outcome">
+                  <span
+                    class="pill"
+                    [style.--accent]="outcomeAccents[row.file.outcome]"
+                    [pTooltip]="outcomeMeanings[row.file.outcome]"
+                    [showDelay]="400"
+                    [attr.data-testid]="'outcome-' + row.file.path"
+                    >{{ row.draft?.exclude ? 'exclude' : row.file.outcome }}</span
+                  >
+                </td>
+                <td class="col-type">
+                  @if (row.changeable) {
+                    <p-select
+                      [options]="types"
+                      [ngModel]="row.draft?.type ?? row.file.type"
+                      (ngModelChange)="setType(row.file, $event)"
+                      placeholder="—"
+                      size="small"
+                      [ariaLabel]="'Type of ' + row.file.path"
+                      [attr.data-testid]="'type-' + row.file.path"
+                    />
+                  } @else if (row.file.type) {
+                    <app-type [value]="row.file.type" [showLabel]="true" />
+                  }
+                  @if (row.file.type_reason && !row.draft?.type) {
+                    <small class="why muted">{{ row.file.type_reason }}</small>
+                  }
+                </td>
+                <td class="col-state">
+                  @if (row.changeable) {
+                    <p-select
+                      [options]="states"
+                      [ngModel]="stateOf(row.file, row.draft)"
+                      (ngModelChange)="setState(row.file, $event)"
+                      placeholder="—"
+                      size="small"
+                      [ariaLabel]="'State of ' + row.file.path"
+                      [attr.data-testid]="'state-' + row.file.path"
+                    />
+                  } @else if (row.file.state) {
+                    <app-state [value]="row.file.state" />
+                  }
+                </td>
+                <td class="col-assignee">
+                  @if (row.changeable) {
+                    <p-select
+                      [options]="people()"
+                      optionLabel="name"
+                      optionValue="id"
+                      [ngModel]="assigneeOf(row.file, row.draft)"
+                      (ngModelChange)="setAssignee(row.file, $event)"
+                      placeholder="nobody"
+                      [showClear]="true"
+                      [filter]="true"
+                      size="small"
+                      [ariaLabel]="'Assignee of ' + row.file.path"
+                      [attr.data-testid]="'assignee-' + row.file.path"
+                    />
+                  } @else {
+                    <span>{{ row.file.assignee?.person?.display_name ?? '' }}</span>
+                  }
+                  @if (row.file.assignee && !row.file.assignee.person) {
+                    <small class="why muted">not assigned: {{ row.file.assignee.source }}</small>
+                  }
+                </td>
+                <td class="col-questions tabular">
+                  {{ row.file.questions.length || '' }}
+                </td>
+              </tr>
+              @if (row.notes.length > 0 || row.editsBlock || row.candidate || row.lacks) {
+                <tr class="notes">
+                  @if (dryRun()) {
+                    <td></td>
+                  }
+                  <td colspan="6">
+                    @if (row.editsBlock) {
+                      <div
+                        class="block"
+                        role="group"
+                        [attr.aria-label]="'Block of ' + row.file.path"
+                      >
+                        <p-select
+                          [options]="blockKinds"
+                          [ngModel]="row.draft?.block?.kind ?? null"
+                          (ngModelChange)="setBlock(row.file, { kind: $event })"
+                          placeholder="waits on"
+                          size="small"
+                          [ariaLabel]="'Block kind of ' + row.file.path"
+                          [attr.data-testid]="'block-kind-' + row.file.path"
+                        />
+                        <input
+                          pInputText
+                          pSize="small"
+                          class="reason"
+                          [maxlength]="blockReasonLimit"
+                          placeholder="What it waits on, and why"
+                          [ngModel]="row.draft?.block?.reason ?? ''"
+                          (ngModelChange)="setBlock(row.file, { reason: $event })"
+                          [attr.aria-label]="'Block reason of ' + row.file.path"
+                          [attr.data-testid]="'block-reason-' + row.file.path"
+                        />
+                        <p-select
+                          [options]="blockFroms"
+                          [ngModel]="row.draft?.block?.from ?? null"
+                          (ngModelChange)="setBlock(row.file, { from: $event })"
+                          placeholder="from"
+                          size="small"
+                          [ariaLabel]="'Blocked from, ' + row.file.path"
+                          [attr.data-testid]="'block-from-' + row.file.path"
+                        />
+                      </div>
+                    }
+                    <ul>
+                      @if (row.lacks; as lacks) {
+                        <li class="error">{{ lacks }}</li>
+                      }
+                      @if (row.candidate; as candidate) {
+                        <li class="info">
+                          <span class="place">blocked-by</span> names
+                          <code>{{ candidate }}</code> beside the state {{ row.file.state }}; the
+                          import never sets blocked on its own.
+                          <button
+                            type="button"
+                            class="inline"
+                            (click)="setState(row.file, 'blocked')"
+                            [attr.data-testid]="'block-it-' + row.file.path"
+                          >
+                            Import it blocked
+                          </button>
+                        </li>
+                      }
+                      @for (note of row.notes; track $index) {
+                        <li [class]="note.tone">
+                          @if (note.place) {
+                            <span class="place">{{ note.place }}</span>
+                          }
+                          {{ note.text }}
+                        </li>
+                      }
+                    </ul>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          } @empty {
+            <tbody>
+              <tr>
+                <td colspan="7" class="empty muted">No file of this outcome.</td>
+              </tr>
+            </tbody>
+          }
+        </table>
+      </div>
+
+      @if (dryRun()) {
+        <div class="execute" data-testid="import-execute-bar">
+          <span class="muted" role="status" data-testid="import-execute-text">{{
+            executeText()
+          }}</span>
+          <button
+            pButton
+            type="button"
+            [disabled]="!ready()"
+            (click)="askToExecute()"
+            data-testid="import-execute"
+          >
+            @if (executing()) {
+              <i class="pi pi-spinner pi-spin"></i>
+            } @else {
+              <i class="pi pi-check"></i>
+            }
+            Import {{ count(importingFiles().length, 'ticket') }}
+          </button>
+        </div>
+      }
+    } @else if (loadFailure(); as failure) {
+      <section class="card notice" data-testid="import-failed">
+        <p>The import could not be loaded: {{ failure.detail || failure.title }}</p>
+        <button pButton type="button" size="small" severity="secondary" (click)="retry()">
+          <i class="pi pi-refresh"></i>Try again
+        </button>
+      </section>
+    } @else {
+      <p-skeleton width="100%" height="12rem" />
+    }
+  } @else if (session.me.isLoading()) {
+    <p-skeleton width="24rem" height="2rem" />
+  } @else {
+    <p class="muted" data-testid="import-not-admin">
+      An import is the tenant's administrators' act: ask one of them to import tickets into
+      {{ project() }}.
+    </p>
+  }
+</section>

@@ -18,6 +18,12 @@ rules pages, [docs/tickets/README.md](../tickets/README.md) carries the ticket r
 [`.graphifyignore`](../../.graphifyignore) excludes `docs/tickets/archive`. There are no
 tickets yet and no legacy citations.
 
+**D10 fulfilled 2026-10-06.** Every planning document is consumed — the question catalog into
+ADR 0004 to ADR 0073 by 2026-10-01, the workflow plan into the operations and developer pages on
+2026-10-04, the project plan into the phase tickets and the records once its last phase started on
+2026-10-06 ([ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D3, D4) — and the directory is deleted.
+
 ## Context
 
 A repository that is worked on by a person and an LLM accumulates text fast: analyses,
@@ -76,12 +82,13 @@ path; cite the ADR instead. A ticket may cite an ADR; an ADR does not cite a tic
 perspective under `docs/security/`, no single all-covering document, every page closing with
 `## What this does not cover`; an open gap carries a stable `H-<n>` identifier in its heading.
 
-**D10 — Planning documents are transitional.** `docs/planning/` holds the question catalog,
+**D10 — Planning documents are transitional.** `docs/planning` holds the question catalog,
 the project plan and the workflow plan. A question that is answered becomes an ADR in the same
 session and is removed from the catalog; a plan phase that starts becomes tickets; a workflow
 step that is built becomes a page under `docs/developer/` or `docs/operations/`. The directory
 is emptied by that process, never maintained as a parallel truth, and it is deleted when it is
-empty. Nothing in code cites a planning document.
+empty. Nothing in code cites a planning document. *(Fulfilled 2026-10-06: the directory is
+empty and deleted — Status.)*
 
 **D11 — English, everywhere.** Code, comments, commit messages, documentation. Conversation
 with the owner may be German; the repository is not.
@@ -106,7 +113,7 @@ with the owner may be German; the repository is not.
   owner as an open question, not decided here.
 - **Tickets as GitHub issues** until cowork exists. Would split the interim backlog from the
   repository the rules live in, and the rules page would have to be rewritten twice. Lost.
-- **A `docs/planning/` that stays.** A plan that is maintained beside the tickets is the board
+- **A `docs/planning` that stays.** A plan that is maintained beside the tickets is the board
   problem again. Lost; D10.
 
 ## Residual risks
@@ -122,4 +129,4 @@ with the owner may be German; the repository is not.
 - [docs/security/README.md](../security/README.md) — the form of a security page
 - [docs/developer/README.md](../developer/README.md), [docs/operations/README.md](../operations/README.md)
 - [`.gitignore`](../../.gitignore), [`.graphifyignore`](../../.graphifyignore)
-- [docs/planning/](../planning/) — what D10 consumes
+- [ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md) — how D10 consumed the catalog, the workflow plan and the project plan, and where each statement went

@@ -1,6 +1,6 @@
 # The API
 
-How `/api/v1` is built: the document that is the contract, what `make generate` makes of it,
+How `/api/v1` is built: the document that is the contract, its examples, what `make generate` makes of it,
 the pipeline every request runs before its handler, authentication — a token or a session —,
 the CSRF check, the dashboard, the tenant boundary, authorization, errors, idempotency, versions,
 paging, filters, the deprecated names a rename keeps for a release, and the media types beside
@@ -8,7 +8,9 @@ JSON. The decisions are [ADR 0046] (spec first), [ADR 0047] (errors), [ADR 0045]
 [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050] (versions), [ADR 0028] (expand before
 contract), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
-against the tree on 2026-10-05.
+against the tree on 2026-10-05, GitHub's webhook ([below](#githubs-webhook)) and the examples
+([below](#examples)) on 2026-10-06, the examples of the import and the export, the person of a
+horizon set and a parameter's failure on 2026-10-07.
 
 ## The document
 
@@ -27,12 +29,14 @@ into the file of its path family.
 | [`filters.yaml`](../../backend/api/filters.yaml) | the saved filters of a tenant: list, create, read, edit, delete ([filters](#filters)) |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
 | [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list, and the tokens that can act in the tenant (`/tenants/{tenant}/tokens`) |
-| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, the prerequisite tree, transitions, the move in the rank, interest, the Markdown export and the context |
-| [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list, `attachments.yaml` also the tenant's attachment usage (`/tenants/{tenant}/attachment-usage`) |
+| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, the prerequisite tree, transitions, the move in the rank, interest, the Markdown export and the context, and the pull requests GitHub's webhook linked (`…/pull-requests`, with a person's removal of one) |
+| [`integrations.yaml`](../../backend/api/integrations.yaml) | `/tenants/{tenant}/integrations/github`: whether the tenant takes GitHub's webhook; `…/secret`: making, rotating and revoking its secret; `…/webhook`: the deliveries, public and signed ([GitHub's webhook](#githubs-webhook)) |
+| [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list, `attachments.yaml` also the tenant's attachment usage (`/tenants/{tenant}/attachment-usage`) and its consistency check with its two confirmations (`/tenants/{tenant}/attachment-consistency`, [storage.md](storage.md#the-consistency-check)) |
 | [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events`, with `me=true` the person-level stream ([events.md](events.md#the-person-level-stream)) |
 | [`chat.yaml`](../../backend/api/chat.yaml) | `/tenants/{tenant}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose; `/tenants/{tenant}/chat/turns`: stopping the person's running turns ([chat.md](chat.md)) |
+| [`imports.yaml`](../../backend/api/imports.yaml) | a project's import — the dry run (`…/projects/{project}/imports`), its job and report (`…/imports/{import}`), its execution (`…/imports/{import}/execution`) — and the project's and the tenant's export (`…/projects/{project}/export`, `/tenants/{tenant}/export`), with the report, the corrections and the manifests as `Import*` and `Export*` in `components/schemas.yaml` ([import-and-export.md](import-and-export.md)) |
 | [`dashboard.yaml`](../../backend/api/dashboard.yaml) | `/tenants/{tenant}/dashboard`: the tenant's dashboard, each tile defined in its field of `components/schemas.yaml#/Dashboard` ([the dashboard](#the-dashboard)) |
-| `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem` |
+| `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem`, whose four examples its errors share, and a response's example is the one of the schema it names ([examples](#examples)) |
 | `components/problem-codes.yaml` | the `ProblemCode` enum, **generated** from the code catalogue |
 
 `make generate` turns it into code, in this order (the [`Makefile`](../../Makefile)):
@@ -46,9 +50,9 @@ into the file of its path family.
    writes [`internal/api/apigen/api.gen.go`](../../backend/internal/api/apigen/api.gen.go): the
    models, the strict server interface on `net/http`'s mux, and the Go client the integration
    tests use. Nullable fields are `nullable.Nullable[T]`; every enum constant carries its type's
-   name (`EffortS`); `streamEvents` and `runChatTurn` are excluded, and `skip-prune` keeps the
-   models only their bodies and events name — the turn's body and the data of its events, which
-   `chat.go` reads and writes.
+   name (`EffortS`); `streamEvents`, `runChatTurn` and `receiveGitHubWebhook` are excluded, and
+   `skip-prune` keeps the models only their bodies and events name — the turn's body and the data of
+   its events, which `chat.go` reads and writes.
 4. `sqlc generate` (the data layer, [data-access.md](data-access.md)).
 
 The generated files are committed and never edited; `make generate-check` fails CI on a diff or
@@ -56,6 +60,78 @@ an untracked generated file. [`api/embed.go`](../../backend/api/embed.go) (packa
 embeds `openapi.gen.json`; `api.New` replaces `info.version` with the backend's version — that
 JSON is what `GET /api/v1/openapi.json` serves ([ADR 0046] D5) — and builds the kin-openapi
 router over it with `servers` dropped, so the paths match whatever host a request names.
+
+## Examples
+
+Every request body and every response with a body has an example, bytes aside ([ADR 0046] D6).
+Where it is written is decided once:
+
+- **A response's example is the schema's.** The schema a response body names in
+  [`components/schemas.yaml`](../../backend/api/components/schemas.yaml) carries it as `example:` —
+  the entity, or a list's page, as a typical read answers it — and every operation that answers the
+  schema shows it: `Ticket`'s stands for the answer of every operation that answers a ticket but
+  the filing's, which has its own (below). A list names its entity's example through a YAML anchor
+  of that file, `example: &example-ticket` on `Ticket` and `- *example-ticket` in `TicketList`, so
+  the entity is written once; an anchor holds inside one file only. It is `example`, not the
+  `examples` of JSON Schema 2020-12: kin-openapi validates a
+  schema's `example` — the bundler's validation holds it at `make generate` — and not its
+  `examples`, and oapi-codegen 2.8 writes a 3.1 schema's `examples` into the Go comment of every
+  type and field that names the schema, while it reads no `example`. Neither generated client
+  changes with an example (`make generate-check`, `make frontend-generate-check`).
+- **A request's example is the operation's**, `example:` on its media type in the family file, or
+  `examples:` with a `summary` each where two requests teach two things (`transitionTicket`: a step
+  forward, a done by hand with its note).
+- **An answer has an example of its own** on the operation's media type where the schema's cannot
+  stand for it, because the act is what the answer shows — a ticket just filed, a new tenant's
+  settings, an archived or restricted project, a withdrawn comment or question, an answered
+  question, a voided or corrected time entry, a mapping changed, a grant above the mapped role, the
+  chat's capabilities chosen, the tenant's time list without the ticket's total, an import executed
+  — and where the body
+  names no schema of `components/schemas`: the CSV answers, the Markdown export and the context, the
+  first lines of the event stream and of a turn of the chat, the two documents of [`meta.yaml`](../../backend/api/meta.yaml).
+- **The errors share the shared response's.** `Problem` in
+  [`components/responses.yaml`](../../backend/api/components/responses.yaml) carries four named
+  examples, the shapes of [the problem body](#problem-details): `notFound`, `validationFailed` with
+  `errors[]` as the validator writes a body's failures, `invalidParameter` with a query parameter's
+  at `query:<name>`, `preconditionFailed` with `errors[].current`.
+- **Bytes have none**: a body whose schema is `format: binary`, the download of an attachment and
+  the archive of an export; what the archive holds is the examples of `ExportManifest`, `ExportLink`
+  and `ExportAttachment`. A `multipart/form-data` body without an example names each of its parts in
+  backticks in the request body's `description` — the upload of an attachment and of an import's
+  dry run do, and ng-openapi-gen writes that description into the comment of the Angular client's
+  function, where oapi-codegen writes nothing.
+
+The examples are one world, so a reader can follow a ticket from one route to the next: the tenant
+`acme` (*Acme*), its project `WEB` (*Website*, bound to `github.com/acme/website`), the ticket
+`acme/WEB-42` with its comment, question Q1, attachment, time and pull request, and four persons —
+Ada Lovelace (the local account `ada`, a global administrator who administers `acme`), Grace Hopper
+and Alan Turing (persons of the identity provider, `grace@acme.example`, `alan@acme.example`) and
+Sam Rivera (the local account `sam`). An id the server makes is a UUIDv7 whose time is the entity's
+creation, one a client makes — the browser's idempotency key, the chat's conversation — a v4; times
+are RFC 3339 in UTC, values the handlers' own. A text the server renders is the renderer's output
+for the example's input, not a hand-written guess: `body_html`, `options_html` and `answer_html` are what
+[`internal/richtext`](../../backend/internal/richtext/richtext.go) makes of the Markdown beside them,
+the export and the context what [`internal/markdown`](../../backend/internal/markdown/markdown.go)
+writes for `acme/WEB-42`, and the two reports of `ImportJob` what
+[`internal/importer`](../../backend/internal/importer/analyze.go) makes of an upload of the website's
+`docs/tickets/` into `WEB`, as a dry run and executed with the corrections of its request. A secret
+is one no installation accepts: the token `cwk_EXAMPLE000…`, a webhook secret of a visible pattern.
+
+**The test.** [`api/examples_test.go`](../../backend/api/examples_test.go) walks the bundled
+document — every operation's request body, every response with a body and the shared problem
+response once —, `TestEveryBodyHasAnExample` names each body without an example by its operation,
+method, path, status and media type, and `TestEveryExampleValidates` validates each example of a
+body, as a request or as a response, and the example of every schema in `components/schemas`,
+under JSON Schema 2020-12 with `format: uuid` checked as the server checks it at the boundary
+(`validate.go`), which the bundler leaves unchecked. An event stream's example is its text, every
+line a comment or one of the fields `event`, `data`, `id` and `retry`, every `data` line JSON.
+`TestTheExamplesWalkReachesEveryKindOfBody` keeps the walk honest: it must reach a body of every
+media type the document has.
+
+**Adding an operation's examples:** give its request body an example on the operation; let its
+answers name schemas that carry one, and give a new schema its `example` — a list an anchor to its
+entity; give an answer its own where the schema's cannot stand for it; then `make generate` and
+`go test ./api/` in `backend/`, whose failures name what is missing or wrong.
 
 ## The pipeline
 
@@ -75,18 +151,22 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    [the rule](../security/local-accounts.md#the-client-address)): with no trusted network the
    header is never read, and an entry that is no address stops the walk.
 4. **Authentication**, when the operation declares `bearerToken` or `sessionCookie` — all but
-   the seven public operations (`getVersion`, `getOpenAPI`, `getCoworkYamlSchema`, `getAuthOptions`,
-   `loginLocal`, `loginOidc`, `oidcCallback`). One resolver for both credentials
+   the eight public operations (`getVersion`, `getOpenAPI`, `getCoworkYamlSchema`, `getAuthOptions`,
+   `loginLocal`, `loginOidc`, `oidcCallback`, `receiveGitHubWebhook`). One resolver for both credentials
    ([Authentication](#authentication)); the `auth.Principal` and the `store.Caller` — with the
    keyed hash of the client's address every audit row of the request carries — go into the context. A public operation that writes and says
-   `x-cowork-origin-check: true` — the login — gets the origin half of the CSRF check instead.
+   `x-cowork-origin-check: true` — the login — gets the origin half of the CSRF check instead; one
+   that says `x-cowork-signed` — GitHub's webhook — gets neither, its credential being the signature
+   its handler verifies (`signed` in [`github.go`](../../backend/internal/api/github.go)).
    **For a request authenticated by a session** three more rules run here, before the tenant
    boundary: **the CSRF check** on an unsafe method (`403 csrf`); a session the agent header marks
    is refused an operation that takes a session only (`403 agent_forbidden`); and the gate of a
    temporary password (`403 password_change_required` for everything but `getMe`,
    `changeMyPassword` and `logout`) — `sessionRules` in [`api.go`](../../backend/internal/api/api.go).
 5. **Tenant boundary**, when the path has `{tenant}`. The admitted `tenantScope` goes into the
-   context.
+   context. A signed operation meets no boundary, which admits persons: `admitTenant` hands it to
+   `webhookTenant`, which reads the tenant by its slug and its sealed secret
+   ([GitHub's webhook](#githubs-webhook)).
 6. `streamEvents` leaves here: request validation, then `serveEvents` — no timeout, no body
    limit, no generated handler ([events.md](events.md)).
 7. **Timeout:** the context gets `COWORK_REQUEST_TIMEOUT` (0 disables), and `bodyDeadline`
@@ -94,16 +174,24 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    the body is read, so a body that trickles in fails instead of holding the request.
 8. **Body limit** (`limitBody` in [`validate.go`](../../backend/internal/api/validate.go)): a
    JSON body `COWORK_MAX_JSON_BODY` (0 disables), a multipart upload
-   `COWORK_ATTACHMENT_MAX_BYTES` plus 64 KiB of multipart overhead (0 disables). A declared length above it is
+   `COWORK_ATTACHMENT_MAX_BYTES` plus 64 KiB of multipart overhead — an import's upload
+   (`createImport`) `COWORK_MAX_IMPORT_BYTES` plus the same — (0 disables). A declared length above it is
    `413 payload_too_large` before anything is read; a longer body fails while it is read.
 9. **Request validation** against the document (kin-openapi `openapi3filter`): every error is an
-   `errors[]` entry of `400 validation_failed`; a query parameter the operation does not declare
-   is refused (the validator would let it pass) — except on an operation marked
+   `errors[]` entry of `400 validation_failed` — a body's failure at its field, a parameter at
+   `query:<name>` or `header:<name>`, one entry whose message holds the failures of a repeated
+   one's values —, each message the failure alone (`minimum: got 0, want 1` at `query:limit`):
+   where the JSON Schema 2020-12 validator a 3.1 document uses writes the resource it compiles a
+   schema under and the location in the value before the failure, `bodyErrors` and
+   `parameterError` in [`validate.go`](../../backend/internal/api/validate.go) take both out; a
+   query parameter the operation does not declare is refused (the validator would let it pass) —
+   except on an operation marked
    `x-cowork-open-query`, the identity provider's callback, to which an issuer may add its own; a
    path parameter that breaks its schema is
    `404`, because it names nothing that can exist; `format: uuid` accepts any UUID version (the
    ids are UUIDv7); defaults are not written into the request — the handlers apply them; a
-   multipart body is left to the handler. The validator sees the route without its security
+   multipart body is left to the handler, and so is a signed one, whose handler reads it unparsed
+   until its signature holds. The validator sees the route without its security
    requirement (`unsecured`): step 4 has authenticated the caller, and the validator's own
    security check would read the whole body into memory before the handler checks anything.
 10. The generated mux dispatches to the strict handler — or, with `Options.ValidateResponses`,
@@ -111,7 +199,7 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
     reads the whole body before the handler runs, so a test of the body's timing switches it
     off. `runChatTurn` goes to `serveChat` instead, on the context from before step 7: the
     timeout bounded reading its body, and the turn has limits of its own
-    ([chat.md](chat.md#a-turn)).
+    ([chat.md](chat.md#a-turn)). `receiveGitHubWebhook` goes to `serveGitHubWebhook`.
 
 A handler returns a `*problem.Error` or an error; `writeError` answers a problem as it is,
 `store.ErrNotFound` as `404`, `store.ErrIdempotencyMismatch` as `422 idempotency_mismatch`, a
@@ -124,14 +212,18 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
 ([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
 `sessionCookie` the operation declares — the default is both, written once at the root; the
-seventeen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
+nineteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
 `resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
 `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`,
-`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`, `purgeTicket`) declare `sessionCookie` alone, the seven public ones declare nothing — and
+`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`,
+`purgeTicket`, `createGitHubSecret`, `removeOrphanedObjects`) declare `sessionCookie` alone, the eight public ones declare nothing — and
 `authenticate` decides. What the first twelve make — a token, a tenant, an account, a password only
 its setter knows, a role, a mapping, a way into a restricted project — would outlive the revocation
 of a leaked token, which is why a token cannot call them, and so would the chat's capabilities
-(`setMyChat`) and what a purge destroys (`purgeTicket`, [ADR 0024] D7 as amended 2026-10-05); a turn of the chat acts with the person's session and its stop ends the session's
+(`setMyChat`), what a purge destroys (`purgeTicket`, [ADR 0024] D7 as amended 2026-10-05), the
+tenant's GitHub webhook secret, which writes into the tenant for whoever holds it
+(`createGitHubSecret`, [ADR 0071] D1), and the removal of a consistency check's orphaned objects
+(`removeOrphanedObjects`, ADR 0035 D5 as amended 2026-10-06); a turn of the chat acts with the person's session and its stop ends the session's
 person's turns, and a token's agent has the MCP server; the list of every tenant is a global
 administrator's view of the installation's clients, which a token of theirs does not get
 ([ADR 0033] D1, D5, [ADR 0035] D5, [ADR 0034] D2; the rule is
@@ -167,8 +259,11 @@ administrator's view of the installation's clients, which a token of theirs does
   groups are due runs its groups refresh first — the request that claims it waits for the issuer,
   the session's others are served on its groups — and a refresh that ends it is that `401` too
   ([architecture.md](architecture.md#the-groups-refresh-in-the-request-path)). A live session moves
-  its idle clock at most once a minute (`DB.TouchSession`, bookkeeping outside `Mutate`; a failure
-  is logged).
+  its idle clock only for the person's activity — a write that passes the CSRF check, or a read
+  that carries `X-Cowork-Activity: input` (`api.ActivityHeader`, `api.ActivityInput`), which the
+  UI's keep-alive sends after the person's input; no other read, the event stream's included
+  ([ADR 0031] D3; `movesIdleClock`) — and then at most once a minute (`DB.TouchSession`,
+  bookkeeping outside `Mutate`; a failure is logged).
   The principal has `Session: true`, the cookie's hash in `SessionHash`, the scope `admin` — a
   session has no scope, the role decides — no agent mark but the header's, `GlobalAdmin` and
   `PasswordChangeRequired` from the person. `callerOf` puts the hash into `store.Caller`, which
@@ -220,7 +315,10 @@ design is [docs/security/local-accounts.md](../security/local-accounts.md),
 [`oidc.go`](../../backend/internal/api/oidc.go): `LoginOidc` and `OidcCallback` are browser
 navigations — the login page sets `window.location` — that answer redirects, never JSON: the start
 `302` to the issuer, the callback `303` to the path the login began with or to
-`/login?error=<code>`. The callback's answer sets two cookies, the session's and the cleared state
+`/login?error=<code>`. The start's `silent=true` — the login page's own attempt after a session
+ended ([ADR 0029] D6) — adds `prompt=none` to the authorization request (`oidc.Provider.AuthCodeURL`)
+and `Silent` to the sealed `loginState`; `callbackRefusal` turns the issuer's `error` to such a login
+into `login_required` when the cookie opens, and every other refusal into `oidc_failed`. The callback's answer sets two cookies, the session's and the cleared state
 cookie, which the generated response type, with one `Set-Cookie`, cannot carry: `redirect`
 implements the generated `VisitOidcCallbackResponse` itself. Its failures are redirects too, so
 `OidcCallback` returns no `problem.Error` for them; the reason goes to the log. The relying party
@@ -350,8 +448,10 @@ another token and marking notifications read (`write` scope,
 |---|---|---|---|
 | `read` | viewer, `read` | — | [`tenants.go`](../../backend/internal/api/tenants.go) |
 | `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
-| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets; the tokens that can act in the tenant ([`tenanttokens.go`](../../backend/internal/api/tenanttokens.go)); the tenant's attachment usage ([`attachments.go`](../../backend/internal/api/attachments.go)) |
+| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets; the tokens that can act in the tenant ([`tenanttokens.go`](../../backend/internal/api/tenanttokens.go)); the tenant's attachment usage ([`attachments.go`](../../backend/internal/api/attachments.go)) and its consistency check ([`consistency.go`](../../backend/internal/api/consistency.go)) |
+| `importRead` | admin, `read` | hard-off `administration` | [`imports.go`](../../backend/internal/api/imports.go): an import job and its report |
 | `deletion` | admin, `admin` | hard-off `deleting, restoring or purging` | [`deletion.go`](../../backend/internal/api/deletion.go): deleting a ticket, restoring it, purging it ([ADR 0024] D7) — the tenant role, not a project's; the purge takes a session besides, which the document declares |
+| `orphanRemoval` | admin, `admin` | hard-off `deleting, restoring or purging` | [`consistency.go`](../../backend/internal/api/consistency.go): removing the orphaned objects of a consistency check ([ADR 0059] D4); the document takes a session besides. Its acceptance of the missing files takes `administer` |
 | `filterNeed` | viewer, `write` | baseline ([ADR 0043] D2) | [`filters.go`](../../backend/internal/api/filters.go): saving, changing, sharing and unsharing the person's own saved filter; another's shared one is `403 forbidden`, but to a tenant administrator, who unshares it with `administer` (`mayChangeFilter`) |
 | `filterDeletion` | viewer, `write` | hard-off `deleting, restoring or purging` ([ADR 0043] D3) | `filters.go`: deleting the person's own saved filter, or — a tenant administrator, with `administer` besides (`mayChangeFilter`) — another person's shared one; an agent is refused before the filter is read |
 | `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, a horizon set `set-horizon` and of an agent a reason — on `setHorizon` for `later` too —, a filing into a horizon other than `later` `set-horizon` and with a place `rank`, an agent's answer `record-answer`; a confidential ticket's new assignee other than the agent's person is hard-off (`mayAssign`) | [`tickets.go`](../../backend/internal/api/tickets.go) |
@@ -361,6 +461,8 @@ another token and marking notifications read (`write` scope,
 | `uploadNeed` | member, `write` | `upload` | [`attachments.go`](../../backend/internal/api/attachments.go) |
 | `interestNeed(weight)` | `watch`: viewer, `write`; `need`, `urgent`: member, `write` | `interest` for `need` and `urgent` | [`interest.go`](../../backend/internal/api/interest.go) |
 
+An import's dry run and its execution use `administer`; the project export reads `read` on the
+project's role, the tenant export `read` on the tenant's ([import-and-export.md](import-and-export.md)).
 The handlers also build a few needs inline: `creating` for `createProject`, `bindRepository`
 and `unbindRepository` (admin, or member while the tenant allows it; `write`; `create-project`
 — [`repositories.go`](../../backend/internal/api/repositories.go), judged by the project role for
@@ -368,7 +470,11 @@ a binding), `setConfidential` (admin, `admin`, hard-off), the
 done act's `close` and its prerequisite override (member, `write`; `close`, and hard-off for the
 override — `mayClose`), `listAudit` (admin, `read`),
 withdrawing another person's comment (admin, `admin`), and revoking another token of the person
-(`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go),
+(`write`, hard-off). The tenant's GitHub webhook ([`integrations.go`](../../backend/internal/api/integrations.go))
+is read with `adminRead` and its secret made, rotated and revoked with `administer` — the making and
+rotating in a session besides, which the document declares —, and a person removes a link of a pull
+request with `work` by the project's role, as a ticket's link
+([`pullrequests.go`](../../backend/internal/api/pullrequests.go)). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go),
 the writes of [`members.go`](../../backend/internal/api/members.go) and the revocation of a member's
 token (`RevokeTenantToken`) use `administer`, the member list `read`; a change of a grant or a mapping, or the deactivation of an account
 (`DeactivateAccount`), that would leave the tenant without an administrator who can log in is
@@ -393,7 +499,8 @@ message)` for one field, or a `&problem.Error{…}` with `Errors` and `Headers`.
 renders `application/problem+json; charset=utf-8` with `type`
 (`https://cowork.dev/problems/<code-with-hyphens>`), `title`, `status`, `detail`, `instance`
 (the path), `code`, `request_id` and `errors[]`. A field pointer is a JSON pointer into the body,
-or `query:<name>`, `header:<name>`, `path:<name>`; on a `412` an entry carries `current`. The
+or `query:<name>`, `header:<name>`, `path:<name>`, and on `409 import_conflict` `file:<path>`, a
+file of the upload; on a `412` an entry carries `current`. The
 `detail` never carries a secret, SQL or an internal path; the cause goes to the log under the
 request id.
 
@@ -425,6 +532,11 @@ A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQue
   ([frontend.md](frontend.md#where-state-lives)), `cowork-mcp` draws a UUIDv7 per `POST`, and the chat in the UI derives them
   from the conversation and the call, so the same call sent again replays ([chat.md](chat.md#the-loopback)).
 
+`createGitHubSecret` is a creating `POST` that takes no key on purpose: its answer is the one
+sight of a secret, which a stored response must never hold (D6), and a repetition after a lost answer
+makes a new secret, which is the one to give GitHub. GitHub's webhook takes none either: a delivery
+is held to its delivery's id instead ([GitHub's webhook](#githubs-webhook)).
+
 `PUT` and `DELETE` routes are idempotent by their address and take no key ([ADR 0045] D1). A
 transition carries its `from` state instead; a key sent with it is recorded on the act, not
 stored ([ADR 0045] D2, D7).
@@ -453,7 +565,7 @@ The two ticket lists, and every list the UI loads again on a poll — `listProje
 `listMembers`, `listGroupMappings`, `listProjectAccess`, `listComments`, `listActivity`,
 `listQuestions`, `listTicketLinks`, `listInterest`, `listAttachments`, `listTicketTime`,
 `listPrerequisites`, `listMyInbox`, `listMyNext`, `listMyAssigned`, `listMyDecisions`,
-`listDeletedTickets`, `listSavedFilters`, `listTenantTokens` — and the dashboard, `getDashboard`, and
+`listDeletedTickets`, `listSavedFilters`, `listTenantTokens`, `listTicketPullRequests` — and the dashboard, `getDashboard`, and
 the attachments' usage, `getAttachmentUsage`, answer a
 weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the page as the caller reads it — and
 `304` without a body for a matching `If-None-Match` (`weakETag`, `notModified` and `listTag` in
@@ -552,6 +664,58 @@ migrations 33 and 39 hold the same in the data layer
 on the event stream; their list answers a weak `ETag` and `304` like the other lists the UI loads
 again on a poll ([above](#versions-etag-if-match)).
 
+## GitHub's webhook
+
+`POST /api/v1/tenants/{tenant}/integrations/github/webhook` ([ADR 0071]) is public and signed: the
+document declares `security: []` and `x-cowork-signed: github`, and the pipeline takes it past the
+three steps that serve persons — authentication, the origin check and the tenant boundary — and past
+the body's validation. The handler, `serveGitHubWebhook` in
+[`github.go`](../../backend/internal/api/github.go), and the code before it go in the order D3 makes
+concrete:
+
+1. **The tenant and its secret** (`webhookTenant`, from `admitTenant` in place of the boundary): the
+   request becomes the system actor `system:github` (`store.Caller` with the request id and the
+   source hash, no person), `DB.WebhookSecret` reads the tenant by slug and its sealed secret in a
+   read-only transaction of the job `github-webhook`, and the handler's `webhookSealer` opens it with
+   the tenant's id as the binding. An unknown tenant, a tenant without a secret and a secret that
+   does not open — the server key changed — are the boundary's `404 not_found`, "no such tenant".
+2. **The body**, bounded by `limitBody` and `bodyDeadline` as any JSON body, read whole (`413`).
+3. **The signature**: `github.Verify`, `hmac.Equal` over the raw bytes; missing or wrong is
+   `401 signature_invalid` with `WWW-Authenticate: X-Hub-Signature-256 realm="cowork"`, before
+   anything is parsed or written.
+4. **The delivery** (`readDelivery`): `X-GitHub-Delivery` must be a UUID (`400` at
+   `header:X-GitHub-Delivery`), the type `application/json` (`415`), and the payload of
+   `pull_request` or `push` what GitHub sends (`400`); every other event is a delivery with nothing
+   to read.
+5. **Taken once** (`DB.ReceiveDelivery`, [data-access.md](data-access.md#githubs-deliveries)): the
+   delivery's id recorded for a day — no row when the tenant took it already, and then `200` with no
+   body —, then `applyDelivery` ([`github_links.go`](../../backend/internal/api/github_links.go)),
+   then `202` with no body, whatever it linked.
+
+`applyDelivery` reads a `pull_request` of the actions `opened`, `edited`, `synchronize`, `reopened`
+and `closed` whose author is the repository's owner, a member or a collaborator (`PullRequest.Read`,
+by `author_association`), and a `push` whose `ref` is the default branch's; `boundIdentity` normalises
+`repository.clone_url` and asks `RepositoryBoundInTenant`, any project and sub-directory; the keys of
+`internal/github` resolve through `ResolveTicketKeys` (`resolveKeys`, `targetsOf`: a key of another
+tenant, of no ticket or of a deleted one passed over, each ticket once by the first place its key
+was read). A pull request is then linked to each ticket it names (`InsertTicketPullRequest`, an act
+`linked`) and its facts written on every ticket it is linked to (`UpdatePullRequestFacts`, which
+answers each row's state before: a state change is an act `merged`, `closed` or `reopened`, a change
+of the title, page or author `updated`); a push links each commit to the tickets its message names
+(`InsertTicketCommit`). The page of either is written from the identity (`pullRequestPage`,
+`commitPage`), never taken from the payload. A merge's act carries `mergeNotices`, the watchers by
+the reason `merged`. The rules themselves are [domain.md](domain.md#pull-requests-and-githubs-webhook).
+
+The secret's routes are [`integrations.go`](../../backend/internal/api/integrations.go):
+`GetGitHubIntegration` (`adminRead`) answers the secret's time and maker, never the secret, the
+webhook's path and the events to choose; `CreateGitHubSecret` (`administer`, a session) draws
+`newWebhookSecret` — 32 bytes of `crypto/rand` as hex —, seals it, upserts it
+(`SetGitHubWebhookSecret`) and records `created` with `replaced`; `RevokeGitHubSecret`
+(`administer`) deletes it, `204` also when there is none. A ticket's list and a person's removal are
+[`pullrequests.go`](../../backend/internal/api/pullrequests.go): `ListTicketPullRequests` reads
+through the ticket's predicate, pages by id and answers a weak `ETag`; `RemoveTicketPullRequest`
+marks the link removed — `204` also when it is gone — and records `unlinked` on the link's kind.
+
 ## Deprecated names
 
 `/api/v1` keeps what the clients of the release before read ([ADR 0046] D7), so a rename is an
@@ -566,7 +730,10 @@ expand and a later contract ([ADR 0028] D3):
   out an answer names both.
 - **The contract**, in a release after the expand and once no supported client reads the old names,
   takes them out of the document, the code and the tests, and a migration of its own rewrites what
-  the database stored under them.
+  the database stored under them. Where the release before still writes an old name into a column
+  whose check takes it, the check keeps the name until the first release whose release before no
+  longer writes it; that release's migration rewrites again what an image rollback wrote in between
+  and then narrows the check ([ADR 0028] D3).
 
 The horizon went through both ([ADR 0010] D1 as amended 2026-10-05 and 2026-10-06). Release 0.5
 answered `urgency`, `urgency_derived`, `urgency_rule` and `urgency_override` beside `horizon` and
@@ -575,9 +742,12 @@ filter's `urgency` and the capability `override-urgency`, and stored `override-u
 `set-horizon`. The release after it knows the new names only — an old one sent is `400`, a field or
 a parameter the operation does not have —, and
 [migration 38](../../backend/internal/store/migrations/000038_horizon_names_only.up.sql) rewrote
-the stored capability sets and a saved filter's `urgency`. The checks of the capability sets still
-take `override-urgency` until a later release, since 0.5 writes it beside `set-horizon` after an
-image rollback; `auth.Canonical` drops it wherever a set is read, so no answer carries it. What keeps the old word is what no
+the stored capability sets and a saved filter's `urgency`. The checks of the capability sets took
+`override-urgency` in 0.6 and 0.7, since 0.5 writes it beside `set-horizon` after an image rollback,
+and those releases dropped it wherever a set was read;
+[migration 40](../../backend/internal/store/migrations/000040_capability_checks_set_horizon_only.up.sql)
+rewrote the three again and took the old name out of both checks, which refuse it now
+(`TestTheNarrowingMigrationRewritesAgainAndRefusesTheOldName`). What keeps the old word is what no
 client reads as API: the enum `urgency` and its columns (`TicketRow.UrgencyOverride` …, mapped in
 `ticketView` and `setOverride`), and the audit record's act `overridden` with its payload
 `urgency_override`, which the activity, the context and the session start read as setting the
@@ -600,6 +770,13 @@ What stays deprecated in `/api/v1` today is a token's `restricted_project_id` be
   `Content-Length`, never `304`, and records every call as `exported`
   ([markdown-grammar.md](markdown-grammar.md)). The validator reads `text/markdown` with the
   plain-text body decoder registered in `validate.go`.
+- **An import's upload** is `multipart/form-data` as well, read by `importer.ReadUpload` in the
+  handler ([import-and-export.md](import-and-export.md#the-dry-run)).
+- **The project and the tenant export** return `archiveResponse` from
+  [`exports.go`](../../backend/internal/api/exports.go), which implements both generated visit
+  methods: `application/gzip`, `Content-Disposition: attachment` with the archive's file name, and
+  `Content-Length`. The validator reads `application/gzip` with kin-openapi's file body decoder,
+  registered in `validate.go`.
 - **The context** returns `contextResponse` from [`context.go`](../../backend/internal/api/context.go)
   for the same reason: `text/markdown; charset=utf-8` and `Content-Length`, no `ETag` — it is no
   one entity — and every call recorded as `exported` with the format `context v1`.
@@ -635,4 +812,6 @@ What stays deprecated in `/api/v1` today is a token's `restricted_project_id` be
 [ADR 0049]: ../adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
+[ADR 0059]: ../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md
+[ADR 0071]: ../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md

@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/guided-traffic/cowork/backend/internal/domain"
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 	"github.com/guided-traffic/cowork/backend/internal/store/writeq"
 )
@@ -181,9 +182,10 @@ func (w *Writer) mappedIn(ctx context.Context, tenantID, person uuid.UUID) (*map
 // the policies of the person's sessions and memberships read; app.session_hash
 // names the session a login replaces or a refresh holds.
 type identityTx struct {
-	tx     pgx.Tx
-	w      *Writer
-	caller Caller
+	tx      pgx.Tx
+	w       *Writer
+	caller  Caller
+	metrics *metrics.Metrics
 }
 
 func (db *DB) beginIdentity(ctx context.Context, requestID uuid.UUID, sourceHash, sessionHash []byte) (*identityTx, error) {
@@ -196,7 +198,8 @@ func (db *DB) beginIdentity(ctx context.Context, requestID uuid.UUID, sourceHash
 		_ = tx.Rollback(ctx)
 		return nil, err
 	}
-	return &identityTx{tx: tx, w: &Writer{Reader: newReader(tx, uuid.Nil, caller), Queries: writeq.New(tx)}, caller: caller}, nil
+	return &identityTx{tx: tx, w: &Writer{Reader: newReader(tx, uuid.Nil, caller), Queries: writeq.New(tx)}, caller: caller,
+		metrics: db.metrics}, nil
 }
 
 func (t *identityTx) rollback(ctx context.Context) { _ = t.tx.Rollback(ctx) }
@@ -205,6 +208,7 @@ func (t *identityTx) commit(ctx context.Context) error {
 	if err := t.tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
+	countActs(t.metrics, t.w)
 	return nil
 }
 

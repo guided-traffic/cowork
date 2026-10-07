@@ -2,8 +2,8 @@
 
 What the chat in the UI may make cowork do and on whose behalf, what of a tenant reaches a model and
 where, how a turn is kept in its tenant, what the person's choice of capabilities bounds, how a turn
-is stopped, how the panel shows what a model writes, and what bounds a turn — as built on 2026-10-04
-with the owner's answers of that day
+is stopped, how the panel shows what a model writes, and what bounds a turn — as built on 2026-10-07,
+with the owner's answers of 2026-10-04
 ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)).
 The agent the person runs on their own machine with a token is [agent-client.md](agent-client.md);
 the agent rules both meet are [tokens.md](tokens.md); the policy the shell sends is
@@ -41,10 +41,12 @@ the agent rules both meet are [tokens.md](tokens.md); the policy the shell sends
 **What a call of the model carries** ([`chat/prompt.go`](../../backend/internal/chat/prompt.go),
 [`chat/chat.go`](../../backend/internal/chat/chat.go)): the instructions — the tenant's name and slug,
 the page the person is on (its path, the project's key, the ticket's short key), the date, the rules,
-the capabilities the chat holds; the conversation as the browser sent it; every tool's answer of the
-conversation, each clipped to 16,000 characters — ticket titles, bodies, comments, questions,
-answers, names, keys; the tools' descriptions with the capabilities the chat holds; and the
-provider's key in a header. Not the session cookie, no token, no audit row. A provider receives every
+the capabilities the chat holds; the conversation as the browser sent it, its tools' answers among
+it, each held only to the 100,000 characters of a text; every tool's answer the turn itself makes,
+clipped to 16,000 characters — ticket titles, bodies, comments, questions, answers, names, keys, and a
+ticket's recent activity as the context document writes it: who acted, through which agent mark or
+token name, with which reason or note; the tools' descriptions with the capabilities the chat holds;
+and the provider's key in a header. Not the session cookie, no token, no audit row. A provider receives every
 call from the backend's pods, never from the browser.
 
 **Everything the person can read in the turn's tenant may reach the provider the person picked,
@@ -70,7 +72,7 @@ fragment. The gateway follows no redirect — a provider that redirects fails th
 travels to the configured host only ([`llm/client.go`](../../backend/internal/llm/client.go)
 `Client`; `TestNoRedirectIsFollowed`). Each provider's key comes from a Secret of its own in the
 chart, with no inline value — an `apiKey` in a provider's entry fails the rendering
-([installation.md](../operations/installation.md#the-chat)) — and is never echoed: a configuration
+([docs/operations/chat.md](../operations/chat.md#in-the-chart)) — and is never echoed: a configuration
 error names the variable and quotes no URL, no key and no entry of the list that is no id, a
 provider's refusal reaches the person as a sentence of the gateway's own, and the log gets a clip
 with that provider's key taken out ([H-42](#h-42)).
@@ -100,9 +102,12 @@ and `X-Cowork-Agent: chat/<model>/<conversation>` — the picked provider's mode
 request an agent's ([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
 D3): it meets the hard-off list and every agent rule of
 [tokens.md](tokens.md#capabilities-the-baseline-and-the-hard-off-list) — no administration, no booking
-of time, no override of the prerequisite refusal, no confidential flag, no token administration — and
-is refused, `403 agent_forbidden`, everything only a session does: a token, a password, an act that
-gives access, a turn of the chat, the stop of one, the choice of the chat's capabilities, a logout
+of time, no override of the prerequisite refusal, no confidential flag, no token administration, no
+deletion, restoration or purge, and no confidential ticket assigned to anyone but the person — and
+is refused, `403 agent_forbidden`, each of the nineteen operations only a session does
+([tokens.md](tokens.md#what-only-a-session-does)) — a token, a password, an act that gives access, a
+purge, the tenant's webhook secret, the removal of orphaned objects, a turn of the chat, the stop of
+one, the choice of the chat's capabilities, a logout among them
 (`TestTheAgentHeaderOnASession`, `TestAnAgentSessionIsRefusedWhatOnlyASessionDoes`). A creating
 `POST` carries an `Idempotency-Key` derived from the conversation and the call. The `api` escape hatch
 is not offered: the chat reaches only the routes its tools call.
@@ -126,9 +131,10 @@ the missing capability, which the model reads as the tool's answer
   `GET /api/v1/me/chat` reads it with either credential.
 - **The person's alone, also in the database.** The set lives in `chat_capabilities`, one row per
   person, which only that person reads, inserts and updates — `user_id = app_user_id()` in every
-  policy, no delete grant, and a `CHECK` that admits the nine capabilities only
-  ([migration 24](../../backend/internal/store/migrations/000024_chat_capabilities.up.sql);
-  `TestTheChatCapabilitiesArePersonal`): no administrator, of the person's tenant or of the
+  policy, no delete grant, and a `CHECK` that admits the nine capabilities only — the one
+  [migration 40](../../backend/internal/store/migrations/000040_capability_checks_set_horizon_only.up.sql)
+  put in place of [migration 24](../../backend/internal/store/migrations/000024_chat_capabilities.up.sql)'s
+  (`TestTheChatCapabilitiesArePersonal`): no administrator, of the person's tenant or of the
   installation, reads or changes it.
 - **Recorded.** A change is the person's installation-level `updated` act on their person, with the set
   before and after; the same set again records nothing.
@@ -244,20 +250,25 @@ included, may go to it ([docs/operations/chat.md](../operations/chat.md#adding-a
 ### H-38 — A model steered by injected text does at once whatever the chosen capabilities allow
 
 Live by design. Text in a ticket, a comment, a question or an answer can carry instructions, and a
-model may follow them; the person may not even have read that text. Nothing waits for the person:
+model may follow them; the person may not even have read that text. So can the title of a pull
+request or a commit GitHub's webhook linked, which a ticket's context carries — written, of a pull
+request, by the repository's owner, a member of its organisation or a collaborator only
+([agent-client.md](agent-client.md#h-34) H-34). Nothing waits for the person:
 within the API's rules the chat can, at once, file a ticket in any project of the tenant the person
 may file in, replace a ticket's body, comment, ask a question of anyone in the tenant, link two
-tickets, watch a ticket, move a ticket forward or out of `blocked`, set a progress stage short of
-closing it, take a ticket backward, reopen it or withdraw a done where the API lets an agent — and,
-with the default capabilities, rank, set a ticket's horizon, register interest and
-create a project. A person who gives the chat `decide`, `close`, `drop` or `record-answer` gives it
+tickets, watch a ticket, move a ticket forward, into `blocked` or out of it, set a progress stage
+short of closing it, take a ticket backward, reopen it or withdraw a done where the API lets an agent —
+and, with the default capabilities, rank, set a ticket's horizon and create a project; the default
+set holds `interest` and `upload` as well, but no tool of the chat sets a `need` or `urgent` stake or
+uploads a file. With the default limits a turn makes up to 256 calls of its tools, eight calls of the
+model of up to thirty-two each. A person who gives the chat `decide`, `close`, `drop` or `record-answer` gives it
 those acts too, with no Run in front of them. The confidential instruction to the model is a request,
 not a hold: a steered model can copy what it read into a ticket or a comment people who may not read
 the original do read. Each act is recorded with the chat's mark, shown as a card while it happens,
 and reaches the open pages through the event stream; most can be undone by a person — a body replaced
-again from the record, a comment withdrawn, a link removed, a horizon set back, a ticket dropped
-with a reason, as tickets cannot be deleted — but an act that told other people something has told
-them. Of the five acts [tokens.md H-6](tokens.md#h-6) leaves to every agent, the chat makes the backward
+again from the record, a comment withdrawn, a link removed, a horizon set back, a ticket the chat
+filed dropped with a reason or put into the bin by an administrator — but an act that told other
+people something has told them. Of the five acts [tokens.md H-6](tokens.md#h-6) leaves to every agent, the chat makes the backward
 moves, the reopens and the withdrawal of a done (`transition`, and `set_progress` for a lower stage)
 and lowers its person's stake to a watch (`watch`); removing a link or a stake, editing a question and
 editing a project have no tool in the chat, and neither does assigning a ticket or any act on a
@@ -272,7 +283,8 @@ Live by construction. The mark says a request was the chat's, and the server wri
 — but the turn's content is the browser's: it holds the conversation and sends it back with every
 turn, and the backend holds that conversation to its shape, not to its truth. A person, or a script
 with the person's session, can send a conversation whose history holds calls no model made, or send
-`X-Cowork-Agent: chat/…/…` on a request of their own session. Either way the actor is the person and
+an `X-Cowork-Agent` mark of their own on a request of their own session — any well-formed mark, not
+only `chat/…/…`, holds the person's chat capabilities. Either way the actor is the person and
 every agent rule holds, with the person's chat capabilities: the mark can make a person's act look
 like the model's, never let it do more than the person may, and it narrows the request. Mitigation:
 read the mark as "the person, through the chat", which is all the record means by it.
@@ -338,6 +350,40 @@ when the browser's ends, and `COWORK_CHAT_TURN_TIMEOUT` as the bound of a turn n
 verified: whether session affinity anywhere in front of the backend would pin a person's requests to
 one replica — the Ingress controller, not the browser, is the backend's client, and whether it pins a
 client to one replica is the controller's configuration; none was tried.
+
+<a id="h-84"></a>
+### H-84 — The loopback admits every route of the turn's tenant; the tools are the bound
+
+Live by construction. [`chat.Loopback`](../../backend/internal/chat/loopback.go) refuses the chat's own
+routes, the event stream and everything outside the turn's tenant, and admits every other route of
+that tenant — its administration among them. What keeps a turn to the acts this page names is the
+catalogue: the tools it offers call fixed operations through the generated client, and the API holds
+each call to the agent rules and the chosen capabilities ([above](#the-chats-mark-its-capabilities-and-what-only-a-session-does)).
+A tool added later that reaches further, or one whose path a model could shape, would reach as far as
+the loopback lets it, within those rules. Mitigation: none in configuration; the agent rules hold
+whatever route a call reaches.
+
+<a id="h-85"></a>
+### H-85 — A proxy variable carries a plain-http provider's calls through the proxy
+
+Live where the backend's environment holds `HTTP_PROXY` and a provider's URL is `http://`. The
+gateway's client takes Go's default transport, which reads `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`
+([`llm/client.go`](../../backend/internal/llm/client.go) `Client`): a call to an `http://` provider on
+another host than the backend's own goes to the proxy in plain text, the key and the turn's text with
+it — beside the network of [H-41](#h-41). The chart sets no such variable; one comes through
+`backend.extraEnv` or a mutation of the cluster's. An `https://` provider is tunnelled through the
+proxy, encrypted end to end. Mitigation: `https://`, or the provider's host in `NO_PROXY`.
+
+<a id="h-86"></a>
+### H-86 — A turn without limits keeps its person's session alive
+
+Live where `COWORK_CHAT_TURN_TIMEOUT` and `COWORK_CHAT_MAX_STEPS` are both `0`. A turn is exempt from the
+request timeout and then bounded by nothing but the model, the person's Stop and the connection, and
+each tool call that writes moves the session's idle clock like any write of the person
+([sessions.md](sessions.md#what-keeps-a-session-and-what-brings-a-person-back)): a turn left running in
+an open tab keeps the session alive past the idle limit for as long as the model goes on writing, up
+to the absolute limit. Mitigation: leave at least one of the two limits set — the defaults are five
+minutes and eight calls of the model.
 
 ### What a provider does with what it receives
 

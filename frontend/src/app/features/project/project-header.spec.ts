@@ -5,10 +5,13 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
-import { Project, Ticket } from '../../api/models';
+import { HttpErrorResponse } from '@angular/common/http';
+import { ExportManifest, Problem, Project, Ticket } from '../../api/models';
+import { ExportArchive, ImportsService } from '../../core/imports.service';
 import { MembersService } from '../../core/members.service';
 import { ProjectsService } from '../../core/projects.service';
 import { SessionService } from '../../core/session.service';
+import { TenantService } from '../../core/tenant.service';
 import { TicketActions } from '../../core/ticket-actions.service';
 import { NewTicketDialog } from '../ticket/new-ticket-dialog';
 import { ProjectHeader } from './project-header';
@@ -28,15 +31,31 @@ const cowork: Project = {
 @Component({ template: '' })
 class Page {}
 
+const manifest = (tickets: number, left: number): ExportManifest => ({
+  format: 'cowork export v1',
+  tenant: 'acme',
+  projects: [
+    { key: 'COW', name: 'Cowork', archived: false, tickets, confidential_not_included: left },
+  ],
+  exported_at: '2026-10-07T08:00:00Z',
+  exported_by: 'Ada Lovelace <local:ada>',
+  tickets,
+  confidential_not_included: left,
+});
+
 describe('ProjectHeader', () => {
   let tenant: WritableSignal<string | null>;
   let projects: WritableSignal<Project[]>;
+  let isAdmin: WritableSignal<boolean>;
+  let exportProject: MockInstance<ImportsService['exportProject']>;
   let warn: MockInstance<typeof console.warn>;
 
   beforeEach(() => {
     warn = vi.spyOn(console, 'warn');
     tenant = signal<string | null>('acme');
     projects = signal<Project[]>([cowork]);
+    isAdmin = signal(false);
+    exportProject = vi.fn<ImportsService['exportProject']>();
     TestBed.configureTestingModule({
       providers: [
         provideRouter([{ path: '**', component: Page }]),
@@ -45,6 +64,8 @@ describe('ProjectHeader', () => {
         { provide: TicketActions, useValue: { create: vi.fn() } },
         { provide: MembersService, useValue: { list: signal([]) } },
         { provide: SessionService, useValue: { tenant } },
+        { provide: TenantService, useValue: { isAdmin } },
+        { provide: ImportsService, useValue: { exportProject } },
         {
           provide: ProjectsService,
           useValue: { byKey: (key: string) => projects().find((p) => p.key === key) },
@@ -213,6 +234,160 @@ describe('ProjectHeader', () => {
       const { page } = await render();
 
       expect(gear(page)).toBeNull();
+    });
+  });
+
+  describe('the export (docs/adr/0051 D4)', () => {
+    let created: MockInstance<typeof URL.createObjectURL>;
+    let revoked: MockInstance<typeof URL.revokeObjectURL>;
+    let clicked: MockInstance<HTMLAnchorElement['click']>;
+    const button = (page: HTMLElement) =>
+      page.querySelector<HTMLButtonElement>('[data-testid="project-export"]');
+    const archive = (left: number | null): ExportArchive => ({
+      blob: new Blob(['archive'], { type: 'application/gzip' }),
+      filename: 'acme-COW-20261007.tar.gz',
+      manifest: left === null ? null : manifest(12, left),
+    });
+
+    /** Lets the export's promise and what follows it run, then renders. */
+    const settle = async (fixture: ComponentFixture<ProjectHeader>) => {
+      await new Promise((resolve) => setTimeout(resolve));
+      await fixture.whenStable();
+    };
+
+    beforeEach(() => {
+      created = vi.fn<typeof URL.createObjectURL>().mockReturnValue('blob:export');
+      revoked = vi.fn<typeof URL.revokeObjectURL>();
+      vi.stubGlobal(
+        'URL',
+        Object.assign(URL, { createObjectURL: created, revokeObjectURL: revoked }),
+      );
+      clicked = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    });
+
+    it('is offered to everybody who reads the project, a member as well', async () => {
+      const { page } = await render();
+
+      expect(button(page)?.getAttribute('aria-label')).toBe('Export the tickets');
+      expect(button(page)?.querySelector('i')?.classList).toContain('pi-download');
+    });
+
+    it('saves the archive under the name the server gives it, and says what it holds', async () => {
+      exportProject.mockResolvedValue(archive(0));
+      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const { fixture, page } = await render();
+      vi.useFakeTimers({ toFake: ['setTimeout'] });
+
+      button(page)?.click();
+      await fixture.whenStable();
+
+      expect(exportProject).toHaveBeenCalledExactlyOnceWith('acme', 'COW');
+      expect(created).toHaveBeenCalledOnce();
+      const link = clicked.mock.contexts[0] as HTMLAnchorElement;
+      expect(link.download).toBe('acme-COW-20261007.tar.gz');
+      expect(link.href).toBe('blob:export');
+      expect(add).toHaveBeenCalledExactlyOnceWith({
+        severity: 'success',
+        summary: 'COW exported',
+        detail: '12 tickets in acme-COW-20261007.tar.gz.',
+        life: 8000,
+      });
+      // The object URL is let go a while after the click, not at once.
+      expect(revoked).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(40_000);
+      expect(revoked).toHaveBeenCalledExactlyOnceWith('blob:export');
+    });
+
+    it('says how many confidential tickets the archive leaves out (docs/adr/0065 D5)', async () => {
+      exportProject.mockResolvedValue(archive(3));
+      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const { fixture, page } = await render();
+
+      button(page)?.click();
+      await settle(fixture);
+
+      expect(add).toHaveBeenCalledWith(
+        expect.objectContaining({
+          severity: 'info',
+          detail:
+            '12 tickets in acme-COW-20261007.tar.gz. 3 confidential tickets you cannot read are not included.',
+        }),
+      );
+    });
+
+    it('saves the archive also where the browser could not read its manifest', async () => {
+      exportProject.mockResolvedValue(archive(null));
+      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const { fixture, page } = await render();
+
+      button(page)?.click();
+      await settle(fixture);
+
+      expect(clicked).toHaveBeenCalledOnce();
+      expect(add).toHaveBeenCalledWith(
+        expect.objectContaining({ detail: 'Saved as acme-COW-20261007.tar.gz.' }),
+      );
+    });
+
+    it('waits while the archive is made, and offers it again after a refusal', async () => {
+      let refuse: (error: unknown) => void = () => undefined;
+      exportProject.mockReturnValue(new Promise((_, reject) => (refuse = reject)));
+      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const { fixture, page } = await render();
+
+      button(page)?.click();
+      await fixture.whenStable();
+      expect(button(page)?.disabled).toBe(true);
+      button(page)?.click();
+      expect(exportProject).toHaveBeenCalledOnce();
+
+      const body: Problem = {
+        type: 'about:blank',
+        title: 'Not found',
+        status: 404,
+        detail: 'no project COW',
+        code: 'not_found',
+      };
+      refuse(new HttpErrorResponse({ status: 404, error: body }));
+      await settle(fixture);
+
+      expect(clicked).not.toHaveBeenCalled();
+      expect(add).toHaveBeenCalledWith(expect.objectContaining({ summary: 'Not found' }));
+      expect(button(page)?.disabled).toBe(false);
+    });
+  });
+
+  describe('the import (docs/adr/0051 D6)', () => {
+    const link = (page: HTMLElement) =>
+      page.querySelector<HTMLAnchorElement>('[data-testid="project-import"]');
+
+    it("leads the tenant's administrators to the import of the project", async () => {
+      isAdmin.set(true);
+
+      const { page } = await render();
+
+      expect(link(page)?.getAttribute('href')).toBe('/t/acme/p/COW/imports');
+      expect(link(page)?.getAttribute('aria-label')).toBe('Import tickets');
+    });
+
+    it('is not offered to anybody else', async () => {
+      const { page } = await render();
+
+      expect(link(page)).toBeNull();
+    });
+
+    it('is not offered for a project the list does not hold, an archived one', async () => {
+      isAdmin.set(true);
+      projects.set([{ ...cowork, archived_at: '2026-10-06T10:00:00Z' }]);
+
+      const { page } = await render();
+
+      expect(link(page)).toBeNull();
     });
   });
 

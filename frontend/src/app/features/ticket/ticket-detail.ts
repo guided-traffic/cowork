@@ -16,7 +16,7 @@ import { ConfirmationService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
 import { Skeleton } from 'primeng/skeleton';
 import { Tooltip } from 'primeng/tooltip';
-import { Activity, Attachment, Interest, Link } from '../../api/models';
+import { Activity, Attachment, Interest, Link, PullRequest } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { ProblemService, ProblemView } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
@@ -24,6 +24,7 @@ import { TicketsService } from '../../core/tickets.service';
 import { AgentMark } from '../../shared/agent-mark';
 import { SecurityBadge, SeverityBadge, StateBadge, TypeIcon } from '../../shared/badges';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { actorName, codeName, readyToMove } from '../../shared/pull-requests';
 import { RenderedText } from '../../shared/rendered-text';
 import { ago, Clock, dateTime } from '../../shared/time';
 import { CommentItem } from './comment-item';
@@ -36,6 +37,7 @@ import {
 } from './conversation-forms';
 import { InterestControl } from './interest-control';
 import { PrerequisiteTree } from './prerequisite-tree';
+import { PullRequestsCard } from './pull-requests-card';
 import { AttachmentsCard, TimeCard } from './records-cards';
 import { TicketBody } from './ticket-body';
 import { TicketDelete } from './ticket-delete';
@@ -49,10 +51,11 @@ import { TicketTitle } from './ticket-title';
  * project's rank by the score is the project's act, which the activity of every ticket it moved
  * shows (docs/adr/0014 D3, docs/adr/0015 D1). An act on the horizon is recorded as `overridden`,
  * its name before (docs/adr/0010 D1), and reads as what it did: a horizon set, or the ticket
- * returned to `later`.
+ * returned to `later`. What GitHub's webhook linked, and what it reported of a pull request, reads
+ * by the pull request's number or the commit's id (docs/adr/0071 D6).
  */
 export function describe(activity: Activity): string {
-  const who = activity.actor?.display_name ?? activity.actor_system ?? 'cowork';
+  const who = actorName(activity);
   if (activity.entity_type === 'project' && activity.action === 'ranked') {
     return `${who} sorted the backlog by score`;
   }
@@ -61,6 +64,17 @@ export function describe(activity: Activity): string {
     return typeof horizon === 'string'
       ? `${who} set the horizon to ${horizon}`
       : `${who} returned the ticket to later`;
+  }
+  const code = codeName(activity);
+  if (code) {
+    switch (activity.action) {
+      case 'linked':
+        return `${who} linked ${code}`;
+      case 'unlinked':
+        return `${who} removed the link of ${code}`;
+      default:
+        return `${who} reported ${code} ${activity.action}`;
+    }
   }
   return `${who} ${activity.action.replace(/_/g, ' ')}`;
 }
@@ -104,6 +118,7 @@ const notFound: ProblemView = {
     InterestControl,
     LinkAdder,
     PrerequisiteTree,
+    PullRequestsCard,
     RenderedText,
     RouterLink,
     SecurityBadge,
@@ -195,6 +210,20 @@ export class TicketDetail {
   });
   /** A tenant administrator withdraws any comment (docs/adr/0015 D3). */
   protected readonly administers = computed(() => this.session.membership()?.role === 'admin');
+  /** A member works on the ticket — removes a wrong link among it; a viewer reads. */
+  protected readonly works = computed(() => {
+    const role = this.session.membership()?.role;
+    return role === 'member' || role === 'admin';
+  });
+  /** What GitHub's webhook linked (docs/adr/0071 D6); the card is hidden while there is none. */
+  protected readonly pullRequests = computed<PullRequest[]>(() =>
+    this.relations.pullRequests.hasValue() ? this.relations.pullRequests.value().items : [],
+  );
+  /** The pull request or commit that says the work may be ready to move, while the ticket is open. */
+  protected readonly merged = computed(() => {
+    const ticket = this.ticket();
+    return ticket ? readyToMove(this.pullRequests(), ticket.state) : undefined;
+  });
 
   constructor() {
     effect(() => this.relations.at.set(this.at()));

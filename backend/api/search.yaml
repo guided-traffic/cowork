@@ -41,21 +41,6 @@ tenant:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/SearchHitList'
-            example:
-              items:
-                - tenant: {slug: acme, name: Acme}
-                  key: acme/COW-12
-                  title: The gate fails on a fresh cluster
-                  type: bug
-                  state: in-progress
-                  found_in: comment
-                  comment: 0199a3c2-1d2e-7f00-8000-0000000000c1
-                  question: null
-                  snippet:
-                    - {text: 'the ', match: false}
-                    - {text: readyReplicas, match: true}
-                    - {text: ' count is 0 after the rollout', match: false}
-              next_cursor: null
       default:
         $ref: './components/responses.yaml#/Problem'
 me:

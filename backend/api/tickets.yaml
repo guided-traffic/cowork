@@ -134,10 +134,18 @@ transitions:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/Transition'
-          example:
-            from: review
-            to: done
-            note: make test-integration passed against PostgreSQL 18.6
+          examples:
+            start:
+              summary: Forward one step, which the ticket's example answers
+              value:
+                from: decided
+                to: in-progress
+            done:
+              summary: Done by hand, with the verification note
+              value:
+                from: review
+                to: done
+                note: The end-to-end sign-in with a trailing space passed in Safari 18 and Chrome 129 against staging.
     responses:
       '200':
         description: The ticket in its new state
@@ -177,7 +185,7 @@ rank:
           schema:
             $ref: './components/schemas.yaml#/TicketRankSet'
           example:
-            after: 12
+            after: 39
     responses:
       '200':
         description: The ticket in its place
@@ -227,22 +235,6 @@ prerequisites:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/PrerequisiteTree'
-            example:
-              items:
-                - key: acme/COW-7
-                  title: Pick the format
-                  state: in-progress
-                  blocked_from: null
-                  assignee: {id: 0190f4c2-6f1e-7a3b-9c2d-1e2f3a4b5c6d, username: ada, display_name: Ada}
-                  progress: 40
-                  progress_refinement: 100
-                  progress_review: 0
-                  progress_derived: false
-                  depth: 1
-                  settled: false
-                  repeated: false
-              next_cursor: null
-              open: 1
       '304':
         $ref: './components/responses.yaml#/NotModified'
       default:
@@ -288,6 +280,9 @@ interest:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/InterestSet'
+          example:
+            weight: need
+            note: Support answers three calls a day from customers who cannot sign in.
     responses:
       '200':
         description: The stake changed, or was already so
@@ -337,6 +332,46 @@ markdown:
           text/markdown:
             schema:
               type: string
+            example: |
+              ---
+              key: acme/WEB-42
+              title: Sign-in fails in Safari when the password contains a space
+              type: bug
+              state: in-progress
+              severity: high
+              security: none
+              horizon: now
+              effort: S
+              progress-refinement: 100
+              progress: 60
+              progress-review: 0
+              assignee: "Grace Hopper <oidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw>"
+              parent: acme/WEB-40
+              opened: 2026-10-01
+              decided: 2026-10-02
+              attachments:
+                - safari-sign-in.png
+              ---
+
+              ## Current state
+
+              Safari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.
+
+              ## Required changes
+
+              - Send the password as typed.
+              - An end-to-end test that signs in with a trailing space in Safari.
+
+              ## Open questions
+
+              ### Q1: Do we trim passwords on the server as well?
+
+              - A: trim nowhere: a password is sent and stored as typed.
+              - B: trim on both ends, and say so at sign-up.
+
+              **Recommendation:** A: a space is a character like any other; trimming would lock out who chose one.
+
+              **Answer:** _open_
       default:
         $ref: './components/responses.yaml#/Problem'
 context:
@@ -358,7 +393,10 @@ context:
       implementation stage, and the count of open ones), `## Recent comments`
       (the last `comments`, oldest of them first, each quoted under its author,
       agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
-      (name, type, size and URL, never content) and `## Recent activity` (the
+      (name, type, size and URL, never content), `## Pull requests` (each pull
+      request and default-branch commit GitHub's webhook linked, with its state,
+      author and URL, its title quoted — written only when the ticket has one,
+      docs/adr/0071 D6) and `## Recent activity` (the
       last `activity`). `comments=0` or `activity=0` leaves its section out. What
       the caller cannot see is absent. The document carries no `ETag`: it is not
       one entity. Every call is recorded: data left the system (D5). It is no
@@ -380,5 +418,140 @@ context:
           text/markdown:
             schema:
               type: string
+            example: |
+              <!-- cowork: context of acme/WEB-42, exported 2026-10-06T17:05:00Z by Ada Lovelace (via claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911) — not an import format -->
+              ---
+              key: acme/WEB-42
+              title: Sign-in fails in Safari when the password contains a space
+              type: bug
+              state: in-progress
+              severity: high
+              security: none
+              horizon: now
+              effort: S
+              progress-refinement: 100
+              progress: 60
+              progress-review: 0
+              assignee: "Grace Hopper <oidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw>"
+              parent: acme/WEB-40
+              opened: 2026-10-01
+              decided: 2026-10-02
+              attachments:
+                - safari-sign-in.png
+              ---
+
+              ## Current state
+
+              Safari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.
+
+              ## Required changes
+
+              - Send the password as typed.
+              - An end-to-end test that signs in with a trailing space in Safari.
+
+              ## Open questions
+
+              ### Q1: Do we trim passwords on the server as well?
+
+              - A: trim nowhere: a password is sent and stored as typed.
+              - B: trim on both ends, and say so at sign-up.
+
+              **Recommendation:** A: a space is a character like any other; trimming would lock out who chose one.
+
+              **Answer:** _open_
+
+              ## Links
+
+              - blocked by acme/WEB-39 — Log the sign-in failures with their reason (analysed, Sam Rivera)
+              - blocked by acme/WEB-41 — Pick the SameSite mode of the session cookie (done, Ada Lovelace)
+
+              ## Prerequisites
+
+              1 of 2 open.
+
+              - acme/WEB-41 — Pick the SameSite mode of the session cookie (done, Ada Lovelace, 100%)
+              - acme/WEB-39 — Log the sign-in failures with their reason (analysed, Sam Rivera, 0%)
+
+              ## Recent comments
+
+              **Grace Hopper**, 2026-10-05 15:02 UTC:
+
+              > Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.
+              >
+              > ![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)
+              >
+              > @Ada Lovelace, see Q1 before we change the form.
+
+              ## Attachments
+
+              - safari-sign-in.png — image/png, 182.4 KiB — /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content
+
+              ## Pull requests
+
+              - github.com/acme/website#118 "Send the password as typed (WEB-42)" (merged 2026-10-06 16:40 UTC, by grace-hopper, key in the trailer) — https://github.com/acme/website/pull/118
+              - github.com/acme/website@4c1d8e2b7a9f "Send the password as typed (WEB-42) (#118)" (merged 2026-10-06 16:40 UTC, by grace-hopper, key in the trailer) — https://github.com/acme/website/commit/4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281
+
+              ## Recent activity
+
+              - 2026-10-02 09:12 UTC — Grace Hopper — transitioned: decided → in-progress
+              - 2026-10-02 09:14 UTC — Ada Lovelace — set the horizon to now — reason: "Customers cannot sign in"
+              - 2026-10-05 15:02 UTC — Grace Hopper — commented
+              - 2026-10-06 14:02 UTC — system:github — linked pull request github.com/acme/website#118
+              - 2026-10-06 16:40 UTC — system:github — merged pull request github.com/acme/website#118
+              - 2026-10-06 16:40 UTC — system:github — linked commit github.com/acme/website@4c1d8e2b7a9f
+      default:
+        $ref: './components/responses.yaml#/Problem'
+pullRequests:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: listTicketPullRequests
+    tags: [tickets]
+    summary: The pull requests and default-branch commits that name the ticket
+    description: |
+      What GitHub's webhook linked to the ticket (docs/adr/0071 D6): each pull request whose title
+      or body names it, and each commit on a bound repository's default branch whose message names
+      it, with where the key was found, oldest link first. Read under the ticket's predicate, like
+      its other children: a confidential ticket's pull requests exist only for whoever sees the
+      ticket (docs/adr/0065 D1). A link a person removed is absent.
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of pull requests
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/PullRequestList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+pullRequest:
+  parameters:
+    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/PullRequestID'
+  delete:
+    operationId: removeTicketPullRequest
+    tags: [tickets]
+    summary: Remove a wrong link of a pull request or a commit
+    description: |
+      A key read from a title or a message can name a ticket it did not mean (docs/adr/0071
+      Residual risks); a person removes the link like any link — a member's act with `write`
+      scope, in the agent baseline (docs/adr/0043 D2). The removal stays: a later delivery that
+      names the ticket again does not bring the link back. Recorded as `unlinked`. Idempotent:
+      `204` also when the link is gone.
+    responses:
+      '204':
+        description: The link is gone
       default:
         $ref: './components/responses.yaml#/Problem'

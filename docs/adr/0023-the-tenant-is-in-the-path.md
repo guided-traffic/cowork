@@ -42,7 +42,10 @@ and the saved filters, `…/filters` and `…/filters/{filter}`; D4's UI mirrors
 as `/t/{slug}/tickets`, a route D4 did not list, its filters the page's query parameters; a ticket's
 own page stays `/t/{slug}/tickets/{KEY}-{number}`. *(2026-10-05:)* D2's `next`, which also takes `?project=<KEY>` with
 `?tenant=`, and D4's `/me/next` and the start page as amended
-([`features/home/home.ts`](../../frontend/src/app/features/home/home.ts)).
+([`features/home/home.ts`](../../frontend/src/app/features/home/home.ts)). *(2026-10-07:)* D4's UI
+mirrors a project's import, `POST …/projects/{KEY}/imports` and `GET …/imports/{import}`, as
+`/t/{slug}/p/{KEY}/imports` and `/t/{slug}/p/{KEY}/imports/{import}`, two routes D4 did not list
+([`app.routes.ts`](../../frontend/src/app/app.routes.ts)).
 
 ## Context
 

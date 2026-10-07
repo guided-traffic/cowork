@@ -44,5 +44,10 @@ export const AUDIT_ACTION: AuditAction[] = [
   'password_reset',
   'deactivated',
   'reactivated',
-  'read'
+  'read',
+  'merged',
+  'closed',
+  'reopened',
+  'accepted',
+  'imported'
 ];

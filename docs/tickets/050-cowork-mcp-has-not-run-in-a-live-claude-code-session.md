@@ -1,6 +1,6 @@
 ---
 id: T50
-title: cowork-mcp has not run in a live Claude Code session, and its agent mark keeps the model a session started with
+title: cowork-mcp has not run in a live Claude Code session, and whether its agent mark follows a model switch is unanswered
 state: in-progress
 severity: low
 security: hardening
@@ -21,50 +21,72 @@ done:
 ([mcp.md](../developer/mcp.md)): `session-context` bound this repository by its remote, and
 `session_start`, `file_ticket`, three transitions, `record_state`, `open_question`, `finish_work`
 and `get_ticket` left every act in the activity as the agent's. Nobody has installed the plugin
-and run a `claude` session with it, so its SessionStart and Stop hooks and its skills have run
-only in their tests ([claude-code.md](../operations/claude-code.md)).
+and run a `claude` session with it, so its SessionStart, Stop and PostModelSwitch hooks and its
+skills have run only in their tests ([claude-code.md](../operations/claude-code.md)).
 
-The model in the agent mark of the server's acts comes from the SessionStart hook:
-`session-context` records the `model` of Claude Code's hook input per project directory
-(`CLAUDE_PROJECT_DIR`), and `serve` reads it at each request
-([`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go) `sessionContext`, `client.header`;
-ADR 0067 D5); a start without a model keeps the recorded one after `/clear` or a compaction and
-records none otherwise. `TestTheSessionStartHookNamesTheModelOfTheServer` runs it on the input Claude Code's
-[hook reference](https://code.claude.com/docs/en/hooks) shows, not on one recorded from a live
-session. A model switched with `/model` inside a session fires no SessionStart, so the mark keeps
-the model the session started with; Claude Code has a `PostModelSwitch` hook event, which does not
-block and whose input carries `from_model` and `to_model`.
+The model in the agent mark of the server's acts is recorded per project directory
+(`CLAUDE_PROJECT_DIR`) by two hooks, and `serve` reads it at each request
+([`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go) `sessionContext`, `modelSwitch`,
+`client.header`; ADR 0067 D5). `session-context` records the `model` of the SessionStart input; a
+start without one keeps the recorded one after `/clear` or a compaction and records none
+otherwise. `model-switch`, which a `PostModelSwitch` hook runs, records the `to_model` of a switch
+— `/model`, an automatic fallback, `opusplan` entering or leaving plan mode, the model restored on
+a resume — unless the input names an `agent_id`, which makes it a subagent's switch; it prints
+nothing, because Claude Code adds that hook's standard output to the model's context. The event
+needs Claude Code 2.1.251 or later. The plugin carries the switch hook in
+[`hooks/model-switch.json`](../../claude/cowork/hooks/model-switch.json), which its `plugin.json`
+names, apart from `hooks/hooks.json`: Claude Code 2.1.218 loads none of the plugin's hooks from a
+hooks file that names the event, and with the separate file it runs the SessionStart and Stop
+hooks and lists the switch hook's file as failed to load (`claude plugin details`,
+`claude plugin list --json`). `TestTheSessionStartHookNamesTheModelOfTheServer` and
+`TestThePostModelSwitchHookNamesTheModelOfTheServer` run the hooks on the inputs Claude Code's
+[hook reference](https://code.claude.com/docs/en/hooks) shows and describes, not on inputs recorded
+from a live session.
 
 ## Required changes
 
-1. A live check, by the owner: install the plugin from this repository as
-   [claude-code.md](../operations/claude-code.md) describes, start `claude` in a bound repository,
-   and walk the phase's verification — the session names its ticket, Claude records its state,
-   opens a question and finishes with a verification note, each act in the UI with the agent icon
-   and the session's model in its mark, `claude-code/<model>/<id>`. Capture the `SessionStart`
-   hook's input of that session — a hook command that copies its standard input to a file — and
-   put it, its paths shortened, in place of `sessionStartInput` in
-   [`mcpcli/cli_test.go`](../../backend/internal/mcpcli/cli_test.go), so the test runs on a
-   recorded input.
+1. A live check, by the owner, with Claude Code 2.1.251 or later (`claude --version`): install the
+   plugin from this repository as [claude-code.md](../operations/claude-code.md) describes, start
+   `claude` in a bound repository, and walk the phase's verification — the session names its
+   ticket, Claude records its state, opens a question and finishes with a verification note, each
+   act in the UI with the agent icon and the session's model in its mark,
+   `claude-code/<model>/<id>`. Then switch with `/model` inside the same session and have Claude
+   make one more act, a comment: its mark names the new model. Capture the `SessionStart` and the
+   `PostModelSwitch` hook's input of that session — a hook command that copies its standard input
+   to a file — and put them, their paths shortened, in place of `sessionStartInput` and
+   `postModelSwitchInput` in [`mcpcli/cli_test.go`](../../backend/internal/mcpcli/cli_test.go), so
+   the tests run on recorded inputs.
 
 ## Open questions
 
 ### Q1: Should the agent mark follow a model switched inside a session?
 
-The server's mark names the model the last SessionStart hook in the project directory recorded; a
-switch with `/model`, or one Claude Code makes itself, is not seen, so every act after it is
-recorded under a model that did not make it.
+The SessionStart hook records the model a session started with. A switch with `/model`, or one
+Claude Code makes itself, fires no SessionStart, so without a hook on the switch every act after it
+is recorded under a model that did not make it.
 
 - **A `PostModelSwitch` hook in the plugin and the `settings.json` block** — recommended. It runs a
   third hook mode of `cowork-mcp`, beside `session-context` and `session-end`, that records
-  `to_model` in the same file and prints nothing (its standard output would reach Claude's
-  context). Cost: an amendment of ADR 0067, a few lines beside `session-context`, and a hook run
-  per switch. The mark the owner reads in the UI stays true;
-  a wrong model in the record misleads where `unknown` would only be poorer.
-- **Leave it**, the gap named in ADR 0067's residual risks as it is now. Costs nothing; the
-  model in a mark is then "the model the session started with", which the docs say.
+  `to_model` in the same file, not a subagent's switch, and prints nothing (its standard output
+  would reach Claude's context). Cost: an amendment of ADR 0067, a few lines beside
+  `session-context`, a hook run per switch, a hooks file of its own in the plugin, and Claude Code
+  2.1.251 or later for that hook. The mark the owner reads in the UI stays true; a wrong model in
+  the record misleads where `unknown` would only be poorer.
+- **Leave it out**: the hook mode and both hook entries removed again, ADR 0067's amendment struck
+  and its residual risk restored. Costs nothing to run; the model in a mark is then "the model the
+  session started with", which the docs say again.
 
 **Answer:** _open_
+
+The recommended option is built (ADR 0067 D5) and stays unless the owner answers otherwise.
+
+## Not verified
+
+Claude Code runs PostModelSwitch for the model it restores on a resume, and its hook reference does
+not say whether before or after the SessionStart hook. After a resume whose SessionStart input names
+no model — a session restored through conversation recovery — the mark is therefore the restored
+model or `unknown`. A debug log of such a restore (`claude --debug`), showing the order of the two
+hooks, would settle it.
 
 ## Related
 

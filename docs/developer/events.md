@@ -4,7 +4,7 @@ How a committed act reaches the clients that may see it: publication in the act'
 one listener per replica, the hub that fans out, the filter per stream, the person-level stream,
 the replay, the heartbeat, the limits, the shutdown, and what the Ingress must do for it. The decision is the one of
 [ADR 0054] — events carry keys and versions, never content, and polling is the fallback. Read
-against the tree on 2026-10-05.
+against the tree on 2026-10-05, `pull_request.changed` on 2026-10-06.
 
 ```
 Mutate ─► audit row ─► pg_notify('cowork_events') ─(at commit)─► DB.Listen (one per replica)
@@ -20,7 +20,9 @@ Mutate ─► audit row ─► pg_notify('cowork_events') ─(at commit)─► D
 `Writer.publish` ([`notify.go`](../../backend/internal/store/notify.go)) runs inside `Mutate`
 for every act of a tenant that names a ticket, except the actions `downloaded` and `exported`
 and the entity `time_entry` — data leaving the system changes nothing a client shows, and time
-follows its own visibility. It sends `pg_notify('cowork_events', <json>)` in the act's
+follows its own visibility — and except an act marked `Event.Quiet`, which `writeEvents` in
+[`tx.go`](../../backend/internal/store/tx.go) records and never publishes: another act of the
+transaction announces it, as an import's one act announces the tickets it creates. It sends `pg_notify('cowork_events', <json>)` in the act's
 transaction: PostgreSQL delivers it at commit and never after a rollback (D4). The payload,
 `store.Notification`, is what the filter needs and what the event tells: the audit row's id, the
 tenant, the project, the entity, the action, the ticket key, the ticket's version, and the
@@ -38,6 +40,13 @@ carries the facts the ticket had (`Event.Published`), because the row is gone wh
 written ([ADR 0024] D1, D2). Saved filters are not published; their list, like the bin, answers
 `304` to the poll of the fallback when nothing changed.
 
+**GitHub's webhook** ([api.md](api.md#githubs-webhook)) publishes its acts as every write does: a
+link of a pull request or a commit, a pull request's change of state or facts, and a person's removal
+of a link are acts of the entity `pull_request` or `commit` on their ticket, written by
+`ReceiveDelivery`'s transaction — or a person's `Mutate` — and published at its commit
+([data-access.md](data-access.md#githubs-deliveries)). They reach whoever may read the ticket, by
+the ticket's facts like any ticket's act, a confidential ticket's included.
+
 **A project's creation** is published as a notification of the entity `project`, with the
 tenant and the project and nothing else (`Event.NewProject`, set by `insertProject` in
 [`projects.go`](../../backend/internal/api/projects.go)): it changes what a stream may admit, and no
@@ -47,7 +56,11 @@ client is told of it — `Filter.Admits` refuses it, so it is neither sent nor r
 `project-rank` (`store.EntityProjectRank`), with the tenant, the project and the project's key,
 `<tenant>/<PROJECT>` (`Event.ProjectRank`, set by `SortProjectRank` in
 [`score.go`](../../backend/internal/api/score.go)): the filter admits it as it admits the project's
-tickets, and the stream sends it as `project.changed` ([the handler](#the-handler)).
+tickets, and the stream sends it as `project.changed` ([the handler](#the-handler)). **An import's
+execution** is published the same way, by the act `imported` on its job (`finish` in
+[`importwrite.go`](../../backend/internal/api/importwrite.go)): the acts on the tickets, questions
+and links it creates are `Quiet`, and a link to a ticket the project held before is published on
+that ticket as any link is.
 
 **A membership act** is published too — any act of a tenant whose `Event.Membership` is set, written
 by `Mutate` or by the identity provider's transactions ([data-access.md](data-access.md#the-identity-providers-transactions)):
@@ -120,6 +133,10 @@ A stream without `me` hears its tenant alone, and no inbox.
   unknown, so an id from before the loss is no replay point and a reconnect with it gets
   `resync` (`TestRecoveryDropsTheBuffer`).
 - **Close.** `Close` ends every stream with `unavailable` and refuses new ones.
+- **Metrics.** The hub records the streams it holds, every notification it receives, each stream it
+  ends — `behind` when its channel was full, `limit` beyond the person's limit, `resync` at the
+  listener's recovery, never at `Close` — and a `Last-Event-ID` as a replay's hit or miss, in the
+  registry `New` was given, nil for none ([metrics.md](metrics.md)).
 
 ## Filter
 
@@ -192,7 +209,8 @@ data: {"key":"acme/VKO-12","version":4,"kind":"transitioned"}
 ```
 
 with the audit row's id as `id`, `kind` the act's action, and the name by entity:
-`comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`,
+`comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `pull_request.changed` —
+the entities `pull_request` and `commit`, [ADR 0071] D6 —, `membership.changed`,
 `project.changed`, everything else `ticket.changed` — an upload included (`# example` values above). A membership
 event's `data` is its tenant's slug and the keys of what changed instead, each key only where it
 applies, and no `kind`:
@@ -206,11 +224,14 @@ data: {"tenant":"acme","person_id":"0199a3c2-1d2e-7f00-8000-000000000002","proje
 (`# example`, an access entry). The client reloads what it shows of members, mappings and access
 lists of the tenant it shows, its projects when `project_id` is there, and `GET /api/v1/me` for
 that tenant's acts and for any act that names the person
-([frontend.md](frontend.md#how-a-change-reaches-the-screen)). An act on a project's rank as a whole
-— the sort by the score ([domain.md](domain.md#rank)) — is `project.changed` with the project's key
-and the kind and no version, since it is no ticket's; the filter admits it as it admits the
-project's tickets, and the client loads the project's open lists and the person's lists of tickets
-again:
+([frontend.md](frontend.md#how-a-change-reaches-the-screen)). An act on a project's tickets as a whole
+— the sort by the score ([domain.md](domain.md#rank)), kind `ranked`, and an import's execution,
+kind `imported`, whose acts on the tickets it creates are `Quiet` and publish nothing
+([import-and-export.md](import-and-export.md#the-execution)) — is `project.changed` with the
+project's key and the kind and no version, since it is no ticket's; the filter admits it as it
+admits the project's tickets, and the client loads the project's open lists and the person's lists
+of tickets again — and, for an import, the dashboard and the open decisions, whose questions publish
+nothing either:
 
 ```
 id: 0199a3c2-1d2e-7f00-8000-0000000000ac
@@ -301,3 +322,4 @@ nothing of another.
 [ADR 0024]: ../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md
 [ADR 0054]: ../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md
+[ADR 0071]: ../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md

@@ -1,0 +1,86 @@
+{{- $metrics := include "cowork.metrics" . | fromYaml }}
+{{- /*
+The alerts of docs/adr/0060 D6, but for the last export's age, which comes
+with the export. Each is narrowed to this release's backend pods and links its
+section of docs/operations/metrics.md at the version the chart installs. The
+consistency check's alert waits the restore window, a value: a restore leaves
+the counts above zero until it is settled (docs/adr/0059 D5). Needs the
+Prometheus Operator's CRDs.
+*/}}
+{{- if $metrics.prometheusRule.enabled }}
+{{- if not (include "cowork.metricsEnabled" .) }}
+{{- fail "metrics.prometheusRule.enabled needs metrics.enabled: the alerts read the backend's metrics" }}
+{{- end }}
+{{- $sel := printf "namespace=%q,pod=~%q" .Release.Namespace (printf "%s-.*" (include "cowork.backend.fullname" .)) }}
+{{- $runbook := printf "https://github.com/guided-traffic/cowork/blob/v%s/docs/operations/metrics.md" .Chart.AppVersion }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "cowork.fullname" . }}
+  labels:
+    {{- include "cowork.labels" . | nindent 4 }}
+    {{- with $metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: cowork
+      rules:
+        - alert: CoworkSchemaDirty
+          expr: |-
+            max by (namespace) (cowork_migrations_schema_dirty{ {{- $sel -}} }) > 0
+          for: 10m
+          labels:
+            {{- include "cowork.alertLabels" (dict "root" . "severity" "critical") | nindent 12 }}
+          annotations:
+            summary: The database schema of cowork is dirty.
+            description: {{ quote `A migration failed halfway in {{ $labels.namespace }}: the schema version is marked dirty. The pods that run keep serving; a pod that starts refuses to, until the schema is repaired by hand.` }}
+            runbook_url: {{ $runbook }}#coworkschemadirty
+        - alert: CoworkEventStreamDrops
+          expr: |-
+            sum by (namespace, pod) (increase(cowork_events_subscribers_dropped_total{ {{- $sel -}} ,reason="behind"}[10m])) > 0
+          for: 15m
+          labels:
+            {{- include "cowork.alertLabels" (dict "root" . "severity" "warning") | nindent 12 }}
+          annotations:
+            summary: cowork keeps dropping event streams that fall behind.
+            description: {{ quote `{{ $labels.pod }} has dropped event streams whose buffer was full in every ten minutes for a quarter of an hour; their clients reload and miss the live updates in between.` }}
+            runbook_url: {{ $runbook }}#coworkeventstreamdrops
+        - alert: CoworkDatabasePoolExhausted
+          expr: |-
+            (
+              max by (namespace, pod) (cowork_db_pool_connections{ {{- $sel -}} ,state="in_use"})
+                >= max by (namespace, pod) (cowork_db_pool_max_connections{ {{- $sel -}} })
+            )
+            and
+              sum by (namespace, pod) (rate(cowork_db_pool_wait_duration_seconds_count{ {{- $sel -}} }[5m])) > 0
+          for: 10m
+          labels:
+            {{- include "cowork.alertLabels" (dict "root" . "severity" "warning") | nindent 12 }}
+          annotations:
+            summary: The database pool of cowork has been exhausted for ten minutes.
+            description: {{ quote `Every connection of {{ $labels.pod }}'s pool is in use and requests wait for one; they slow down and time out.` }}
+            runbook_url: {{ $runbook }}#coworkdatabasepoolexhausted
+        - alert: CoworkJobFailing
+          expr: |-
+            max by (namespace, pod, name) (cowork_jobs_consecutive_failures{ {{- $sel -}} }) >= 2
+          labels:
+            {{- include "cowork.alertLabels" (dict "root" . "severity" "warning") | nindent 12 }}
+          annotations:
+            summary: A background job of cowork failed twice in a row.
+            description: {{ quote `The job {{ $labels.name }} failed on {{ $labels.pod }} at its last two runs, an hour apart.` }}
+            runbook_url: {{ $runbook }}#coworkjobfailing
+        - alert: CoworkAttachmentsOutOfStep
+          expr: |-
+            (
+              max by (namespace, tenant) (cowork_consistency_dangling_attachments{ {{- $sel -}} })
+                + max by (namespace, tenant) (cowork_consistency_orphaned_objects{ {{- $sel -}} })
+            ) > 0
+          for: {{ .Values.metrics.prometheusRule.restoreWindow | default "24h" }}
+          labels:
+            {{- include "cowork.alertLabels" (dict "root" . "severity" "warning") | nindent 12 }}
+          annotations:
+            summary: The attachments of a cowork tenant are out of step with the bucket.
+            description: {{ quote `The latest consistency check of the tenant with the id {{ $labels.tenant }} in {{ $labels.namespace }} found {{ $value }} files whose bytes are missing or objects no file names, and they have stayed for longer than the restore window. Its administrators see the lists on its settings page.` }}
+            runbook_url: {{ $runbook }}#coworkattachmentsoutofstep
+{{- end }}

@@ -40,15 +40,33 @@ resolves an identity —, are the implementer's, made concrete the same day and 
 objection~~ *(the identity string accepted by the owner the same day; the rest open to the owner's
 objection)*.
 
-**Partly built** (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03; a person as `Name <identity>` since 2026-10-06): D1, D5 and D6 for `/markdown`
+
+Amended 2026-10-06 for GitHub's webhook of
+[ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+(D2: `## Pull requests`, between `## Attachments` and `## Recent activity`, written only when the
+ticket has one; made concrete by the implementer and built the same day, open to the owner's
+objection — `writePullRequests` in [`internal/markdown/context.go`](../../backend/internal/markdown/context.go),
+the golden file `context-pull-requests.md`).
+
+~~**Partly built**~~ **Built** *(whole since 2026-10-06, with D3)* (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03; a person as `Name <identity>` since 2026-10-06): D1, D5 and D6 for `/markdown`
 ([`internal/markdown`](../../backend/internal/markdown/), golden files in its `testdata/`); every
 call is recorded, and in phase 2 every caller is a token. D2, D4, and D5 and D6 for `/context`
 since 2026-10-04 ([`RenderContext`](../../backend/internal/markdown/context.go)): the comments
 quoted as block quotes, so a comment's text never reads as a section of the document; the
 tree to a depth of eight, stopping at what the caller cannot see; the comments and the acts up
 to 100 each; at most 200 links, nodes and attachments, without a note when it stops; the
-activity is the ticket's activity list, which leaves out the exports. D3 arrives with the
-importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md).
+activity is the ticket's activity list, which leaves out the exports. ~~D3 arrives with the
+importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md).~~
+*(2026-10-06.)* D3 is built with the importer of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
+([`internal/importer`](../../backend/internal/importer/)), and the importer reads grammar v1 back:
+every golden file of `/markdown` in `internal/markdown/testdata` parses without an error and renders
+again to its own bytes — the one whose body has a heading of the questions' name with the warning
+[ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md)'s Residual risks
+foresee —, and every golden file of `/context` is refused
+(`TestParseReadsTheGoldenFilesOfGrammarV1`); the integration tier's round trip (ADR 0051 D5)
+holds. Made concrete the same day by the implementer, open to the owner's objection:
+D1's key `confidential` (below), built with its golden file `confidential.md`.
 
 ## Context
 
@@ -92,6 +110,12 @@ the body, `## Open questions` is always written and is the last heading of that 
 `### Q<n>: …` in number order, the options verbatim, `**Recommendation:** …` when there is
 one, and `**Answer:**` with the answer, `_open_` or `_withdrawn_`. The response is
 `text/markdown; charset=utf-8` with the ticket's `ETag` and is never answered `304`.
+*(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* `confidential: true`
+follows `threat` while the ticket's flag is set, and nothing is written while it is not. The flag
+is a column ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D1), so a round trip without it would not be lossless: a ticket an administrator flagged whose
+class does not set the flag would come back readable by every member (ADR 0065 D7). Only a reader
+of the ticket gets its document, so the key tells nobody more than the ticket does.
 
 *(Amended 2026-10-06 by the owner: a person is written the way git writes an author.)* The name
 is the display name, for a reader; the identity is the one the person already has, for the
@@ -134,14 +158,25 @@ the place of `via <agent>` says `through the token <name>`, or `through a token`
 not record the name; the first line `(through the token <name>)`. Everything else reads as
 before.)* *(Amended 2026-10-05, ADR 0010 D1: the act on the horizon, which the audit record keeps
 as `overridden`, reads `set the horizon to <value>`, or `returned the ticket to later` where the
-horizon set was cleared.)*
+horizon set was cleared.)* *(Amended 2026-10-06, ADR 0071 D6:)* after `## Attachments`, `## Pull
+requests` lists what GitHub's webhook linked — each pull request by its repository and number,
+each default-branch commit by its repository and short id, its title quoted, as text from outside
+the tenant, its state with the time of its merge, its author and where its key was read, and its
+page — and is written only when the ticket has one, so a tenant without the webhook reads the
+document as before; an act on a pull request or a commit names it in the activity, `merged pull
+request github.com/acme/app#34`. `/markdown` names no pull request: D1's document is the canonical
+ticket alone.
 
 **D3 — The importer reads D1's form only.** A file that carries D2's sections is refused
 with the line where the first read-only section starts, so a context export is never
 imported by mistake. *(Amended 2026-10-05:)* It reads the key `urgency`, the name `horizon` had
 before — in an export written before 2026-10-05 and in the ticket files of a repository, whose
 frontmatter names it so — as `horizon`; a file that names both with different values is an
-error of the report, not a guess.
+error of the report, not a guess. *(Built 2026-10-06:)* a context document is known by its first
+line, the marker of D2 — after a byte order mark, if any —, and is an error of the report at the
+line of its `## Links`, or of the marker where it has none; the execution waits until the person
+excludes it ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
+D2).
 
 **D4 — `get_ticket` of the MCP server calls `/context`;** `session_start` calls it for the
 active ticket with `comments=5&activity=10` ([ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md)).
@@ -191,7 +226,13 @@ concrete 2026-10-02: D1's key is `attachments`, a list of the names in upload or
   the password.
 - *(2026-10-06.)* An issuer that ends in a bare `#` is not conformant, but `checkIssuer` lets its empty fragment
   through; the first `#` of such a person's identity would end the issuer too early. Not handled;
-  the importer meets it first.
+  the importer meets it first. *(2026-10-06: the importer cuts such an identity at its first `#`,
+  finds an issuer other than the installation's, and assigns nobody, with a warning — it fails
+  closed. Read in the code, not covered by a test.)*
+- *(2026-10-06.)* D3 knows a context document by its first line only. A context document whose
+  marker line was removed reads as a ticket of grammar v1 whose body ends with the read-only
+  sections, and its dry run reports no error: nothing in the report marks it, and only a person
+  reading the imported body would notice.
 - Two documents mean two caches and two ETags for one ticket; the API record treats them as
   two resources.
 

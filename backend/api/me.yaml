@@ -11,19 +11,6 @@ me:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/Me'
-            example:
-              id: 0199a3c2-1d2e-7f00-8000-000000000001
-              username: dev
-              display_name: Developer
-              global_admin: false
-              local: true
-              password_change_required: false
-              memberships:
-                - tenant: {slug: acme, name: Acme}
-                  role: admin
-                  origins:
-                    - source: grant
-                      role: admin
       default:
         $ref: './components/responses.yaml#/Problem'
 tokens:
@@ -89,7 +76,7 @@ tokens:
             scope: write
             agent: true
             tenant: acme
-            project: COW
+            project: WEB
             lifetime_days: 90
     responses:
       '201':
@@ -160,9 +147,6 @@ chat:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/ChatCapabilities'
-            example:
-              capabilities: [rank, set-horizon, interest, upload, create-project]
-              chosen: false
       default:
         $ref: './components/responses.yaml#/Problem'
   put:
@@ -194,6 +178,9 @@ chat:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/ChatCapabilities'
+            example:
+              capabilities: [rank, set-horizon]
+              chosen: true
       default:
         $ref: './components/responses.yaml#/Problem'
 password:
@@ -216,6 +203,9 @@ password:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/PasswordChange'
+          example:
+            current_password: correct horse battery staple
+            new_password: four random words outlast one clever one
     responses:
       '204':
         description: Changed
@@ -281,6 +271,8 @@ inboxRead:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/InboxReadThrough'
+          example:
+            through: 01a10c96-0240-7196-85bb-eeab014066b7
     responses:
       '200':
         description: The unread count after the marking

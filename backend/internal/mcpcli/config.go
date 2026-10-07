@@ -23,8 +23,8 @@ const (
 type config struct {
 	url, token, dir string
 	// project is CLAUDE_PROJECT_DIR as the host set it, which a hook's cwd
-	// does not replace: the key under which the SessionStart hook leaves the
-	// server the model (docs/adr/0067 D5).
+	// does not replace: the key under which the SessionStart and
+	// PostModelSwitch hooks leave the server the model (docs/adr/0067 D5).
 	project string
 }
 

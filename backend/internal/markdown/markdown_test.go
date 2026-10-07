@@ -50,6 +50,13 @@ func TestRender(t *testing.T) {
 			Key: "acme/VKO-15", Title: "No", Type: "feature", State: "dropped", Severity: "cosmetic", Security: "none",
 			Horizon: "later", Effort: "L", Opened: *at("2026-10-01T00:00:00Z"), DroppedReason: "superseded by VKO-16",
 		},
+		// The flag travels with the document, so an import sets it again
+		// (docs/adr/0065 D7, docs/adr/0044 D1 as amended 2026-10-06).
+		"confidential": {
+			Key: "acme/VKO-17", Title: "Session fixation on the login", Type: "bug", State: "analysed", Severity: "high",
+			Security: "live", Threat: "a person who can set a cookie on the domain takes over a member's session",
+			Confidential: true, Horizon: "now", Effort: "S", Opened: *at("2026-10-05T00:00:00Z"),
+		},
 		"questions": {
 			Key: "acme/VKO-16", Title: "Café: naïve résumé", Type: "decision", State: "analysed", Severity: "medium",
 			Security: "none", Horizon: "icebox", Effort: "S", Opened: *at("2026-10-01T00:00:00Z"),

@@ -28,6 +28,11 @@ The gate behind these rows is `make dev`'s: `COWORK_OIDC_ALLOWED_GROUPS=cowork-u
 `COWORK_ADMIN_GROUP=cowork-admins` ([`hack/dev.sh`](../../hack/dev.sh)). What each Dex user stands
 for in the tests is [testing.md](testing.md#the-identity-provider-in-the-tests).
 
+After a sign-in with Dex the browser remembers it, and once that session ends the login page sends
+the first input to Dex's form by itself — once per tab, until the tab has a session again
+([frontend.md](frontend.md#the-login-page)). To switch to `dev`, come back from Dex's form, or sign
+out first: a sign-out forgets the remembered sign-in.
+
 The seed also makes a second person, `sam`, an administrator of `dev` without a local account: it
 fills the member lists and cannot sign in.
 

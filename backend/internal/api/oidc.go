@@ -17,6 +17,7 @@ import (
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/auth"
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/oidc"
 	"github.com/guided-traffic/cowork/backend/internal/requestid"
 	"github.com/guided-traffic/cowork/backend/internal/store"
@@ -43,6 +44,10 @@ const (
 	loginFailed         = "oidc_failed"
 	loginNotAllowed     = "not_allowed"
 	loginNotInitialised = "not_initialised"
+	// loginRequired is a silent login the issuer could not complete without
+	// the person (docs/adr/0029 D6): no failure of theirs, the page asks them
+	// to sign in and starts no attempt of its own again.
+	loginRequired = "login_required"
 )
 
 // loginPage is where a failed login through the identity provider sends the
@@ -60,20 +65,23 @@ func loginPage(code, returnTo string) string {
 
 // loginState is what the state cookie holds: the state, the nonce and the
 // PKCE verifier the callback checks the issuer's answer against, where the
-// browser goes after the login, and when the login began.
+// browser goes after the login, when the login began, and whether it is
+// silent — the login page's own attempt with prompt=none (docs/adr/0029 D6).
 type loginState struct {
 	State    string `json:"s"`
 	Nonce    string `json:"n"`
 	Verifier string `json:"v"`
 	ReturnTo string `json:"r"`
 	At       int64  `json:"t"`
+	Silent   bool   `json:"q,omitempty"`
 }
 
 // LoginOidc starts a login through the identity provider (docs/adr/0029 D1):
 // the browser goes to the issuer's authorization endpoint for the code flow
 // with PKCE, a state and a nonce, which the state cookie keeps for the
-// callback, sealed. Without a provider, or with a gate that admits nobody, it
-// goes back to the login page (docs/adr/0030 D8).
+// callback, sealed. A silent start asks the issuer with prompt=none and says
+// so in the cookie (D6). Without a provider, or with a gate that admits
+// nobody, it goes back to the login page (docs/adr/0030 D8).
 func (s *Server) LoginOidc(_ context.Context, req apigen.LoginOidcRequestObject) (apigen.LoginOidcResponseObject, error) {
 	h := s.h
 	returnTo := safeReturnTo(deref(req.Params.ReturnTo))
@@ -81,27 +89,28 @@ func (s *Server) LoginOidc(_ context.Context, req apigen.LoginOidcRequestObject)
 		return apigen.LoginOidc303Response{Headers: apigen.LoginOidc303ResponseHeaders{Location: loginPage(oidcUnavailable, returnTo)}}, nil
 	}
 	st := loginState{State: randomValue(), Nonce: randomValue(), Verifier: oauth2.GenerateVerifier(),
-		ReturnTo: returnTo, At: h.opts.Now().Unix()}
+		ReturnTo: returnTo, At: h.opts.Now().Unix(), Silent: deref(req.Params.Silent)}
 	raw, err := json.Marshal(st)
 	if err != nil {
 		return nil, err
 	}
 	cookie := stateCookie(base64.RawURLEncoding.EncodeToString(h.loginSealer.Seal(raw, []byte(oidcStateCookie))), loginStateAge)
 	return apigen.LoginOidc302Response{Headers: apigen.LoginOidc302ResponseHeaders{
-		Location:  h.opts.OIDC.Provider.AuthCodeURL(st.State, st.Nonce, st.Verifier),
+		Location:  h.opts.OIDC.Provider.AuthCodeURL(st.State, st.Nonce, st.Verifier, st.Silent),
 		SetCookie: &cookie,
 	}}, nil
 }
 
 // OidcCallback completes a login through the identity provider (docs/adr/0029
-// D1, D5, docs/adr/0030 D1, D2, docs/adr/0031 D5, docs/adr/0032 D5): the
+// D1, D5, D6, docs/adr/0030 D1, D2, docs/adr/0031 D5, docs/adr/0032 D5): the
 // state cookie must hold the state the issuer returns; the code is redeemed
 // with the verifier and the ID token verified; the gate, a deactivated person
 // and the init state may refuse; otherwise the person is found or made, their
 // memberships derived and the session made. Every outcome clears the state
 // cookie, and every failure sends the browser to the login page with the code
 // that says why — the reason is in the log, never on the page, and no log line
-// holds a code or a token.
+// holds a code or a token. A silent login the issuer answered with an error is
+// login_required rather than a failure: the person did not ask for it.
 func (s *Server) OidcCallback(ctx context.Context, req apigen.OidcCallbackRequestObject) (apigen.OidcCallbackResponseObject, error) {
 	h := s.h
 	c, now := clientFrom(ctx), h.opts.Now()
@@ -109,6 +118,11 @@ func (s *Server) OidcCallback(ctx context.Context, req apigen.OidcCallbackReques
 	// failure sends the browser back with the path the person wanted.
 	st, opened, fresh := h.openLoginState(c.OIDCState, now)
 	fail := func(code, reason string, err error) (apigen.OidcCallbackResponseObject, error) {
+		outcome := metrics.LoginFailure
+		if code == loginNotAllowed || code == loginNotInitialised {
+			outcome = metrics.LoginRefused
+		}
+		h.opts.Metrics.Login(metrics.LoginOIDC, outcome)
 		args := []any{"request_id", requestid.From(ctx), "code", code, "reason", reason}
 		if err != nil {
 			args = append(args, "error", err)
@@ -120,8 +134,8 @@ func (s *Server) OidcCallback(ctx context.Context, req apigen.OidcCallbackReques
 	if provider == nil {
 		return fail(oidcUnavailable, "no identity provider is configured", nil)
 	}
-	if reason := callbackRefusal(req.Params, st, opened && fresh); reason != "" {
-		return fail(loginFailed, reason, nil)
+	if code, reason := callbackRefusal(req.Params, st, opened, fresh); reason != "" {
+		return fail(code, reason, nil)
 	}
 	id, err := provider.Exchange(ctx, *req.Params.Code, st.Verifier, st.Nonce)
 	if err != nil {
@@ -147,24 +161,32 @@ func (s *Server) OidcCallback(ctx context.Context, req apigen.OidcCallbackReques
 	case store.OIDCNotInitialised:
 		return fail(loginNotInitialised, res.Reason, nil)
 	}
+	h.opts.Metrics.Login(metrics.LoginOIDC, metrics.LoginSuccess)
 	return redirect{location: st.ReturnTo, cookies: []string{sessionCookie(value, expires.Sub(now)), clearedStateCookie()}}, nil
 }
 
 // callbackRefusal says why the issuer's return cannot be a login before it is
 // asked anything — the state cookie, the issuer's error, the state, the code —
-// or "" when it can.
-func callbackRefusal(p apigen.OidcCallbackParams, st loginState, opened bool) string {
+// with the login page's code for it, or "" when it can. The issuer's error to
+// a silent login — login_required, interaction_required, consent_required,
+// account_selection_required or any other: the person did not ask for the
+// attempt — is login_required (docs/adr/0029 D6) whenever the cookie opens,
+// stale or not, since it is the server's own word that the login was silent;
+// every other refusal is oidc_failed.
+func callbackRefusal(p apigen.OidcCallbackParams, st loginState, opened, fresh bool) (code, reason string) {
 	switch {
-	case !opened:
-		return "the state cookie is missing, stale or does not open"
+	case opened && st.Silent && p.Error != nil:
+		return loginRequired, "the issuer answered a silent login with the error " + shorten(*p.Error, 64)
+	case !opened || !fresh:
+		return loginFailed, "the state cookie is missing, stale or does not open"
 	case p.Error != nil:
-		return "the issuer answered with the error " + shorten(*p.Error, 64)
+		return loginFailed, "the issuer answered with the error " + shorten(*p.Error, 64)
 	case p.State == nil || subtle.ConstantTimeCompare([]byte(*p.State), []byte(st.State)) != 1:
-		return "the state is not the one of the login the browser began"
+		return loginFailed, "the state is not the one of the login the browser began"
 	case p.Code == nil || *p.Code == "":
-		return "the issuer sent no code"
+		return loginFailed, "the issuer sent no code"
 	}
-	return ""
+	return "", ""
 }
 
 // oidcLogin is what the store needs of a verified login: the person as the

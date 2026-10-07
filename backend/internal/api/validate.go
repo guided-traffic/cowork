@@ -25,6 +25,8 @@ func init() {
 	// The Markdown export is text; the validator reads it as such
 	// (docs/adr/0044 D1).
 	openapi3filter.RegisterBodyDecoder("text/markdown", openapi3filter.PlainBodyDecoder)
+	// An export is an archive, bytes (docs/adr/0051 D4).
+	openapi3filter.RegisterBodyDecoder("application/gzip", openapi3filter.FileBodyDecoder)
 	// format: uuid is checked at the boundary, so a malformed id in a path
 	// names nothing and answers 404 (docs/adr/0047 D5). Any version: the
 	// ids are UUIDv7, which the validator's RFC 4122 pattern refuses.
@@ -32,16 +34,21 @@ func init() {
 		`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`))
 }
 
-// limitBody holds a JSON body to COWORK_MAX_JSON_BODY and an upload to
-// COWORK_ATTACHMENT_MAX_BYTES with its multipart overhead (docs/adr/0039 D2):
-// a declared length above it is refused before the body is read, and a body
-// that turns out longer fails while it is read.
-func (h *handler) limitBody(w http.ResponseWriter, r *http.Request) *problem.Error {
+// limitBody holds a JSON body to COWORK_MAX_JSON_BODY, an upload to
+// COWORK_ATTACHMENT_MAX_BYTES and an import's upload to
+// COWORK_MAX_IMPORT_BYTES, each with its multipart overhead (docs/adr/0039 D2,
+// docs/adr/0051 D7): a declared length above it is refused before the body is
+// read, and a body that turns out longer fails while it is read.
+func (h *handler) limitBody(w http.ResponseWriter, r *http.Request, operationID string) *problem.Error {
 	limit := h.opts.MaxJSONBody
 	if isMultipart(r) {
+		max := h.opts.AttachmentMaxBytes
+		if operationID == opCreateImport {
+			max = h.opts.MaxImportBytes
+		}
 		limit = 0
-		if h.opts.AttachmentMaxBytes > 0 {
-			limit = h.opts.AttachmentMaxBytes + multipartOverhead
+		if max > 0 {
+			limit = max + multipartOverhead
 		}
 	}
 	if r.Body == nil || r.Body == http.NoBody || limit <= 0 {
@@ -92,7 +99,9 @@ func requestInput(r *http.Request, route *routers.Route, pathParams map[string]s
 		Options: &openapi3filter.Options{
 			AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
 			MultiError:         true,
-			ExcludeRequestBody: isMultipart(r),
+			// A signed body is read by its handler, whole and unparsed, until
+			// its signature holds (docs/adr/0071 D3).
+			ExcludeRequestBody: isMultipart(r) || signed(route.Operation),
 			// The handlers apply the defaults; a default written into the
 			// request would look like a parameter the client sent.
 			SkipSettingDefaults: true,
@@ -185,10 +194,7 @@ func (h *handler) validationProblem(err error) *problem.Error {
 			if reqErr.Parameter.In == openapi3.ParameterInPath {
 				return problem.New(problem.NotFound, "")
 			}
-			fields = append(fields, problem.FieldError{
-				Pointer: reqErr.Parameter.In + ":" + reqErr.Parameter.Name,
-				Message: reasonOf(reqErr),
-			})
+			fields = append(fields, parameterError(reqErr))
 			continue
 		}
 		fields = append(fields, bodyErrors(reqErr)...)
@@ -196,6 +202,23 @@ func (h *handler) validationProblem(err error) *problem.Error {
 	return &problem.Error{Code: problem.ValidationFailed, Detail: "the request does not match the API document", Errors: fields}
 }
 
+// parameterError names a parameter at in:name, one entry for the parameter
+// (docs/adr/0047 D2), its failures read as a body's are: each the failure
+// alone. The JSON Schema 2020-12 validator a 3.1 document uses writes the
+// resource it compiles every schema under and the location in the value
+// before the failure; the parameter is the location the client knows, and
+// the failures of a repeated one's values share its message.
+func parameterError(reqErr *openapi3filter.RequestError) problem.FieldError {
+	failures := bodyErrors(reqErr)
+	messages := make([]string, 0, len(failures))
+	for _, f := range failures {
+		messages = append(messages, f.Message)
+	}
+	return problem.FieldError{Pointer: reqErr.Parameter.In + ":" + reqErr.Parameter.Name, Message: strings.Join(messages, "; ")}
+}
+
+// bodyErrors returns a request error's failures, each at its field in the
+// body.
 func bodyErrors(reqErr *openapi3filter.RequestError) []problem.FieldError {
 	var out []problem.FieldError
 	for _, e := range flatten(reqErr.Err) {
@@ -258,12 +281,10 @@ func locateReason(reason string) (string, string) {
 	return pointer, message
 }
 
+// reasonOf is the reason of a request error that carries no failure to walk:
+// a schema's failures are read by bodyErrors.
 func reasonOf(e *openapi3filter.RequestError) string {
 	if e.Err != nil {
-		var schemaErr *openapi3.SchemaError
-		if errors.As(e.Err, &schemaErr) {
-			return schemaErr.Reason
-		}
 		return e.Err.Error()
 	}
 	return e.Reason

@@ -87,7 +87,7 @@ func ticketView(t tenantScope, r store.TicketRow, now time.Time) apigen.Ticket {
 
 // horizonSetView is the horizon a person or an agent set on the ticket, null
 // where none is set (docs/adr/0010 D3); the columns keep the name urgency
-// override (docs/adr/0010 D1).
+// override (docs/adr/0010 D1). Its person is named as the reporter is.
 func horizonSetView(r store.TicketRow) nullable.Nullable[apigen.HorizonSet] {
 	if r.UrgencyOverride == nil || r.UrgencyOverrideAt == nil {
 		return nullableOf[apigen.HorizonSet](nil)
@@ -95,7 +95,7 @@ func horizonSetView(r store.TicketRow) nullable.Nullable[apigen.HorizonSet] {
 	set := apigen.HorizonSet{Value: apigen.Horizon(*r.UrgencyOverride), At: *r.UrgencyOverrideAt,
 		By: nullableOf[apigen.Person](nil), Reason: nullableOf(r.UrgencyOverrideReason)}
 	if r.UrgencyOverrideBy != nil {
-		p := apigen.Person{Id: *r.UrgencyOverrideBy, Username: nullableOf[string](nil)}
+		p := personView(*r.UrgencyOverrideBy, r.UrgencyOverrideByUsername, r.UrgencyOverrideByName)
 		set.By = nullableOf(&p)
 	}
 	return nullableOf(&set)
@@ -317,8 +317,8 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 			return err
 		}
 		key := domain.FullKey(t.Slug, p.Key, ins.Number)
-		after := map[string]any{fieldType: body.Type, "title": body.Title, "severity": body.Severity,
-			"security": body.Security, "effort": body.Effort, "urgency": f.horizon}
+		after := map[string]any{fieldType: body.Type, fieldTitle: body.Title, fieldSeverity: body.Severity,
+			fieldSecurity: body.Security, fieldEffort: body.Effort, "urgency": f.horizon}
 		if near != nil {
 			after[f.place.side()] = ticketKey(t, *near)
 		}
@@ -326,7 +326,7 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 			Notices: told(store.NoticeAssigned, ins.AssigneeID)})
 		if ins.Confidential {
 			w.Record(store.Event{EntityType: entityTicket, EntityID: id, TicketID: id, TicketKey: key,
-				Action: "confidential_set", Reason: "the security class is " + string(body.Security)})
+				Action: actionConfidentialSet, Reason: "the security class is " + string(body.Security)})
 		}
 		if created, err = reread(ctx, w, t, id); err != nil {
 			return err
@@ -909,8 +909,8 @@ func ticketFields(p writeq.UpdateTicketFieldsParams) map[string]any {
 		assignee = p.AssigneeID.String()
 	}
 	return map[string]any{
-		fieldType: string(p.Type), "title": p.Title, "severity": string(p.Severity), "security": string(p.Security),
-		"threat": threat, "effort": string(p.Effort), fieldParent: parent, fieldAssignee: assignee, fieldProgress: int(p.Progress),
+		fieldType: string(p.Type), "title": p.Title, fieldSeverity: string(p.Severity), "security": string(p.Security),
+		"threat": threat, fieldEffort: string(p.Effort), fieldParent: parent, fieldAssignee: assignee, fieldProgress: int(p.Progress),
 		fieldRefinement: int(p.ProgressRefinement), fieldReview: int(p.ProgressReview),
 	}
 }
@@ -942,7 +942,7 @@ func recordTicketChange(w *store.Writer, t tenantScope, tc ticketCtx, before, af
 		w.Record(e)
 	}
 	if ch.becameConfidential {
-		e := ev("confidential_set", nil, nil)
+		e := ev(actionConfidentialSet, nil, nil)
 		e.Reason = "the security class is " + string(ch.params.Security)
 		w.Record(e)
 	}
@@ -1130,7 +1130,7 @@ func (s *Server) SetConfidential(ctx context.Context, req apigen.SetConfidential
 		} else if err != nil {
 			return err
 		}
-		action := "confidential_set"
+		action := actionConfidentialSet
 		if !req.Body.Confidential {
 			action = "confidential_lifted"
 		}

@@ -19,11 +19,15 @@ info:
     creating a token, a tenant or a local account, resetting or changing a
     password, logging out, a turn of the chat and stopping one, choosing the
     chat's capabilities, a global administrator's list of every tenant, purging a
-    deleted ticket — the one irreversible act on a ticket —, and the
+    deleted ticket — the one irreversible act on a ticket —, making or rotating
+    the tenant's GitHub webhook secret, removing the orphaned objects a
+    consistency check found — gone for good as well —, and the
     administration acts that give access: adding a member, setting a grant,
     making or changing a group mapping, restricting or opening a project,
     putting a person on its access list. A request of a session that writes must come from the installation's
-    origin and carry `X-Requested-With: cowork` (docs/adr/0037). A request
+    origin and carry `X-Requested-With: cowork` (docs/adr/0037). GitHub's
+    webhook takes neither credential: its deliveries are signed with the
+    tenant's secret (docs/adr/0071). A request
     marked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:
     name/model/session` header — is bound by the agent rules
     (docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable
@@ -51,6 +55,8 @@ tags:
   - name: events
   - name: chat
   - name: dashboard
+  - name: integrations
+  - name: imports
 paths:
   /api/v1/version:
     $ref: './meta.yaml#/version'
@@ -142,6 +148,16 @@ paths:
     $ref: './repositories.yaml#/repositories'
   /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository}:
     $ref: './repositories.yaml#/repository'
+  /api/v1/tenants/{tenant}/projects/{project}/imports:
+    $ref: './imports.yaml#/imports'
+  /api/v1/tenants/{tenant}/projects/{project}/imports/{import}:
+    $ref: './imports.yaml#/import'
+  /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution:
+    $ref: './imports.yaml#/importExecution'
+  /api/v1/tenants/{tenant}/projects/{project}/export:
+    $ref: './imports.yaml#/projectExport'
+  /api/v1/tenants/{tenant}/export:
+    $ref: './imports.yaml#/tenantExport'
   /api/v1/tenants/{tenant}/events:
     $ref: './events.yaml#/events'
   /api/v1/tenants/{tenant}/chat:
@@ -150,6 +166,12 @@ paths:
     $ref: './chat.yaml#/turns'
   /api/v1/tenants/{tenant}/dashboard:
     $ref: './dashboard.yaml#/dashboard'
+  /api/v1/tenants/{tenant}/integrations/github:
+    $ref: './integrations.yaml#/github'
+  /api/v1/tenants/{tenant}/integrations/github/secret:
+    $ref: './integrations.yaml#/githubSecret'
+  /api/v1/tenants/{tenant}/integrations/github/webhook:
+    $ref: './integrations.yaml#/githubWebhook'
   /api/v1/tenants/{tenant}/tickets:
     $ref: './tenants.yaml#/tenantTickets'
   /api/v1/tenants/{tenant}/search:
@@ -218,6 +240,12 @@ paths:
     $ref: './time.yaml#/timeReport'
   /api/v1/tenants/{tenant}/attachment-usage:
     $ref: './attachments.yaml#/attachmentUsage'
+  /api/v1/tenants/{tenant}/attachment-consistency:
+    $ref: './attachments.yaml#/attachmentConsistency'
+  /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal:
+    $ref: './attachments.yaml#/orphanRemoval'
+  /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance:
+    $ref: './attachments.yaml#/danglingAcceptance'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments:
     $ref: './attachments.yaml#/attachments'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}:
@@ -228,6 +256,10 @@ paths:
     $ref: './tickets.yaml#/links'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}:
     $ref: './tickets.yaml#/link'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests:
+    $ref: './tickets.yaml#/pullRequests'
+  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests/{pull_request}:
+    $ref: './tickets.yaml#/pullRequest'
   /api/v1/tickets/{tenant}/{key}:
     $ref: './tickets.yaml#/resolve'
 components:
@@ -243,6 +275,14 @@ components:
       $ref: './components/schemas.yaml#/ChatUiEvent'
     ChatDoneEvent:
       $ref: './components/schemas.yaml#/ChatDoneEvent'
+    # The manifests inside an export archive (imports.yaml): no operation
+    # answers them as JSON either; the importer and cowork-mcp read them.
+    ExportManifest:
+      $ref: './components/schemas.yaml#/ExportManifest'
+    ExportLink:
+      $ref: './components/schemas.yaml#/ExportLink'
+    ExportAttachment:
+      $ref: './components/schemas.yaml#/ExportAttachment'
   securitySchemes:
     bearerToken:
       type: http

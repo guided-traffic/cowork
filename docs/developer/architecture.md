@@ -1,7 +1,8 @@
 # Architecture
 
 What runs where, what a request goes through, how the two logins make a session, and what happens
-between `cowork serve` and the first answered request. Read against the tree on 2026-10-05.
+between `cowork serve` and the first answered request. Read against the tree on 2026-10-05; the
+metrics listener and the instruments on 2026-10-06.
 Everything described here exists; what is not built is listed at the end.
 
 ## Two containers, one origin
@@ -20,7 +21,9 @@ Everything described here exists; what is not built is listed at the end.
                           │   /healthz, /readyz               │      (runtime role; owner role
                           │   /api/v1/…, /auth/…              │       for the migrations)
                           │   everything else → JSON 404      │──► S3-compatible storage
-                          └───────────────────────────────────┘      (optional; attachments)
+  Prometheus ────────────►│                           :8081   │      (optional; attachments)
+  (the pod, no Service)   │   /metrics, nothing else          │
+                          └───────────────────────────────────┘
                                             │
                                             ├────────────────────► OpenID Connect issuer
                                             │                        (optional; discovery at start,
@@ -42,7 +45,9 @@ login through the identity provider the browser goes to the issuer and comes bac
 groups refresh, and the issuer never calls the backend ([the two logins](#the-two-logins)). With
 chat providers configured, the backend calls the picked provider's model at every step of a turn of
 the chat in the UI — the browser never does — and the model's tool calls come back into the backend's own handler
-([a turn of the chat](#a-turn-of-the-chat)). The security architecture is
+([a turn of the chat](#a-turn-of-the-chat)). A second listener, `COWORK_METRICS_ADDR` (`:8081`),
+answers Prometheus at `/metrics` without authentication; it is on the pod and on no Service, and
+shares the API listener's lifecycle ([metrics.md](metrics.md)). The security architecture is
 [docs/security/](../security/README.md).
 
 A third program runs on a person's machine, not in the cluster: `cowork-mcp`, the MCP server
@@ -54,15 +59,20 @@ the person's token, like a script — no path to the database, nothing the API d
 
 [`backend/cmd/cowork/main.go`](../../backend/cmd/cowork/main.go), `runServe`:
 
-1. `config.Load(os.LookupEnv)` reads and validates every `COWORK_*` variable, then
-   `requireForServe` adds what only `serve` needs: `COWORK_SESSION_KEY`, and
-   `COWORK_DATABASE_OWNER_URL` while `COWORK_MIGRATE_ON_START` is true. `config.Load` reports
+1. `config.Load(os.LookupEnv)` reads and validates every `COWORK_*` variable — a database role's
+   components composed into its URL in [`config/database.go`](../../backend/internal/config/database.go),
+   so everything after reads `DatabaseURL` and `DatabaseOwnerURL` whichever way they came —, then
+   `requireForServe` adds what only `serve` needs: `COWORK_SESSION_KEY`, the owner role's
+   connection while `COWORK_MIGRATE_ON_START` is true, and with an issuer the client's id and
+   secret (`OIDC.RequireClient`). `config.Load` reports
    all of its problems together, `requireForServe`'s follow once `Load` passes, and the process
    exits 1 before anything else happens; a secret's value is never in the message.
 2. The logger is built from `COWORK_LOG_LEVEL` and `COWORK_LOG_FORMAT` (`log/slog`, JSON by
-   default); `SIGINT`/`SIGTERM` are bound to the context.
+   default); `SIGINT`/`SIGTERM` are bound to the context. `metricsOf` makes the registry of the
+   instruments, or none while `COWORK_METRICS_ADDR` is empty; it goes to the store, the hub, the API
+   and the server below ([metrics.md](metrics.md)).
 3. If `COWORK_MIGRATE_ON_START` is true (the default; the chart sets it false and migrates in an
-   init container): `store.Migrate` runs as the owner role, with the runtime role's name from
+   init container or a Job): `store.Migrate` runs as the owner role, with the runtime role's name from
    `COWORK_DATABASE_URL` for the grants ([data-access.md](data-access.md#two-database-roles)).
    A schema ahead of the binary is logged and left alone; a failure ends the process.
 4. `store.Open` opens the runtime role's pool on `COWORK_DATABASE_URL` and pings it; `/readyz`
@@ -95,36 +105,48 @@ the person's token, like a script — no path to the database, nothing the API d
    ([chat.md](chat.md)).
 10. `api.New` loads the embedded API document and builds the router and the generated server
     (it also makes the dummy hash the login verifies unknown usernames against, and derives from
-    the server key the keys of the cursors, the fingerprints, the two address hashes and the two
-    sealers of the identity provider); `httpserver.New` wraps it with the health endpoints.
-11. `go runJobs` runs the idempotency, session, login and notification expiries and the purge of the
-    tickets deleted thirty days ago at start and every hour
-    ([data-access.md](data-access.md#jobs)).
-12. `httpserver.ListenAndServe` binds `COWORK_LISTEN_ADDR`, with `hub.Close` registered for the
-    shutdown. On a signal every event stream ends at once, the server stops accepting and drains
-    in-flight requests for up to `COWORK_SHUTDOWN_TIMEOUT`, then the pool closes and the process
-    exits 0 — or 1, logging `server stopped with error`, when the drain outlasts the timeout.
+    the server key the keys of the cursors, the fingerprints, the two address hashes, the two
+    sealers of the identity provider and the sealer of the tenants' GitHub webhook secrets);
+    `httpserver.New` wraps it with the health endpoints.
+11. `go runJobs` runs the idempotency, session, login, notification, GitHub delivery and import expiries and
+    the purge of the tickets deleted thirty days ago at start and every hour, and asks as often whether the daily
+    consistency check of the attachments is due ([data-access.md](data-access.md#jobs),
+    [storage.md](storage.md#the-consistency-check)).
+12. `serve` binds `COWORK_LISTEN_ADDR` and, unless it is off, `COWORK_METRICS_ADDR` — both before
+    either serves, so a taken port refuses the start — and `httpserver.ServeAll` serves the two with
+    one lifecycle, `hub.Close` registered for the API listener's shutdown. On a signal every event
+    stream ends at once, both listeners stop accepting and drain in-flight requests for up to
+    `COWORK_SHUTDOWN_TIMEOUT`, then the pool closes and the process exits 0 — or 1, logging
+    `server stopped with error`, when a drain outlasts the timeout or a listener fails, which stops
+    the other.
 
-`cowork migrate` is the configuration (with `COWORK_DATABASE_OWNER_URL` required instead of
-`requireForServe`), the logger and step 3 alone; it is what the chart's `migrate` init container
-runs. It discovers no issuer: the init container never reaches the identity provider.
+`cowork migrate` is the configuration (with the owner role's connection required instead of
+`requireForServe`), the logger and step 3 — and, with `COWORK_MIGRATE_BOOTSTRAP=true`, step 7's
+bootstrap after it, on a runtime-role pool of its own that `bootstrapAfterMigration` opens and
+closes ([ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)
+D4). The chart's `migrate` init container runs it without the switch, the migration Job of
+`migrations.mode: job` with it. It discovers no issuer: neither ever reaches the identity provider,
+and the Job reads the issuer and the administrator group without the client secret.
 
 ## Backend request path
 
 [`backend/internal/httpserver/server.go`](../../backend/internal/httpserver/server.go), `New`:
 
 ```
-request ─► withRequestID ─► requestLog ─► recoverer ─► http.ServeMux
-                                                         ├─ "GET /healthz"  → {"status":"ok"}
-                                                         ├─ "GET /readyz"   → Ready(ctx) == nil ? {"status":"ready"} : 503 not_ready
-                                                         ├─ "/healthz", "/readyz" (other methods) → 405, Allow: GET, HEAD
-                                                         ├─ "/api/", "/auth/" → the API handler (internal/api)
-                                                         └─ "/"             → 404 not_found
+request ─► withRequestID ─► instrument ─► requestLog ─► recoverer ─► http.ServeMux
+                                                                      ├─ "GET /healthz"  → {"status":"ok"}
+                                                                      ├─ "GET /readyz"   → Ready(ctx) == nil ? {"status":"ready"} : 503 not_ready
+                                                                      ├─ "/healthz", "/readyz" (other methods) → 405, Allow: GET, HEAD
+                                                                      ├─ "/api/", "/auth/" → the API handler (internal/api)
+                                                                      └─ "/"             → 404 not_found
 ```
 
 - **The request id** is a UUIDv7 of the backend's making — an inbound `X-Request-Id` is not
   trusted — answered in `X-Request-Id`, and carried as the `request_id` of a problem body, of the
   log line and of the request's audit rows.
+- **The instruments** count the request in flight while it runs and then record it by its route —
+  the pattern the API document or the mux names, `unmatched` when none does —, its method, its
+  status and its duration ([metrics.md](metrics.md)); without a registry the step is left out.
 - **The request log** writes one line per request: method, path, status, duration, request id;
   never a body, a header or a query. Its status recorder passes `Flush` through, so the event
   stream is not buffered.
@@ -143,10 +165,15 @@ route in the document ─► authenticate ─► session rules ─► tenant bou
                           (token or         agent_forbidden /              │                                       └─► runChatTurn: serveChat
                            session)         password_change_required       │                                           (the turn's own limits; a stream)
                                                                            └─► streamEvents: validate ─► serveEvents (no timeout, no limit)
+
+receiveGitHubWebhook (public, x-cowork-signed): route ─► webhookTenant (the tenant and its secret; 404) ─► timeout ─► body limit (413)
+                                                ─► validate the headers, not the body ─► serveGitHubWebhook: signature (401) ─► 400 / 415
+                                                ─► the delivery kept a day (200 again) ─► 202
 ```
 
-Each step, and what it answers, is [api.md](api.md#the-pipeline). Every error is an RFC 9457
-problem details body written by `problem.Write` ([ADR 0047]).
+Each step, and what it answers, is [api.md](api.md#the-pipeline) — GitHub's webhook, which takes
+no person's credential and meets no boundary, is [api.md](api.md#githubs-webhook). Every error is an
+RFC 9457 problem details body written by `problem.Write` ([ADR 0047]).
 
 **Authentication may call the identity provider.** For a session of the identity provider whose
 groups are older than `COWORK_OIDC_GROUPS_REFRESH`, `authenticateSession` runs the groups refresh
@@ -206,6 +233,7 @@ local:   POST /auth/local ─► LoginLocal: origin check, address throttle, one
 
 identity provider:
   GET /auth/oidc/login ─► LoginOidc: state, nonce, PKCE verifier sealed into __Host-cowork-oidc ─► 302 to the issuer
+       (silent=true, the login page's own attempt: prompt=none, and the issuer's error ─► /login?error=login_required)
        … the browser at the issuer …
   GET /auth/callback?code&state ─► OidcCallback: open the cookie (≤ 10 min), compare the state
        ─► oidc.Provider.Exchange: the code with the verifier and the client secret; the ID token verified,
@@ -242,7 +270,8 @@ authenticateSession ─► LookupSession ─► sessionLive ─► checkProvider
             memberships derived while admitted; judged: the session row only; outside the gate every session of
             the person deleted; refused: this session deleted; unreachable: retry in a minute
    ─► ended: 401 like any ended session ─► otherwise LookupSession again (the administrator flag may have changed)
-   ─► TouchSession ─► the principal
+   ─► the person's activity (movesIdleClock: a write that passes the CSRF check, or a read with
+      X-Cowork-Activity: input)? ─► TouchSession ─► the principal
 ```
 
 An event stream checks the same at its heartbeat (`streamStillAdmitted`), without touching the idle
@@ -270,6 +299,12 @@ the frontend serves the UI and nothing else ([ADR 0001] D3).
 | `/favicon.ico`, `/favicon.svg`, `/apple-touch-icon.png` | serves the file with `Cache-Control: no-cache`: the icons come from `public/` and keep their names across builds; the shell's `Content-Security-Policy` |
 | `*.js`, `*.css`, fonts, images | serves the file with `Cache-Control: public, max-age=31536000, immutable`; the bundle names are hashed; the shell's `Content-Security-Policy` |
 | everything else | `try_files $uri /index.html` with `Cache-Control: no-store`, so the Angular router resolves deep links and a cached shell never pins old bundle hashes; the shell's `Content-Security-Policy` ([chat.md](chat.md#the-content-security-policy)) |
+
+A second server listens on `127.0.0.1:8082` with nginx's `stub_status` at `/stub_status` and a `404`
+for every other path, without an access log: the counts the exporter sidecar of
+`frontend.metrics.exporter.enabled` reads, on the pod's loopback address, which nothing outside the
+pod reaches ([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
+D7; [docs/operations/metrics.md](../operations/metrics.md#nginxs-numbers)).
 
 The container runs as user 101 with a read-only root filesystem; it writes only under `/tmp`
 (pid, temp files), which the chart mounts as an `emptyDir` made group-writable through
@@ -307,10 +342,11 @@ D2) — and, when LM Studio answers on `localhost:1234` with the model `COWORK_D
 The reactivation of a person, the deactivation of a person of the identity provider, and the list
 of one's own sessions; a global administrator's reading of the installation-level audit rows and
 the deletion of a tenant ([ADR 0034] D2); the
-revocation of a refresh token at the issuer when a session ends; the saved filters of the
-tenant board; the deletion of a project; import;
-metrics. The order in which they come is
-[docs/planning/project-plan.md](../planning/project-plan.md); each gets its section here, or a
+revocation of a refresh token at the issuer when a session ends; the deletion of a project; the age
+of the last export among the metrics of
+[ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4 ([metrics.md](metrics.md#the-consistency-family)). The work lists in
+[docs/tickets/](../tickets/README.md) say in which order they come; each gets its section here, or a
 page of its own, when it exists.
 
 [ADR 0001]: ../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md

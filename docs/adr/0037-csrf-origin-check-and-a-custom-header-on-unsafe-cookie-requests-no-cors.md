@@ -7,7 +7,11 @@ Accepted, amended 2026-10-03 (D1, D5, D6 made concrete by the first implementati
 by the owner's decision on the routing (Context: the one origin is the Ingress's, which routes
 `/api/` and `/auth/` to the backend,
 [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
-D3; nothing of the decision changes). Date:
+D3; nothing of the decision changes), and on 2026-10-06 for GitHub's webhook of
+[ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+(D5: a third route outside D1, a public write whose credential is a signature over its body, which
+carries no origin check; made concrete by the implementer and built the same day, open to the
+owner's objection). Date:
 2026-10-01. Decided by the owner as the answer to the catalog question "CSRF
 for the cookie session?": origin check plus custom header, over a synchroniser token, over
 `SameSite=Lax` alone, and over `SameSite=Strict`. The rules of D4–D6 were put to the owner
@@ -78,6 +82,15 @@ as D5 says, and so is its start, `GET /auth/oidc/login`: both are `GET`s without
 outside D1; the start decides nothing a forged link could use, and the callback makes a session only
 when the returned `state` is the one sealed — with the nonce and the PKCE verifier — in the
 browser's own `__Host-cowork-oidc` cookie, which another site can neither read nor set.)*
+*(Amended 2026-10-06, made concrete by the implementer for
+[ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+D2, D3:)* a third route is outside D1 by nature: GitHub's webhook,
+`POST /api/v1/tenants/{tenant}/integrations/github/webhook`, a public write that carries no
+cookie — one sent is ignored — and whose credential is the HMAC of its body under the tenant's
+secret, which no other site can compute. GitHub sends no `Origin`, so it carries no origin check
+either; the API document marks it `x-cowork-signed: github` instead, and the unit test over the
+document requires every public write to carry one of the two marks, the signed one on that route
+alone ([`document_test.go`](../../backend/api/document_test.go)).
 
 **D6 — `COWORK_BASE_URL` is required whenever a cookie login exists** (an issuer or a local
 account configured), and it must be the origin the browser sees — behind the Ingress, the

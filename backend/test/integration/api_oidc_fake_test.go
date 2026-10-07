@@ -265,6 +265,83 @@ func TestCallbackFailures(t *testing.T) {
 	assert.Equal(t, failed, b.get("/auth/callback?"+query(back).Encode(), withState(state)).Header.Get("Location"), "a code used twice")
 }
 
+// docs/adr/0029 D6: the login page's own attempt after a session ended. The
+// silent start asks the issuer with prompt=none, the button's start does not.
+// An issuer that still holds the person's session answers with a code, and the
+// login completes like any — the memberships derived, the session made, back
+// on the path the person wanted. One that holds none answers login_required,
+// and the browser goes back to the login page with login_required and that
+// path, no session made — also when the answer came later than a login may
+// take, since the server's own sealed cookie says the attempt was silent. The
+// same error to a login the person started is oidc_failed.
+func TestASilentSignIn(t *testing.T) {
+	w := newFakeWorld(t)
+	prompts := func() []string {
+		w.is.Lock()
+		defer w.is.Unlock()
+		return append([]string{}, w.is.Prompts...)
+	}
+	// begin starts a login in the browser and walks the issuer: the state
+	// cookie, and the query the issuer sent the browser back with.
+	begin := func(b *browser, path string) (string, url.Values) {
+		t.Helper()
+		res := b.get(path)
+		require.Equal(t, http.StatusFound, res.StatusCode)
+		state, ok := cookieValue(res, stateCookieName)
+		require.True(t, ok, "the start sets the state cookie")
+		back, err := url.Parse(walkIssuer(t, res.Header.Get("Location"), ""))
+		require.NoError(t, err)
+		return state, back.Query()
+	}
+	board := url.QueryEscape("/t/" + w.slug + "/board")
+
+	b := w.s.browser(t)
+	state, back := begin(b, "/auth/oidc/login?silent=true&return_to="+board)
+	assert.Equal(t, []string{"none"}, prompts(), "the silent start asks the issuer for no page")
+	res := b.get("/auth/callback?"+back.Encode(), withState(state))
+	require.Equal(t, http.StatusSeeOther, res.StatusCode)
+	assert.Equal(t, "/t/"+w.slug+"/board", res.Header.Get("Location"), "the issuer held the session: a code, and signed in")
+	value, ok := cookieValue(res, auth.SessionCookie)
+	require.True(t, ok)
+	require.NotEmpty(t, value)
+	b.Cookie = value
+	me := decode[apigen.Me](t, b.get("/api/v1/me"))
+	assert.Equal(t, w.person(t), me.Id)
+	assert.Equal(t, apigen.RoleMember, roleIn(me, w.slug), "the memberships derived as at any login")
+	hash := auth.HashSession(value)
+	assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM sessions WHERE token_hash = $1 AND method = 'oidc'
+		AND refresh_token_sealed IS NOT NULL`, hash[:]))
+
+	begin(w.s.browser(t), "/auth/oidc/login")
+	assert.Equal(t, []string{"none", ""}, prompts(), "the button's start asks for nothing but a login")
+
+	w.turn(func(is *fakeissuer.Issuer) { is.NoSession = true })
+	c := w.s.browser(t)
+	state, back = begin(c, "/auth/oidc/login?silent=true&return_to="+board)
+	assert.Equal(t, "login_required", back.Get("error"), "the issuer holds no session")
+	res = c.get("/auth/callback?"+back.Encode(), withState(state))
+	require.Equal(t, http.StatusSeeOther, res.StatusCode)
+	assert.Equal(t, "/login?error=login_required&return="+url.QueryEscape("/t/"+w.slug+"/board"), res.Header.Get("Location"))
+	_, set := cookieValue(res, auth.SessionCookie)
+	assert.False(t, set, "no session")
+	cleared, ok := cookieValue(res, stateCookieName)
+	assert.True(t, ok && cleared == "", "the state cookie is cleared")
+	assertProblem(t, c.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
+
+	state, back = begin(c, "/auth/oidc/login?silent=true&return_to="+board)
+	w.clock.Advance(11 * time.Minute)
+	assert.Equal(t, "/login?error=login_required&return="+url.QueryEscape("/t/"+w.slug+"/board"),
+		c.get("/auth/callback?"+back.Encode(), withState(state)).Header.Get("Location"), "an answer later than a login may take")
+
+	start := c.get("/auth/oidc/login?return_to=" + board)
+	state, _ = cookieValue(start, stateCookieName)
+	to, err := url.Parse(start.Header.Get("Location"))
+	require.NoError(t, err)
+	assert.Equal(t, "/login?error=oidc_failed&return="+url.QueryEscape("/t/"+w.slug+"/board"),
+		c.get("/auth/callback?error=login_required&state="+url.QueryEscape(to.Query().Get("state")), withState(state)).Header.Get("Location"),
+		"the issuer's error to a login the person started")
+}
+
 // docs/adr/0024 D5: a deactivated person is refused; the login of an address
 // off the site returns to "/".
 func TestADeactivatedPersonIsRefused(t *testing.T) {

@@ -1,0 +1,120 @@
+# AN EXAMPLE TO COPY AND ADAPT, NOT A SUPPORTED DEPLOYMENT (docs/adr/0058 D1, D2).
+# Written against CloudNativePG 1.30.1 (its Cluster API, postgresql.cnpg.io/v1)
+# and that release's default image, PostgreSQL 18.6. `make examples-lint` checks
+# this file against the Cluster schema of CloudNativePG 1.30.1 and proves no more
+# than that it parses. Applied on 2026-10-07 to a kind cluster with CloudNativePG
+# 1.30.1, with only the password changed, for the upgrade of cowork from 0.8.0 to
+# 0.9.0 in both migration modes: the roles, the extensions and CONNECT were as
+# described below.
+# What cowork needs of a database is docs/operations/installation.md, "The
+# database and its two roles"; cowork's start refuses a runtime role that could
+# bypass row-level security, whatever made it.
+#
+# What it makes, in the namespace the chart is installed in:
+#   - the database cowork, owned by the owner role cowork_owner, the role the
+#     migrations run as (docs/adr/0021 D2). CloudNativePG generates its password
+#     into the Secret cowork-db-app, with the keys username, password, host,
+#     port, dbname and uri among others;
+#   - the runtime role cowork_app the server connects as: LOGIN, no superuser,
+#     no BYPASSRLS, no CREATEDB, no CREATEROLE, a member of no role, owning
+#     nothing; its password comes from the Secret cowork-db-runtime below and
+#     follows it when the Secret changes: the Secret carries the label
+#     cnpg.io/reload, without which CloudNativePG applies a changed password
+#     only at a later reconciliation and the old one stays valid meanwhile
+#     (measured on 2026-10-07: two minutes after a change the old password still
+#     opened a connection; with the label the change reached the database in
+#     two seconds);
+#   - the extensions unaccent, pg_trgm and btree_gin, created by the superuser,
+#     so the migration that needs them finds them;
+#   - CONNECT on the database for the two roles only: every role that can
+#     connect to it can LISTEN to the channel of cowork's event stream (H-4 of
+#     docs/security/tenancy.md). A Pooler added later connects as a role of its
+#     own, which then needs CONNECT as well.
+#
+# The chart's values for it: every credential a reference, nothing copied
+# (docs/adr/0058 D3, D4). The location is read from the ConfigMap below, each
+# role's user and password from its own Secret; the keys not named here keep
+# their defaults (host, port, dbname, username, password).
+#
+#   database:
+#     existingSecret: cowork-db-runtime
+#     existingConfigMap: cowork-db-location
+#     keys:
+#       url: ""                 # empty: the components, not a URL
+#       sslmode: sslmode
+#     owner:
+#       existingSecret: cowork-db-app
+#       existingConfigMap: cowork-db-location
+#       keys:
+#         url: ""
+#         sslmode: sslmode
+#
+# The owner could instead read the URL CloudNativePG writes, with
+# database.owner.keys.url set to uri; that URL names no sslmode, so the driver
+# takes its default, prefer. CloudNativePG serves TLS with a certificate of an
+# authority of its own (the Secret cowork-db-ca); the chart mounts no authority
+# for the database, so sslmode require is the strongest mode it can use here:
+# encrypted, the server not verified.
+#
+# Every name, size and password below is an example.
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cowork-db-runtime
+  labels:
+    cnpg.io/reload: "true"                # a changed password reaches the role at once
+type: kubernetes.io/basic-auth
+stringData:
+  username: cowork_app
+  password: CHANGE-ME                     # e.g. openssl rand -base64 32
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cowork-db-location
+data:
+  host: cowork-db-rw                      # the Service CloudNativePG makes for the primary
+  port: "5432"
+  dbname: cowork
+  sslmode: require
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: cowork-db
+spec:
+  instances: 3
+  # cowork needs PostgreSQL 18 or newer: its first migration calls uuidv7().
+  imageName: ghcr.io/cloudnative-pg/postgresql:18.6-system-trixie
+  storage:
+    size: 10Gi
+  bootstrap:
+    initdb:
+      database: cowork
+      owner: cowork_owner
+      # Runs as the superuser in the database postgres, before the queries of
+      # the application database below, so the GRANT there finds the role;
+      # managed.roles then gives it its password and keeps its attributes.
+      postInitSQL:
+        - CREATE ROLE cowork_app LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE
+      # Runs as the superuser in the database cowork.
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS unaccent
+        - CREATE EXTENSION IF NOT EXISTS pg_trgm
+        - CREATE EXTENSION IF NOT EXISTS btree_gin
+        - REVOKE CONNECT ON DATABASE cowork FROM PUBLIC
+        - GRANT CONNECT ON DATABASE cowork TO cowork_owner, cowork_app
+  managed:
+    roles:
+      - name: cowork_app
+        ensure: present
+        login: true
+        superuser: false
+        bypassrls: false
+        createdb: false
+        createrole: false
+        replication: false
+        inRoles: []
+        passwordSecret:
+          name: cowork-db-runtime

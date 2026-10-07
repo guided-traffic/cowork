@@ -18,6 +18,7 @@ import { Me, Membership, Role, TenantSummary } from '../api/models';
 import { changesMemberships, EventStreamService } from './event-stream.service';
 import { RELOAD } from './hard-navigation';
 import { keepShown, refresh } from './refresh';
+import { SignInMemory } from './sign-in-memory';
 
 /** The part of a `BroadcastChannel` the session uses. */
 export interface SessionChannel {
@@ -74,7 +75,9 @@ function otherSession(data: unknown, person: string): boolean {
  * session it has once it knows, and a sign-out says so: a tab that has shown another person loads
  * again (`RELOAD`), for the reason a sign-in and a sign-out replace their own document. The tab a
  * sign-in ends in says it, whichever way the person came — the identity provider's way back runs
- * no code of the login page.
+ * no code of the login page. For the same reason it is here that a tab, having a session again, may
+ * let its login page sign in by itself once more when that session ends (`SignInMemory`,
+ * docs/adr/0029 D6).
  */
 @Injectable({ providedIn: 'root' })
 export class SessionService {
@@ -82,6 +85,7 @@ export class SessionService {
   private readonly injector = inject(Injector);
   private readonly channel = inject(SESSION_CHANNEL);
   private readonly reload = inject(RELOAD);
+  private readonly memory = inject(SignInMemory);
   /** The person this document has shown, whose state its services may hold. */
   private held: string | undefined;
 
@@ -194,6 +198,7 @@ export class SessionService {
       if (person !== undefined) {
         this.held = person;
         this.channel?.postMessage({ person });
+        this.memory.clearTried();
       }
     });
     this.channel?.addEventListener('message', (event) => {

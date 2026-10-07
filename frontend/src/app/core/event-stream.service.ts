@@ -2,13 +2,18 @@ import { DOCUMENT } from '@angular/common';
 import { DestroyRef, inject, Injectable, InjectionToken, signal } from '@angular/core';
 import { Observable, Subject } from 'rxjs';
 
-/** The events of docs/adr/0054 D2 that name a ticket. */
+/**
+ * The events of docs/adr/0054 D2 that name a ticket; `pull_request.changed` is a pull request or a
+ * commit GitHub's webhook linked to it, merged, closed or reopened, or a person removed
+ * (docs/adr/0071 D6) — the ticket's own fields stay as they were.
+ */
 export const ticketEventNames = [
   'ticket.changed',
   'comment.changed',
   'question.changed',
   'link.changed',
   'interest.changed',
+  'pull_request.changed',
 ] as const;
 export type TicketEventName = (typeof ticketEventNames)[number];
 
@@ -46,9 +51,11 @@ export interface MembershipEvent {
 }
 
 /**
- * `project.changed` (docs/adr/0054 D2): a project's rank was set as a whole — sorted by the score
- * (docs/adr/0014 D3). The payload carries the project's key, `<tenant>/<PROJECT>`, and the act's
- * kind, and no version: the act is the project's, not a ticket's.
+ * `project.changed` (docs/adr/0054 D2): an act on a project's tickets as a whole — its rank sorted
+ * by the score (docs/adr/0014 D3), the kind `ranked`, or an import executed into it
+ * (docs/adr/0051 D3), the kind `imported`, whose tickets, questions and links publish no event of
+ * their own. The payload carries the project's key, `<tenant>/<PROJECT>`, and the act's kind, and
+ * no version: the act is the project's, not a ticket's.
  */
 export interface ProjectEvent {
   name: 'project.changed';
@@ -130,6 +137,15 @@ const existenceKinds: ReadonlySet<string> = new Set(['deleted', 'restored', 'pur
  */
 export function changesExistence(event: StreamEvent): boolean {
   return event.name === 'ticket.changed' && existenceKinds.has(event.kind);
+}
+
+/**
+ * Whether an event is an import's execution (docs/adr/0051 D3): the tickets, the questions and the
+ * links it creates come without an event of their own, so whatever counts or lists them — beyond
+ * the ticket lists, which load again on every `project.changed` — loads again on this one.
+ */
+export function isImport(event: StreamEvent): boolean {
+  return event.name === 'project.changed' && event.kind === 'imported';
 }
 
 /**

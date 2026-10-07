@@ -17,6 +17,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/config"
+	"github.com/guided-traffic/cowork/backend/internal/metrics"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/requestid"
 	"github.com/guided-traffic/cowork/backend/internal/store"
@@ -171,13 +172,30 @@ func (s *Server) LoginLocal(ctx context.Context, req apigen.LoginLocalRequestObj
 	if err != nil {
 		return nil, err
 	}
-	switch outcome {
-	case store.LoginSucceeded:
-		return s.startSession(ctx, acc, c, now)
-	case store.LoginRefused:
+	if outcome == store.LoginSucceeded {
+		res, err := s.startSession(ctx, acc, c, now)
+		if err == nil {
+			s.h.opts.Metrics.Login(metrics.LoginLocal, metrics.LoginSuccess)
+		}
+		return res, err
+	}
+	s.h.opts.Metrics.Login(metrics.LoginLocal, localOutcome(outcome))
+	if outcome == store.LoginRefused {
 		return nil, problem.New(problem.NotInitialised, "this installation is not initialised; contact an administrator")
 	}
 	return nil, invalidCredentials()
+}
+
+// localOutcome is what the metrics call a local login that made no session
+// (docs/adr/0060 D4).
+func localOutcome(o store.LoginOutcome) metrics.LoginOutcome {
+	switch o {
+	case store.LoginLocked:
+		return metrics.LoginLocked
+	case store.LoginRefused:
+		return metrics.LoginRefused
+	}
+	return metrics.LoginFailure
 }
 
 // throttled answers 429 once the address has made as many attempts within the
@@ -195,6 +213,7 @@ func (s *Server) throttled(ctx context.Context, address []byte, now time.Time) e
 	if n < int64(limit) {
 		return nil
 	}
+	s.h.opts.Metrics.Login(metrics.LoginLocal, metrics.LoginThrottled)
 	return &problem.Error{Code: problem.TooManyAttempts, Detail: "too many login attempts from this address; wait a minute",
 		Headers: map[string]string{"Retry-After": strconv.Itoa(int(store.AddressWindow.Seconds()))}}
 }

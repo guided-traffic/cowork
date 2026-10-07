@@ -1,5 +1,6 @@
 import {
   HttpClient,
+  HttpContext,
   HttpErrorResponse,
   HttpInterceptorFn,
   provideHttpClient,
@@ -13,7 +14,13 @@ import { catchError, firstValueFrom, throwError } from 'rxjs';
 import { Api } from '../api/api';
 import { provideApiConfiguration } from '../api/api-configuration';
 import { getMe } from '../api/fn/me/get-me';
-import { requestedWith, signInOnUnauthorised } from './http';
+import {
+  activityHeader,
+  PERSON_ACTIVITY,
+  personActivity,
+  requestedWith,
+  signInOnUnauthorised,
+} from './http';
 
 describe('requestedWith', () => {
   let client: HttpClient;
@@ -79,6 +86,80 @@ describe('requestedWith', () => {
 
     const request = http.expectOne('/api/v1/me');
     expect(request.request.headers.get('X-Requested-With')).toBe('cowork');
+    request.flush({ id: 'p1', display_name: 'Hans', memberships: [] });
+
+    expect((await answer).display_name).toBe('Hans');
+  });
+});
+
+describe('personActivity (docs/adr/0031 D3)', () => {
+  let client: HttpClient;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(withInterceptors([requestedWith, personActivity])),
+        provideHttpClientTesting(),
+        provideApiConfiguration(''),
+      ],
+    });
+    client = TestBed.inject(HttpClient);
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => {
+    try {
+      http.verify();
+    } finally {
+      TestBed.resetTestingModule();
+    }
+  });
+
+  const marked = () => new HttpContext().set(PERSON_ACTIVITY, true);
+
+  it('names the header and the value the backend reads', () => {
+    expect(activityHeader).toEqual({ 'X-Cowork-Activity': 'input' });
+  });
+
+  it('sets X-Cowork-Activity: input on a request marked as the person activity', () => {
+    client.get('/api/v1/me', { context: marked() }).subscribe();
+
+    const request = http.expectOne('/api/v1/me');
+
+    expect(request.request.headers.get('X-Cowork-Activity')).toBe('input');
+    expect(request.request.headers.get('X-Requested-With')).toBe('cowork');
+    request.flush(null);
+  });
+
+  it.each(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])(
+    'sets nothing on a %s request that is not marked: no read but the keep-alive moves the idle clock',
+    (method) => {
+      client.request(method, '/api/v1/anything').subscribe();
+
+      const request = http.expectOne('/api/v1/anything');
+
+      expect(request.request.headers.has('X-Cowork-Activity')).toBe(false);
+      request.flush(null);
+    },
+  );
+
+  it('sets nothing on a request whose mark is false', () => {
+    client
+      .get('/api/v1/me', { context: new HttpContext().set(PERSON_ACTIVITY, false) })
+      .subscribe();
+
+    const request = http.expectOne('/api/v1/me');
+
+    expect(request.request.headers.has('X-Cowork-Activity')).toBe(false);
+    request.flush(null);
+  });
+
+  it('sets it on a request of the generated client that carries the mark', async () => {
+    const answer = TestBed.inject(Api).invoke(getMe, undefined, marked());
+
+    const request = http.expectOne('/api/v1/me');
+    expect(request.request.headers.get('X-Cowork-Activity')).toBe('input');
     request.flush({ id: 'p1', display_name: 'Hans', memberships: [] });
 
     expect((await answer).display_name).toBe('Hans');

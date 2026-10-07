@@ -10,6 +10,7 @@ import { updateQuestion } from '../api/fn/questions/update-question';
 import { withdrawQuestion } from '../api/fn/questions/withdraw-question';
 import { linkTickets } from '../api/fn/tickets/link-tickets';
 import { removeInterest } from '../api/fn/tickets/remove-interest';
+import { removeTicketPullRequest } from '../api/fn/tickets/remove-ticket-pull-request';
 import { setInterest } from '../api/fn/tickets/set-interest';
 import { unlinkTickets } from '../api/fn/tickets/unlink-tickets';
 import {
@@ -121,6 +122,14 @@ export class Conversation {
   unlink(source: string, type: LinkType, target: string): Promise<unknown> {
     const short = target.slice(target.indexOf('/') + 1);
     return this.api.invoke(unlinkTickets, { ...routeOf(source), type, other: short });
+  }
+
+  /**
+   * Removes a wrong link of a pull request or a commit GitHub's webhook made (docs/adr/0071): like
+   * any link, and for good — a later delivery that names the ticket does not bring it back.
+   */
+  removePullRequest(key: string, id: string): Promise<unknown> {
+    return this.api.invoke(removeTicketPullRequest, { ...routeOf(key), pull_request: id });
   }
 
   setInterest(key: string, weight: InterestWeight, note: string): Promise<unknown> {

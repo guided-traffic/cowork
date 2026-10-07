@@ -21,12 +21,21 @@ the mechanics are [api.md](api.md)).
    keeps the default — added to the test's `sessionOnly` set and to
    [ADR 0035](../adr/0035-personal-access-tokens.md) D5; or `security: []` for what a client
    reads or does before it authenticates, which as a write also carries `x-cowork-origin-check:
-   true`. Only the identity provider's callback takes query parameters it does not declare
+   true` — or, for a write whose credential is a signature over its body that its handler
+   verifies, `x-cowork-signed` instead, which the test holds to GitHub's webhook alone
+   ([api.md](api.md#githubs-webhook)). Only the identity provider's callback takes query parameters it does not declare
    (`x-cowork-open-query`). A creating `POST` takes the `IdempotencyKey` parameter, an overwriting
    write `IfMatch`, a list `Cursor` and `Limit`.
-2. **`make generate`.** The build now fails until `Server` implements the new method of
+2. **The examples** ([api.md](api.md#examples)). The request body's on the operation; each answer
+   names a schema that carries an `example` — a new schema gets one, a new list an anchor to its
+   entity's — or, where the schema's example cannot stand for what the operation answers, carries
+   its own; the errors have theirs in the shared `Problem` response already. Bytes need none, and a
+   multipart body names its parts in its description instead. `TestEveryBodyHasAnExample` and
+   `TestEveryExampleValidates` in [`backend/api/examples_test.go`](../../backend/api/examples_test.go)
+   name each body without an example and each example that breaks its schema.
+3. **`make generate`.** The build now fails until `Server` implements the new method of
    `apigen.StrictServerInterface`.
-3. **The handler**, a method of `Server` in the family's file under
+4. **The handler**, a method of `Server` in the family's file under
    [`backend/internal/api/`](../../backend/internal/api/): `tenantFrom(ctx)`; `auth.Authorize`
    with a `Need`; reads in `s.db.InTenant` through `visibleProject` / `visibleTicket`; writes in
    `s.db.Mutate`, every act recorded with `w.Record`; `keyed` and `w.Respond(stored(…))` for a
@@ -42,15 +51,15 @@ the mechanics are [api.md](api.md)).
    D2 names whom it tells in `Event.Notices` — a reason with the persons it names, the ticket's
    watchers, or the watchers of the tickets it blocks — and the store writes the notifications in the
    same transaction ([data-access.md](data-access.md#notifications)).
-4. **New SQL** is a named query in `backend/internal/store/queries/read/` or `write/`, carrying
+5. **New SQL** is a named query in `backend/internal/store/queries/read/` or `write/`, carrying
    the visibility predicate and, for every ticket it reads, `deleted_at IS NULL` — or naming its
    exemption from either ([data-access.md](data-access.md#visibility-in-sql));
    `make generate` again.
-5. A route under `{tenant}` but outside `{project}` is refused to a project-restricted token,
+6. A route under `{tenant}` but outside `{project}` is refused to a project-restricted token,
    unless its operation is in `tenantWideForProjectTokens` in
    [`tenant.go`](../../backend/internal/api/tenant.go) — and then the data layer must narrow it to
    the token's project.
-6. **Tests** in `backend/test/integration/`, through `newAPI` (responses are validated) and the
+7. **Tests** in `backend/test/integration/`, through `newAPI` (responses are validated) and the
    generated client: both tenants, a restricted project and a confidential ticket (the same
    `404` as a missing one), each role and scope, an agent with and without the capability or on
    the hard-off list, `428`/`412` for an overwriting write, replay and mismatch for a keyed one.
@@ -58,7 +67,7 @@ the mechanics are [api.md](api.md)).
    calls with a cookie is tried with a `browser` too (`withLogin`, `withAccounts`), with a token
    beside it, with the CSRF headers taken away, and — if it takes a secret — searched for in the
    log, the answers and the audit rows ([testing.md](testing.md)).
-7. The row in [README.md, API](../../README.md#api-backend); `make generate-check` clean, the
+8. The row in [README.md, API](../../README.md#api-backend); `make generate-check` clean, the
    generated files committed.
 
 ## A table
@@ -152,6 +161,37 @@ the mechanics are [api.md](api.md)).
    [docs/operations/installation.md](../operations/installation.md#expose-it) names.
 5. If it changes runtime behaviour, say so in [docs/operations/runtime.md](../operations/runtime.md).
 
+## An instrument
+
+The registry and how it records are [metrics.md](metrics.md); the decision is
+[ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md).
+
+1. **The name** is `cowork_<subsystem>_<name>_<unit>`, a counter's ending in `_total`, a duration's
+   in `_seconds`; `TestEveryInstrumentIsNamedByTheRule` holds the subsystems of D4.
+2. **The labels** come from a closed set of typed constants, the API document's route patterns or a
+   name in the code — never from a request, and never a person, a ticket, a key, a token, a request
+   id, or a tenant outside the consistency family's two counts, which `tenantLabelled` names (D5).
+   Not `job` or `instance`, which Prometheus
+   gives every target and would rename. A closed set is made at zero (`initialise`).
+3. **Make it** in the subsystem's `…Instruments` method of
+   [`internal/metrics/metrics.go`](../../backend/internal/metrics/metrics.go) through `m.counter`,
+   `m.gauge` or `m.histogram`, which register it and add it to `Names`; a value read at a scrape is a
+   collector there, as the pool's and the schema's are. Add a typed method that does nothing on a nil
+   receiver.
+4. **Record** through that method from the package, which takes the `*metrics.Metrics` in its options
+   or constructor; no other package imports `client_golang`
+   (`TestOnlyThisPackageImportsTheClientLibrary`). Count what committed, never what a transaction
+   might still roll back.
+5. **Test** it: call it in `exercise` in
+   [`metrics_test.go`](../../backend/internal/metrics/metrics_test.go) —
+   `TestNoInstrumentCarriesAForbiddenLabel` fails on a family it does not gather —, and assert the
+   recording in the package's own test with `Samples` and `Sum`.
+6. A panel in [`dashboard.go`](../../backend/internal/metrics/dashboard.go) when operators should
+   watch it, then `make generate`; an alert in
+   [`prometheusrule.yaml`](../../deploy/helm/cowork/templates/prometheusrule.yaml) with its section in
+   [docs/operations/metrics.md](../operations/metrics.md) when it needs one.
+7. The row in [README.md, Metrics](../../README.md#metrics).
+
 ## A frontend feature
 
 1. A page is a standalone component under `frontend/src/app/features/<family>/`, lazy in
@@ -196,10 +236,16 @@ the mechanics are [api.md](api.md)).
 
 ## A chart value
 
-1. `values.yaml` under the block it belongs to — `backend.`, `frontend.`, `database.`, `session.`,
-   `localAdmin.`, `bootstrap.`, `auth.`, `storage.`, `chat.`, `ingress.` — with a comment, the template, and
-   — when it maps to an environment variable — the `env` entry.
-2. A `ci/*-values.yaml` if the value opens a new shape worth rendering in CI.
+1. `values.yaml` under the block it belongs to — `backend.`, `frontend.`, `database.`, `migrations.`,
+   `session.`, `localAdmin.`, `bootstrap.`, `auth.`, `storage.`, `chat.`, `ingress.`, `metrics.` — with a comment, the
+   template, and — when it maps to an environment variable — the `env` entry; one the migration run
+   needs goes into the init container and the Job of `migrate-job.yaml` as well, and a credential the
+   Job reads must come from an `existingSecret`, since the Job runs before the release's own Secrets.
+   Read the new value with its default when it is missing (`dig`, `| default`): `helm upgrade
+   --reuse-values` hands the templates the previous release's values, which lack it.
+2. A `ci/*-values.yaml` if the value opens a new shape worth rendering in CI; render every existing
+   `ci/` file before and after the change and compare — a value that changes nothing must change no
+   manifest ([testing.md](testing.md#chart-tests)).
 3. The README's values block and, when operators need to understand it,
    [docs/operations/installation.md](../operations/installation.md).
 

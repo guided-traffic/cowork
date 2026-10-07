@@ -11,15 +11,24 @@ question "embargoed tickets?": a per-ticket flag with a narrow circle, over a de
 project, over a per-ticket person list, and over encryption of the body. The rules of D6–D9
 were put to the owner with the question and not objected to.
 
-**Partly built** (phase 2, 2026-10-02): D1–D6, D8 and D9 — the `confidential` column, the
+~~**Partly built**~~ **Built** *(whole since 2026-10-06, with D7)* (phase 2, 2026-10-02): D1–D6, D8 and D9 — the `confidential` column, the
 predicate `app_ticket_visible` in every ticket query (a unit test holds the queries to it),
 the flag set on creation and on a change to `live` or `boundary`, the administrator's act to
 set or lift it (lifting with a reason, never an agent's), and the security page on tenancy.
-D7 arrives with the importer. *(2026-10-04.)* The detail page offers a tenant administrator to
+~~D7 arrives with the importer.~~ *(Built 2026-10-06, below.)* *(2026-10-04.)* The detail page offers a tenant administrator to
 set the flag, with a reason they may give, and to lift it, only with one. *(2026-10-05.)* D5's
 dashboard tiles exist ([ADR 0018](0018-the-views-of-the-first-release.md) D6): every tile counts,
 names and measures only the tickets the reader sees, the open `live` count among them, and the
 integration tier reads each tile with a confidential ticket the reader cannot see.
+*(2026-10-06.)* D7 is built with the importer, and D5's export with the project and tenant export
+of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4: the
+archive holds the tickets its reader may read, its manifest counts per project the confidential
+tickets it leaves out (`ExportHiddenConfidential` in
+[`export.sql`](../../backend/internal/store/queries/read/export.sql)), a link appears only where
+the reader sees both its ends, and a restricted project the reader cannot see is absent without a
+count; `TestTheExportFollowsItsReader` reads it as a member, an administrator, a viewer and an
+agent. The importer applies D7 as made concrete below
+([`columns.go`](../../backend/internal/importer/columns.go) `confidential`).
 
 ## Context
 
@@ -80,7 +89,14 @@ is intended.
 **D7 — The importer applies the rule of the source.** A `local_` prefix, or `security:
 live|boundary` without a `shipped:` line, sets the flag; a `publication-accepted:` date leaves
 it unset and the report says so ([ADR 0063](0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md)
-D3).
+D3). *(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* an export's
+document carries the flag as `confidential: true` (ADR 0044 D1 as made concrete that day), which
+sets it; the order is the `publication-accepted:` date first, then the export's flag, the prefix,
+and the class without a `shipped:` line. The class's rule applies to an export's document as well,
+so an export written without the flag cannot publish an open finding — at the cost that a `live`
+or `boundary` ticket without a verification note, whose flag an administrator lifted, is flagged
+again by its import. The report gives each file the rule that decided, and the act
+`confidential_set` of an imported ticket carries it as its reason.
 
 **D8 — The security page of tickets carries this chapter,** and names as an open gap with an
 `H-<n>` identifier that a confidential body is readable by anyone with database or backup

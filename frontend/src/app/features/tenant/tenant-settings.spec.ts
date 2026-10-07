@@ -7,10 +7,12 @@ import { Subject } from 'rxjs';
 import type { MockInstance } from 'vitest';
 import { AttachmentUsage, Problem, Tenant } from '../../api/models';
 import { Api } from '../../api/api';
+import { AttachmentConsistencyService } from '../../core/attachment-consistency.service';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
+import { ExportArchive, ImportsService } from '../../core/imports.service';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
-import { byteSize, changesUsage, quotaShare, TenantSettings } from './tenant-settings';
+import { changesUsage, quotaShare, TenantSettings } from './tenant-settings';
 
 function tenant(overrides: Partial<Tenant> = {}): Tenant {
   return {
@@ -32,15 +34,6 @@ function refusal(status: number, title: string, detail: string) {
 }
 
 describe('the attachment usage helpers', () => {
-  it('names a count of bytes in binary units', () => {
-    expect(byteSize(0)).toBe('0 bytes');
-    expect(byteSize(1)).toBe('1 byte');
-    expect(byteSize(1023)).toBe('1023 bytes');
-    expect(byteSize(1536)).toBe('1.5 KiB');
-    expect(byteSize(70 * 1024 * 1024)).toBe('70 MiB');
-    expect(byteSize(10 * 1024 ** 3)).toBe('10 GiB');
-  });
-
   it('gives the share of the quota in whole percent, at most 100, and none without a quota', () => {
     expect(quotaShare({ used_bytes: 25, attachments: 1, quota_bytes: 100 })).toBe(25);
     expect(quotaShare({ used_bytes: 999, attachments: 3, quota_bytes: 1000 })).toBe(99);
@@ -77,8 +70,10 @@ describe('TenantSettings', () => {
     (fn: unknown, params: { tenant: string; 'If-None-Match'?: string }) => Promise<unknown>
   >;
   let events: Subject<StreamEvent>;
+  let exportTenant: MockInstance<ImportsService['exportTenant']>;
 
   beforeEach(() => {
+    exportTenant = vi.fn<ImportsService['exportTenant']>();
     value = signal<Tenant | undefined>(tenant());
     isAdmin = signal(true);
     update = vi.fn<TenantService['update']>().mockResolvedValue(tenant());
@@ -103,9 +98,125 @@ describe('TenantSettings', () => {
         MessageService,
         { provide: TenantService, useValue: { value, isAdmin, update } },
         { provide: SessionService, useValue: { tenant: signal('acme') } },
-        { provide: Api, useValue: { invoke$Response: getUsage } },
+        {
+          provide: Api,
+          useValue: {
+            invoke$Response: getUsage,
+            // GitHub's webhook (docs/adr/0071), which its own spec drives.
+            invoke: vi.fn().mockResolvedValue({
+              webhook_path: '/api/v1/tenants/acme/integrations/github/webhook',
+              events: ['pull_request', 'push'],
+              secret: null,
+            }),
+          },
+        },
         { provide: EventStreamService, useValue: { events } },
+        // The consistency check's section reads through a service of its own, which its own spec
+        // covers; here it has nothing to show.
+        {
+          provide: AttachmentConsistencyService,
+          useValue: {
+            latest: {
+              hasValue: signal(false),
+              value: signal(undefined),
+              error: signal(undefined),
+              reload: vi.fn(),
+            },
+          },
+        },
+        { provide: ImportsService, useValue: { exportTenant } },
       ],
+    });
+  });
+
+  it('shows the consistency check beside the usage to an administrator, and to nobody else', async () => {
+    const fixture = await render();
+    expect(el(fixture, 'attachment-consistency')).not.toBeNull();
+
+    isAdmin.set(false);
+    await settle(fixture);
+    expect(el(fixture, 'attachment-consistency')).toBeNull();
+  });
+
+  describe('the export of the tenant (docs/adr/0051 D4)', () => {
+    let created: MockInstance<typeof URL.createObjectURL>;
+    let clicked: MockInstance<HTMLAnchorElement['click']>;
+    const archive = (tickets: number, left: number): ExportArchive => ({
+      blob: new Blob(['archive'], { type: 'application/gzip' }),
+      filename: 'acme-20261007.tar.gz',
+      manifest: {
+        format: 'cowork export v1',
+        tenant: 'acme',
+        projects: [],
+        exported_at: '2026-10-07T08:00:00Z',
+        exported_by: 'Ada Lovelace <local:ada>',
+        tickets,
+        confidential_not_included: left,
+      },
+    });
+
+    beforeEach(() => {
+      created = vi.fn<typeof URL.createObjectURL>().mockReturnValue('blob:tenant');
+      vi.stubGlobal(
+        'URL',
+        Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() }),
+      );
+      clicked = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    it('saves the archive of the tenant under its name and says what it holds', async () => {
+      exportTenant.mockResolvedValue(archive(41, 0));
+      const fixture = await render();
+
+      el(fixture, 'tenant-export-button')?.click();
+      await settle(fixture);
+
+      expect(exportTenant).toHaveBeenCalledExactlyOnceWith('acme');
+      expect(created).toHaveBeenCalledOnce();
+      const link = clicked.mock.contexts[0] as HTMLAnchorElement;
+      expect(link.download).toBe('acme-20261007.tar.gz');
+      expect(link.href).toBe('blob:tenant');
+      expect(el(fixture, 'tenant-export-note')?.textContent?.trim()).toBe(
+        '41 tickets in acme-20261007.tar.gz.',
+      );
+    });
+
+    it('names the confidential tickets it leaves out (docs/adr/0065 D5)', async () => {
+      exportTenant.mockResolvedValue(archive(41, 1));
+      const fixture = await render();
+
+      el(fixture, 'tenant-export-button')?.click();
+      await settle(fixture);
+
+      expect(el(fixture, 'tenant-export-note')?.textContent?.trim()).toBe(
+        '41 tickets in acme-20261007.tar.gz. 1 confidential ticket you cannot read is not included.',
+      );
+    });
+
+    it('toasts a refusal and offers the export again', async () => {
+      exportTenant.mockRejectedValue(refusal(504, 'Timeout', 'The export took too long.'));
+      const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+      const fixture = await render();
+
+      el(fixture, 'tenant-export-button')?.click();
+      await settle(fixture);
+
+      expect(clicked).not.toHaveBeenCalled();
+      expect(add).toHaveBeenCalledOnce();
+      expect(el(fixture, 'tenant-export-note')).toBeNull();
+      expect((el(fixture, 'tenant-export-button') as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it("is not offered to anybody but the tenant's administrators", async () => {
+      isAdmin.set(false);
+      const fixture = await render();
+
+      expect(el(fixture, 'tenant-export')).toBeNull();
     });
   });
 
@@ -149,6 +260,15 @@ describe('TenantSettings', () => {
 
       expect(el(fixture, 'attachment-usage')).toBeNull();
       expect(getUsage).not.toHaveBeenCalled();
+    });
+
+    it("shows an administrator GitHub's webhook, and nobody else (docs/adr/0071 D1)", async () => {
+      const fixture = await render();
+      expect(el(fixture, 'github-webhook')).not.toBeNull();
+
+      isAdmin.set(false);
+      await settle(fixture);
+      expect(el(fixture, 'github-webhook')).toBeNull();
     });
 
     it('asks again on an upload in the tenant with the tag it holds, and keeps the usage on a 304', async () => {

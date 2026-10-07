@@ -24,6 +24,7 @@ func TestLoadDefaults(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, DefaultListenAddr, cfg.ListenAddr)
+	assert.Equal(t, ":8081", cfg.MetricsAddr, "the metrics listener is on by default (docs/adr/0060 D1)")
 	assert.Equal(t, dbURL, cfg.DatabaseURL)
 	assert.True(t, cfg.MigrateOnStart)
 	assert.Equal(t, slog.LevelInfo, cfg.LogLevel)
@@ -61,10 +62,15 @@ func TestLoadRequiresDatabaseURL(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			_, err := Load(envOf(env))
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), EnvDatabaseURL+" is required")
+			assert.Contains(t, err.Error(), missingRuntimeConnection)
 		})
 	}
 }
+
+// missingRuntimeConnection is the error of a runtime role without a URL and
+// without components (docs/adr/0058 D4).
+const missingRuntimeConnection = EnvDatabaseURL + ", or its components " + EnvDatabaseHost + ", " + EnvDatabaseName + ", " +
+	EnvDatabaseUser + " and " + EnvDatabasePassword + ", is required"
 
 func TestLoadEmptyValueKeepsDefault(t *testing.T) {
 	cfg, err := Load(envOf(map[string]string{
@@ -79,6 +85,50 @@ func TestLoadEmptyValueKeepsDefault(t *testing.T) {
 	assert.Equal(t, slog.LevelInfo, cfg.LogLevel)
 }
 
+// docs/adr/0060 D1: COWORK_METRICS_ADDR moves the metrics listener; set to an
+// empty value — unlike every other variable, where empty is unset — it
+// switches the listener off; it is host:port and never the API's address.
+func TestLoadMetricsAddr(t *testing.T) {
+	for name, c := range map[string]struct {
+		value, listen, want string
+	}{
+		"another port":       {value: "0.0.0.0:9100", want: "0.0.0.0:9100"},
+		"empty: off":         {value: "", want: ""},
+		"whitespace: off":    {value: "  ", want: ""},
+		"trimmed":            {value: " :9100 ", want: ":9100"},
+		"beside a moved API": {value: ":8080", listen: ":9090", want: ":8080"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := map[string]string{EnvDatabaseURL: dbURL, EnvMetricsAddr: c.value}
+			if c.listen != "" {
+				env[EnvListenAddr] = c.listen
+			}
+			cfg, err := Load(envOf(env))
+			require.NoError(t, err)
+			assert.Equal(t, c.want, cfg.MetricsAddr)
+		})
+	}
+	for name, c := range map[string]struct {
+		env    map[string]string
+		wanted string
+	}{
+		"no port":       {map[string]string{EnvMetricsAddr: "8081"}, EnvMetricsAddr + `: "8081" is not an address such as :8081`},
+		"empty port":    {map[string]string{EnvMetricsAddr: "localhost:"}, EnvMetricsAddr + `: "localhost:" is not an address`},
+		"the API's":     {map[string]string{EnvMetricsAddr: ":8080"}, EnvMetricsAddr + " must differ from " + EnvListenAddr},
+		"a moved API's": {map[string]string{EnvMetricsAddr: "127.0.0.1:9000", EnvListenAddr: "127.0.0.1:9000"}, EnvMetricsAddr + " must differ from " + EnvListenAddr},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env := map[string]string{EnvDatabaseURL: dbURL}
+			for k, v := range c.env {
+				env[k] = v
+			}
+			_, err := Load(envOf(env))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), c.wanted)
+		})
+	}
+}
+
 func TestLoadReportsEveryInvalidValue(t *testing.T) {
 	_, err := Load(envOf(map[string]string{
 		EnvMigrateOnStart:  "maybe",
@@ -88,7 +138,7 @@ func TestLoadReportsEveryInvalidValue(t *testing.T) {
 	}))
 	require.Error(t, err)
 	msg := err.Error()
-	assert.Contains(t, msg, EnvDatabaseURL+" is required")
+	assert.Contains(t, msg, missingRuntimeConnection)
 	assert.Contains(t, msg, EnvMigrateOnStart+`: "maybe" is not a boolean`)
 	assert.Contains(t, msg, EnvLogLevel+`: "loud" is not one of`)
 	assert.Contains(t, msg, EnvLogFormat+`: "xml" is not one of`)
@@ -108,6 +158,7 @@ func TestLoadLimitsDefaultsAndOverrides(t *testing.T) {
 	assert.Equal(t, 30*time.Second, cfg.RequestTimeout)
 	assert.Equal(t, 200, cfg.MaxPageSize)
 	assert.Equal(t, 256, cfg.MaxQueryLength)
+	assert.EqualValues(t, 50<<20, cfg.MaxImportBytes, "docs/adr/0051 D7")
 	assert.Nil(t, cfg.SessionKey)
 
 	cfg, err = Load(envOf(map[string]string{
@@ -116,6 +167,7 @@ func TestLoadLimitsDefaultsAndOverrides(t *testing.T) {
 		EnvRequestTimeout: "0",
 		EnvMaxPageSize:    "0",
 		EnvMaxQueryLength: "100",
+		EnvMaxImportBytes: "0",
 		EnvSessionKey:     "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
 	}))
 	require.NoError(t, err)
@@ -123,7 +175,12 @@ func TestLoadLimitsDefaultsAndOverrides(t *testing.T) {
 	assert.Zero(t, cfg.RequestTimeout, "0 disables the timeout")
 	assert.Zero(t, cfg.MaxPageSize)
 	assert.Equal(t, 100, cfg.MaxQueryLength)
+	assert.Zero(t, cfg.MaxImportBytes, "0 disables the bound of an import")
 	assert.Len(t, cfg.SessionKey, 32)
+
+	cfg, err = Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvMaxImportBytes: "200MiB"}))
+	require.NoError(t, err)
+	assert.EqualValues(t, 200<<20, cfg.MaxImportBytes)
 }
 
 func TestLoadRejectsBadLimitsAndNeverEchoesTheKey(t *testing.T) {
@@ -133,11 +190,13 @@ func TestLoadRejectsBadLimitsAndNeverEchoesTheKey(t *testing.T) {
 		EnvRequestTimeout: "-1s",
 		EnvMaxPageSize:    "-3",
 		EnvMaxQueryLength: "x",
+		EnvMaxImportBytes: "plenty",
 		EnvSessionKey:     "dG9vLXNob3J0",
 	}))
 	require.Error(t, err)
 	msg := err.Error()
-	for _, want := range []string{EnvMaxJSONBody, EnvRequestTimeout, EnvMaxPageSize, EnvMaxQueryLength, EnvSessionKey + " must decode to at least 32 bytes"} {
+	for _, want := range []string{EnvMaxJSONBody, EnvRequestTimeout, EnvMaxPageSize, EnvMaxQueryLength,
+		EnvMaxImportBytes + `: "plenty" is not a size such as 50MiB or 0`, EnvSessionKey + " must decode to at least 32 bytes"} {
 		assert.Contains(t, msg, want)
 	}
 	assert.NotContains(t, msg, "dG9vLXNob3J0", "the key is a secret and never echoed")

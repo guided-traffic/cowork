@@ -50,7 +50,9 @@ tenant's audit view names the token beside its id.
 Made concrete 2026-10-06 (Consequences: the model of the MCP server's mark is the one Claude Code
 names to the `SessionStart` hook,
 [ADR 0067](0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
-D5 as amended), and built the same day.
+D5 as amended), and built the same day. Made concrete again the same day with ADR 0067 D5's
+`PostModelSwitch` hook, on the recommendation of an open question the owner has not answered
+(Consequences: after a switch, the one Claude Code names to that hook), and built the same day.
 
 ## Context
 
@@ -165,7 +167,8 @@ unflagged token in someone's name.
   Claude Code names to the `SessionStart` hook in the server's project directory
   ([ADR 0067](0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
   D5 as amended) — MCP does not tell a server its model —, and `unknown` while none is recorded;
-  the session id is the server's own.)*
+  the session id is the server's own. Made concrete again the same day: after a switch, the model
+  is the one Claude Code names to the `PostModelSwitch` hook in that directory.)*
 
 ## Alternatives Considered
 

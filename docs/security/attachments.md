@@ -2,8 +2,7 @@
 
 What happens to a file someone attaches to a ticket or a comment — how its type is decided,
 where its bytes live, how they are delivered back, what bounds an upload and what is recorded
-— and what that leaves open, as built on 2026-10-02, the UI's preview on 2026-10-04, an image in a
-rendered text and the tenant's quota on 2026-10-05. Who may read a ticket, and with it its
+— and what that leaves open, as built on 2026-10-07. Who may read a ticket, and with it its
 attachments, is [tenancy.md](tenancy.md); what a token or an agent may do, uploading included,
 is [tokens.md](tokens.md); the network path between the containers is
 [trust-boundaries.md](trust-boundaries.md).
@@ -139,7 +138,9 @@ any web page, and the reason the type is the server's, sniffed, never the client
   after a purge counts no more, though it still occupies the bucket (H-13). The lock is
   held until the upload commits, so uploads of one tenant pass the check one after the other —
   also to different tickets (`TestSimultaneousUploadsKeepTheTenantQuota`) — and one tenant's
-  uploads never wait for another's. Row-level security holds the sum to the tenant: another
+  uploads never wait for another tenant's lock. They share the replica's memory slots all the same
+  (H-12): an upload takes its slot before it reads its body and keeps it while it waits for its
+  tenant's lock and its ticket's. Row-level security holds the sum to the tenant: another
   tenant's files neither count against it nor show (`TestTheTenantAttachmentQuota`). The refusal
   names the quota and the file's size, never the sum. The tenant's administrators read the sum,
   the count and the quota (`GET …/attachment-usage`, on the tenant's settings page); anybody else
@@ -154,10 +155,8 @@ any web page, and the reason the type is the server's, sniffed, never the client
   the count is checked, the tenant's quota is checked, the row and its `uploaded` act are written,
   the object is put, and the transaction commits. When the row does not commit, or a concurrent request with the same key
   won, the object is deleted again ([`api/attachments.go`](../../backend/internal/api/attachments.go)
-  `UploadAttachment`). A failed deletion leaves an object no row names; nothing sweeps the
-  bucket for such objects — the consistency check of
-  [ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-  D4 is not built.
+  `UploadAttachment`). A failed deletion leaves an object no row names, which the next
+  consistency check lists as an orphan ([below](#the-consistency-check)).
 
 ## The file name is sanitised, not trusted
 
@@ -187,6 +186,61 @@ address another object.
   bytes — answers `404` with a detail saying the bytes are missing from storage, never a bare
   `404` (ADR 0059 D4).
 - The Markdown export of a ticket lists its attachments' names.
+- The consistency check's acts: one installation-level `checked` per run that checked a tenant, of
+  `system:consistency-check`, with the counts in all and, for each tenant out of step, its counts by
+  its id — never a file name or an object key; a run that found no tenant records none —; in the
+  tenant, `accepted` with the count of the files whose loss an administrator accepted, and `purged`
+  on the entity `attachment_consistency` with the number of orphans the removal set out to remove
+  and of those it kept, written in the confirming transaction before the objects go — never a key
+  ([below](#the-consistency-check)).
+
+## The consistency check
+
+Once a day, in the hour after 03:00 UTC, and at a start that finds the last run older than that, the
+job `consistency-check` compares each tenant's attachment rows with the objects under its prefix
+([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4; [docs/developer/storage.md](../developer/storage.md#the-consistency-check)) and keeps what
+disagrees: the files whose bytes are missing — dangling —, and the objects no row names — orphans.
+`cowork check-consistency` runs it at once; no route of the API starts it, and without object storage
+it never runs. The comparison takes the listing a thousand objects at a time and holds a bounded
+memory whatever the number of objects.
+
+**What the lists tell, and to whom.** A missing file is listed with its name, size, type, upload
+time and its ticket's key — a ticket in the bin's among them; an orphan with its key, size and last
+change — no name, because no row has one. The lists are the tenant's and are read by its administrators alone: the route answers
+anybody else `403`, another tenant's person `404`, and row-level security holds both tables of
+[migration 42](../../backend/internal/store/migrations/000042_attachment_consistency.up.sql) to the
+tenant's administrators and the job by restrictive policies, whatever a query says
+(`TestTheConsistencyCheckIsTheTenantAdministratorsAndNoAgents`). An administrator sees every ticket —
+confidential ones and restricted projects' among them — and reads there nothing the tickets do not
+show them; a token restricted to a project is refused on every tenant-level route, this one too. What
+leaves the tenant is counts: the installation-level act per tenant id, the log line per tenant slug,
+the metrics per tenant id ([metrics.md](metrics.md)). `cowork check-consistency` prints counts per
+tenant, by its slug and id, never a file name; a removal that fails is logged with the object's key.
+
+**The removal is irreversible**, and so it is held like the purge of a ticket: a tenant
+administrator's act, in a browser session — a token, an administrator's `admin` token included, is
+`403 session_required`, because nothing undoes it ([ADR 0035](../adr/0035-personal-access-tokens.md)
+D5) —, never an agent's ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D3), asked twice in the UI, and recorded. It names the check whose list the administrator was shown;
+a newer check, or a removal confirmed already, is `409 consistency_check_stale`, so nobody confirms a
+list they did not see. In the confirming transaction each listed orphan is asked again whether a row
+names it now, and one that does is kept; a key outside the tenant's prefix is never removed, whatever
+the stored list says; the objects go after the commit ([`api/consistency.go`](../../backend/internal/api/consistency.go)
+`planRemoval`). An orphan is judged only once its key's UUIDv7 is an hour old or more — an upload
+puts its object before its row commits —, so an upload in flight is never listed; an object under a
+key the backend does not write is judged by its last change. What an orphan
+holds nobody can read through cowork: the administrator removes bytes they cannot inspect, and
+whoever runs the bucket can copy them out first by the key the list names.
+
+**The acceptance removes nothing.** An administrator's `admin`-scope act — a token may — and never an
+agent's (`hard-off: administration`): the listed missing files count as accepted instead of dangling,
+stay on their tickets and keep answering their download with `404` saying the bytes are missing; one
+whose bytes come back is whole again and its acceptance forgotten.
+
+**What the key needs.** The listing takes `s3:ListBucket` on the bucket
+([installation.md](../operations/installation.md#object-storage)); the backend still never creates or
+deletes a bucket.
 
 ## What this does not cover
 
@@ -212,7 +266,8 @@ names a scanning hook as the amendment.
 Live today. The sanitiser removes what could break a header or a path, not what a name says.
 Every reader of a ticket sees its attachments' names, sizes and SHA-256 sums in the list and
 the metadata, the export prints the names, and the `uploaded` and `downloaded` acts carry the
-name into the audit record, which keeps it for good (ADR 0026 D7). A name such as
+name into the audit record, which keeps it until the purge of the ticket empties its acts' contents
+(`purge_ticket_audit` of migration 32; ADR 0026 D7) — a backup taken before keeps it beyond. A name such as
 `acme-breach-evidence.png` tells something to a reader who never downloads the file, and the
 SHA-256 lets a reader confirm, without downloading, that a file is one they already hold.
 ADR 0016 accepts this among its residual risks.
@@ -242,8 +297,10 @@ that way. `COWORK_S3_ENDPOINT` may be `http://` or `https://`
 ([`config.go`](../../backend/internal/config/config.go)), and with `http://` the client speaks
 plain HTTP ([`storage.go`](../../backend/internal/storage/storage.go) `New`): every upload's and
 every download's bytes cross the network between the backend and the storage unencrypted,
-with the access key id in each request's signature. The secret key does not travel; the
-bytes do. The chart passes `storage.endpoint` as given and does not warn. Mitigation: an
+with the access key id in each request's signature, and so does the consistency check's daily
+listing, every tenant's object keys. The secret key does not travel; the bytes do. The signature
+covers the request, not the answer, so a peer on that path can also change the bytes a download
+delivers ([H-79](#h-79)). The chart passes `storage.endpoint` as given and does not warn. Mitigation: an
 `https://` endpoint — with `storage.tls.caConfigMap` for a private authority — or a mesh that
 encrypts the hop.
 
@@ -258,7 +315,9 @@ default ([`api/attachments.go`](../../backend/internal/api/attachments.go) `uplo
 nothing reads an upload's body earlier (`TestAnUploadIsRefusedBeforeItsBodyIsRead`) — and the
 request timeout bounds the read, so a body that trickles in gives its slot back at the
 deadline (`TestATricklingUploadEndsAtTheTimeout`); further uploads wait for a free slot until
-their request's time runs out, answered `504`. A
+their request's time runs out, answered `504`. An upload keeps its slot while it waits for its
+ticket's lock and, under a quota, its tenant's, so a burst of one tenant's uploads holds slots that
+every tenant's uploads wait for. A
 burst by members of any tenant therefore holds up to about 60 MiB of file bytes at the
 defaults — six times the maximum — against the chart's 256 MiB memory limit, plus what the
 buffers' growth and the storage client add, which is not measured. With a maximum of 64 MiB
@@ -273,8 +332,9 @@ Mitigation: keep `COWORK_ATTACHMENT_MAX_BYTES` set and well below
 <a id="h-13"></a>
 ### H-13 — An uploaded file cannot be taken back
 
-Live today. No route removes or hides an attachment, and the runtime role may only insert and
-read attachment rows. Withdrawing the comment a file was attached to hides the comment's text;
+Live today. No route removes or hides an attachment, and the runtime role deletes an attachment row
+only in the purge of a deleted ticket (the restrictive policy `attachments_purge` of migration 32).
+Withdrawing the comment a file was attached to hides the comment's text;
 the file stays listed, downloadable and named in the export for every reader of the ticket. A
 screenshot uploaded by mistake with a secret in it stays readable until someone with the
 administrative database credential and access to the bucket removes both — outside the API,
@@ -285,14 +345,85 @@ and purging it removes their rows and then their objects
 ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
 D2, [tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one)). The objects go after the
 purge committed, so that a rollback leaves no row naming missing bytes; an object whose removal
-fails then — or that no configured storage could remove — stays in the bucket with no row naming
-it, and the log names its key (`an attachment object of a purged ticket could not be removed`).
-Nothing sweeps such objects.
+fails then stays in the bucket with no row naming it, and the log names its key (`an attachment
+object of a purged ticket could not be removed`). The next consistency check lists it as an orphan,
+and a tenant administrator can remove it ([the consistency check](#the-consistency-check)). Without
+object storage configured, a purge leaves the objects where an earlier configuration put them and logs
+the ticket and the number of its files, not their keys, and no check runs to list them. An uploaded
+file itself still cannot be taken back.
 
 ### The bucket's own controls
 
 Whether the bucket is private — no anonymous read, no public policy — and how far the access
-key reaches, encryption at rest, versioning (a versioned bucket keeps the objects cowork
-deletes after a failed upload), access logs and backups are the storage's and the operator's
+key reaches, encryption at rest, versioning (a versioned bucket keeps every object cowork deletes —
+after a failed upload, at a purge, at a confirmed removal of orphans — as a noncurrent version, which
+the consistency check never lists), access logs and backups are the storage's and the operator's
 (ADR 0058 D5, ADR 0059); cowork verifies none of them. The bucket holds a confidential ticket's attachments like any other:
 [tenancy.md](tenancy.md) H-2 applies to them.
+
+<a id="h-68"></a>
+### H-68 — The storage key lists the bucket, so a key that leaks alone reads every object
+
+Live wherever the key is granted `s3:ListBucket`, which the consistency check needs and the
+installation page asks for; a key without it fails the check at every hourly attempt, which
+`CoworkJobFailing` reports. Before the check, the key read, wrote and deleted objects whose keys it
+was given: an object's key is a tenant's id and an attachment's UUIDv7, which the database names and
+nobody guesses, so a storage key that leaked without the database read nothing it could find. With
+the listing, whoever holds the key enumerates every tenant's object keys and downloads every
+attachment of every tenant — confidential tickets' and restricted projects' included, without a
+name, but with their bytes —, and can write over or delete any of them. The database's runtime credential, which lives beside the key in the same
+namespace, names every key as well, so a reader of both Secrets gains nothing by the listing. What an
+installation can do: keep the key in its own Secret, read by the backend alone; rotate it on a
+suspicion; turn on the store's access logs, which show a listing like any request. A listing-only
+key for the check, apart from the key that reads, is not built. Not verified: the store's own
+controls, which cowork checks none of.
+
+<a id="h-69"></a>
+### H-69 — The objects of a tenant the database does not know are never listed
+
+Live after a restore that brought the database back from before a tenant was created, while the
+bucket kept its files. The check lists the prefixes of the tenants the database knows, one by one
+(ADR 0059 D4), and so never reads `<tenant-id>/` of a tenant that is gone: those objects stay in the
+bucket, unlisted, readable to whoever holds the storage key, and no administrator sees them. Nor is
+an object judged whose key names a UUIDv7 time in the future, or a noncurrent version of a versioned
+bucket, which no listing of the check reads. The operator finds them by listing the bucket's
+top-level prefixes against the tenants' ids, and removes them by hand.
+
+<a id="h-70"></a>
+### H-70 — An acceptance ends the alert on files that are lost
+
+Live by design (ADR 0059 D5 as made concrete 2026-10-06). An administrator's acceptance — in a
+session, or with an `admin`-scope token — counts the listed missing files as accepted, and the gauge
+and `CoworkAttachmentsOutOfStep` stop counting them. A leaked administrator's token, or an
+administrator who prefers silence, can so end the alert on a real loss; the files stay listed as
+accepted on the settings page, the act `accepted` is in the tenant's audit record with its actor and
+its token, and the check forgets an acceptance once the bytes are back, so a later loss counts again.
+An installation that wants to know of every loss watches the act in the audit record, or
+`cowork_audit_acts_total{action="accepted"}`, which counts exactly these acts.
+
+<a id="h-71"></a>
+### H-71 — An object can gain its row between the confirming transaction and its removal
+
+Narrow, and not live in the ways cowork writes rows. The confirmed removal asks each orphan in its
+transaction whether a row names it, and removes the objects after the commit, so a row committed for
+one of them in between loses its bytes. A new upload never meets this: its id is made once its body
+is read, just before its transaction, and a listed orphan's id is an hour old or more. What could is a
+write that brings an old id back — a database restore run while an administrator confirms a removal.
+What guards against that is the restore's first step, stopping the backend, and its order
+([docs/operations/backups.md](../operations/backups.md#a-restore-step-by-step)): the check after a
+restore is run before anybody removes anything.
+
+<a id="h-79"></a>
+### H-79 — A download is not compared with the SHA-256 its row records
+
+Live wherever someone other than the backend can write the bucket. The row keeps the SHA-256 of the
+upload, and a download's `ETag` is that sum, but the backend streams the object as the store answers it
+and compares nothing ([`api/attachments.go`](../../backend/internal/api/attachments.go)
+`DownloadAttachment`). Whoever can write the bucket — a holder of the storage key ([H-68](#h-68)), the
+store's administrators, a peer on a plain `http://` path ([H-11](#h-11)) — can put other bytes under an
+attachment's key, and every reader then downloads them under the original name, with the original
+type and sum in the headers. What still holds: the type is the row's, `nosniff` and `sandbox` go with
+every download, and only the four raster types are shown inline, so replaced bytes reach the browser
+as a file of the stored type, never as a page of cowork's origin. Mitigation: a versioned bucket,
+which keeps the object that was replaced; the store's access logs, which show a write that is not the
+backend's.

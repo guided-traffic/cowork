@@ -49,6 +49,13 @@ const (
 	fieldDay             = "day"
 	fieldMinutes         = "minutes"
 	fieldVersion         = "version"
+	fieldSeverity        = "severity"
+	fieldEffort          = "effort"
+	fieldNumber          = "number"
+	fieldFormat          = "format"
+	fieldTitle           = "title"
+	fieldSecurity        = "security"
+	fieldQuestion        = "question"
 )
 
 // The acts the handlers record more than once (docs/adr/0026 D1) and the
@@ -61,8 +68,12 @@ const (
 	actionUnlinked   = "unlinked"
 	actionOverridden = "overridden"
 	actionEdited     = "edited"
-	headerETag       = "ETag"
-	headerLocation   = "Location"
+	// actionExported is data that left the system (docs/adr/0026 D5);
+	// actionConfidentialSet the flag set (docs/adr/0065 D2, D7).
+	actionExported        = "exported"
+	actionConfidentialSet = "confidential_set"
+	headerETag            = "ETag"
+	headerLocation        = "Location"
 )
 
 // Server implements the generated strict server interface: one method per
@@ -73,8 +84,10 @@ type Server struct {
 	cursors cursorCodec
 	// storage holds the attachments' bytes; nil without object storage.
 	storage *storage.Client
-	// uploads bounds the uploads buffered at once against the memory limit.
+	// uploads bounds the uploads buffered at once against the memory limit;
+	// imports holds the replica to one import at a time (importSlot).
 	uploads chan struct{}
+	imports chan struct{}
 }
 
 var _ apigen.StrictServerInterface = (*Server)(nil)

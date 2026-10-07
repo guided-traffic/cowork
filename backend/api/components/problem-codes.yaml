@@ -12,6 +12,7 @@ ProblemCode:
     - token_revoked
     - not_allowed
     - invalid_credentials
+    - signature_invalid
     - forbidden
     - insufficient_scope
     - agent_forbidden
@@ -35,9 +36,12 @@ ProblemCode:
     - parent_cycle
     - link_cycle
     - open_prerequisites
+    - import_executed
+    - import_conflict
     - period_locked
     - attachment_limit
     - attachment_quota
+    - consistency_check_stale
     - uploads_disabled
     - chat_unavailable
     - precondition_failed

@@ -4,8 +4,8 @@
 // UserInfo. It does what a real issuer does, and on request what Dex cannot be
 // made to do: sign with a wrong key, name another audience, issue an expired or
 // a wrongly bound token, keep the groups in UserInfo only, change them at a
-// refresh, refuse or fail a refresh (docs/adr/0029 D3, the tests' issuer). It
-// is never part of the binary.
+// refresh, refuse or fail a refresh, answer prompt=none with login_required
+// (docs/adr/0029 D3, D6, the tests' issuer). It is never part of the binary.
 package fakeissuer
 
 import (
@@ -80,6 +80,13 @@ type Issuer struct {
 	IDTokenOnRefresh bool
 	// EndSession names an end_session_endpoint in the discovery.
 	EndSession bool
+	// NoSession is an issuer that holds no session of the person: it answers
+	// an authorization request with prompt=none with the error
+	// login_required (OIDC Core 1.0 3.1.2.6), and logs the next person in at
+	// any other, as its form would. Prompts records the prompt of every
+	// authorization request, "" for none.
+	NoSession bool
+	Prompts   []string
 	// RotatedKey signs with a second key, which the keys then publish beside
 	// the first under another key id; KeysDown answers the keys with 503.
 	RotatedKey bool
@@ -264,26 +271,32 @@ func writePadded(w http.ResponseWriter, doc map[string]any, pad int) {
 }
 
 // authorize logs the next person in at once and sends the browser back with a
-// code, the way an issuer does after its form.
+// code, the way an issuer does after its form — or, under NoSession, answers
+// prompt=none with login_required.
 func (is *Issuer) authorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	if q.Get("client_id") != ClientID || q.Get("response_type") != "code" || q.Get("code_challenge_method") != "S256" {
 		http.Error(w, "bad authorization request", http.StatusBadRequest)
 		return
 	}
-	is.mu.Lock()
-	code := random()
-	is.codes[code] = grant{subject: is.Next, nonce: q.Get("nonce"), challenge: q.Get("code_challenge"),
-		redirect: q.Get("redirect_uri"), scope: q.Get("scope")}
-	is.issued = append(is.issued, code)
-	is.mu.Unlock()
 	back, err := url.Parse(q.Get("redirect_uri"))
 	if err != nil {
 		http.Error(w, "bad redirect_uri", http.StatusBadRequest)
 		return
 	}
 	v := back.Query()
-	v.Set("code", code)
+	is.mu.Lock()
+	is.Prompts = append(is.Prompts, q.Get("prompt"))
+	if is.NoSession && q.Get("prompt") == "none" {
+		v.Set("error", "login_required")
+	} else {
+		code := random()
+		is.codes[code] = grant{subject: is.Next, nonce: q.Get("nonce"), challenge: q.Get("code_challenge"),
+			redirect: q.Get("redirect_uri"), scope: q.Get("scope")}
+		is.issued = append(is.issued, code)
+		v.Set("code", code)
+	}
+	is.mu.Unlock()
 	v.Set("state", q.Get("state"))
 	back.RawQuery = v.Encode()
 	// #nosec G710 -- an issuer sends the browser back to the client's redirect URI; this one serves tests only

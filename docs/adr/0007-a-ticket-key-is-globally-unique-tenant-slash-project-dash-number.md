@@ -7,10 +7,16 @@ a ticket addressed?": the globally unique form with the tenant in it, as the can
 spelling everywhere, over the shorter `PROJECT-number` that would have collided across
 tenants.
 
-**Partly built** (phase 2, 2026-10-02): D1–D4 — the key grammar
+~~**Partly built**~~ **Built** *(whole since 2026-10-06, with D6)* (phase 2, 2026-10-02): D1–D4 — the key grammar
 ([`ParseTicketKey`](../../backend/internal/domain/ticket.go)), the counter row per project, the
 full key in every response, the short form taken where the path fixes the tenant, numbers never
-reused. D5's imports arrive with the importer.
+reused. ~~D5's imports arrive with the importer.~~ *(2026-10-06.)* D6 is built with the importer of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md): a ticket keeps the number of its file — `id: T<n>`, the name's
+`NNN`, an export's key —, the project's sequence advances past the highest number an import brings
+(`AdvanceTicketCounter`), and a `T<n>` in a repository's prose is rewritten to the full key of the
+ticket the import creates ([ADR 0063](0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md) D3). A number a ticket of the
+project holds — a deleted one included — or a purged ticket held is a conflict of the dry run, so
+D4 holds through an import.
 
 ## Context
 

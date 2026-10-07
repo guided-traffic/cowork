@@ -2,14 +2,17 @@
 -- (internal/store/tickets.go); a unit test holds the two lists equal.
 -- open_prerequisites counts the open tickets that block it which the caller
 -- can see, the number on a board card (docs/adr/0018 D1, docs/adr/0012 D7); a
--- hidden one is never counted.
+-- hidden one is never counted. The persons it names — the reporter, the
+-- assignee and the one who set the horizon — are read through the policy of
+-- users: a person who is no longer a member of the tenant has the id alone.
 
 -- name: GetTicketByNumber :one
 SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.body, t.state,
        t.blocked_from, t.block_kind, t.block_reason, t.block_ticket_id, t.block_external_ref,
        bp.key AS block_project_key, bt.number AS block_number,
        t.severity, t.security, t.threat, t.urgency_derived, t.urgency_rule, t.urgency_override,
-       t.urgency_override_reason, t.urgency_override_by, t.urgency_override_at, t.effort, t.progress, t.progress_derived,
+       t.urgency_override_reason, t.urgency_override_by, ou.username AS urgency_override_by_username,
+       ou.display_name AS urgency_override_by_name, t.urgency_override_at, t.effort, t.progress, t.progress_derived,
        t.progress_refinement, t.progress_refinement_derived, t.progress_review, t.progress_review_derived,
        t.parent_id, pt.number AS parent_number,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
@@ -26,6 +29,7 @@ FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
 LEFT JOIN users au ON au.id = t.assignee_id
+LEFT JOIN users ou ON ou.id = t.urgency_override_by
 LEFT JOIN tickets pt ON pt.tenant_id = t.tenant_id AND pt.id = t.parent_id
      AND pt.deleted_at IS NULL AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
 LEFT JOIN tickets bt ON bt.tenant_id = t.tenant_id AND bt.id = t.block_ticket_id

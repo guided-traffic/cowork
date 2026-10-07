@@ -26,12 +26,19 @@ is the exception to the pull request: an administrator pushes it directly to `ma
 `[skip ci]` in the message (ADR 0073 D2). Release tags `v*` are created,
 moved or deleted only by that App (the ruleset `release tags`).
 
-Three jobs need more explanation than their targets:
+Four jobs need more explanation than their targets:
 
 - **`linter`** (Code Linting) runs `make lint` and then `make generate-check`: the generated
   files — the bundled API document, the oapi-codegen and sqlc output, the problem-code enum and
   the README table — must be what `make generate` writes from the sources
   ([build-test-lint.md](build-test-lint.md#generated-code)).
+- **`helm`** (Helm Chart) runs `make helm-lint`, `make helm-template` and `make examples-lint`
+  with Helm 4.3.0. It sets up Go for the last: kubeconform installs with `go install`, and
+  `backend/tools/crdschema` turns the CustomResourceDefinitions the target fetches — at the tags of
+  `CNPG_VERSION` and `MINIO_OPERATOR_VERSION` — into the schemas the example manifests are checked
+  against, so the job needs the network ([build-test-lint.md](build-test-lint.md#targets),
+  [ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D2).
+  **Not run on a runner yet**: the step's first run is its first proof.
 - **`integration-tests`** has a `postgres:18` service container, whose `cowork` superuser is the
   administrative URL in `COWORK_TEST_DATABASE_URL`. The S3 server is started by `make minio-up`
   on the job's Docker daemon, because a service container takes no command and the Chainguard
@@ -63,7 +70,10 @@ windows on amd64 and arm64 — `cowork-mcp-<version>-<os>-<arch>`, `.exe` on win
 `actions/attest-build-provenance` (their checksums as its subjects; `id-token` and `attestations`
 on the job) and attaches all twelve files to the release
 ([ADR 0041](../adr/0041-the-mcp-server-speaks-stdio-and-ships-as-a-release-binary-per-platform.md)
-D2). The binaries are not signed for an operating system and not notarized. It runs after the release exists, so it is
+D2). The attestation check a person runs names this workflow by its path and the release's tag
+([claude-code.md](../operations/claude-code.md#1-the-binary), the README's naming table): moving or
+renaming `build.yml`, or attesting in another workflow, changes that command in the same change.
+The binaries are not signed for an operating system and not notarized. It runs after the release exists, so it is
 no check of a pull request: a build that breaks on one platform shows only there; `make
 build-mcp` with `GOOS=` and `GOARCH=` reproduces it locally.
 

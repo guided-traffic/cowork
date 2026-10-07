@@ -16,6 +16,16 @@
       </p>
     } @else {
       @if (oidc()) {
+        @if (resuming()) {
+          <p class="muted note notice" role="status" data-testid="login-resuming">
+            Your session ended. Signing you in again through {{ providerName() }}…
+          </p>
+        }
+        @if (providerSessionEnded()) {
+          <p class="muted note notice" role="status" data-testid="login-provider-ended">
+            Your session at {{ providerName() }} has ended. Sign in again.
+          </p>
+        }
         <button
           pButton
           type="button"

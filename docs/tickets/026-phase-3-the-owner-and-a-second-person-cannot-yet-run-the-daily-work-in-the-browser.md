@@ -8,7 +8,7 @@ threat:
 urgency: next         # rule 3: severity high, live — the daily work's path through "assigned to me" and the inbox has no end-to-end verification
 effort: L
 blocked-by:
-filed-from: docs/planning/project-plan.md phase 3, converted by ADR 0074 D2
+filed-from: phase 3 of the project plan, converted by ADR 0074 D2
 opened: 2026-10-03
 decided: 2026-10-03
 done:
@@ -25,8 +25,8 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
   moves, comments, questions, interest, links, attachments and time (T30, T31, T32); the time
   report; and the tenant's settings, projects, members, accounts and group mappings. Phases 4 (the
   identity provider) and 5 (`cowork-mcp` and the chat) were built ahead of this phase and released
-  in 0.3.0; phase 3 is the open phase before phase 6
-  ([project-plan.md](../planning/project-plan.md)).
+  in 0.3.0; phases 6 (T55) and 7 (T58), the plan's last, started on 2026-10-06 while this phase
+  waits for the owner's reviews.
 - **Released in 0.5.0** (`9c6948b`, 2026-10-05): everything the children below
   built — the horizon, the person-level pages with the inbox and "next for me" across every tenant,
   the ticket page's editors, the prerequisite tree, rendered and sanitised Markdown, search, the
@@ -77,7 +77,6 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
 
 1. **What is left of the children.** Each lands with its tests, the pages that describe what it
    built, and the Status of every ADR it builds:
-   - T52 — the narrowing of the two capability checks, due now that 0.6.0 shipped migration 38
    - T32 — the owner's review of the attachment quota
    - T34 — the owner's look at the score's marker and the sort by score
    - T36 — the owner's review of the mention
@@ -95,5 +94,4 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
    API, and records the result here.
 3. **Phase close:** every child extracted and archived; the README reference covers every
    variable, value, route and problem code the phase added; the Status of every ADR the phase
-   built says what is built; the phase-3 section is gone from
-   [project-plan.md](../planning/project-plan.md).
+   built says what is built.

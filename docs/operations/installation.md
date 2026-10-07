@@ -14,7 +14,10 @@ the installation provides them, and the chart takes references to them.
 ([`.github/workflows/build.yml`](../../.github/workflows/build.yml)): the chart to the Helm
 repository `https://guided-traffic.github.io/cowork/`, the images to Docker Hub as
 `guidedtraffic/cowork-backend` and `guidedtraffic/cowork-frontend`. The chart's image tags
-default to its `appVersion`, so a chart version brings its own images. The first release is
+default to its `appVersion`, so a chart version brings its own images. The images are built for
+`linux/amd64` alone: a node of another architecture — an arm64 node of a kind cluster on a Mac, say —
+cannot pull them (`no match for platform in manifest`) and runs them only under emulation, from
+images pulled with `--platform linux/amd64` and loaded by hand (seen 2026-10-07). The first release is
 `0.1.0`. Installing from the checked-out tree, with images you built with `make docker-build`,
 works the same way with `deploy/helm/cowork` and the image values set. The values reference is
 [README.md, Helm chart values](../../README.md#helm-chart-values).
@@ -23,15 +26,23 @@ works the same way with `deploy/helm/cowork` and the image values set. The value
 
 | Thing | Needed | How the chart takes it |
 |---|---|---|
-| A PostgreSQL 18 (or newer) database with two roles | yes | the runtime role's URL and the owner role's URL, each from a Secret |
+| A PostgreSQL 18 (or newer) database with two roles | yes | the runtime role's connection and the owner role's, each from a Secret — a URL, or its components with the location from a ConfigMap if you like ([the Secrets](#the-secrets)) |
 | The server key | yes | a Secret; there is no inline value |
 | A local administrator, an identity provider, or both, and the public URL | yes, to log in at all — without one of the two nobody can | the administrator's username and password from a Secret ([below](#the-local-administrator)); the provider's issuer and client id as values, its client secret from a Secret ([below](#the-identity-provider)); `backend.config.baseURL` for either |
-| An S3-compatible bucket with an access key scoped to it | no — without it uploads are refused | endpoint and bucket as values, the key from a Secret, a private authority from a ConfigMap |
-| A model the chat in the UI talks to | no — without it there is no chat | the provider, its URL and the model as values, its API key from a Secret ([below](#the-chat)) |
+| An S3-compatible bucket with an access key scoped to it | no — without it uploads are refused | endpoint and bucket as values or from a ConfigMap, the key from a Secret, a private authority from a ConfigMap |
 
-Rendering fails, naming the missing value, without a database URL, without an owner URL while
-`backend.config.migrateOnStart` is `true` (the default), without `session.existingSecret`, with
-a `storage.endpoint` but no `storage.bucket` or no `storage.existingSecret`, with a local
+[Example manifests](#example-manifests) for CloudNativePG and for MinIO show one way to provide the
+database and the bucket; they are checked for syntax only.
+| A model the chat in the UI talks to | no — without it there is no chat | the provider, its URL and the model as values, its API key from a Secret ([below](#the-chat)) |
+| A Prometheus — with the Prometheus Operator's CRDs for the monitors and the alerts — and a Grafana with the dashboard sidecar | no — the metrics port is on either way, until `metrics.enabled: false` | `metrics.*` switches each resource on; nothing of it is a credential ([metrics.md](metrics.md)) |
+
+Rendering fails, naming the missing value, without a database connection, without an owner
+connection while the release migrates — `backend.config.migrateOnStart` `true` (the default), or
+`migrations.mode: job` —, with `migrations.mode: job` and an inline `database.url`,
+`database.owner.url` or local administrator ([job mode](#job-mode)), with a `migrations.mode` other
+than `onStart` and `job`, with a database role's `keys.url` empty and no key for its host, name,
+user or password, with an `existingConfigMap` beside a URL, without `session.existingSecret`, with
+a `storage.endpoint` or a `storage.existingConfigMap` but no bucket or no `storage.existingSecret`, with a local
 administrator or an `auth.oidc.issuer` but no `backend.config.baseURL`, with an issuer but no
 client id or no client secret, with a group in `auth.oidc.allowedGroups` that holds a comma, with
 a chat provider in `chat.providers` whose id is not one or repeats, whose kind is neither `openai` nor
@@ -51,7 +62,7 @@ newer will do; the operator creates the database and both roles, cowork creates 
 
 | Role | Used by | Requirements |
 |---|---|---|
-| owner (`cowork_owner` `# example`) | the migrations only: the chart's `migrate` init container, `cowork migrate` | owns every object it creates: it owns the database, or holds `CREATE` on schema `public` (and `CREATE` on the database, unless the extensions exist already — below) |
+| owner (`cowork_owner` `# example`) | the migrations only: the chart's `migrate` init container or migration Job, `cowork migrate` | owns every object it creates: it owns the database, or holds `CREATE` on schema `public` (and `CREATE` on the database, unless the extensions exist already — below) |
 | runtime (`cowork_app` `# example`) | `cowork serve`, every request | `LOGIN`; not a superuser, no `BYPASSRLS`, owns nothing in the schema, is not a member of the owner role. The migrations grant it what it needs, table by table |
 
 As an administrative role:
@@ -104,13 +115,19 @@ superusers; both roles kept working with it in place. cowork does not check this
 The gap, and what stays open after the revocation, is
 [H-4 in the tenancy security page](../security/tenancy.md#h-4).
 
-**CloudNativePG.** Its `-app` Secret carries the credentials of the role that owns the
-database it bootstraps, with a `uri` key — the owner role's URL, so
-`database.owner.existingSecret=<cluster>-app` with `database.owner.existingSecretKey=uri`.
-The runtime role is not part of that bootstrap, and the chart reads a URL only (the
-component keys of ADR 0058 D3 are not built), so its Secret with a URL key is yours to write.
-Not verified against a CloudNativePG cluster in this repository; the Secret's layout is from
-that project's documentation.
+**CloudNativePG.** Its `-app` Secret carries the credentials of the role that owns the database it
+bootstraps — the owner role — under the keys `username`, `user`, `password`, `host`, `port`,
+`dbname` and `uri` among others (CloudNativePG 1.30.1's source); its `uri` names no `sslmode`. So
+`database.owner.existingSecret=<cluster>-app` with `database.owner.keys.url=uri` reads its URL, and
+with `database.owner.keys.url` empty its components, the chart's default key names being
+CloudNativePG's. The runtime role is not part of that bootstrap:
+[`deploy/examples/cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml)
+creates it and keeps its password from a `kubernetes.io/basic-auth` Secret, and reads both roles'
+location from a ConfigMap of its own, which is how `sslmode` gets set. CloudNativePG serves TLS
+with a certificate of its own authority; the chart mounts no authority for the database, so
+`require` — encrypted, the server not verified — is the strongest mode it can use with it. Not
+verified against a CloudNativePG cluster in this repository: the example is checked for syntax
+([example manifests](#example-manifests)).
 
 ## The Secrets
 
@@ -134,13 +151,46 @@ kubectl -n cowork create secret generic cowork-chat \
 
 | Secret | Values naming it | Key `# default` | Read by |
 |---|---|---|---|
-| the runtime role's URL | `database.existingSecret` | `database.existingSecretKey`: `databaseUrl` | the backend container; the `migrate` init container reads only the role's name from it |
-| the owner role's URL | `database.owner.existingSecret` | `database.owner.existingSecretKey`: `databaseUrl` | the `migrate` init container, nothing else |
+| the runtime role's connection | `database.existingSecret` | `database.keys.url`: `databaseUrl` — or, with it empty, the components below | the backend container; the migration run — the `migrate` init container or the migration Job — for the role's name, and the Job for the bootstrap |
+| the owner role's connection | `database.owner.existingSecret` | `database.owner.keys.url`: `databaseUrl` — or the components | the migration run, nothing else |
 | the server key | `session.existingSecret` | `session.keys.key`: `sessionKey` | the backend container |
 | the local administrator | `localAdmin.existingSecret` | `localAdmin.keys.username`: `username`, `localAdmin.keys.password`: `password` | the backend container; the account follows it at every start |
 | the identity provider's client | `auth.oidc.existingSecret` | `auth.oidc.keys.clientSecret`: `clientSecret`; `auth.oidc.keys.clientId`: empty — set, it reads the client id from the Secret too, in place of `auth.oidc.clientId` | the backend container |
 | the storage access key | `storage.existingSecret` | `storage.keys.accessKeyId`: `accessKeyId`, `storage.keys.secretAccessKey`: `secretAccessKey` | the backend container |
 | a chat provider's API key, one Secret per provider | `chat.providers[].existingSecret` | that entry's `keys.apiKey`: `apiKey` | the backend container, which sends it to that provider |
+
+**A database role as components.** A Secret that holds no URL — what an operator or a platform
+team hands out — is read key by key: set the role's `keys.url` to empty, and the backend composes
+the URL from `COWORK_DATABASE_HOST`, `_PORT`, `_NAME`, `_USER`, `_PASSWORD` and `_SSLMODE` (the
+owner's under `COWORK_DATABASE_OWNER_`), escaping the password
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D4).
+The user and the password always come from the Secret; the location — host, port, name, sslmode —
+from `existingConfigMap` when you name one, from the Secret otherwise. Every key name is a value:
+
+```yaml
+database:
+  existingSecret: cowork-db-runtime        # example: a kubernetes.io/basic-auth Secret
+  existingConfigMap: cowork-db-location    # example: optional, the location
+  keys:
+    url: ""                                # empty: the components, whatever existingSecretKey says
+    host: host                             # default
+    port: port                             # default; empty: not read, the port is 5432
+    name: dbname                           # default
+    user: username                         # default
+    password: password                     # default
+    sslmode: sslmode                       # example; default empty: not read, the driver's default prefer
+  owner:                                   # the same keys, read by the migration run only
+    existingSecret: cowork-db-app          # example: CloudNativePG's Secret of the owner
+    existingConfigMap: cowork-db-location  # example
+    keys:
+      url: ""
+      sslmode: sslmode                     # example
+```
+
+A key that is named and missing from its Secret or ConfigMap stops the pod with
+`CreateContainerConfigError`, as a missing Secret does — never a silent fallback. Name
+`sslmode` (`require` or stronger) for a database outside the pod network. `existingSecretKey`, the
+URL's key under its earlier name, is still read and wins over `keys.url` while it names a key.
 
 **The server key** is standard base64 of at least 32 random bytes; `openssl rand -base64 32`
 makes one. It signs the list cursors, keys the hashes of a client's address — the login
@@ -171,6 +221,9 @@ once:
   from the server key, and is refused with `422 idempotency_mismatch`, neither replayed nor run a
   second time. A client that retries a creation across a rotation reads the list to see whether it
   happened.
+- **Every tenant's GitHub webhook secret no longer opens**: its webhook answers `404` and the log
+  says to rotate the secret, until the tenant's administrators make a new one and set it at GitHub
+  ([github.md](github.md)).
 - **The sessions of the local login survive**, and so does every personal access token: a session
   row and a token are found by the SHA-256 of their value, which no key enters.
 
@@ -179,10 +232,11 @@ refresh tokens sealed in that copy
 ([identity-provider.md](../security/identity-provider.md#h-27) H-27;
 [trust-boundaries.md](../security/trust-boundaries.md#where-the-credentials-live)).
 
-**The owner's credential reaches only the init container.** The serving container gets the
-runtime URL alone and `COWORK_MIGRATE_ON_START=false`. An installation that hands the owner URL
-to the serving container — through `backend.extraEnv`, for instance — gives a compromised
-server process the power to switch row-level security off.
+**The owner's credential reaches only the migration run** — the `migrate` init container, or in
+[job mode](#job-mode) the migration Job. The serving container gets the runtime role's connection
+alone and `COWORK_MIGRATE_ON_START=false`. An installation that hands the owner URL to the serving
+container — through `backend.extraEnv`, for instance — gives a compromised server process the power
+to switch row-level security off.
 
 **The inline values**, `database.url`, `database.owner.url` and `localAdmin.username` with
 `localAdmin.password`, render the Secrets `<fullname>-database`, `<fullname>-database-owner` and
@@ -193,7 +247,7 @@ no inline value and come from `auth.oidc.existingSecret` and each provider's
 a throw-away installation only: the values are
 stored in plain text in the Helm release Secret and shown by `helm get values`, and the chart
 prints a warning in its notes for each. When a Secret reference and its inline value are both
-set, the reference wins and the value is ignored.
+set, the reference wins and the value is ignored. [Job mode](#job-mode) takes none of them.
 
 **A changed Secret reaches the pods when they start again.** The chart restarts them by
 itself only for the inline values (a checksum annotation on the pod); after rotating a Secret
@@ -233,7 +287,10 @@ What happens at every start of a backend pod, after the migrations and under an 
 
 A start that finds everything as the Secret says changes nothing. The password must have at
 least `auth.local.passwordMinLength` characters (12 by default, 8 at the lowest); a shorter one
-refuses the start naming `COWORK_LOCAL_ADMIN_PASSWORD`, never the password.
+refuses the start naming `COWORK_LOCAL_ADMIN_PASSWORD`, never the password. In
+[job mode](#job-mode) the migration Job runs the same synchronisation after the schema step, before
+a pod of the release or upgrade starts, so the account and the first tenant exist once the Job is
+done; the pods still run it at their start and find it in step.
 
 **The first tenant.** While no tenant exists, only a global administrator may log in; anyone
 else with the right password gets `403 not_initialised` and no session. The local administrator
@@ -467,9 +524,11 @@ Attachments live in any S3-compatible store
 in a bucket of their own, reached with an access key whose policy covers that bucket only —
 never the store's root credentials
 ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D5).
-The backend writes, reads and deletes objects under `<tenant-id>/<attachment-id>`; it never
-creates, lists or deletes a bucket, so the bucket exists before the first upload. This policy
-was enough against the MinIO of `make minio-up`, with the region left empty:
+The backend writes, reads and deletes objects under `<tenant-id>/<attachment-id>`, and lists the
+objects under each tenant's prefix once a day for the consistency check
+([backups.md](backups.md#the-consistency-check)); it never creates or deletes a bucket, so the
+bucket exists before the first upload. This policy was enough against the MinIO of
+`make minio-up`, with the region left empty:
 
 ```json
 {
@@ -479,10 +538,27 @@ was enough against the MinIO of `make minio-up`, with the region left empty:
       "Effect": "Allow",
       "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
       "Resource": ["arn:aws:s3:::cowork/*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::cowork"]
     }
   ]
 }
 ```
+
+**`s3:ListBucket` is the consistency check's.** Without it every upload and download works and the
+check fails at its listing — the log says `job failed` with `consistency-check` and `Access Denied`,
+and [`CoworkJobFailing`](metrics.md#coworkjobfailing) fires. With it the key can list every
+tenant's object keys, which it could not before: a key that leaks alone then reads every object, not
+only those whose keys the database names
+([attachments.md H-68](../security/attachments.md#h-68)). Checked on 2026-10-07 against that MinIO
+with a key of this policy and with one without its second statement: the listing was refused
+without it and answered with it, another bucket's listing was refused either way, and a missing
+object's `HEAD` and `GET` answered `404` either way. AWS S3 documents a `403` instead of the `404`
+for a missing object to a key without `s3:ListBucket`, which a download of a lost file would then
+answer as `500 internal` instead of the `404` that names the cause — not verified here.
 
 With the MinIO client, against an existing MinIO, by its administrator — cowork never sees the
 administrator's keys (names and secrets are examples):
@@ -497,10 +573,32 @@ kubectl -n cowork create secret generic cowork-storage \
   --from-literal=accessKeyId=cowork-app --from-literal=secretAccessKey='CHANGE-ME'
 ```
 
+[`deploy/examples/minio-bucket.sh`](../../deploy/examples/minio-bucket.sh) is these commands as a
+script, with a generated key; it was run once against the MinIO of `make minio-up`
+([example manifests](#example-manifests)).
+
 The values: `storage.existingSecret=cowork-storage`, `storage.endpoint` (`http://` or
 `https://`, host and port; setting it turns the storage on), `storage.bucket`,
 `storage.region` (empty lets the client ask the server) and `storage.pathStyle` (`true`, as
 MinIO expects; `false` for virtual-host addressing).
+
+**From a ConfigMap.** Where the store's location is handed out in a ConfigMap — one the platform
+team keeps for every application, say — name it in `storage.existingConfigMap`: each of the four
+values is then read from it under its key in `storage.keys` (`endpoint`, `bucket`, `region`,
+`pathStyle` `# default`), and a value whose key you set to empty stays the literal value, so a
+shared ConfigMap combines with a bucket of your own. Naming the ConfigMap turns the storage on as
+the endpoint does. The region and the path style may be missing from it — the backend then asks the
+server for the region and addresses by path —, the endpoint and the bucket may not: a missing key
+stops the pod with `CreateContainerConfigError`.
+
+```yaml
+storage:
+  existingSecret: cowork-storage   # example: the bucket-scoped key, still from a Secret
+  existingConfigMap: platform-s3   # example
+  keys:
+    bucket: ""                     # empty: the value below
+  bucket: cowork                   # example
+```
 
 **A private certificate authority:** put its PEM into a ConfigMap and name it.
 
@@ -518,6 +616,30 @@ uploaded` once at start. The backend does not contact the storage at start and `
 not check it: a wrong endpoint, key or bucket shows on the first upload, as
 `500 internal` and a `request failed` log line with the storage's error
 (`put object: Access Denied.` for a bucket the key does not reach).
+
+## Example manifests
+
+[`deploy/examples/`](../../deploy/examples/) shows one way to provide what the chart takes
+references to ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
+D1, D2). **They are examples to copy and adapt, not supported deployments, and they are checked for
+syntax only**: `make examples-lint`, in CI's `helm` job, validates them against the
+CustomResourceDefinitions of the operator releases they name, which proves that they parse against
+those releases and nothing more. Each file names, in its first lines, what it was written against
+and what it makes, and the chart's values for it.
+
+| File | Written against | What it makes |
+|---|---|---|
+| [`cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml) | CloudNativePG 1.30.1, PostgreSQL 18.6 | a `Cluster` whose `initdb` bootstrap makes the database, the owner role, the runtime role with the attributes [above](#the-database-and-its-two-roles), the three extensions and `CONNECT` for the two roles only; the runtime role's `basic-auth` Secret; a ConfigMap with the location. Applied on 2026-10-07 to a kind cluster with CloudNativePG 1.30.1, with only the password changed, for the upgrade from 0.8.0 to 0.9.0; the runtime role's Secret carries `cnpg.io/reload`, so a changed password reaches the role at once — without the label CloudNativePG applies it only at a later reconciliation and the old password stays valid meanwhile |
+| [`minio-tenant.yaml`](../../deploy/examples/minio-tenant.yaml) | the MinIO Operator v7.1.1 | a `Tenant` with one pool and the bucket — and no user: the operator gives every user of its `users` field the policy `consoleAdmin`, an administrator of the whole store. Never applied to a cluster here |
+| [`minio-bucket.sh`](../../deploy/examples/minio-bucket.sh) | `mc` RELEASE.2025-08-13T08-35-41Z | the bucket, the bucket-scoped policy, the access key with that policy alone and the Secret `cowork-storage`, for an existing MinIO or the Tenant above. Run on 2026-10-07 against the MinIO of `make minio-up`: the key put, read, listed and deleted objects in its bucket and was refused listing another bucket and the administration |
+
+**MinIO is archived.** The repositories of the MinIO Operator, the MinIO server and `mc` are
+archived on GitHub, and the server image the operator defaults to, `minio/minio`, can no longer
+be pulled (checked 2026-10-06): no fix follows for any of them. Do not install the operator or
+MinIO for a new installation; the two MinIO files are for a cluster that runs them already, and
+the Tenant names Chainguard's build of the server, which this repository's tests run and which
+was not tried with the operator. cowork needs no MinIO: any S3-compatible store with a bucket and
+a key scoped to it will do ([object storage](#object-storage)).
 
 ## The chat
 
@@ -571,8 +693,11 @@ contains: the Deployments `<fullname>-backend` and `<fullname>-frontend` — `<f
 `<release>-cowork`, or the release name itself when it contains `cowork`, so `cowork-backend`
 and `cowork-frontend` for the release `cowork` — a Service for each
 (backend on 8080, frontend on 80), one ServiceAccount without an API token, the `migrate` init
-container in every backend pod, and — only when the values ask for them — the Secrets rendered
-from inline URLs, the CA volume and the Ingress ([Expose it](#expose-it)). No NetworkPolicy
+container in every backend pod — or, in [job mode](#job-mode), the hook Job `<fullname>-migrate`
+in its place —, the container port `metrics` (8081) on the backend pods, which no Service lists
+([metrics.md](metrics.md)), and — only when the values ask for them — the Secrets rendered from
+inline URLs, the CA volume, the Ingress ([Expose it](#expose-it)) and the monitoring resources of
+`metrics.*`. No NetworkPolicy
 ([network policies are the cluster's](#network-policies-are-the-clusters)) and no RBAC objects:
 neither container talks to the Kubernetes API. The frontend pod takes no configuration: its
 nginx serves the UI from a file in the image and reaches no backend.
@@ -581,13 +706,15 @@ Verify:
 
 ```bash
 kubectl -n cowork rollout status deploy/cowork-backend deploy/cowork-frontend
-kubectl -n cowork logs deploy/cowork-backend -c migrate   # "database schema is current" with the version
+kubectl -n cowork logs deploy/cowork-backend -c migrate   # "database schema is current" with the version; job mode: the Job is deleted once it succeeded
 kubectl -n cowork port-forward svc/cowork-backend 8081:8080 &
 curl -s localhost:8081/readyz           # {"status":"ready"} — the backend and its database
 curl -s localhost:8081/api/v1/version   # the backend's version
 kubectl -n cowork port-forward svc/cowork-frontend 8080:80 &
 curl -s localhost:8080/healthz          # {"status":"ok"} — nginx itself
 curl -s localhost:8080/api/v1/version   # a 404 problem: the frontend serves no API, the Ingress routes it
+kubectl -n cowork port-forward deploy/cowork-backend 18081:8081 &
+curl -s localhost:18081/metrics | grep '^cowork_migrations'   # the schema version, dirty 0: the metrics port of a pod
 # once the Ingress is set up (below):
 curl -s https://cowork.example.com/api/v1/version   # the backend's version, through the Ingress
 open https://cowork.example.com                     # the UI shell, with the version in the footer
@@ -612,27 +739,118 @@ D7).
 
 ## How the schema is migrated
 
+`migrations.mode` chooses where the migrations run
+([ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)):
+`onStart`, the default, in an init container of every backend pod; or `job`, in one Helm hook Job
+before every install and upgrade. In both, the serving container never migrates: it starts with
+the runtime role's connection and `COWORK_MIGRATE_ON_START=false`, and refuses to serve — exit 1,
+the pod restarts — a dirty schema or one with pending migrations:
+`pending migrations: N; run the migration job (or set COWORK_MIGRATE_ON_START=true)`. A schema
+newer than the binary is served, with a warning in the log.
+
+### On start
+
 With `backend.config.migrateOnStart: true` (the default), every backend pod starts with the
 init container `migrate`: it runs `cowork migrate` as the owner role, granting the runtime
-role — named by the runtime URL, which it reads for that name only — what each migration
-grants. Pods that start together serialise on a database advisory lock; the first applies,
-the rest find the schema current
-([ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md) D1).
-Then the serving container starts with the runtime URL and `COWORK_MIGRATE_ON_START=false`,
-and refuses to serve — exit 1, the pod restarts — a dirty schema or one with pending
-migrations: `pending migrations: N; run the migration job (or set COWORK_MIGRATE_ON_START=true)`.
-A schema newer than the binary is served, with a warning in the log.
+role — named by the runtime role's connection, which it reads for that name only — what each
+migration grants. Pods that start together serialise on a database advisory lock; the first
+applies, the rest find the schema current (D1).
 
 With `backend.config.migrateOnStart: false` there is no init container and the chart needs no
 owner credential and renders no owner Secret — leave `database.owner.*` empty: an inline `url`
 would still stay in the release's values, readable with `helm get values` — and nothing in the
-release migrates. The backend pods refuse to start until
-somebody runs `cowork migrate` against the database with `COWORK_DATABASE_OWNER_URL` and
-`COWORK_DATABASE_URL` set. The chart's Job mode of ADR 0057 D2 is not built.
+release migrates. The backend pods refuse to start until somebody runs `cowork migrate` against
+the database with the owner's connection and the runtime role's set (`COWORK_DATABASE_OWNER_URL`
+and `COWORK_DATABASE_URL`, or their components).
 
 A failing migration fails the init container: the pod stays in an `Init:` state and is
 retried with back-off, and `kubectl -n cowork logs <pod> -c migrate` shows why. What a failure
 leaves behind and how it is repaired: [runtime.md, the migration run](runtime.md#the-migration-run).
+
+### Job mode
+
+With `migrations.mode: job` the chart renders the Job `<fullname>-migrate`, a Helm hook
+(`pre-install,pre-upgrade`, weight `-10`): Helm runs it, and waits for it, before it installs or
+upgrades anything else of the release, so the migration is one visible step, once per rollout, and
+a failed one fails the release before a new pod starts (D2). The backend pods have no init
+container; `backend.config.migrateOnStart` is not read.
+
+```yaml
+migrations:
+  mode: job
+database:
+  existingSecret: cowork-database          # example: required in job mode
+  owner:
+    existingSecret: cowork-database-owner  # example: required in job mode
+localAdmin:
+  existingSecret: cowork-local-admin       # example: required in job mode with a local administrator
+```
+
+- **Secret references only.** The Job runs before the Secrets the chart renders from inline values
+  exist, and before a changed inline value reaches its Secret on an upgrade, so job mode takes no
+  `database.url`, no `database.owner.url` and no inline local administrator: rendering fails on
+  each, naming the value. ConfigMaps are yours as well and exist before the release.
+- **The bootstrap follows the migration.** After the schema step the Job synchronises the local
+  administrator and creates the bootstrap tenant, with the administrator group's mapping, as a pod
+  does at its start (D4; [the local administrator](#the-local-administrator)) — it reads the local
+  administrator's Secret, `bootstrap.tenant`, `backend.config.baseURL`, the password policy and, with
+  an `auth.oidc.adminGroup`, the issuer and that group. It is given no client secret, no server key
+  and no storage key. The pods still run the bootstrap at their start, so rotating the local
+  administrator's Secret and restarting them works as in the other mode.
+- **One attempt, bounded by Helm's `--timeout`** (five minutes by default). A migration that fails
+  fails the release: `kubectl -n cowork logs job/cowork-migrate` shows why — a failed Job stays
+  until the next attempt replaces it, a succeeded one is deleted. A Helm that gives up waiting marks
+  the release failed and leaves the Job running; for a migration that takes longer, give the
+  upgrade a longer `--timeout`. A dirty schema is repaired by a person in either mode (D7,
+  [runtime.md](runtime.md#the-migration-run)).
+- **It runs as the namespace's `default` ServiceAccount** — the one the chart creates does not
+  exist before the release — or as `serviceAccount.name` when you set `serviceAccount.create: false`,
+  with no token mounted, the backend's image, security contexts, resources and scheduling.
+
+**Switching modes** is an upgrade: from `onStart` to `job` the upgrade's Job migrates before the
+new pods, which come without the init container; from `job` to `onStart` the new pods migrate in
+their init container again, and no Job runs. Mind the references first — job mode refuses inline
+values.
+
+### Argo CD and Flux
+
+Neither controller was run with cowork; these notes are written from their documentation — Argo
+CD's Helm user guide and sync phases of v3.5.3, and Flux's `HelmRelease` reference of
+helm-controller v1.6.5 — and say what job mode needs of each (D6).
+
+**Argo CD** renders the chart with `helm template` and maps Helm's hook annotations onto its own:
+`pre-install` and `pre-upgrade` are its `PreSync` phase, `helm.sh/hook-weight` its
+`argocd.argoproj.io/sync-wave`, and the Job's `hook-delete-policy` its delete policies, which Argo
+CD evaluates by its own sync phases. So the Job needs no annotation of Argo CD's and gets none from
+the chart. What differs from Helm:
+
+- Argo CD cannot tell an install from an upgrade: **every sync runs the Job**, the migration and the
+  bootstrap. Both find nothing to do when nothing changed; the Job's pod holds the owner's credential
+  for that time at every sync.
+- **A `PreSync` hook runs before the application's manifests are applied** — Secrets included —,
+  which is why job mode takes `existingSecret` references only: the Secrets the Job reads must exist
+  before the sync, made outside the application or by one that syncs before it.
+- **Adding an Argo CD hook annotation to any resource of the application makes Argo CD ignore every
+  Helm hook**, the Job's included: then add `argocd.argoproj.io/hook: PreSync` to the Job yourself,
+  through a post-renderer or a patch — the chart has no value for it.
+- A selective sync runs no hook.
+
+**Flux**'s helm-controller runs Helm's install and upgrade actions, chart hooks included unless
+told otherwise, so the Job runs as with Helm. In the `HelmRelease`:
+
+- leave `spec.install.disableHooks` and `spec.upgrade.disableHooks` at `false`, their default: with
+  either `true` the Job never runs, and the pods refuse to start on pending migrations;
+- `spec.timeout` (five minutes by default), or `spec.install.timeout` and `spec.upgrade.timeout`, is
+  how long the controller waits for the Job: give a long migration more;
+- `spec.install.remediation.retries` (default `0`) retries a failed install, uninstalling between
+  attempts; `spec.upgrade.remediation` (default `0` retries, strategy `rollback`) rolls back a failed
+  upgrade. A rollback runs no pre-upgrade hook: the pods of the release before keep serving, which a
+  migration that failed in its own transaction leaves them able to do, and a migration that left its
+  version dirty stops every pod that starts afterwards until a person repairs it (D7). The
+  `RetryOnFailure` strategy retries the upgrade, the Job included, without remediating;
+- `spec.upgrade.preserveValues` re-uses the values of the last release; whether it then takes the
+  new chart's defaults, as `--reset-then-reuse-values` does, or the old release's, as
+  `--reuse-values` does ([upgrade](#upgrade)), its reference does not say — not verified here.
 
 ## Expose it
 
@@ -663,7 +881,7 @@ in `ingress.annotations` or in the controller's own configuration. What any cont
 
 | What | Must be | Otherwise |
 |---|---|---|
-| request body limit | above the backend's larger limit: `max(maxJsonBody, attachmentMaxBytes)` rounded up to MiB, plus 1 MiB — `11m` with the defaults; none when either is `0`. The chart's notes print the figure | an upload or a body above the controller's limit gets the controller's own `413` page, not the backend's problem |
+| request body limit | above the backend's largest limit: `max(maxJsonBody, attachmentMaxBytes, maxImportBytes)` rounded up to MiB, plus 1 MiB — `51m` with the defaults; none when any of them is `0`. The chart's notes print the figure | an upload, an import or a body above the controller's limit gets the controller's own `413` page, not the backend's problem |
 | read timeout | above `backend.config.requestTimeout` plus 10 s — `40` seconds with the default; an hour when it is `0`. The chart's notes print the figure. The two streams send something at least every twenty seconds — the event stream's heartbeat, the chat's comment every ten — so they stay open within any timeout above that | a slow request gets the controller's `504` page instead of the backend's `504` problem with its request id; below twenty seconds the streams are cut |
 | buffering of `text/event-stream` | off. The backend answers the event stream and a turn of the chat with `X-Accel-Buffering: no`; a controller that honours that header — nginx does — needs no setting, one that does not must be told not to buffer | events arrive late and in bursts, a turn's text all at once at its end |
 | `X-Forwarded-For` | the address the controller saw as the header's last entry, written in place of the client's header or appended to it | `backend.config.trustedProxies` finds the wrong client ([below](#the-client-address-and-the-trusted-proxies)) |
@@ -683,7 +901,7 @@ ingress:
   enabled: true
   className: nginx                                       # example
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: 11m     # example: the figure for the default limits
+    nginx.ingress.kubernetes.io/proxy-body-size: 51m     # example: the figure for the default limits
     nginx.ingress.kubernetes.io/proxy-read-timeout: "40" # example: the figure for the default requestTimeout
   hosts:
     - host: cowork.example.com                           # example
@@ -696,8 +914,8 @@ ingress:
 its Ingress: the controller routed `/api/`, `/auth/` and `/auth/callback` to the backend and the
 rest to the frontend; its generated configuration had `client_max_body_size 1m`,
 `proxy_read_timeout 60s` and `proxy_buffering off` by default, and a 2 MiB body got the
-controller's `413` page until `proxy-body-size: 11m` let it through to the backend's own `413`
-problem; the event stream delivered an event within 50 ms and stayed open past a read timeout of
+controller's `413` page until `proxy-body-size: 11m` — the figure for the limits of that day, before
+the import's — let it through to the backend's own `413` problem; the event stream delivered an event within 50 ms and stayed open past a read timeout of
 60 s and of 40 s on its heartbeats — with `proxy-buffering: "on"` forced as well, so the backend's
 header alone keeps it unbuffered. The chat's stream carries the same header and was not run through
 the controller. No other controller was tried here: give yours the four settings above in its own
@@ -814,8 +1032,10 @@ where your controller runs. What cowork's pods need, for a policy you write:
   providers, and DNS.
 - **The frontend's pods**, port 8080: the Ingress controller's pods. The frontend reaches nothing.
 - **The kubelet's probes** of both pods come from the node, which Kubernetes always admits.
-- **A scrape of the metrics port** ([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md),
-  not built) will need its own rule for the monitoring namespace.
+- **The backend's pods**, port 8081 (`metrics.port`): the monitoring namespace, for Prometheus, and
+  nothing else — the port answers `/metrics` without authentication; with
+  `frontend.metrics.exporter.enabled`, **the frontend's pods**, port 9113, likewise. The rule and
+  why it goes beside the others are [metrics.md](metrics.md#the-network-policy-for-the-port).
 
 A policy is enforced by a network plugin that implements NetworkPolicy and by nothing else;
 Kubernetes says that creating one without such a plugin "will have no effect". Nothing of this was
@@ -823,22 +1043,46 @@ run against a plugin that enforces policies.
 
 ## Upgrade
 
+The procedure — a backup first, the order the migrations and the pods go in, how to read where
+the schema stands, a rollback and a dirty schema — is [upgrade.md](upgrade.md). Here are the
+commands and what each release changes.
+
 ```bash
 helm repo update cowork
-helm upgrade cowork cowork/cowork --version <new> -n cowork --reuse-values
+helm upgrade cowork cowork/cowork --version <new> -n cowork --reset-then-reuse-values
 ```
+
+**`--reset-then-reuse-values`** (Helm 3.14 or newer, and Helm 4) keeps the values you set and takes
+the new chart's defaults for every other. **`--reuse-values`** takes the defaults of the chart the
+release was installed with instead — Helm puts the old release's values in place of the new chart's
+`values.yaml` (`reuseValues` in Helm's `pkg/action/upgrade.go`, 3.21.3 and 4.3.0 alike) — so a
+value a later release adds is missing. The chart reads every value added since 0.7.0 with its
+default when it is missing, so `--reuse-values` from 0.7.0 renders as `--reset-then-reuse-values`
+does; the charts before it did not, and an upgrade from 0.2.0 to 0.7.0 with `--reuse-values` fails
+to render at `chat.providers` (checked 2026-10-06). Keeping your own values file and passing it with `-f` works as well.
 
 Both images carry the release's version, and the chart of that version names them; set
 `backend.image.tag` and `frontend.image.tag` only to pin images apart from the chart, and then
 move them together — across the release below, the frontend image and the chart move together as
-well. The new backend pods
-apply the pending migrations in their init container before their server starts. **Rolling
-back is rolling the image back:** deploy the previous tags and leave the schema where it is.
-The previous image's init container finds the schema ahead of it and applies nothing, and its
-server serves it with a warning. A migration never removes what the previous release still
-reads, which is what makes that safe
+well. The pending migrations are applied before a new server starts: in `onStart` mode by the
+init container of each new backend pod, in [job mode](#job-mode) by the Job, before Helm changes
+anything else of the release. **Rolling back is rolling the image back:** deploy the previous tags
+and leave the schema where it is. The previous image's migration run — its init container, or the
+Job of that upgrade — finds the schema ahead of it and applies nothing, and its server serves it
+with a warning; `helm rollback` runs no Job at all. A migration never removes what the previous
+release still reads, which is what makes that safe
 ([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md));
 there is no schema rollback and no `migrate down`.
+
+**The release with the migration Job and the component keys**
+([ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)
+D2, [ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
+D3, both amended 2026-10-06) changes nothing for an installation that sets nothing new: every
+values file of the chart's `ci/` renders the same manifests, byte for byte, with the new defaults and
+with the values of 0.7.0 that `--reuse-values` keeps. `database.existingSecretKey` and
+`database.owner.existingSecretKey` keep working — their default is empty now, and `keys.url`
+carries `databaseUrl`. Switching to [job mode](#job-mode) or to the components is an upgrade with
+the new values, after their Secrets and ConfigMaps exist.
 
 **The release whose Ingress routes the API to the backend**
 ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
@@ -890,13 +1134,73 @@ new names only. Two things to know:
 - **A `cowork-mcp` of 0.4 does not work against it**, and is unsupported
   ([SECURITY.md](../../SECURITY.md)): its token reads without the capability it looks for, and its
   routes for the horizon are gone. Every person's `cowork-mcp` of 0.5 keeps working.
-- **A rollback to 0.5 over it is safe.** 0.5 reads everything the migration leaves, and the
-  migration's checks still take the `override-urgency` that 0.5 writes beside `set-horizon` into
+- **A rollback to 0.5 over it is safe** — over it alone, not over the release that narrows the
+  checks, below. 0.5 reads everything the migration leaves, and the checks of that release and the
+  one after it, 0.6 and 0.7, take the `override-urgency` that 0.5 writes beside `set-horizon` into
   every agent token it makes and every chat capability set it stores; once the image goes forward
-  again, this release reads such a set without the old name. One thing is lost in that window: a
+  again, 0.6 and 0.7 read such a set without the old name. One thing is lost in that window: a
   saved filter 0.5 stores with the key `urgency` — which 0.5 still takes — loses that condition
-  under this release, which reads it as a filter without a horizon, until a later release's
-  migration rewrites it to `horizon`. Read from the code of 0.5.1, not run.
+  under 0.6 and 0.7, which read it as a filter without a horizon, until the migration of the release
+  that narrows the checks rewrites it to `horizon`. Read from the code of 0.5.1, not run.
+
+**The release that narrows the capability checks**
+([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D4 and [ADR 0010](../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1, as amended
+2026-10-06) completes the contract above. Its migration rewrites again what a rollback to 0.5 left —
+every stored `override-urgency` to `set-horizon`, and a saved filter's `urgency` to `horizon`, which
+gives the filter back the condition the window lost, unless its conditions were saved again
+meanwhile — and then the checks of the tokens' and the chat's capability sets refuse
+`override-urgency`. Two things to know:
+
+- **A rollback to the release directly before it is safe**: no release from 0.6.0 on writes the
+  old name.
+- **A rollback to 0.5 over it is not.** 0.5 writes `override-urgency` beside `set-horizon` into
+  every agent token it makes and every chat capability set it stores that holds `set-horizon`; the
+  checks refuse that write, so making such a token or choosing such a set fails. 0.5 is
+  unsupported ([SECURITY.md](../../SECURITY.md)). Read from the code of 0.5.1, not run.
+
+**The release that brings the metrics**
+([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md))
+opens a port on the backend pods with the upgrade itself: `metrics.enabled` is `true` by default,
+so the new pods answer `/metrics` on 8081 without authentication to every pod that reaches them
+([metrics.md](metrics.md#the-network-policy-for-the-port)). Add the policy for the port before, or
+upgrade with `--set metrics.enabled=false` until it is in place. Nothing else changes: the
+monitoring resources stay off until they are switched on, and the backend Service keeps its one
+port.
+
+**The release that brings the consistency check**
+([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4) lists the bucket once a day, at the first start and then in the hour after 03:00 UTC:
+
+- **Grant the storage key `s3:ListBucket` on the bucket before the upgrade**
+  ([object storage](#object-storage)). Without it uploads and downloads go on, and the check fails
+  every hour with `job failed` and [`CoworkJobFailing`](metrics.md#coworkjobfailing).
+- **Its migration** adds two tables and two audit actions and lets the job read every tenant;
+  a rollback to the release before serves over it ([upgrade.md](upgrade.md#rolling-back)).
+- **With `metrics.prometheusRule.enabled`** the rule gains `CoworkAttachmentsOutOfStep`, which waits
+  `metrics.prometheusRule.restoreWindow`, a day by default ([metrics.md](metrics.md#coworkattachmentsoutofstep)).
+  The first check may find what a restore or a failed removal left in the past, and the alert then
+  fires a day later — the tenants' administrators settle it on their settings page.
+
+**The release whose database holds the lengths of a body, the options and an answer**
+([ADR 0011](../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6,
+[migration 44](../../backend/internal/store/migrations/000044_text_length_checks.up.sql)) reads every
+ticket and every question as it adds the checks: a body longer than 200,000 characters, or a
+question's options or answer longer than 100,000, fails the migration, which leaves nothing behind
+but the schema's version dirty at 44 ([upgrade.md, a dirty schema](upgrade.md#a-dirty-schema)). No
+write of the API makes one; an import of 0.11.0 held no such length. Before the upgrade, ask the
+database as the owner role:
+
+```sql
+SELECT 'ticket' AS kind, id FROM tickets WHERE length(body) > 200000
+UNION ALL
+SELECT 'question', id FROM questions WHERE length(options) > 100000 OR length(answer) > 100000;
+```
+
+No row, nothing to do. A row it names is shortened — a ticket's body replaced, a question's options
+or answer edited, through the API or as the owner role in the database — before the upgrade, or
+before the version is set back after a failed run. A rollback to the release before serves over the
+checks: everything it writes keeps to them but an import's longer text, which the database refuses.
 
 ## Uninstall
 
@@ -904,9 +1208,11 @@ new names only. Two things to know:
 helm uninstall cowork -n cowork
 ```
 
-The release leaves the database and the bucket untouched. The Secrets and the ConfigMap you
+The release leaves the database and the bucket untouched. The Secrets and the ConfigMaps you
 created stay; the Secrets the chart rendered from `database.url`, `database.owner.url`, the
-inline local administrator are removed with the release. The client
+inline local administrator are removed with the release. In job mode a migration Job that failed
+stays as well — a hook is not part of the release; Helm deleted a succeeded one already —:
+`kubectl -n cowork delete job cowork-migrate`. The client
 at the identity provider stays registered until you remove it there.
 
 ## Resources and scheduling
@@ -917,7 +1223,8 @@ revisited once there is a workload. Uploads are what moves the backend's memory:
 held in memory while it is checked and stored, and the backend lets 64 MiB divided by
 `backend.config.attachmentMaxBytes` uploads in at a time, at least one — six with the 10 MiB
 default; the rest wait. From 64 MiB on it is one upload at a time, holding up to the whole
-maximum: raise the memory limit before raising the maximum.
+maximum: raise the memory limit before raising the maximum. The backend's memory limit is also its
+`GOMEMLIMIT`, the Go runtime's soft limit ([runtime.md](runtime.md#memory)).
 
 Each backend replica holds its connection pool to PostgreSQL — pgx's default size is the
 larger of 4 and the number of CPUs the process sees; `pool_max_conns=<n>` in the runtime URL

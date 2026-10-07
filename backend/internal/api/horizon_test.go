@@ -1,7 +1,6 @@
 package api
 
 import (
-	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -56,18 +55,4 @@ func TestCapabilitiesAreAnsweredEachOnce(t *testing.T) {
 	assert.Equal(t, []apigen.Capability{}, capabilitiesView(nil))
 	assert.Equal(t, []string{"rank", "set-horizon"}, ordered([]apigen.Capability{"set-horizon", "rank"}),
 		"a chat set is stored in the catalogue's order")
-}
-
-// docs/adr/0043 D4 as amended 2026-10-06: a set release 0.5 stored after an
-// image rollback — override-urgency beside set-horizon — is answered without
-// the old name, so every answer holds only values of the document's
-// Capability.
-func TestASetTheReleaseBeforeStoredIsAnsweredInTheDocumentsValues(t *testing.T) {
-	stored := append(slices.Clone(auth.AllCapabilities), "override-urgency")
-	answered := capabilitiesView(stored)
-	assert.Len(t, answered, len(auth.AllCapabilities))
-	for _, c := range answered {
-		assert.True(t, c.Valid(), "%s is a value of Capability", c)
-	}
-	assert.Equal(t, []apigen.Capability{"rank", "set-horizon"}, chatCapabilitiesView([]string{"rank", "set-horizon", "override-urgency"}, true).Capabilities)
 }

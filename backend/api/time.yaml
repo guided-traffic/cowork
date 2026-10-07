@@ -42,6 +42,10 @@ ticketTime:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/TimeEntryCreate'
+          example:
+            minutes: 90
+            day: '2026-10-05'
+            note: Reproduced in Safari 18 and traced the trimmed field
     responses:
       '201':
         description: The new entry
@@ -91,6 +95,9 @@ timeEntry:
         application/json:
           schema:
             $ref: './components/schemas.yaml#/TimeEntryPatch'
+          example:
+            minutes: 45
+            note: Listed the reasons the sign-in records
     responses:
       '200':
         description: The entry
@@ -101,6 +108,21 @@ timeEntry:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/TimeEntry'
+            example:
+              id: 01a111f6-0be0-7944-856c-23487b30768e
+              ticket: acme/WEB-39
+              person: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+              author: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+              token: null
+              minutes: 45
+              day: '2026-10-06'
+              note: Listed the reasons the sign-in records
+              voided: false
+              voided_at: null
+              edited: true
+              version: 2
+              created_at: '2026-10-06T16:05:00Z'
+              updated_at: '2026-10-06T16:30:00Z'
       default:
         $ref: './components/responses.yaml#/Problem'
 timeEntryVoid:
@@ -124,6 +146,21 @@ timeEntryVoid:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/TimeEntry'
+            example:
+              id: 01a10d1d-81c0-77f6-82f0-6d35a8aef0d0
+              ticket: acme/WEB-42
+              person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+              author: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+              token: null
+              minutes: 90
+              day: '2026-10-05'
+              note: Reproduced in Safari 18 and traced the trimmed field
+              voided: true
+              voided_at: '2026-10-06T09:10:00Z'
+              edited: false
+              version: 2
+              created_at: '2026-10-05T17:30:00Z'
+              updated_at: '2026-10-06T09:10:00Z'
       default:
         $ref: './components/responses.yaml#/Problem'
 timeEntryRevisions:
@@ -177,9 +214,45 @@ tenantTime:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/TimeEntryList'
+            # The tenant's list answers no total_minutes, which the schema's example, a ticket's, shows.
+            example:
+              items:
+                - id: 01a111f6-0be0-7944-856c-23487b30768e
+                  ticket: acme/WEB-39
+                  person: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+                  author: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+                  token: null
+                  minutes: 45
+                  day: '2026-10-06'
+                  note: Listed the reasons the sign-in records
+                  voided: false
+                  voided_at: null
+                  edited: true
+                  version: 2
+                  created_at: '2026-10-06T16:05:00Z'
+                  updated_at: '2026-10-06T16:30:00Z'
+                - id: 01a10d1d-81c0-77f6-82f0-6d35a8aef0d0
+                  ticket: acme/WEB-42
+                  person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+                  author: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+                  token: null
+                  minutes: 90
+                  day: '2026-10-05'
+                  note: Reproduced in Safari 18 and traced the trimmed field
+                  voided: false
+                  voided_at: null
+                  edited: false
+                  version: 1
+                  created_at: '2026-10-05T17:30:00Z'
+                  updated_at: '2026-10-05T17:30:00Z'
+              next_cursor: null
           text/csv:
             schema:
               type: string
+            example: |
+              id,ticket,day,minutes,person_id,person,note,voided_at,created_at
+              01a111f6-0be0-7944-856c-23487b30768e,acme/WEB-39,2026-10-06,45,019e165f-39c0-7937-931a-d0fa7735df32,Sam Rivera,Listed the reasons the sign-in records,,2026-10-06T16:05:00Z
+              01a10d1d-81c0-77f6-82f0-6d35a8aef0d0,acme/WEB-42,2026-10-05,90,019cb855-3d80-7d3c-a80d-97fa1e50d59e,Grace Hopper,Reproduced in Safari 18 and traced the trimmed field,,2026-10-05T17:30:00Z
       default:
         $ref: './components/responses.yaml#/Problem'
 timeReport:
@@ -206,5 +279,9 @@ timeReport:
           text/csv:
             schema:
               type: string
+            example: |
+              ticket,label,minutes
+              acme/WEB-39,Log the sign-in failures with their reason,45
+              acme/WEB-42,Sign-in fails in Safari when the password contains a space,90
       default:
         $ref: './components/responses.yaml#/Problem'

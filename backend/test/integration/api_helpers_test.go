@@ -66,7 +66,7 @@ func newAPI(t *testing.T, opts ...func(*api.Options)) apiServer {
 		o.DB = openRuntime(t)
 	}
 	if o.Events == nil {
-		o.Events = events.New(time.Minute, 10)
+		o.Events = events.New(time.Minute, 10, nil)
 	}
 	listening := make(chan struct{})
 	var once sync.Once

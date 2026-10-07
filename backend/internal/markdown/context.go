@@ -30,6 +30,20 @@ type Context struct {
 	Comments    []Comment
 	Activity    []Act
 	Attachments []Attachment
+	// PullRequests are what GitHub's webhook linked to the ticket, oldest
+	// link first; their section is written only when there are some
+	// (docs/adr/0071 D6, docs/adr/0044 D2 as amended 2026-10-06).
+	PullRequests []PullRequest
+}
+
+// PullRequest is a pull request or a default-branch commit linked to the
+// ticket: Number is set for a pull request, SHA for a commit. Its title is
+// GitHub's text, which the document quotes.
+type PullRequest struct {
+	Number                   int
+	SHA, Repository, Title   string
+	State, Author, URL, From string
+	MergedAt                 *time.Time
 }
 
 // Link is a link read from the ticket: its name from this side and the
@@ -99,10 +113,36 @@ func RenderContext(c Context) []byte {
 		writeComments(&b, c.Comments)
 	}
 	writeAttachments(&b, c.Attachments)
+	if len(c.PullRequests) > 0 {
+		writePullRequests(&b, c.PullRequests)
+	}
 	if c.Activity != nil {
 		writeActivity(&b, c.Activity)
 	}
 	return b.Bytes()
+}
+
+// writePullRequests lists what GitHub's webhook linked: a pull request by its
+// repository and number, a commit by its repository and short id, each with
+// its title quoted — text from outside the tenant, never the document's own
+// structure —, its state, its author and where the key was found, and its page.
+func writePullRequests(b *bytes.Buffer, prs []PullRequest) {
+	b.WriteString("\n## Pull requests\n\n")
+	for _, p := range prs {
+		what := fmt.Sprintf("%s#%d", p.Repository, p.Number)
+		if p.SHA != "" {
+			what = fmt.Sprintf("%s@%s", p.Repository, p.SHA[:min(len(p.SHA), 12)])
+		}
+		state := p.State
+		if p.MergedAt != nil {
+			state += " " + stamp(*p.MergedAt)
+		}
+		author := "unknown author"
+		if p.Author != "" {
+			author = "by " + oneLine(p.Author)
+		}
+		fmt.Fprintf(b, "- %s %s (%s, %s, key in the %s) — %s\n", what, quoted(p.Title), state, author, p.From, p.URL)
+	}
 }
 
 func writeLinks(b *bytes.Buffer, links []Link) {
@@ -185,6 +225,18 @@ func summary(a Act) string {
 	if a.Redacted {
 		return a.Action + " (the details name a ticket you cannot see)"
 	}
+	s := did(a)
+	if a.Reason != "" {
+		s += " — reason: " + quoted(a.Reason)
+	}
+	if a.Note != "" {
+		s += " — note: " + quoted(a.Note)
+	}
+	return s
+}
+
+// did is what an act did: its name and what it changed.
+func did(a Act) string {
 	s := a.Action
 	switch {
 	case a.Action == "transitioned" && a.Before["state"] != nil && a.After["state"] != nil:
@@ -201,12 +253,10 @@ func summary(a Act) string {
 		s += " by score"
 	case a.Action == "overridden":
 		s = horizonAct(a)
-	}
-	if a.Reason != "" {
-		s += " — reason: " + quoted(a.Reason)
-	}
-	if a.Note != "" {
-		s += " — note: " + quoted(a.Note)
+	case codeChange(a) != "":
+		// What GitHub's webhook linked, merged, closed or reopened, or a
+		// person removed (docs/adr/0071 D6).
+		s += " " + codeChange(a)
 	}
 	return s
 }
@@ -223,11 +273,38 @@ func horizonAct(a Act) string {
 	return "returned the ticket to later"
 }
 
-func linkPayload(a Act) map[string]any {
-	p := a.After
-	if a.Action == "unlinked" {
-		p = a.Before
+// codeChange names the pull request or the commit an act is on — the
+// repository's identity with #number or @ and the commit's short id —, or
+// nothing for any other act.
+func codeChange(a Act) string {
+	p := payload(a)
+	repository, ok := p["repository"].(string)
+	if !ok {
+		return ""
 	}
+	if sha, ok := p["sha"].(string); ok {
+		return "commit " + repository + "@" + sha[:min(len(sha), 12)]
+	}
+	switch n := p["number"].(type) {
+	case float64:
+		return fmt.Sprintf("pull request %s#%d", repository, int64(n))
+	case int, int32, int64:
+		return fmt.Sprintf("pull request %s#%d", repository, n)
+	}
+	return ""
+}
+
+// payload is what an act names: what it removed for an unlinked act, what it
+// made or changed for any other.
+func payload(a Act) map[string]any {
+	if a.Action == "unlinked" {
+		return a.Before
+	}
+	return a.After
+}
+
+func linkPayload(a Act) map[string]any {
+	p := payload(a)
 	if p["source"] == nil || p["target"] == nil {
 		return nil
 	}

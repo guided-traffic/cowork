@@ -18,6 +18,17 @@ the key set are cowork's own, the endpoints the discovery names are held to the 
 every call to the issuer follows no redirect and reads at most 1 MiB, `azp` is checked; D4 — the
 button reads "Sign in with".
 
+Amended 2026-10-06 on the owner's request of that day — cowork often lost his login and showed the
+login page, where one click on *Sign in with single sign-on* signed him in at once; cowork shall
+extend the session by itself, and not ask for a click while the session at the identity provider
+runs anyway: D6 is added — the login page signs a person of the identity provider in again by
+itself, at their first input, with `prompt=none` — and D1 names the code the issuer's error to such
+a login becomes. The design
+is the coordinator's of the night of 2026-10-06, built the same day; one of its conditions, that a
+tab tries once between two sessions, was not in that design and **awaits the owner's answer**,
+built on the recommendation (D6). The owner checks the whole on his own installation, whose issuer
+is not Dex.
+
 ~~**Not built.** No OIDC client, no session, no login route.~~ **Built** (phase 4, 2026-10-04):
 D1–D5 — the relying party [`internal/oidc`](../../backend/internal/oidc/oidc.go), the start and the
 callback ([`api/oidc.go`](../../backend/internal/api/oidc.go)), the configuration
@@ -29,7 +40,17 @@ integration tier against it; the security page is
 [docs/security/identity-provider.md](../security/identity-provider.md). The end-to-end tier's login
 through Dex ([ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md))
 ~~is not built~~ *(amended 2026-10-04: is built — a person of Dex signs in through the page and
-Dex's form against the built images, in Chromium and WebKit)*.
+Dex's form against the built images, in Chromium and WebKit)*. **Built** (2026-10-06): D6 — the
+silent start and its code ([`api/oidc.go`](../../backend/internal/api/oidc.go) `LoginOidc`,
+`callbackRefusal`; [`oidc/oidc.go`](../../backend/internal/oidc/oidc.go) `AuthCodeURL`), the
+browser's memory of the method and of the tab's attempt
+([`sign-in-memory.ts`](../../frontend/src/app/core/sign-in-memory.ts)), the presence rule
+([`presence.ts`](../../frontend/src/app/features/auth/presence.ts)) and the login page that waits on
+it ([`login.ts`](../../frontend/src/app/features/auth/login.ts)); the unit tiers and the integration
+tier against the fake issuer and Dex hold it, and an end-to-end test sends a person whose session
+ended through Dex without a click — written with it, not yet run when this was written. Not verified:
+an issuer that answers `prompt=none` with a code from a session of its own — Dex keeps none —
+beyond the fake issuer of the tests; the owner's installation is that check.
 
 ## Context
 
@@ -63,7 +84,8 @@ fetched again when no cached key verifies, of an asymmetric algorithm the discov
 when it names none)* —, its issuer, its audience and its expiry, and compares the nonce itself,
 because go-oidc leaves that to its caller. Parameters an issuer adds to the callback, such as `iss` and `session_state`, are taken
 and not read. A failure of any of these is a redirect to the login page with `oidc_failed`, the
-reason in the log, never a code or a token.)* *(Added after the security review, 2026-10-04: the
+reason in the log, never a code or a token.)* *(Amended 2026-10-06: except the issuer's `error` to a
+silent login, which is `login_required` — D6.)* *(Added after the security review, 2026-10-04: the
 authorization, token, keys and UserInfo endpoints the discovery names are held to the issuer's own
 rule of D4 — `https`, or `http` on a loopback host — or the start is refused, and an
 `end_session_endpoint` that fails it is dropped with a warning; every call to the issuer goes
@@ -133,6 +155,58 @@ the `name` claim, else `preferred_username`, else the address, else the subject,
 characters; the address is kept with the issuer's `email_verified`, null when it says nothing, and
 is what an administrator may grant a role by — ADR 0030 D3.)*
 
+**D6 — A session that ended comes back without a click while the issuer still holds the person's
+session.** *(Added 2026-10-06.)* The login page signs a person of the identity provider in again by
+itself, at their first input, through the standard's own means: `prompt=none` (OIDC Core 1.0
+3.1.2.1). No provider-specific mechanism is assumed, as D1 has it.
+
+- **The silent start.** `GET /auth/oidc/login` takes the boolean `silent`, false by default. With
+  `silent=true` the authorization request carries `prompt=none` and the sealed state of D1 records
+  that the login is silent. An issuer that still holds a session of the person answers with a code,
+  and the login completes like any — the gate, a deactivated person and the init state refuse with
+  their codes. The issuer's `error` to a silent login — `login_required`, `interaction_required`,
+  `consent_required`, `account_selection_required` or any other, since the person did not ask for
+  this attempt — sends the browser to `/login?error=login_required&return=<path>` whenever the state
+  cookie opens, stale or not, for it is the server's own sealed word that the login was silent; the
+  same error to a login the person started stays `oidc_failed`. It is logged at info like the other
+  failures. The button of the login page never sends `silent`.
+- **The browser remembers the method.** `cowork.sign-in` in `localStorage` is `oidc` once the person
+  starts the provider's sign-in with the button; a local sign-in that succeeds removes it, and so does
+  a sign-out, before the backend is asked and before any navigation to the issuer's end-session URL —
+  an explicit sign-out is never undone by a silent sign-in. Every storage access is guarded: a private
+  window, or storage the browser refuses, remembers nothing, and nothing remembered means no silent
+  sign-in.
+- **When the page signs in by itself.** All of these hold: the options offer the identity provider;
+  the page has no `error` parameter — any, `login_required` included, shows the page as before and
+  starts nothing, so there is no loop; the remembered method is `oidc`; and **this tab has not tried
+  since its last session** — `cowork.sign-in.attempt` in `sessionStorage`, noted when the page leaves
+  for an attempt of its own and cleared once the tab has a session again. The last condition was not
+  in the design and **awaits the owner's answer**; it is built on the recommendation because an
+  issuer that ignores `prompt=none` — Dex does, measured below — shows its own form instead of an
+  error, and a person who came back from that form to the login page, for the local form, say, would
+  be sent there again at every input.
+- **The presence rule.** The page says that it signs the person in again, still shows the button and
+  the local form, and waits for a sign of a person: a pointer pressed, a key, the wheel, a touch, a
+  pointer move to another place than the move before — a browser may send a move of its own under a
+  pointer that rests —, the window taking the focus, or the document becoming visible after it was
+  hidden. An open tab nobody looks at gives none, and does not sign itself in to show content again.
+  At the sign it asks `GET /api/v1/me`, because another tab may have signed in meanwhile: with an
+  answer it goes to the path the person wanted — the start page where that is the login page — and
+  with a `401` to `/auth/oidc/login?return_to=<path>&silent=true`, both by a new document as every
+  sign-in ends; a failure that says neither leaves the page as it is. The remembered method is read
+  again at the sign, so a sign-out in another tab meanwhile still holds; a click on the button wins
+  over the page's own attempt, and a local sign-in on its way is left alone.
+- **`login_required` is no refusal.** The page says calmly that the session at the provider has
+  ended and asks for a sign-in; the button signs in as ever, the issuer's pages and all.
+
+Why: the idle limit of [ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D3 ends a
+session within a working day, and where the provider's session still lives, the click on the button
+was a formality — it passed without a password. Without it, the provider's own session policy is
+what ends a person's access, as the owner asked; an explicit sign-out of cowork still ends it, and
+the idle and absolute limits still end cowork's session. Measured on 2026-10-06: Dex v2.45.1, the
+fixture of D3, keeps no session of its own and answers a `prompt=none` request with its login form,
+so with Dex the page's own attempt lands on that form — where the button led as well.
+
 ## Consequences
 
 - Any conformant issuer works by configuration; the one that is proven to work is the
@@ -146,6 +220,17 @@ is what an administrator may grant a role by — ADR 0030 D3.)*
   that brings both.~~ *(Amended 2026-10-04: development needs Docker; `make dev-up` starts
   PostgreSQL, MinIO and Dex, `make dex-up` and `make dex-down` Dex alone, and `make dev` logs the
   browser in through it.)*
+- *(Added 2026-10-06, D6.)* While the provider's session lives, an unattended, unlocked browser
+  whose cowork session ended is one input away from cowork's content, where it was one click away;
+  the provider's session policy is what ends access there
+  ([identity-provider.md](../security/identity-provider.md) H-62). An explicit sign-out stays one: it
+  forgets the remembered method.
+- *(Added 2026-10-06, D6.)* A person who last signed in through the provider and wants the local
+  form is signed in as the provider's person at their first input while the provider's session
+  lives; signing out forgets the method, and the form is theirs. Where the issuer answers
+  `login_required` or shows its own form, the tab has tried once and the form is usable at once.
+- *(Added 2026-10-06, D6.)* Each ended session costs one round trip to the issuer per tab, at the
+  person's first input.
 
 ## Alternatives Considered
 
@@ -157,6 +242,15 @@ is what an administrator may grant a role by — ADR 0030 D3.)*
   wording, not in substance.
 - **Several issuers at once, one per tenant.** Issuer selection on the login page and
   account merging across issuers — federation rebuilt inside cowork. Lost.
+- *(Added 2026-10-06, the alternatives to D6.)* **A hidden frame that renews the session with
+  `prompt=none`.** It needs the issuer's pages in a frame of cowork — a `frame-src` beyond the
+  shell's `'self'` — and the issuer's cookie in a third-party context, which Safari blocks by
+  default. Lost. **Signing in at once when the login page comes, without a sign of a person.** An open tab
+  whose session ended would sign itself in and show its content again: the idle limit would protect
+  nothing. Lost. **The event stream moving the idle clock.** An open tab without a person would never
+  reach the idle limit ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D3). Lost.
+  **No probe of `GET /api/v1/me` before the attempt.** A tab whose sibling has signed in meanwhile
+  would go through the issuer for nothing. Lost to one request.
 
 ## Residual risks
 
@@ -175,6 +269,12 @@ is what an administrator may grant a role by — ADR 0030 D3.)*
 - D4's refusal to start without a reachable issuer makes an identity-provider outage a
   backend restart failure; the operations page says so, and the amendment — start, but
   disable login until discovery succeeds — is one if the owner prefers it.
+- *(Added 2026-10-06, D6.)* Not verified: an issuer that answers `prompt=none` with a code from a
+  session of its own, beyond the fake issuer of the tests — Dex keeps none; the owner's installation
+  is that check. Not verified in a browser: whether a browser sends pointer moves of its own under a
+  resting pointer, which the presence rule asks two places for, and whether a browser gives a window
+  the focus without a person; either would let an open tab sign itself in at that moment, while the
+  provider's session lives.
 
 ## References
 
@@ -183,3 +283,5 @@ is what an administrator may grant a role by — ADR 0030 D3.)*
 - [ADR 0003](0003-test-and-ci-policy.md) D2 — the integration tier the Dex fixture joins
 - [`backend/internal/oidc/oidc.go`](../../backend/internal/oidc/oidc.go), [`backend/internal/api/oidc.go`](../../backend/internal/api/oidc.go), [`backend/internal/config/oidc.go`](../../backend/internal/config/oidc.go), [`hack/dex/config.yaml`](../../hack/dex/config.yaml) — the implementation and the fixture
 - [docs/security/identity-provider.md](../security/identity-provider.md) — what the login checks, and what it leaves open
+- [ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D3 — the limits that end the session D6 brings back, and the keep-alive beside it
+- [`frontend/src/app/features/auth/login.ts`](../../frontend/src/app/features/auth/login.ts), [`presence.ts`](../../frontend/src/app/features/auth/presence.ts), [`frontend/src/app/core/sign-in-memory.ts`](../../frontend/src/app/core/sign-in-memory.ts) — D6 in the browser

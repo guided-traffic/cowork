@@ -6,6 +6,7 @@ import {
   EventSourceLike,
   EventStreamService,
   fallback,
+  isImport,
   MembershipEvent,
   ofTenant,
   StreamEvent,
@@ -193,6 +194,7 @@ describe('EventStreamService', () => {
         'comment.changed',
         'interest.changed',
         'link.changed',
+        'pull_request.changed',
         'question.changed',
         'ticket.changed',
       ]);
@@ -591,6 +593,30 @@ describe('EventStreamService', () => {
 
     it('leaves a membership alone while the person is not known', () => {
       expect(changesVisibility(event({ personId: 'p1' }), undefined)).toBe(false);
+    });
+  });
+
+  describe('isImport', () => {
+    it('says a project.changed of the kind imported is an import executed (docs/adr/0051 D3)', () => {
+      expect(
+        isImport({ name: 'project.changed', id: 'e1', key: 'acme/VKO', kind: 'imported' }),
+      ).toBe(true);
+    });
+
+    it('leaves the sort of a rank and every other event alone', () => {
+      expect(isImport({ name: 'project.changed', id: 'e1', key: 'acme/VKO', kind: 'ranked' })).toBe(
+        false,
+      );
+      expect(
+        isImport({
+          name: 'ticket.changed',
+          id: 'e1',
+          key: 'acme/VKO-1',
+          version: 1,
+          kind: 'imported',
+        }),
+      ).toBe(false);
+      expect(isImport({ name: 'resync' })).toBe(false);
     });
   });
 

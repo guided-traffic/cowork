@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"net"
 	"net/url"
 	"slices"
@@ -30,8 +32,10 @@ const (
 
 // oidc reads the identity provider (docs/adr/0029 D4, docs/adr/0030 D1, D5,
 // D8). Without COWORK_OIDC_ISSUER there is none, and every other variable of
-// it is an error that names the variable. With it, the client's id and secret
-// are required; the secret is never echoed.
+// it is an error that names the variable. The client's id and secret are read
+// here and required by `cowork serve` alone (RequireClient): the migration run
+// reads the administrator group for the bootstrap and never meets the issuer,
+// so it holds no client secret (docs/adr/0057 D4). The secret is never echoed.
 func (l *loader) oidc(cfg *Config) {
 	issuer, ok := l.get(EnvOIDCIssuer)
 	if !ok {
@@ -55,15 +59,10 @@ func (l *loader) oidc(cfg *Config) {
 	if err := checkIssuer(o.Issuer); err != "" {
 		l.fail("%s %s", EnvOIDCIssuer, err)
 	}
-	if o.ClientID, ok = l.get(EnvOIDCClientID); !ok {
-		l.fail("%s is required while %s is set", EnvOIDCClientID, EnvOIDCIssuer)
-	}
+	o.ClientID, _ = l.get(EnvOIDCClientID)
 	// The secret is read as it is: a trimmed secret would be another secret.
 	if v, set := l.lookup(EnvOIDCClientSecret); set && v != "" {
 		o.ClientSecret = v
-	} else {
-		l.fail("%s is required while %s is set: a public client without a secret is not supported (docs/adr/0029 D4)",
-			EnvOIDCClientSecret, EnvOIDCIssuer)
 	}
 	l.oidcScopes(o)
 	l.oidcGroups(o)
@@ -84,6 +83,25 @@ func (l *loader) oidc(cfg *Config) {
 		}
 	}
 	cfg.OIDC = o
+}
+
+// RequireClient reports what `cowork serve` needs of a configured identity
+// provider besides what Load checks: the client's id and secret — a public
+// client without a secret is not supported (docs/adr/0029 D4). Nil without a
+// provider. The error names the variables, never the secret.
+func (o *OIDC) RequireClient() error {
+	if o == nil {
+		return nil
+	}
+	var errs []error
+	if o.ClientID == "" {
+		errs = append(errs, fmt.Errorf("%s is required while %s is set", EnvOIDCClientID, EnvOIDCIssuer))
+	}
+	if o.ClientSecret == "" {
+		errs = append(errs, fmt.Errorf("%s is required while %s is set: a public client without a secret is not supported (docs/adr/0029 D4)",
+			EnvOIDCClientSecret, EnvOIDCIssuer))
+	}
+	return errors.Join(errs...)
 }
 
 // oidcGroupsTimes reads how often a session reads the groups again and how old

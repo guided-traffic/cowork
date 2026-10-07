@@ -32,6 +32,10 @@ const loginNote = time.Hour
 
 const systemLogin = "system:login"
 
+// actionLocked is the act of the failure that locks a username; the metrics
+// count it as a lockout.
+const actionLocked = "locked"
+
 // loginRead runs fn in a read-only transaction that names the login as its job
 // (docs/adr/0021 D3), which the policies of the login's tables admit.
 func (db *DB) loginRead(ctx context.Context, fn func(r *Reader) error) error {
@@ -196,6 +200,12 @@ func (db *DB) RecordLoginAttempt(ctx context.Context, in LoginAttempt) (LoginOut
 	if err := tx.Commit(ctx); err != nil {
 		return LoginFailed, fmt.Errorf("commit transaction: %w", err)
 	}
+	countActs(db.metrics, w)
+	for _, a := range w.written {
+		if a.action == actionLocked {
+			db.metrics.Lockout()
+		}
+	}
 	return outcome, nil
 }
 
@@ -264,7 +274,7 @@ func (w *Writer) failedAttempt(ctx context.Context, in LoginAttempt, entity Even
 			Sticky: in.Sticky && in.Account.Found}); err != nil {
 			return LoginFailed, fmt.Errorf("lock the username: %w", err)
 		}
-		w.Record(withAction(entity, "locked", ""))
+		w.Record(withAction(entity, actionLocked, ""))
 	}
 	return LoginFailed, nil
 }

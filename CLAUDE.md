@@ -6,11 +6,14 @@ backend (`backend/`, the API, PostgreSQL 18 migrated on start) and an nginx fron
 (`frontend/`, the Angular bundle and nothing else); one Helm chart, whose Ingress routes `/api/`
 and `/auth/` to the backend and the rest to the frontend; and a third binary, `cowork-mcp`, on a
 person's machine for Claude Code.
-**Status: phases 4 (the identity provider) and 5 (`cowork-mcp` and the chat in the UI) are
-released as `0.3.0`; phase 3 (UI v1) is in progress and comes next, by the owner's choice of
-2026-10-04, before phase 6** — the work lists are in
-[docs/tickets/](docs/tickets/README.md). Every founding decision is an ADR, and what comes after
-is [the project plan](docs/planning/project-plan.md).
+**Status: phases 6 (import and cut-over) and 7 (hardening and 1.0), the plan's last, started on
+2026-10-06 and are worked as tickets; phase 3 (UI v1) awaits the owner's reviews; the sign-in
+without a click is released as `0.8.0`, metrics, the chart's references with the migration Job and
+the GitHub webhook as `0.9.0`, the consistency check as `0.10.0`, the import and the export as
+`0.11.0`, the hardening that the review of the security pages found as `0.12.0`; 1.0 waits until every open question is answered, by the owner's rule of 2026-10-06
+(ADR 0003 D9)** — the work lists, each open phase a family ticket with its children, are in
+[docs/tickets/](docs/tickets/README.md). Every founding decision is an ADR, and the project plan
+was consumed into the phase tickets (ADR 0074).
 
 ## Language policy
 
@@ -31,7 +34,7 @@ A statement has exactly one home
 | Work still outstanding | a [ticket](docs/tickets/README.md), archived when the work lands |
 | The reference tables (configuration, CLI, API, Helm values) | [README.md](README.md) and nowhere else |
 | An open decision | the `## Open questions` section of a [ticket](docs/tickets/README.md) |
-| The plan | [docs/planning/](docs/planning/) — transitional, consumed into ADRs and tickets |
+| The plan | a phase's family ticket and its children in [docs/tickets/](docs/tickets/README.md) — the project plan was consumed into them (ADR 0074) |
 
 **Read the page for a subsystem before you change it, and update it in the same change.**
 
@@ -53,8 +56,8 @@ A statement has exactly one home
 
 ## Open decisions are worked one question at a time
 
-[docs/planning/questions.md](docs/planning/questions.md) is consumed: every founding question
-became an ADR (ADR 0074). A new open decision lives in a ticket's `## Open questions` section.
+The founding question catalog is consumed: every founding question became an ADR (ADR 0074).
+A new open decision lives in a ticket's `## Open questions` section.
 Present **one** question per turn to the owner, with the options researched against this tree
 and the recommended one justified. An answered question becomes an ADR (or an amendment) in
 the same session. A question that needs code to answer becomes a ticket. Do not build on an
@@ -98,20 +101,26 @@ unanswered question.
   `make run` and `make migrate`; `serve` connects as the runtime role and refuses a dirty
   schema or pending migrations.
 - The chart is `deploy/helm/cowork/`: `backend.*`, `frontend.*`, `database.*` (with
-  `database.owner.*`), `session.*`, `storage.*`, `localAdmin.*`, `bootstrap.*`, `auth.*`,
-  `chat.*`, `ingress.*` (per host `/api/` and `/auth/` to the backend Service, `/` to the frontend
+  `database.owner.*`; a URL or its components, ADR 0058), `migrations.*` (`onStart`, or `job` — a
+  pre-install/pre-upgrade hook Job, ADR 0057), `session.*`, `storage.*`, `localAdmin.*`,
+  `bootstrap.*`, `auth.*`, `chat.*`, `metrics.*` (the metrics port on the pods, never on a Service;
+  the monitors off by default, ADR 0060), `ingress.*` (per host `/api/` and `/auth/` to the backend Service, `/` to the frontend
   Service; the controller's limits are annotations the installation sets). No NetworkPolicy:
   network policies are the cluster administrator's. The runtime and the owner URL each come from an
   `existingSecret` (preferred) or a `url` (throw-away only, plain text in the release); the owner
-  URL reaches only the `migrate` init container; the session key, the storage key, the identity
+  URL reaches only the migration run — the `migrate` init container, or the migration Job in job mode,
+which takes `existingSecret` references only; the session key, the storage key, the identity
   provider's client secret and the chat's API key come from Secrets only, the local
   administrator's password from an `existingSecret` (preferred) or inline values with the same
   warning as `database.url`.
 - Login (phase 3): server-side sessions in the `__Host-cowork-session` cookie, the local
   administrator from configuration, local accounts made by administrators, CSRF by origin and
   `X-Requested-With: cowork`; token creation, password changes, tenant creation, creating or
-  resetting a local account, the acts that give access and a turn of the chat are session-only —
-  a token gets `403` (ADR 0031–0033, 0035, 0037).
+  resetting a local account, the acts that give access, a turn of the chat, the purge of a ticket,
+  the GitHub webhook secret and the removal of orphaned objects are session-only — nineteen
+  operations, held by a unit test; a token gets `403` (ADR 0031–0033, 0035, 0037). A session's idle
+  clock moves only on a write or the browser's keep-alive read, and the login page signs a person
+  of the identity provider in again with `prompt=none` without a click (ADR 0029 D6, 0031 D3).
 - `cowork-mcp` (`backend/cmd/cowork-mcp` over `internal/mcpcli`, `internal/mcpserver`,
   `internal/tools`): the MCP server and hooks for Claude Code, a client of `/api/v1` through the
   generated client and nothing else — it imports no store and no API handler, and a unit test
@@ -171,7 +180,7 @@ of `semantic-release`; a new job is added there in the same change.
   discuss, then implement and document the tradeoff if the owner accepts it.
 - Separate verified from unverified in every report. "Not verified, and this is the gap" is a
   complete sentence.
-- The planning documents describe intent; the code and the ADRs describe fact. When they
+- A ticket describes the work as intended; the code and the ADRs describe fact. When they
   disagree, the code wins and the disagreement is named.
 
 ## graphify

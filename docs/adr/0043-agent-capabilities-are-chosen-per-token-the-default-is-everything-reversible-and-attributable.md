@@ -37,6 +37,17 @@ the baseline, the owner accepting the reach of sharing, named in the Residual ri
 saved filter is among its deletions, refused to every agent by the rule a ticket's deletion meets)
 — over leaving all five acts open, over making sharing hard-off as well, and over making every
 write on a saved filter hard-off,
+amended 2026-10-06 a sixth time, once the narrowing the contract left to a later release was built
+(D4's `set-horizon` row, the note on what is built of D4 and the Residual risks: both checks of the
+stored sets refuse the old name, and nothing drops it on read any more; no rule changes),
+amended 2026-10-06 a seventh time, for GitHub's webhook of ADR 0071, made concrete by the implementer and open
+to the owner's objection (D2: removing a link the webhook made is in the baseline, and stays; D3:
+the tenant's webhook secret is among the administration acts — built the same day, `administer` in
+[`api/integrations.go`](../../backend/internal/api/integrations.go)),
+amended 2026-10-06 an eighth time (the note on what is built of D3: the removal of a consistency
+check's orphaned objects and the acceptance of its missing files,
+[ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4, D5, are hard-off by D3 as it stands; no rule changes),
 amended 2026-10-03 (D4: `close` covers both ways to `done`
 of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
 that fills the last progress stage and done by hand — an agent's only from `in-progress` or
@@ -101,6 +112,14 @@ agent_forbidden`, `hard-off: deleting, restoring or purging`, before the filter 
 sharing and unsharing its person's own filter need `filterNeed` and no capability, each recorded
 with the agent mark (`TestAnAgentKeepsItsPersonsSavedFilterAndDeletesNone`, which asserts each of
 the five acts as allowed or refused, a token with no capability included).
+*(2026-10-06:)* D3 is built for the two acts of the consistency check of
+[ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4, D5 ([`api/consistency.go`](../../backend/internal/api/consistency.go)): removing a check's
+orphaned objects is `deleting, restoring or purging` — and takes a browser session, so an agent's
+token meets `403 session_required` and a session the header marks `403 agent_forbidden` first —;
+accepting the loss of its missing files is `administration`, `403 agent_forbidden` with
+`hard-off: administration` (`TestTheConsistencyCheckIsTheTenantAdministratorsAndNoAgents`). No rule
+changes.
 *(2026-10-05:)* D4's amendment of 2026-10-05 is built, its expand half: `set-horizon` is the
 capability's name in `auth.AllCapabilities`, `auth.DefaultChatCapabilities`, the tool descriptions,
 the chat's instructions and the UI's nine switches; `auth.Canonical` reads `override-urgency` as
@@ -122,12 +141,21 @@ from `/me/token`.~~
 `override-urgency` of `tokens.capabilities` and `chat_capabilities` to `set-horizon`, each name once in
 the order it was first named; the API's `Capability` has nine values, a set sent with
 `override-urgency` is `400`, `GET /api/v1/me/token` answers the request's set as it is, and the code
-that wrote the old name is gone (`auth.Stored`, `requestCapabilities`). Both checks still take
+that wrote the old name is gone (`auth.Stored`, `requestCapabilities`). ~~Both checks still take
 `override-urgency`, which release 0.5 writes beside `set-horizon` in every set it stores after an image
 rollback; `auth.Canonical` drops it wherever a set is read — a token's, the chat's, every answer —,
 which loses nothing, since 0.5 writes it only beside `set-horizon`. Not built: the narrowing, a release
 after the one that ships migration 38 — a migration that rewrites the stored sets again, for what a
-rollback wrote in between, and then drops `override-urgency` from both checks.
+rollback wrote in between, and then drops `override-urgency` from both checks.~~
+*(2026-10-06:)* The narrowing is built:
+[migration 40](../../backend/internal/store/migrations/000040_capability_checks_set_horizon_only.up.sql)
+rewrites the three again, for what an image rollback to 0.5 wrote over migration 38 — every
+`override-urgency` of `tokens.capabilities` and `chat_capabilities` to `set-horizon`, each name once in
+the order it was first named, and a saved filter's `urgency` to `horizon`, a horizon already there
+winning — and then drops `override-urgency` from both checks, which refuse it since; `auth.Canonical`
+reads a set each name once and drops nothing. No release from 0.6.0 on writes the old name, so an
+image rollback to the release directly before the narrowing keeps working over it
+([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3, D4).
 
 ## Context
 
@@ -170,7 +198,11 @@ capability or a hard-off rule for each; the risk each leaves is named in the Res
 are an agent's:)* the baseline also holds saving, changing, sharing and unsharing its person's saved
 filter ([ADR 0018](0018-the-views-of-the-first-release.md) D5), each recorded with the agent mark
 and the capabilities the request held; the owner accepted the reach of sharing, named in the
-Residual risks. Deleting one is D3's.
+Residual risks. Deleting one is D3's. *(Made concrete 2026-10-06 by the implementer for GitHub's
+webhook of [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md),
+whose Residual risks say a wrong link is removed like any link, open to the owner's objection:)*
+removing the link of a pull request or a commit the webhook made is a link's removal and the
+baseline's; unlike a ticket's link, a removed one stays removed, and nothing brings it back.
 
 **D3 — The hard-off list: acts no agent token can be given.** ~~Answering a question~~
 *(amended 2026-10-01: recording a person's answer is the `record-answer` capability, ADR
@@ -179,7 +211,10 @@ Residual risks. Deleting one is D3's.
 time; overriding the prerequisite refusal on `done`; every administration act — members,
 mappings, grants, tokens, ~~projects~~ *(amended 2026-10-01: creating a project and binding a
 repository is the `create-project` capability, ADR 0066 D7; archiving, restricting and
-deleting projects stay here)*, tenants, time-period locks; `admin` scope; *(added 2026-10-06
+deleting projects stay here)*, tenants, time-period locks *(and, added 2026-10-06, the tenant's
+GitHub webhook secret — making, rotating and revoking it,
+[ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+D1)*; `admin` scope; *(added 2026-10-06
 by the owner)* assigning a confidential ticket to anyone but the agent's own person — the
 assignee is admitted to it ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
 D9), a disclosure no later act takes back —, at a filing and on a change, the change that makes
@@ -195,7 +230,7 @@ these is an amendment of the record that closed it, not of this one.
 | `close` | the transition `→ done` (the verification note stays mandatory; open prerequisites still refuse, and the agent cannot override); *(amended 2026-10-03)* both ways to `done` of ADR 0009 D5 — the write that fills the last progress stage and done by hand — and only from `in-progress` or `review`, so that `close` never stands in for `decide`; without it, that write is refused and the stage keeps its value; *(decided 2026-10-04 by the owner)* an open question of the ticket does not hold `close` back — the question stays open on the done ticket |
 | `drop` | the transition `→ dropped` with a reason |
 | `rank` | moving the rank and adopting the score ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)); *(amended 2026-10-04)* naming a filing's place in its horizon (ADR 0014 D2) |
-| ~~`override-urgency`~~ `set-horizon` *(renamed 2026-10-05, [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1: ~~the API takes the old name as the new until a later release drops it; a set stored with it keeps it, which the release before reads, until that release rewrites it — [ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3~~; amended 2026-10-06: the old name is refused on input and dropped on read; the checks take it until a later release, for an image rollback to the release before)* | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3); *(amended 2026-10-04)* the ticket's horizon, which the override now is — set on a ticket with a reason, or named at its filing when it is not `later` |
+| ~~`override-urgency`~~ `set-horizon` *(renamed 2026-10-05, [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1: ~~the API takes the old name as the new until a later release drops it; a set stored with it keeps it, which the release before reads, until that release rewrites it — [ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3~~; amended 2026-10-06: the old name is refused on input ~~and dropped on read; the checks take it until a later release, for an image rollback to the release before~~; amended 2026-10-06 with the narrowing: the checks of the stored sets refuse it as well, after keeping it longer than the API for an image rollback to the release before)* | a reasoned urgency override ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3); *(amended 2026-10-04)* the ticket's horizon, which the override now is — set on a ticket with a reason, or named at its filing when it is not `later` |
 | `interest` | `need` and `urgent` interest, not only `watch` ([ADR 0013](0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md) D4, which names this capability) |
 | `upload` | uploading attachments ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)) |
 | `create-project` *(added 2026-10-01, ADR 0066 D7)* | creating a project and binding a repository, where the person ~~is tenant `admin`~~ *(amended 2026-10-02)* may create projects (ADR 0034 D9), with `write` scope |
@@ -289,14 +324,27 @@ scope alone.
   `override-urgency` beside `set-horizon`, which the release before reads, so that an image rollback
   ([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D4) keeps
   the act for an agent made after the upgrade; the cost is the redundant name in those rows, which
-  the contract's rewrite removes. *(Amended 2026-10-06:)* An image rollback to 0.5 over migration 38 is
+  the contract's rewrite removes. *(Amended 2026-10-06:)* ~~An image rollback to 0.5 over migration 38 is
   safe: the checks still take `override-urgency`, which 0.5 writes beside `set-horizon` into every
   agent token it makes and every chat set it stores, and 0.5 reads everything the migration leaves.
   Once the image goes forward again, this release reads such a set without the old name
   (`auth.Canonical`) and holds `set-horizon` from it. What the window costs: a saved filter 0.5
   stores with the key `urgency` — which 0.5 still takes — loses that condition under this release,
   which reads the filter as if it named no horizon, until the migration of the later release
-  rewrites it to `horizon`. Read from the code of 0.5.1, not run.
+  rewrites it to `horizon`. Read from the code of 0.5.1, not run.~~
+  *(Amended 2026-10-06, the narrowing:)* An image rollback to 0.5 over migration 38 alone — from 0.6
+  or 0.7 — is safe: their checks take the `override-urgency` that 0.5 writes beside `set-horizon`
+  into every agent token it makes and every chat set it stores, and 0.5 reads everything migration
+  38 leaves; a saved filter 0.5 stores with the key `urgency` loses that condition under them, which
+  read it as if it named no horizon. Migration 40 rewrites what that window wrote — a set's
+  `override-urgency` to `set-horizon`, a filter's `urgency` to `horizon`, which gives the filter its
+  condition back unless its conditions were saved again meanwhile, without it — and then the checks
+  refuse the old name. So an image rollback to 0.5 over migration 40 is not safe: the checks refuse
+  what 0.5 writes into an agent token or a chat set that holds `set-horizon`, and making that token
+  or choosing that set fails. 0.5 is unsupported ([SECURITY.md](../../SECURITY.md)); a rollback to
+  the release directly before the narrowing is safe, since no release from 0.6.0 on writes the old
+  name. Read from the code of 0.5.1, 0.6.0 and 0.7.0, not run; what migration 40 does with the sets
+  and filters 0.5 writes is proven by its integration test.
 - *(Added 2026-10-06, accepted by the owner with D2's amendment.)* Five acts need neither a
   capability nor a person, so a token's narrower set — the "assisted" one included — does not
   hold them, and a steered agent can make each of them:

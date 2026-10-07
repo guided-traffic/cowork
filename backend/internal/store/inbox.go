@@ -24,6 +24,9 @@ const (
 	NoticeCommented     = "commented"
 	NoticeUrgent        = "urgent"
 	NoticeMentioned     = "mentioned"
+	// NoticeMerged is a pull request of the ticket merged at GitHub
+	// (docs/adr/0071 D6), which GitHub's webhook tells.
+	NoticeMerged = "merged"
 )
 
 // EntityInbox is the entity of a published change of a person's inbox: a

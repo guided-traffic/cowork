@@ -19,3 +19,6 @@ graphify-out/converted/*
 
 # Archived tickets - finished work lists, kept readable but never a current rule (docs/adr/0002)
 docs/tickets/archive
+
+# Copies of ticket files the importer's tests read - test data, never a current rule
+backend/internal/importer/testdata/tickets

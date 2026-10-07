@@ -32,7 +32,13 @@ revoke?" (D5). The options were (a) every token of every member, also those rest
 member's other tenants; (b) the tokens that can act in the tenant — the members' unrestricted tokens
 and those restricted to it; (c) only the tokens restricted to the tenant. (b) was the
 recommendation, and it was built on the owner's instruction of 2026-10-05 to build the recommended
-option, the owner reviewing the result. Date: 2026-10-01. Decided by the owner as the answer to the
+option, the owner reviewing the result. Amended 2026-10-06 for GitHub's webhook of
+[ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md),
+by D5's rule and built the same day (D5: eighteen operations, making or rotating the tenant's
+webhook secret the eighteenth), and again by the rule of D5 itself for the consistency check of
+[ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4, made concrete by the implementer, open to the owner's objection (D5: nineteen operations,
+removing the orphaned objects of a consistency check the nineteenth; built the same day). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "personal access token design?" at its three contested points: three hierarchical scopes
 with optional tenant and project restriction; mandatory expiry with a ninety-day default and
 a one-year maximum; creation only by the person themselves in a browser session, never by an
@@ -96,10 +102,14 @@ tenant's page *Tokens* ([`features/tenant/tenant-tokens.ts`](../../frontend/src/
 the person's token list in the browser reads numbered pages
 ([ADR 0048](0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D4).
 
+Amended 2026-10-06 (the Context: the project plan it cited is consumed and deleted,
+[ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
+D4; no rule changes).
+
 ## Context
 
-An LLM operates cowork before any UI exists ([project plan](../planning/project-plan.md),
-phase 2), and it does so with a token that must say who is accountable
+An LLM operates cowork before any UI exists (phase 2 of the project plan, which was consumed into
+the phase tickets on 2026-10-06), and it does so with a token that must say who is accountable
 ([ADR 0004](0004-cowork-is-a-team-product.md) D1). One resolver serves cookies and tokens
 ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D6), every audit row carries
 the token id ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md)
@@ -222,7 +232,7 @@ D7, built on the recommendation: ~~sixteen~~ seventeen operations. Purging a del
 `purgeTicket`, takes a session by the rule itself: nothing undoes a purge, so what a leaked token did
 there would outlive its revocation. Deleting a ticket and restoring it, which the bin undoes, stay
 open to an administrator's `admin`-scope token. A session the agent header marks is refused all
-seventeen.)* *(Amended 2026-10-05, the owner's answer to "which of a member's tokens does a tenant's
+~~seventeen~~.)* *(Amended 2026-10-05, the owner's answer to "which of a member's tokens does a tenant's
 administrator see and revoke?": the tokens of their tenant's members are **the tokens that can act in
 the tenant** — every token of a member that is unrestricted or restricted to this tenant. A token
 restricted to another tenant is not shown, not even by its name or by the fact that it exists, and
@@ -234,9 +244,25 @@ and finally (D6), as an act of the tenant recorded in its audit (D9). Revoking a
 ends it in every tenant of its person: that is what an unrestricted token is, the person makes a new
 one in a session, and the page says so before it acts. Listing takes the administrator role and
 `read` scope; revoking takes `admin` scope and no agent, and a token may, because it only takes
-access away (the rule above) — neither is among the seventeen. An unrestricted token's name and
+access away (the rule above) — neither is among the ~~seventeen~~ eighteen. An unrestricted token's name and
 last-used day are its person's across their tenants, so they can say something of the person's work
 elsewhere ([docs/security/tokens.md](../security/tokens.md#h-57) H-57). Built the same day.)*
+*(Amended 2026-10-06 by the rule itself, for GitHub's webhook of
+[ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+D1, and built the same day: ~~seventeen~~ eighteen operations. Making the tenant's webhook secret,
+or rotating it — one operation, `createGitHubSecret` —, takes a session: whoever learns the secret
+writes links into the tenant and tells its people of merges, long after a leaked token that made it
+was revoked. Revoking the secret only takes access away and stays open to an administrator's
+`admin`-scope token. A session the agent header marks is refused all ~~eighteen~~.)*
+*(Amended 2026-10-06 by the rule itself, for the consistency check of
+[ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D4, made concrete by the implementer, open to the owner's objection: ~~eighteen~~ nineteen
+operations. Removing the orphaned objects of a consistency check, `removeOrphanedObjects`, takes a
+session: nothing brings a removed object back, so what a leaked token did there would outlive its
+revocation, as with the purge of a ticket. Reading the check takes either credential with `read`
+scope, and accepting the loss of its missing files an administrator's `admin`-scope token as well:
+the acceptance removes nothing, and a file whose bytes come back is whole again. A session the agent
+header marks is refused all nineteen. Built the same day.)*
 
 **D6 — Revocation is immediate and keeps the row.** Revoked and expired tokens stay listed
 with their state; a revoked token answers `401` with the reason. *(Amended 2026-10-02: a

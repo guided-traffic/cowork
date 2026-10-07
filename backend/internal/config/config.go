@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/netip"
 	"net/url"
 	"regexp"
@@ -24,9 +25,11 @@ import (
 // The environment variables the server reads.
 const (
 	EnvListenAddr       = "COWORK_LISTEN_ADDR"
+	EnvMetricsAddr      = "COWORK_METRICS_ADDR"
 	EnvDatabaseURL      = "COWORK_DATABASE_URL"
 	EnvDatabaseOwnerURL = "COWORK_DATABASE_OWNER_URL"
 	EnvMigrateOnStart   = "COWORK_MIGRATE_ON_START"
+	EnvMigrateBootstrap = "COWORK_MIGRATE_BOOTSTRAP"
 	EnvLogLevel         = "COWORK_LOG_LEVEL"
 	EnvLogFormat        = "COWORK_LOG_FORMAT"
 	EnvShutdownTimeout  = "COWORK_SHUTDOWN_TIMEOUT"
@@ -36,6 +39,7 @@ const (
 	EnvRequestTimeout   = "COWORK_REQUEST_TIMEOUT"
 	EnvMaxPageSize      = "COWORK_MAX_PAGE_SIZE"
 	EnvMaxQueryLength   = "COWORK_MAX_QUERY_LENGTH"
+	EnvMaxImportBytes   = "COWORK_MAX_IMPORT_BYTES"
 
 	EnvS3Endpoint             = "COWORK_S3_ENDPOINT"
 	EnvS3Bucket               = "COWORK_S3_BUCKET"
@@ -80,12 +84,17 @@ const (
 
 // Defaults and the accepted log formats.
 const (
-	DefaultListenAddr      = ":8080"
+	DefaultListenAddr = ":8080"
+	// DefaultMetricsAddr is the metrics listener's (docs/adr/0060 D1).
+	DefaultMetricsAddr     = ":8081"
 	DefaultShutdownTimeout = 15 * time.Second
 	DefaultMaxJSONBody     = 1 << 20 // 1MiB
 	DefaultRequestTimeout  = 30 * time.Second
 	DefaultMaxPageSize     = 200
 	DefaultMaxQueryLength  = 256
+	// DefaultMaxImportBytes bounds an import's upload, and what its files
+	// hold unpacked (docs/adr/0051 D7).
+	DefaultMaxImportBytes = 50 << 20 // 50MiB
 	// DefaultAttachmentMaxBytes is the per-file maximum (docs/adr/0016 D6).
 	DefaultAttachmentMaxBytes = 10 << 20 // 10MiB
 	// DefaultAttachmentMaxPerTicket is the per-ticket count (docs/adr/0016 D6).
@@ -132,15 +141,26 @@ const (
 type Config struct {
 	// ListenAddr is the address the HTTP server binds, host:port.
 	ListenAddr string
+	// MetricsAddr is the address the metrics listener binds, host:port: the
+	// Prometheus text at /metrics, without authentication and never on
+	// ListenAddr (docs/adr/0060 D1). Empty switches the listener off — the
+	// variable set to an empty value, which no other variable reads as more
+	// than unset; unset it is DefaultMetricsAddr.
+	MetricsAddr string
 	// DatabaseURL is the PostgreSQL connection URL (postgres://...) of the
-	// runtime role, which owns nothing (docs/adr/0021 D2). Required.
+	// runtime role, which owns nothing (docs/adr/0021 D2): COWORK_DATABASE_URL,
+	// or the URL composed of its components (docs/adr/0058 D4). Required.
 	DatabaseURL string
 	// DatabaseOwnerURL is the connection URL of the owner role the
-	// migrations run under. Required where migrations run: `cowork migrate`,
-	// and `cowork serve` while MigrateOnStart is true.
+	// migrations run under, given the same two ways. Required where migrations
+	// run: `cowork migrate`, and `cowork serve` while MigrateOnStart is true.
 	DatabaseOwnerURL string
 	// MigrateOnStart makes `cowork serve` apply pending migrations before it listens.
 	MigrateOnStart bool
+	// MigrateBootstrap makes `cowork migrate` run the bootstrap after the
+	// schema step, as `cowork serve` runs it at its start (docs/adr/0057 D4):
+	// the chart's migration Job sets it.
+	MigrateBootstrap bool
 	// LogLevel is the minimum level written to the log.
 	LogLevel slog.Level
 	// LogFormat is LogFormatJSON or LogFormatText.
@@ -164,6 +184,9 @@ type Config struct {
 	MaxPageSize int
 	// MaxQueryLength bounds a search query; 0 disables the limit.
 	MaxQueryLength int
+	// MaxImportBytes bounds an import's upload, and what its files hold
+	// unpacked; 0 disables the limit (docs/adr/0051 D7, docs/adr/0039 D2).
+	MaxImportBytes int64
 	// Storage is the S3-compatible object storage of the attachments
 	// (docs/adr/0016 D1); nil when none is configured, and uploads are
 	// refused.
@@ -300,6 +323,7 @@ type Storage struct {
 func Load(lookup func(string) (string, bool)) (Config, error) {
 	cfg := Config{
 		ListenAddr:      DefaultListenAddr,
+		MetricsAddr:     DefaultMetricsAddr,
 		MigrateOnStart:  true,
 		LogLevel:        slog.LevelInfo,
 		LogFormat:       LogFormatJSON,
@@ -308,6 +332,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		RequestTimeout:  DefaultRequestTimeout,
 		MaxPageSize:     DefaultMaxPageSize,
 		MaxQueryLength:  DefaultMaxQueryLength,
+		MaxImportBytes:  DefaultMaxImportBytes,
 
 		AttachmentMaxBytes:     DefaultAttachmentMaxBytes,
 		AttachmentMaxPerTicket: DefaultAttachmentMaxPerTicket,
@@ -368,23 +393,52 @@ func (l *loader) server(cfg *Config) {
 	if v, ok := l.get(EnvBaseURL); ok {
 		cfg.BaseURL = strings.TrimRight(v, "/")
 	}
+	l.metricsAddr(cfg)
 }
 
+// metricsAddr reads the metrics listener's address (docs/adr/0060 D1). Unlike
+// every other variable, one set to an empty value is not unset: it switches
+// the listener off, so that an installation that scrapes nothing opens no port
+// without authentication. A value must be host:port and another address than
+// the API's: the metrics are never served beside the API.
+func (l *loader) metricsAddr(cfg *Config) {
+	v, set := l.lookup(EnvMetricsAddr)
+	if !set {
+		return
+	}
+	cfg.MetricsAddr = strings.TrimSpace(v)
+	if cfg.MetricsAddr == "" {
+		return
+	}
+	if _, port, err := net.SplitHostPort(cfg.MetricsAddr); err != nil || port == "" {
+		l.fail("%s: %q is not an address such as :8081 or 0.0.0.0:8081; an empty value switches the metrics listener off",
+			EnvMetricsAddr, clip(cfg.MetricsAddr, 64))
+		return
+	}
+	if cfg.MetricsAddr == cfg.ListenAddr {
+		l.fail("%s must differ from %s: the metrics are never served on the API's listener (docs/adr/0060 D1)", EnvMetricsAddr, EnvListenAddr)
+	}
+}
+
+// database reads the two roles' connections — each a URL or its components
+// (docs/adr/0058 D4) — and the two switches of the migration run.
 func (l *loader) database(cfg *Config) {
-	if v, ok := l.get(EnvDatabaseURL); ok {
-		cfg.DatabaseURL = v
-	} else {
-		l.fail("%s is required", EnvDatabaseURL)
+	var set bool
+	if cfg.DatabaseURL, set = l.databaseURL(runtimeDatabase); !set {
+		l.fail("%s is required", runtimeDatabase.connection())
 	}
-	if v, ok := l.get(EnvDatabaseOwnerURL); ok {
-		cfg.DatabaseOwnerURL = v
-	}
-	if v, ok := l.get(EnvMigrateOnStart); ok {
-		b, err := strconv.ParseBool(v)
-		if err != nil {
-			l.fail("%s: %q is not a boolean", EnvMigrateOnStart, v)
-		} else {
-			cfg.MigrateOnStart = b
+	cfg.DatabaseOwnerURL, _ = l.databaseURL(ownerDatabase)
+	for _, b := range []struct {
+		env string
+		dst *bool
+	}{{EnvMigrateOnStart, &cfg.MigrateOnStart}, {EnvMigrateBootstrap, &cfg.MigrateBootstrap}} {
+		if v, ok := l.get(b.env); ok {
+			parsed, err := strconv.ParseBool(v)
+			if err != nil {
+				l.fail("%s: %q is not a boolean", b.env, v)
+			} else {
+				*b.dst = parsed
+			}
 		}
 	}
 }
@@ -427,12 +481,17 @@ func (l *loader) sessionKey(cfg *Config) {
 }
 
 func (l *loader) limits(cfg *Config) {
-	if v, ok := l.get(EnvMaxJSONBody); ok {
-		n, err := parseSize(v)
-		if err != nil {
-			l.fail("%s: %q is not a size such as 1MiB or 0", EnvMaxJSONBody, v)
-		} else {
-			cfg.MaxJSONBody = n
+	for _, c := range []struct {
+		env, example string
+		dst          *int64
+	}{{EnvMaxJSONBody, "1MiB", &cfg.MaxJSONBody}, {EnvMaxImportBytes, "50MiB", &cfg.MaxImportBytes}} {
+		if v, ok := l.get(c.env); ok {
+			n, err := parseSize(v)
+			if err != nil {
+				l.fail("%s: %q is not a size such as %s or 0", c.env, v, c.example)
+			} else {
+				*c.dst = n
+			}
 		}
 	}
 	if v, ok := l.get(EnvRequestTimeout); ok {

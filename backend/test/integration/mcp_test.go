@@ -436,7 +436,79 @@ func TestTheBinaryRunsItsSubcommands(t *testing.T) {
 		return err
 	}))
 	assert.Len(t, memory, 1, "the session start is remembered in one file under the cache directory")
+
+	code, stdout, stderr = run(configured, `{"session_id":"b2","hook_event_name":"PostModelSwitch","from_model":"claude-opus-5",`+
+		`"to_model":"claude-sonnet-5","source":"command"}`, "model-switch")
+	assert.Equal(t, 0, code)
+	assert.Empty(t, stdout+stderr, "the switch hook prints nothing, which Claude Code would add to the model's context")
+	var recorded struct {
+		ProjectDir string `json:"project_dir"`
+		Model      string `json:"model"`
+	}
+	require.NoError(t, filepath.WalkDir(home, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasPrefix(d.Name(), "model-") {
+			return err
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(raw, &recorded)
+	}))
+	assert.Equal(t, e.repo, recorded.ProjectDir)
+	assert.Equal(t, "claude-sonnet-5", recorded.Model, "the switch is in the file the server of the project directory reads")
+
 	code, stdout, _ = run(configured, `{"session_id":"b2"}`, "session-end")
 	assert.Equal(t, 0, code)
 	assert.Empty(t, stdout, "nothing in progress: no reminder")
+
+	// docs/adr/0070 D2, D5: the export by the binary, into a new directory.
+	target := filepath.Join(t.TempDir(), "backup")
+	code, stdout, stderr = run(configured, "", "export", e.SlugA+"/ALPHA", target)
+	assert.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout, "Exported "+e.SlugA+"/ALPHA into "+target)
+	for _, name := range []string{"manifest.json", "links.json", "attachments.json"} {
+		_, err := os.Stat(filepath.Join(target, name))
+		assert.NoError(t, err, name)
+	}
+	code, _, stderr = run(configured, "", "export", e.SlugA+"/ALPHA", target)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "is not empty: an export never overwrites")
+}
+
+// docs/adr/0070 D2, D5, D6: the export subcommand by its command line — the
+// project's documents named by key and the manifests, into an empty or a new
+// directory; a directory that is not empty, a project the token cannot read
+// and a project that is none refused, each with its exit code.
+func TestTheExportSubcommand(t *testing.T) {
+	e := newMCPEnv(t)
+	member := e.s.client(t, caller{Token: e.tk.MemberA})
+	created, err := member.CreateTicketWithResponse(e.ctx, e.SlugA, "ALPHA", &apigen.CreateTicketParams{},
+		task("Exported", func(b *apigen.TicketCreate) { b.Body = ptr("## Current state\n\nWritten.") }))
+	require.NoError(t, err)
+	require.Equal(t, 201, created.StatusCode(), string(created.Body))
+
+	target := t.TempDir()
+	code, stdout := e.run(t, e.tk.MemberA, "", "export", e.SlugA+"/ALPHA", target)
+	assert.Equal(t, 0, code)
+	assert.Contains(t, stdout, "1 tickets as Markdown")
+	doc, err := os.ReadFile(filepath.Join(target, e.SlugA, "ALPHA-1.md"))
+	require.NoError(t, err)
+	assert.Contains(t, string(doc), "key: "+e.SlugA+"/ALPHA-1\ntitle: Exported\n")
+	manifest, err := os.ReadFile(filepath.Join(target, "manifest.json"))
+	require.NoError(t, err)
+	var m apigen.ExportManifest
+	require.NoError(t, json.Unmarshal(manifest, &m))
+	assert.Equal(t, 1, m.Tickets)
+	n, err := fixtures(t).QueryCount(e.ctx, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND action = 'exported'
+		AND entity_type = 'project' AND agent LIKE 'cowork-mcp/%/export'`, e.A)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, n, "the export is recorded, marked as the binary's (docs/adr/0059 D3)")
+
+	code, _ = e.run(t, e.tk.MemberA, "", "export", e.SlugA+"/ALPHA", target)
+	assert.Equal(t, 1, code, "never into a directory that is not empty")
+	code, _ = e.run(t, e.tk.MemberB, "", "export", e.SlugA+"/ALPHA", filepath.Join(t.TempDir(), "other"))
+	assert.Equal(t, 1, code, "another tenant's project is not_found")
+	code, _ = e.run(t, e.tk.MemberA, "", "export", "ALPHA", filepath.Join(t.TempDir(), "usage"))
+	assert.Equal(t, 2, code)
 }

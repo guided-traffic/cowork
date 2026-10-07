@@ -174,8 +174,14 @@ func seedEveryTenantTable(t *testing.T, w world) {
 			VALUES ($1, $2, $3, $3, 30, '2026-01-01') RETURNING id`, s.tenant, first, s.person).Scan(&entry))
 		require.NoError(t, f.Exec(ctx, `INSERT INTO time_entry_revisions (tenant_id, entry_id, minutes, day, note, edited_by)
 			VALUES ($1, $2, 15, '2026-01-01', '', $3)`, s.tenant, entry, s.person))
-		require.NoError(t, f.Exec(ctx, `INSERT INTO attachments (tenant_id, ticket_id, file_name, size, sha256, content_type, uploaded_by)
-			VALUES ($1, $2, 'seed.txt', 0, sha256(''::bytea), 'text/plain; charset=utf-8', $3)`, s.tenant, first, s.person))
+		var attachment uuid.UUID
+		require.NoError(t, f.QueryRow(ctx, `INSERT INTO attachments (tenant_id, ticket_id, file_name, size, sha256, content_type, uploaded_by)
+			VALUES ($1, $2, 'seed.txt', 0, sha256(''::bytea), 'text/plain; charset=utf-8', $3) RETURNING id`,
+			s.tenant, first, s.person).Scan(&attachment))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO consistency_checks (id, tenant_id, checked_at, dangling, accepted, orphans, orphan_bytes)
+			VALUES ($1, $2, now(), 0, 1, 0, 0) ON CONFLICT (tenant_id) DO NOTHING`, uuid.Must(uuid.NewV7()), s.tenant))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO consistency_acceptances (tenant_id, attachment_id, accepted_by)
+			VALUES ($1, $2, $3)`, s.tenant, attachment, s.person))
 		require.NoError(t, f.Exec(ctx, `INSERT INTO project_repositories (tenant_id, project_id, identity, remote)
 			VALUES ($1, $2, 'example.org/seed/repo', 'git@example.org:seed/repo.git')`, s.tenant, s.project))
 		_, tokenID, err := f.Token(ctx, fixture.TokenSpec{UserID: s.person})
@@ -194,5 +200,15 @@ func seedEveryTenantTable(t *testing.T, w world) {
 			s.tenant, s.person, first))
 		require.NoError(t, f.Exec(ctx, `INSERT INTO saved_filters (tenant_id, owner_id, name, parameters, shared)
 			VALUES ($1, $2, 'seed', '{"state": ["filed"]}', true)`, s.tenant, s.person))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO github_webhook_secrets (tenant_id, secret, created_by)
+			VALUES ($1, '\x0000000000000000000000000000000000000000000000000000000000000000', $2)`, s.tenant, s.person))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO github_deliveries (tenant_id, delivery, received_at, expires_at)
+			VALUES ($1, $2, now(), now() + interval '1 day')`, s.tenant, uuid.Must(uuid.NewV7())))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO ticket_pull_requests (tenant_id, ticket_id, kind, repository, number,
+			title, state, url, found_in, first_seen_at, last_seen_at)
+			VALUES ($1, $2, 'pull_request', 'example.org/seed/repo', 1, 'seed', 'open', 'https://example.org/seed/repo/pull/1',
+			'subject', now(), now())`, s.tenant, first))
+		require.NoError(t, f.Exec(ctx, `INSERT INTO import_jobs (tenant_id, project_id, created_by, expires_at, report, source)
+			VALUES ($1, $2, $3, now() + interval '1 day', '{}', '\x')`, s.tenant, s.project, s.person))
 	}
 }

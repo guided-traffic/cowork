@@ -60,7 +60,10 @@ after it ([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before
 
 **Built** (phase 2, 2026-10-02): D1–D3 — the columns and enums (migration 8), the threat rule
 as a CHECK and in the API, rule set v1 (`DeriveUrgency`, removed 2026-10-04),
-the override and its end. D4's `found-in` link exists; D5 arrives with the importer. The
+the override and its end. D4's `found-in` link exists; ~~D5 arrives with the importer~~ D5 is
+built with the importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) (2026-10-06): a value outside its
+vocabulary is an error of the file naming the key and its line, and the execution waits until the
+file is corrected or excluded. The
 amendment of 2026-10-03 is built (2026-10-03): ~~an input change derives the value and its rule
 again beside a standing override, which stays, and records no act of its own (`rederive` in
 `links.go`)~~ *(removed 2026-10-04 with the derivation)*; the reason is optional for a person and
@@ -89,8 +92,14 @@ lists and the saved filters take `horizon` only and refuse `urgency` as a field 
 do not have, the two `…/urgency-override` routes answer `404` —, and
 [migration 38](../../backend/internal/store/migrations/000038_horizon_names_only.up.sql) rewrites
 every `override-urgency` of the stored capability sets to `set-horizon` and a saved filter's
-`urgency` to `horizon`; the checks of the capability sets keep the old name until a later release,
+`urgency` to `horizon`; ~~the checks of the capability sets keep the old name until a later release,
 so that an image rollback to 0.5 stays safe
+([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D4)~~ *(2026-10-06:)* the checks of the capability sets kept the old name in 0.6 and 0.7, so that an
+image rollback to 0.5 stayed safe, and
+[migration 40](../../backend/internal/store/migrations/000040_capability_checks_set_horizon_only.up.sql)
+rewrites the three again, for what such a rollback wrote in between, and drops `override-urgency`
+from both checks, which refuse it since
 ([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
 D4). The database keeps the enum
 `urgency` and its columns, and the audit record the act `overridden` with its payload
@@ -285,9 +294,14 @@ guessing; the report names the field and the ticket.
   which nothing checks. *(Amended 2026-10-06:)* The removal is built: a `cowork-mcp` of 0.4 finds
   its token without `override-urgency`, the two urgency-override routes gone and no `urgency` on a
   ticket — read from its code, not observed —, and is unsupported since 0.5.0.
-  An image rollback to 0.5 over migration 38 is safe, but a saved filter 0.5 stores with the key
+  ~~An image rollback to 0.5 over migration 38 is safe, but a saved filter 0.5 stores with the key
   `urgency` in that window loses that condition under this release until the migration of a later
-  release rewrites it again
+  release rewrites it again~~ *(2026-10-06, the narrowing:)* An image rollback to 0.5 over migration
+  38 alone is safe, but a saved filter 0.5 stores with the key `urgency` in that window loses that
+  condition under 0.6 and 0.7; migration 40 rewrites it to `horizon` — unless the filter's conditions
+  were saved again meanwhile, without it —, and since migration 40 the checks of the capability sets
+  refuse `override-urgency`, so an image rollback to 0.5 over it fails to make an agent token or to
+  store a chat set that holds `set-horizon`
   ([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
   D4, its residual risks).
 

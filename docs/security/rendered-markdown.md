@@ -2,7 +2,7 @@
 
 How the Markdown that people and agents write — a ticket's body, a comment, a question's options and
 its answer — becomes HTML in another person's browser, which rules hold it there, and what that
-leaves open, as built on 2026-10-05
+leaves open, as built on 2026-10-07
 ([ADR 0011](../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6,
 [ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
 D7). The files those texts may show are [attachments.md](attachments.md); the policy the shell sends
@@ -45,10 +45,14 @@ administrator; whatever it holds is foreign input to the reader's session.
    runs over it once more; nothing in the UI calls `bypassSecurityTrust…`. The server's allow-list is
    a subset of what Angular keeps, so this line removes nothing the first two let through on purpose,
    and stands alone should they ever let through more. Behind it, the shell's policy refuses inline
-   scripts and every request to another origin.
+   scripts and every load or fetch from another origin; following a link is a navigation, which a
+   policy does not govern.
 
 What reaches the reader's page is therefore never a script, an event handler, a style, a frame, a
-form, an object, a `<base>` or a `<meta>`, an `id` or a `class`, and never a request to another host.
+form, an object, a `<base>` or a `<meta>`, an `id` or a `class`, and never a load or a fetch from
+another host. Every other text of other people reaches the page by interpolation, as text:
+`RenderedText` is the UI's one `[innerHTML]`, and the confirmation dialog shows its message through
+cowork's text template.
 The unit tests feed both lines hostile input — script tags, handlers, `javascript:` and `data:`
 addresses in links and images, raw HTML, remote images, attribute break-outs, nested and namespace
 tricks, a `<noscript>` break-out — and hold every output to the allow-list
@@ -83,9 +87,9 @@ delivered inline (ADR 0016 D5) — **of the same ticket**, by the path of its by
 source is then rewritten to that attachment's own path on this installation, so the browser asks
 nothing of another origin. The ticket's raster attachments are read through the ticket's visibility
 predicate ([`api/rendered.go`](../../backend/internal/api/rendered.go) `imagesOf`). Any other image —
-an SVG, another ticket's attachment, an address elsewhere, a `data:` image — becomes a link to its
-address with the image's text, which nothing loads until a person follows it; a link inside a link
-keeps its text alone. An image shown is a download: the browser fetches it with the reader's
+an SVG, another ticket's attachment, an address elsewhere — becomes a link to its address with the
+image's text, which nothing loads until a person follows it; a `data:` or a `javascript:` image keeps
+its text alone, and so does an image inside a link. An image shown is a download: the browser fetches it with the reader's
 session, and every `200` is recorded as `downloaded` in the tenant's audit record — the
 reader's opening of a text with an image is in the record their administrators read, as a preview's
 is ([attachments.md](attachments.md#delivery-makes-the-browser-treat-the-bytes-as-data)).
@@ -93,11 +97,43 @@ is ([attachments.md](attachments.md#delivery-makes-the-browser-treat-the-bytes-a
 ## Links
 
 A link opens in a new tab, `noopener` takes the new tab's handle on the page away, `noreferrer` keeps
-the page's address from the target, `nofollow` endorses nothing. A relative link points into the
-installation; following one is a top-level `GET` with the reader's session cookie (`SameSite=Lax`
-admits it), and a `GET` changes nothing: every write of a session is another method and must pass the
-CSRF check ([csrf.md](csrf.md)). A `GET` of the API that a link names is read with the reader's
-rights, and one of an attachment's bytes is recorded as the reader's download.
+the page's address from the target, `nofollow` endorses nothing. A link without a scheme points into
+the installation — but one written `//host/…`, which has no scheme either, leads to that host
+([H-94](#h-94)); following one into the installation is a top-level `GET` with the reader's session
+cookie (`SameSite=Lax` admits it), and a `GET` changes no ticket, member or setting: every write of a
+session is another method and must pass the CSRF check ([csrf.md](csrf.md)). A `GET` of the API that a
+link names is read with the reader's rights, and five reads record an act in the reader's name — an
+attachment's bytes, a ticket's Markdown export and its context, a project's and a tenant's export
+([csrf.md](csrf.md#h-22) H-22).
+
+## What a rendering reads
+
+A text is rendered on every read that answers it — the body on its own route, never in a list, and a
+comment or a question on every page of them —, so what the renderer reads of a text is bounded
+([`richtext/bounds.go`](../../backend/internal/richtext/bounds.go), ADR 0011 D6):
+
+- **Its length.** A text renders as Markdown up to 200,000 characters, the longest the API takes —
+  a body; a comment, the options and an answer take 100,000. The database holds the same lengths, a
+  comment's since migration 11, a body's and a question's options and answer since
+  [migration 44](../../backend/internal/store/migrations/000044_text_length_checks.up.sql), and the
+  import refuses a longer text as an error of its file ([import-and-export.md](import-and-export.md)).
+  A longer text, which none of them lets in, is not parsed: it is shown as written, escaped, in one
+  preformatted block.
+- **Its nesting.** Block quotes and lists nest at most 32 blocks deep, a list counted with its item;
+  a deeper marker is text.
+- **Its markers.** Per text, at most 2,000 runs of `*`, `_` and `~` are read as emphasis and
+  strikethrough, at most 1,000 `[` and `![` as the openers of links and images, and at most 250
+  comments, processing instructions, declarations and CDATA sections as raw HTML. A closing bracket
+  is read only within 4,096 bytes of its opener, an inline link's destination only when it ends
+  within 4,096 bytes on its line, and the link reference definitions at the start of a paragraph
+  only in a paragraph of at most 1,000 lines. Beyond each bound the marker is text.
+
+Below the bounds a text renders as CommonMark does: the 219 Markdown files of this repository and
+13,873 of the Go modules on the development machine, each under 200,000 characters, render the
+same with the bounds and without them (compared once on 2026-10-07; no test holds it). At the
+bound, `TestPathologicalInputRendersQuickly` renders 26 texts of 200,000 characters built to nest,
+to repeat markers and to leave them open, each held to two seconds and 128 MiB of allocations; on
+the development machine each took less than a tenth of a second.
 
 ## What this does not cover
 
@@ -122,13 +158,37 @@ a tool that shows a model's output as HTML — gets none of the rules on this pa
 the server's HTML, and the chat's panel shows a model's text as text ([chat.md](chat.md#what-the-panel-shows)).
 Mitigation for whoever builds such a client: render the `…_html` fields, not the Markdown.
 
+<a id="h-94"></a>
+### H-94 — A link written without a scheme can lead to another host
+
+Live in every text. The renderer keeps a link with `http`, `https` or `mailto`, or one without a
+scheme, which it takes for a path of the installation
+([`richtext.go`](../../backend/internal/richtext/richtext.go) `allowedLink`), and the sanitiser admits
+relative addresses the same way; `[the backlog](//evil.example/backlog)` has no scheme, passes both,
+and opens `evil.example` in the reader's protocol, where a link into cowork was expected. The new tab
+cannot reach back into cowork (`noopener`) and gets no `Referer`. Refusing an address that
+names a host without a scheme would close it. Mitigation: as for [H-51](#h-51).
+
+<a id="h-95"></a>
+### H-95 — Bidirectional controls in a text reach the page as written
+
+Live in every text. The sanitiser of a file's name removes the bidirectional controls
+([attachments.md](attachments.md#the-file-name-is-sanitised-not-trusted)); the renderer of a text does
+not, so the embeddings, overrides and isolates (U+202A to U+202E, U+2066 to U+2069) of a body, a
+comment, a question or an answer reach the reader's page as they were written, and can show the
+characters around them in another order than they are stored — a link's text, a key, a command a
+reader may copy. Nothing runs from it; what it changes is what a reader sees. Mitigation: read a text
+that looks out of order in its Markdown, which the API answers as written.
+
 ### What the rendering costs
 
-A text is rendered on every read that answers it — the body on its own route, never in a list, and a
-comment or a question on every page of them. A text is at most 200,000 characters (a body) or
-100,000 (a comment, the options, an answer), and the unit tests hold pathological nesting and
-delimiter runs to a bounded time; beyond that, `COWORK_REQUEST_TIMEOUT` ends a request that renders
-too long. No cache keeps a rendering.
+The bounds hold one rendering to a cost the length of its text sets, not to none: a page of comments
+renders each of them, and no cache keeps a rendering for its readers — only the stored answer of a
+create with an `Idempotency-Key` carries the HTML of its moment, replayed to its caller for
+twenty-four hours. `COWORK_REQUEST_TIMEOUT` is a deadline for the
+database and the calls a request makes; it does not interrupt a rendering in progress, which is why
+the rendering is bounded itself. Not measured: the time a rendering at the bound takes on a replica
+of the chart's default size.
 
 ### The libraries' own flaws
 

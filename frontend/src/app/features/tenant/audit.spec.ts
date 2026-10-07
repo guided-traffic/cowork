@@ -93,6 +93,7 @@ describe('the audit page helpers', () => {
   it('offers the entities the record names most', () => {
     expect(entityTypes).toContain('ticket');
     expect(entityTypes).toContain('membership');
+    expect(entityTypes).toContain('attachment_consistency');
     expect(new Set(entityTypes).size).toBe(entityTypes.length);
   });
 });

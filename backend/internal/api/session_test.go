@@ -112,6 +112,39 @@ func TestCSRFFailsClosedWithoutABaseURL(t *testing.T) {
 	assert.Nil(t, h.csrf(request(http.MethodGet)), "a read never mutates")
 }
 
+// docs/adr/0031 D3 as amended 2026-10-06: only the person's activity moves a
+// session's idle clock — a write that passes the CSRF check, or a read that
+// carries X-Cowork-Activity: input, which the browser's keep-alive sends; any
+// other value, or none, moves nothing, and neither does a refused write.
+func TestWhatMovesTheIdleClock(t *testing.T) {
+	const base = "https://cowork.example.com"
+	h := &handler{opts: Options{BaseOrigin: base}}
+	write := []string{"Origin", base, "X-Requested-With", "cowork"}
+	for name, c := range map[string]struct {
+		r     *http.Request
+		moves bool
+	}{
+		"a read":                         {request(http.MethodGet), false},
+		"the keep-alive's read":          {request(http.MethodGet, ActivityHeader, ActivityInput), true},
+		"a read with another value":      {request(http.MethodGet, ActivityHeader, "yes"), false},
+		"a read with the value shouted":  {request(http.MethodGet, ActivityHeader, "INPUT"), false},
+		"a read with an empty value":     {request(http.MethodGet, ActivityHeader, ""), false},
+		"a POST":                         {request(http.MethodPost, write...), true},
+		"a PUT":                          {request(http.MethodPut, write...), true},
+		"a PATCH":                        {request(http.MethodPatch, write...), true},
+		"a DELETE":                       {request(http.MethodDelete, write...), true},
+		"a write of another origin":      {request(http.MethodPost, "Origin", "https://evil.example.com", "X-Requested-With", "cowork"), false},
+		"a write without the header":     {request(http.MethodPost, "Origin", base), false},
+		"a refused write that is marked": {request(http.MethodPost, "Origin", "https://a.example.com", ActivityHeader, ActivityInput), false},
+	} {
+		assert.Equal(t, c.moves, h.movesIdleClock(c.r), name)
+	}
+	assert.False(t, (&handler{}).movesIdleClock(request(http.MethodPost, write...)),
+		"without COWORK_BASE_URL no write passes the check, and none moves the clock")
+	assert.Equal(t, "X-Cowork-Activity", ActivityHeader)
+	assert.Equal(t, "input", ActivityInput)
+}
+
 func TestSessionLiveHonoursBothLimits(t *testing.T) {
 	h := &handler{opts: Options{SessionIdle: 2 * time.Hour}}
 	created := time.Date(2026, 10, 3, 8, 0, 0, 0, time.UTC)
@@ -206,14 +239,27 @@ func TestCredentialsComeFromTheDocument(t *testing.T) {
 		"createAccount": {session: true}, "resetAccountPassword": {session: true},
 		"getChatAvailability": both, "runChatTurn": {session: true},
 		"getVersion": {}, "getOpenAPI": {}, "loginLocal": {}, "getAuthOptions": {},
+		"getGitHubIntegration": both, "createGitHubSecret": {session: true}, "revokeGitHubSecret": both,
+		"receiveGitHubWebhook": {}, "listTicketPullRequests": both, "removeTicketPullRequest": both,
 	} {
 		got, ok := opCredentials[id]
 		require.True(t, ok, id)
 		assert.Equal(t, want, got, id)
 	}
 	for _, path := range doc.Paths.InMatchingOrder() {
-		if post := doc.Paths.Value(path).Post; post != nil && post.OperationID == "loginLocal" {
+		post := doc.Paths.Value(path).Post
+		if post == nil {
+			continue
+		}
+		switch post.OperationID {
+		case "loginLocal":
 			assert.True(t, originChecked(post), "the login is origin-checked")
+			assert.False(t, signed(post), "the login is no signed delivery")
+		case opReceiveGitHubWebhook:
+			assert.True(t, signed(post), "GitHub's webhook is signed (docs/adr/0071 D3)")
+			assert.False(t, originChecked(post), "GitHub sends no Origin")
+		default:
+			assert.False(t, signed(post), "%s is not signed", post.OperationID)
 		}
 	}
 }
