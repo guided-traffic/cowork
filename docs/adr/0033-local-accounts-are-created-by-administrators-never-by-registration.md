@@ -14,7 +14,10 @@ amendment is made in place in the record it changes; no rule changes), amended 2
 page that offers the identity provider's button starts that sign-in by itself after a session
 ended, by
 [ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md) D6;
-what it offers does not change). Date: 2026-10-01. Decided
+what it offers does not change), amended 2026-10-07 by the owner's answer to "does a changed
+password end the account's tokens?" — the synchronisation's, over every change and over the docs
+alone (D4, D6: the start-up synchronisation that stores a changed password of the local
+administrator revokes its tokens; a person's own change keeps theirs; built 2026-10-09). Date: 2026-10-01. Decided
 by the owner as the answer to the catalog question "local accounts beyond the one administrator?": administrator-managed local accounts, over none,
 over self-registration with e-mail reset, and over global-administrator-only creation. The
 owner set two conditions: the minimum password length is configurable in the chart, and
@@ -93,7 +96,16 @@ recorded in every PHC-encoded hash, which is verified with the parameters it rec
 a malformed or oversized hash is a password that does not fit, never a `500`. At most two
 computations run at once, so a flood of attempts holds no more than twice 19 MiB. A password is
 at most 1024 characters, counted in characters, and an administrator's temporary password is
-held to the same policy.)*
+held to the same policy.)* *(Amended 2026-10-07 by the owner's answer, built 2026-10-09: **the
+start-up synchronisation that stores a changed password of the local administrator of
+[ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
+revokes every token of the account**, besides ending its sessions — a system act, `revoked_by`
+empty, its count in the `password_changed` row as `tokens_revoked`
+([`bootstrap/bootstrap.go`](../../backend/internal/bootstrap/bootstrap.go) `setPassword`). The
+rotation is the recovery of a leaked password, and a token made with it must not outlive it; the
+grants that password made stay, and the recovery reviews them
+([installation.md](../operations/installation.md#the-local-administrator)). A person's own change
+of password keeps their tokens: they made them, and the change ends only their other sessions.)*
 
 **D5 — Reset is an administrator's act.** A tenant administrator (for accounts of their
 tenant) or a global administrator sets a new temporary password; there is no e-mail flow
@@ -120,7 +132,8 @@ lock the account until an administrator unlocks it or the window passes, whichev
 installation configures (`COWORK_LOGIN_LOCKOUT`, default: window); twenty attempts per source
 address per minute are throttled with `429`. Failed and locked attempts are recorded without
 the attempted password. The administrator of ADR 0032 is subject to the same limits, and the
-operations page says how to recover it when it is locked (rotate the Secret, restart).
+operations page says how to recover it when it is locked (rotate the Secret, restart — which
+since 2026-10-07 also revokes its tokens, D4).
 *(Amended 2026-10-03: the failures are counted by the username **as presented**, known or not,
 so an unknown username is counted and locked exactly like a known one and neither the answer
 nor the lockout says whether an account exists. Every failure — an unknown username, a wrong

@@ -244,8 +244,12 @@ administrator reads no client of the installation the person is not a member of.
   ([H-57](#h-57)). A person's deactivation revokes every token they hold — an administrator's
   `PUT …/accounts/{username}/deactivation` on an account their tenant manages, which names the
   administrator in `revoked_by`, and the start-up synchronisation for the local administrator,
-  whose `NULL` `revoked_by` marks a system act ([local-accounts.md](local-accounts.md)); a password reset does not. No route
-  deactivates a person of the identity provider.
+  whose `NULL` `revoked_by` marks a system act ([local-accounts.md](local-accounts.md)). The
+  start-up synchronisation also revokes every token of the local administrator when it stores a
+  changed password — a rotated Secret is the recovery of a leaked one, and a token made with it must
+  not survive it ([ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
+  D4; `TestBootstrapKeepsTheConfiguredAdministrator`). A password reset and a person's own change
+  of password do not. No route deactivates a person of the identity provider.
 - **Last use.** The last-used day is written at most once per token and UTC day — a note per
   replica and a conditional update — as bookkeeping, not as an act (ADR 0035 D2).
 - **Open streams.** An event stream is not a next request: at every heartbeat it checks the

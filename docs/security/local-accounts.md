@@ -257,8 +257,14 @@ migration Job after the schema step as well, under the same lock
 
 - the account is **created** — a global administrator, display name its username;
 - a password that does not verify against the stored hash is **re-hashed**, every session of
-  the account ends, and the failures and the lock of its username are forgotten — rotating the
-  Secret and restarting is how a locked or leaked administrator is recovered;
+  the account ends, **every token of it is revoked**, and the failures and the lock of its username
+  are forgotten — rotating the Secret and restarting is how a locked or leaked administrator is
+  recovered, and a token made with the leaked password, or a stolen session of it, does not outlive
+  the rotation ([ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
+  D4 as amended 2026-10-07). The grants that password made — a membership the account gave itself,
+  an account it created — stay: the recovery reviews them
+  ([installation.md](../operations/installation.md#the-local-administrator)). A person's own
+  password change keeps their tokens, which are theirs;
 - an account that was **deactivated** because the variables went is reactivated; a revoked
   token stays revoked;
 - a **tenant administrator's account of the same name** is taken over: the configured password,

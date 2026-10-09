@@ -278,7 +278,7 @@ What happens at every start of a backend pod, after the migrations and under an 
 | The Secret says | The start does |
 |---|---|
 | a username and password, no such account yet | creates a **global administrator** with that username and password: it creates tenants and holds no role in any until it grants itself one |
-| the same, and the password differs from the stored hash | stores the new hash, **ends every session** of the account and forgets its failed logins and its lock |
+| the same, and the password differs from the stored hash | stores the new hash, **ends every session** of the account, **revokes every token** of it and forgets its failed logins and its lock |
 | the same, and the account was deactivated | reactivates it |
 | a username that a tenant's administrator already gave to an account | takes the account over: the configured password, no session, no token, and no tenant manages it any more |
 | another username than the account kept before | deactivates the old account — its tokens revoked, its sessions ended — and creates the new one |
@@ -309,7 +309,12 @@ unlocking one, deactivating one and ending its sessions work with an `admin`-sco
 (`COWORK_LOGIN_LOCKOUT=admin`, or an attacker who keeps failing the logins): rotate the Secret
 **and restart the backend pods**. The environment is read once, at start, so a changed Secret
 does nothing until the pods restart; the start then stores the new password, ends every session
-of the account and forgets the lock. A leaked password stays valid until both steps are done.
+of the account, revokes every token of it and forgets the lock. A leaked password stays valid until
+both steps are done. **Then review its grants:** what the leaked password could make outlives the
+rotation — a membership the local administrator granted itself in a tenant, an account or a tenant
+it created — so read each tenant's audit record and members for acts of the local administrator you
+did not make, and take back what you find. Its tokens are gone: make new ones in a session where you
+need them.
 
 **What it can and cannot do through the UI.** The local administrator's password changes only
 where it comes from: `PUT /api/v1/me/password` is refused for it (`403`, naming

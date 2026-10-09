@@ -223,9 +223,10 @@ func (s syncer) insertAccount(ctx context.Context, w *store.Writer, id uuid.UUID
 }
 
 // setPassword stores the configured password, ends every session of the
-// account, forgets the failures that may have locked it — a locked
-// administrator is recovered by rotating the Secret and restarting
-// (docs/adr/0033 D6) — and, for a take-over, revokes its tokens.
+// account, revokes every token of it, and forgets the failures that may have
+// locked it. Rotating the Secret is the recovery of a leaked password or a
+// locked administrator (docs/adr/0033 D6, D7): a session or a token that was
+// made with the old password does not outlive it.
 func (s syncer) setPassword(ctx context.Context, w *store.Writer, id uuid.UUID, takeOver bool) error {
 	hash, err := auth.HashPassword(ctx, s.p.Password)
 	if err != nil {
@@ -243,13 +244,13 @@ func (s syncer) setPassword(ctx context.Context, w *store.Writer, id uuid.UUID, 
 	if err != nil {
 		return fmt.Errorf("end the sessions: %w", err)
 	}
-	after := map[string]any{"sessions_ended": ended}
+	revoked, err := w.RevokeTokensOfUser(ctx, writeq.RevokeTokensOfUserParams{UserID: id})
+	if err != nil {
+		return fmt.Errorf("revoke the tokens: %w", err)
+	}
+	after := map[string]any{"sessions_ended": ended, "tokens_revoked": revoked}
 	if takeOver {
-		revoked, err := w.RevokeTokensOfUser(ctx, writeq.RevokeTokensOfUserParams{UserID: id})
-		if err != nil {
-			return fmt.Errorf("revoke the tokens: %w", err)
-		}
-		after["tokens_revoked"], after["taken_over"] = revoked, true
+		after["taken_over"] = true
 	}
 	if _, err := w.DeleteFailedLoginAttempts(ctx, s.p.Username); err != nil {
 		return fmt.Errorf("forget the failed logins: %w", err)
