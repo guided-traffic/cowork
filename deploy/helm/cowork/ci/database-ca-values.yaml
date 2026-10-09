@@ -1,0 +1,18 @@
+# The database's private authority (docs/adr/0058 D3) in the onStart mode,
+# beside the storage's: the ConfigMap mounted into the migrate init container
+# and the serving container, COWORK_DATABASE_CA pointing at its key, and both
+# roles at verify-full in the URLs their Secrets hold.
+database:
+  existingSecret: cowork-database
+  owner:
+    existingSecret: cowork-database-owner
+  tls:
+    caConfigMap: cowork-db-ca-cert
+session:
+  existingSecret: cowork-session
+storage:
+  existingSecret: cowork-storage
+  endpoint: https://s3.example.com
+  bucket: cowork
+  tls:
+    caConfigMap: cowork-s3-ca

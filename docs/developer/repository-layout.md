@@ -79,7 +79,8 @@ cowork/
 ├── deploy/examples/            # example manifests: a CloudNativePG cluster, a MinIO Tenant, the mc commands; syntax-checked only
 ├── hack/                       # dev.sh + dev_demo.py (make dev); e2e.sh (make e2e); verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
 │   ├── dex/config.yaml         # the development and test issuer: one client, four users; credentials development-only
-│   └── ingress/default.conf    # the stand-in for the Ingress when the two images run together
+│   ├── ingress/default.conf    # the stand-in for the Ingress when the two images run together
+│   └── postgres-tls/entrypoint.sh  # make postgres-tls-up: a private authority and a server certificate, then PostgreSQL with TLS
 ├── docs/
 │   ├── adr/                    # decisions
 │   ├── developer/              # contributor entry point: layout, package map, architecture, subsystems, build, testing, CI, checklists, conventions

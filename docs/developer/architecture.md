@@ -61,7 +61,8 @@ the person's token, like a script — no path to the database, nothing the API d
 
 1. `config.Load(os.LookupEnv)` reads and validates every `COWORK_*` variable — a database role's
    components composed into its URL in [`config/database.go`](../../backend/internal/config/database.go),
-   so everything after reads `DatabaseURL` and `DatabaseOwnerURL` whichever way they came —, then
+   and `COWORK_DATABASE_CA` named as both URLs' `sslrootcert`, so everything after reads
+   `DatabaseURL` and `DatabaseOwnerURL` whichever way they came —, then
    `requireForServe` adds what only `serve` needs: `COWORK_SESSION_KEY`, the owner role's
    connection while `COWORK_MIGRATE_ON_START` is true, and with an issuer the client's id and
    secret (`OIDC.RequireClient`). `config.Load` reports

@@ -22,9 +22,21 @@ the implementer, open to the owner's objection, each marked where it applies; th
 Renovate comments live in the Makefile). Amended 2026-10-07 by the owner (D3: the ConfigMaps the
 chart reads are trusted like the Secrets beside them — documented, not checked), and again
 2026-10-07 by the owner (D3: the database takes a private authority as the storage does, built as a
-change of its own with a PostgreSQL that serves TLS in the integration tier; until then the gap is
-[trust-boundaries.md](../security/trust-boundaries.md) H-78). Amended 2026-10-09 by the owner (D1,
+change of its own with a PostgreSQL that serves TLS in the integration tier; ~~until then the gap is
+trust-boundaries.md H-78~~ *built 2026-10-09, below, and the gap closed*). Amended 2026-10-09 by the owner (D1,
 D2: PGSTY Silo replaces MinIO in the example and in the test tiers; not built yet).
+
+**Built** (2026-10-09): D3's database authority — `database.tls.caConfigMap` with `keys.ca`
+(default `ca.crt`), mounted read-only at `/etc/cowork/database-ca` into the `migrate` init container,
+the migration Job and the serving container, and the backend's `COWORK_DATABASE_CA`
+([`_helpers.tpl`](../../deploy/helm/cowork/templates/_helpers.tpl) `cowork.databaseCAConfigMap`;
+`ci/database-ca-values.yaml`, `ci/database-ca-job-values.yaml`); the integration tier's PostgreSQL
+that serves TLS under a private authority, `make postgres-tls-up`
+([`hack/postgres-tls/entrypoint.sh`](../../hack/postgres-tls/entrypoint.sh)), and
+`TestTheDatabaseAuthorityHoldsVerifyFull`, which runs the binary's migration run and opens the
+runtime pool with `verify-full` against it and has both refuse the same server through another
+authority and through the system pool; the manifests of every earlier `ci/` values file render
+unchanged, byte for byte (Helm 3.21.3).
 
 **Built** (2026-10-06): every rule. D3 and D5 since phase 2 in part — the database and owner Secrets
 by URL key, the session key Secret, the storage credentials Secret with literal endpoint values and
@@ -120,7 +132,7 @@ pattern for each of them:
 
 | Value | Reference | Keys (each configurable, with a default) |
 |---|---|---|
-| database | `database.existingSecret` | either `keys.url` (default `databaseUrl`) **or** the component keys `keys.host`, `keys.port`, `keys.name`, `keys.user`, `keys.password`, `keys.sslmode`; `database.existingConfigMap` may supply the non-secret components; *(added 2026-10-07 by the owner, not built yet)* `database.tls.caConfigMap` + `keys.ca` for a private authority, which the backend applies to both roles' connections and the migration run, so that `sslmode` can be `verify-full` against it |
+| database | `database.existingSecret` | either `keys.url` (default `databaseUrl`) **or** the component keys `keys.host`, `keys.port`, `keys.name`, `keys.user`, `keys.password`, `keys.sslmode`; `database.existingConfigMap` may supply the non-secret components; *(added 2026-10-07 by the owner, ~~not built yet~~ built 2026-10-09)* `database.tls.caConfigMap` + `keys.ca` for a private authority, which the backend applies to both roles' connections and the migration run, so that `sslmode` can be `verify-full` against it |
 | database owner *(added 2026-10-02, [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D2)* | `database.owner.existingSecret` | the same key set as the database row; read only by the migration run (the init container or the Job of [ADR 0057](0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)), never by the serving container |
 | object storage credentials | `storage.existingSecret` | `keys.accessKeyId`, `keys.secretAccessKey` |
 | object storage endpoint | `storage.existingConfigMap` or literal values | `keys.endpoint`, `keys.bucket`, `keys.region`, `keys.pathStyle`; `storage.tls.caConfigMap` + `keys.ca` for a private authority |
@@ -151,9 +163,22 @@ missing from the ConfigMap, and the backend's defaults apply. The defaults of ev
 also read when the values tree lacks the key, as it does after `helm upgrade --reuse-values` from
 an earlier release.
 
+*(Made concrete 2026-10-09 by the implementer, open to the owner's objection:)* the database's
+authority is one variable, `COWORK_DATABASE_CA`, a PEM file the chart points at the mounted key;
+`config.Load` names it as the `sslrootcert` of both roles' connections — a URL and one composed of
+components alike —, so the driver reads it as libpq does: the server must chain to that authority
+alone, the system pool not consulted; `verify-full` checks the host as well, and `require` the chain
+as `verify-ca` does. Beside the variable `config.Load` refuses a role whose `sslmode` checks nothing —
+none, `disable`, `allow` or `prefer` —, a URL that names an `sslrootcert` of its own, and a connection
+that is no `postgres://` URL, each error naming the variables and never quoting the URL
+([`config/database.go`](../../backend/internal/config/database.go) `withRootCert`): an authority
+named for a connection that would not use it is a mistake, not a choice. The ConfigMap holds the
+authority's certificate only; CloudNativePG keeps its authority's key in the same Secret as its
+certificate, so the operations page copies the certificate out instead of mounting that Secret.
+
 *(Amended 2026-10-07 by the owner:)* the ConfigMaps the chart reads — `database.existingConfigMap`,
-`database.owner.existingConfigMap`, `storage.existingConfigMap` and `storage.tls.caConfigMap` — are
-part of the trust boundary as the Secrets beside them are: an installation lets write one only
+`database.owner.existingConfigMap`, `storage.existingConfigMap` and `storage.tls.caConfigMap` *(and,
+since 2026-10-09, `database.tls.caConfigMap`)* — are part of the trust boundary as the Secrets beside them are: an installation lets write one only
 whom it lets read those Secrets. The rule is documented on the trust-boundaries page and beside
 each reference in the README; the chart and the backend check nothing of it.
 
@@ -236,9 +261,13 @@ reaches that bucket only, never root credentials.
 - *(2026-10-06:)* The MinIO examples serve projects that are archived upstream and whose images
   are withdrawn: an installation that copies them inherits software that gets no fix. The chart
   needs none of it; any S3-compatible store with a bucket-scoped key will do.
-- *(2026-10-06:)* The chart mounts no authority for the database's certificate, so a role's
+- ~~*(2026-10-06:)* The chart mounts no authority for the database's certificate, so a role's
   `sslmode` can be `require` — encrypted, the server not verified — but not `verify-ca` or
-  `verify-full` against a private authority such as CloudNativePG's own.
+  `verify-full` against a private authority such as CloudNativePG's own.~~ *(2026-10-09:)*
+  `database.tls.caConfigMap` closes it. Not verified: a CloudNativePG cluster's certificate checked
+  with `verify-full` — the integration tier's server is a plain PostgreSQL with an authority of its
+  own, and that CloudNativePG's server certificate names the cluster's Services is its
+  documentation's word.
 
 ## References
 

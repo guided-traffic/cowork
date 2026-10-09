@@ -1,4 +1,6 @@
 {{- $metrics := include "cowork.metrics" . | fromYaml }}
+{{- $databaseCA := include "cowork.databaseCAConfigMap" . }}
+{{- $storageCA := and (include "cowork.storageEnabled" .) .Values.storage.tls.caConfigMap }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -56,12 +58,22 @@ spec:
           env:
             {{- include "cowork.databaseEnv" (dict "root" . "owner" false) | nindent 12 }}
             {{- include "cowork.databaseEnv" (dict "root" . "owner" true) | nindent 12 }}
+            {{- with $databaseCA }}
+            - name: COWORK_DATABASE_CA
+              value: /etc/cowork/database-ca/{{ include "cowork.databaseCAKey" $ }}
+            {{- end }}
             - name: COWORK_LOG_LEVEL
               value: {{ .Values.backend.config.logLevel | quote }}
             - name: COWORK_LOG_FORMAT
               value: {{ .Values.backend.config.logFormat | quote }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+          {{- if $databaseCA }}
+          volumeMounts:
+            - name: database-ca
+              mountPath: /etc/cowork/database-ca
+              readOnly: true
+          {{- end }}
       {{- end }}
       containers:
         - name: backend
@@ -78,6 +90,10 @@ spec:
             - name: COWORK_METRICS_ADDR
               value: {{ if include "cowork.metricsEnabled" . }}{{ printf ":%d" (int $metrics.port) | quote }}{{ else }}""{{ end }}
             {{- include "cowork.databaseEnv" (dict "root" . "owner" false) | nindent 12 }}
+            {{- with $databaseCA }}
+            - name: COWORK_DATABASE_CA
+              value: /etc/cowork/database-ca/{{ include "cowork.databaseCAKey" $ }}
+            {{- end }}
             # The serving container never migrates: it holds no owner
             # credential and refuses to start on pending migrations.
             - name: COWORK_MIGRATE_ON_START
@@ -240,7 +256,7 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.storage.existingSecret }}
                   key: {{ .Values.storage.keys.secretAccessKey }}
-            {{- if .Values.storage.tls.caConfigMap }}
+            {{- if $storageCA }}
             - name: COWORK_S3_CA
               value: /etc/cowork/s3-ca/{{ .Values.storage.tls.keys.ca }}
             {{- end }}
@@ -325,17 +341,31 @@ spec:
             periodSeconds: {{ .Values.backend.probes.readiness.periodSeconds }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
-          {{- if and (include "cowork.storageEnabled" .) .Values.storage.tls.caConfigMap }}
+          {{- if or $storageCA $databaseCA }}
           volumeMounts:
+            {{- if $storageCA }}
             - name: s3-ca
               mountPath: /etc/cowork/s3-ca
               readOnly: true
+            {{- end }}
+            {{- if $databaseCA }}
+            - name: database-ca
+              mountPath: /etc/cowork/database-ca
+              readOnly: true
+            {{- end }}
           {{- end }}
-      {{- if and (include "cowork.storageEnabled" .) .Values.storage.tls.caConfigMap }}
+      {{- if or $storageCA $databaseCA }}
       volumes:
+        {{- if $storageCA }}
         - name: s3-ca
           configMap:
             name: {{ .Values.storage.tls.caConfigMap }}
+        {{- end }}
+        {{- if $databaseCA }}
+        - name: database-ca
+          configMap:
+            name: {{ $databaseCA }}
+        {{- end }}
       {{- end }}
       {{- with .Values.backend.nodeSelector }}
       nodeSelector:

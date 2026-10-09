@@ -88,6 +88,30 @@ the list empty — the default — no peer is trusted, and a pod that reaches th
 client. Which pods a policy should admit is
 [installation.md](../operations/installation.md#network-policies-are-the-clusters).
 
+## The connection to the database
+
+Both roles' connections can be held to the database server's certificate. A server under a public
+authority is checked against the image's system pool with `sslmode` `verify-full`. A server under a
+private authority — CloudNativePG's own, a cluster's internal one — is checked against it with
+`database.tls.caConfigMap`: the chart mounts the authority's certificate into the `migrate` init
+container, the migration Job and the serving container, and the backend sets `COWORK_DATABASE_CA`
+as the `sslrootcert` of both roles' connections, so the serving container's pool, the owner's and
+the migration run trust that authority alone, the system pool not consulted
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3;
+[`config/database.go`](../../backend/internal/config/database.go) `withRootCert`). Under
+`verify-full` a peer that redirects a pod's connection — on the pod network, on a node, on the way
+to a database outside the cluster — cannot present a certificate of its own, and gets neither the
+roles' passwords nor the rows the queries carry. The integration tier proves it against a
+PostgreSQL that serves TLS under a private authority: the binary's migration run and the runtime
+pool hold `verify-full` with the authority, and refuse the same server through an authority that
+did not issue its certificate and through the system pool
+([`database_tls_test.go`](../../backend/test/integration/database_tls_test.go)
+`TestTheDatabaseAuthorityHoldsVerifyFull`). The backend refuses to start while a role's `sslmode`
+checks nothing beside the authority — none, `disable`, `allow` or `prefer` —, so naming an
+authority never leaves a connection unchecked. Without an authority and with `require`, the
+connection is encrypted and the server unchecked; the path between the pods and the database is
+then what keeps a peer from redirecting it ([below](#the-databases-own-controls)).
+
 ## The identity provider
 
 With `COWORK_OIDC_ISSUER` set, the backend is a relying party of one issuer, and the issuer is
@@ -164,7 +188,8 @@ Each Secret value reaches its container through `secretKeyRef`
 [`migrate-job.yaml`](../../deploy/helm/cowork/templates/migrate-job.yaml)); a database role's
 location may come through `configMapKeyRef` instead, its user and password never do. The
 ConfigMaps the chart reads — `database.existingConfigMap`, `database.owner.existingConfigMap`,
-`storage.existingConfigMap` and `storage.tls.caConfigMap` — are part of this boundary as the
+`database.tls.caConfigMap`, `storage.existingConfigMap` and `storage.tls.caConfigMap` — are part of
+this boundary as the
 Secrets beside them are: whoever may write one is trusted like whoever may read those Secrets
 ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
 D3). The frontend
@@ -363,37 +388,6 @@ issuer's word ([above](#the-identity-provider)) and verifies none of it. Where t
 second factor, a person who logs in through it has one; the local login has none
 ([local-accounts.md](local-accounts.md#h-16) H-16).
 
-<a id="h-78"></a>
-### H-78 — The chart cannot have the database's certificate verified against a private authority
-
-Live wherever the database serves TLS with a certificate of an authority of its own —
-CloudNativePG's, or a cluster's internal one. The chart mounts no authority for the database's
-certificate, neither into the serving container nor into the migration run, and passes the URLs and
-the components through as given, so `verify-ca` and `verify-full` fail against such a server:
-`require` — encrypted, the server not verified — is the strongest mode a chart installation can use
-with it, for a URL as for the components
-([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
-Residual risks). Whoever can redirect a pod's connection to the database — on the pod network, on a
-node, on the way to a database outside the cluster — can then present a certificate of their own,
-which `require` accepts, and read and change what passes: every tenant's rows, as the runtime role's
-and the owner's queries carry them. Such a peer that asks for the password in clear text gets it —
-the runtime role's from the serving container and, from the migration run, the owner role's. A URL or
-components that name no `sslmode` get the driver's
-default, `prefer`, which falls back to plain text as well. A server whose certificate chains to an
-authority of the image's system pool — a public one — needs no authority of the chart's:
-`verify-full` verifies it against that pool, which the driver uses when no authority is named; not
-tried here. Mitigation: `sslmode` `require` at the least; the path between the backend's pods and the
-database kept where nobody else can redirect it — the database inside the cluster, and a policy of
-the cluster's that admits only cowork's pods to it; for a database elsewhere, a certificate of a
-public authority and `verify-full`. A URL may add `require_auth=scram-sha-256`, with which the
-driver refuses a server that asks for the password in clear text or as MD5, and `channel_binding=require`,
-which the driver holds only inside a SCRAM exchange; components carry neither, and `PGREQUIREAUTH` and
-`PGCHANNELBINDING` through `backend.extraEnv` reach the serving container and not the migration run —
-not tried here. The owner decided on 2026-10-07 that the chart takes the database's authority as it
-takes the storage's, `database.tls.caConfigMap`
-([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
-D3); not built yet, so the gap stands until it is.
-
 <a id="h-88"></a>
 ### H-88 — An inline credential beside its reference stays in the release's values, unwarned
 
@@ -411,9 +405,16 @@ revision.
 TLS to the database (`sslmode`), backups, encryption at rest, who else may connect, and the
 roles' attributes beyond what the start-up check verifies ([tenancy.md](tenancy.md) "Two
 database roles") — all the database's, none enforced by cowork. The URLs are passed through
-as given; a URL composed of components carries the `sslmode` named, or none, and then the driver's
-default, `prefer`, which falls back to plain text and verifies no server. What the chart cannot
-verify is [H-78](#h-78). Who else may connect matters for the event channel: [tenancy.md](tenancy.md) H-4.
+as given, but for the `sslrootcert` of a named authority; a URL composed of components carries the
+`sslmode` named, or none, and then the driver's default, `prefer`, which falls back to plain text
+and verifies no server. Which `sslmode` an installation sets, and whether it names its database's
+authority, is its own ([above](#the-connection-to-the-database)); with `require` and no authority,
+what keeps a peer from redirecting the connection is the path between the backend's pods and the
+database — the database inside the cluster, and a policy of the cluster's that admits only
+cowork's pods to it. A URL may add `require_auth=scram-sha-256`, with which the driver refuses a
+server that asks for the password in clear text or as MD5, and `channel_binding=require`, which
+the driver holds only inside a SCRAM exchange; components carry neither — not tried here. Who else
+may connect matters for the event channel: [tenancy.md](tenancy.md) H-4.
 
 ### The transport in front of the pods
 

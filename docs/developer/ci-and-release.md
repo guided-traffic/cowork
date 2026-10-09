@@ -44,9 +44,12 @@ Four jobs need more explanation than their targets:
   on the job's Docker daemon, because a service container takes no command and the Chainguard
   MinIO image needs `server /data`; the identity provider by `make dex-up`, because Dex needs
   [`hack/dex/config.yaml`](../../hack/dex/config.yaml), which the target copies into the container
-  and a service container cannot take. `make test-integration-coverage` reads `COWORK_TEST_S3_*`
-  and `COWORK_TEST_OIDC_ISSUER` from the Makefile's defaults, and `make dex-down` and
-  `make minio-down` run `if: always()`. Every one of these variables is required by the tests, so a
+  and a service container cannot take; the PostgreSQL that serves TLS under a private authority by
+  `make postgres-tls-up`, because its entrypoint is copied in and its authority's certificate copied
+  out ([`hack/postgres-tls/entrypoint.sh`](../../hack/postgres-tls/entrypoint.sh)), on port 5433 of
+  the runner beside the service container's 5432. `make test-integration-coverage` reads
+  `COWORK_TEST_DATABASE_TLS_*`, `COWORK_TEST_S3_*` and `COWORK_TEST_OIDC_ISSUER` from the Makefile's
+  defaults, and `make dex-down`, `make minio-down` and `make postgres-tls-down` run `if: always()`. Every one of these variables is required by the tests, so a
   job that loses one fails instead of passing on zero tests.
 - **`e2e`** (End-to-End Tests) runs after `container-malware-scan`, on the images that job built
   and scanned: each leg saves its image as the artefact `e2e-image-<component>` (kept a day), and

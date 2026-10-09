@@ -91,11 +91,12 @@ A database role given as components instead of a URL is `COWORK_DATABASE_HOST`, 
 `_USER`, `_PASSWORD` and `_SSLMODE`, the owner role's the same under `COWORK_DATABASE_OWNER_`.
 The frontend container takes no variable: its nginx configuration is a file in the image
 ([frontend container](#frontend-container)). The integration tier reads
-`COWORK_TEST_DATABASE_URL`, `COWORK_TEST_S3_ENDPOINT`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` and
-`COWORK_TEST_OIDC_ISSUER`, every one of them required; `make dev-seed` reads
+`COWORK_TEST_DATABASE_URL`, `COWORK_TEST_DATABASE_TLS_URL`, `COWORK_TEST_DATABASE_TLS_CA`,
+`COWORK_TEST_S3_ENDPOINT`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` and `COWORK_TEST_OIDC_ISSUER`,
+every one of them required; `make dev-seed` reads
 `COWORK_DEV_SEED_DATABASE_URL`; `make dev` takes `COWORK_DEV_ADMIN` and
 `COWORK_DEV_ADMIN_PASSWORD`. The development containers take `CONTAINER_BIND` (`127.0.0.1`
-`# default`), `POSTGRES_PORT`, `MINIO_PORT` and `DEX_PORT` from `make`. `cowork-mcp` reads
+`# default`), `POSTGRES_PORT`, `POSTGRES_TLS_PORT`, `MINIO_PORT` and `DEX_PORT` from `make`. `cowork-mcp` reads
 `COWORK_URL`, `COWORK_TOKEN` and `CLAUDE_PROJECT_DIR` ([CLI (cowork-mcp)](#cli-cowork-mcp)); the
 plugin's hooks hand it `CLAUDE_PLUGIN_OPTION_COWORK_URL` and `CLAUDE_PLUGIN_OPTION_COWORK_TOKEN`
 under those names. A chat provider's variables are `COWORK_CHAT_<ID>_NAME`, `_KIND`, `_URL`,
@@ -120,6 +121,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | A chat provider's key Secret | not rendered: each entry of `chat.providers` names one of yours in `existingSecret`, key `keys.apiKey` (`apiKey`) | one per provider; required for kind `anthropic`; there is no inline value |
 | Pod annotations of the backend | `checksum/database-secret`, `checksum/database-owner-secret`, `checksum/local-admin-secret` | only with the inline values (the owner's while the init container migrates); a changed value rolls the pods |
 | CA volume of the backend | `s3-ca`, mounted at `/etc/cowork/s3-ca` | only with the storage on (`storage.endpoint` or `storage.existingConfigMap`) and `storage.tls.caConfigMap` |
+| Database CA volume | `database-ca`, mounted at `/etc/cowork/database-ca` into the `migrate` init container, the serving container and the migration Job, `COWORK_DATABASE_CA=/etc/cowork/database-ca/<keys.ca>` | only with `database.tls.caConfigMap` |
 | Headless metrics Service | `<fullname>-backend-metrics`, port `metrics`, component label `metrics` | only with `metrics.serviceMonitor.enabled`; the metrics port alone, so the backend Service never carries it |
 | `PodMonitor`, `ServiceMonitor`, `PrometheusRule` | `<fullname>` | each only with its switch under `metrics.*`; they need the Prometheus Operator's CRDs |
 | Grafana dashboard ConfigMap | `<fullname>-dashboard`, key `cowork.json`, label `grafana_dashboard: "1"` `# default` | only with `metrics.grafanaDashboard.enabled` |
@@ -171,12 +173,13 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 |---|---|---|
 | PostgreSQL container | `cowork-postgres`, `postgres:18` on `localhost:5432` | `make postgres-up`; `POSTGRES_CONTAINER=` and `POSTGRES_PORT=` move it |
 | Development database | `cowork`, owned by `cowork_owner`, served as `cowork_app` | created by `make postgres-up`; each password is the role's name |
+| PostgreSQL that serves TLS | `cowork-postgres-tls`, `postgres:18` on `localhost:5433`, a private authority and a server certificate for `localhost` and `127.0.0.1` made in the container at its first start; the authority's certificate copied to `bin/cowork-postgres-tls-ca.crt` | `make postgres-tls-up`, for the integration test of `COWORK_DATABASE_CA`; superuser `postgres` / `postgres`, every key a development value; `POSTGRES_TLS_CONTAINER=` and `POSTGRES_TLS_PORT=` move it, `make postgres-tls-down` removes it with the copy |
 | MinIO container | `cowork-minio`, `cgr.dev/chainguard/minio` pinned by digest, on `localhost:9000` | `make minio-up`; root keys `cowork` / `cowork-secret`, development values; `MINIO_CONTAINER=` and `MINIO_PORT=` move it |
 | Dex container | `cowork-dex`, `ghcr.io/dexidp/dex` pinned by tag and digest (`DEX_IMAGE`), on `localhost:5556`; the issuer `http://localhost:5556/dex`, the client `cowork` with the secret `cowork-dev-dex-secret` | `make dex-up`, configured from [`hack/dex/config.yaml`](hack/dex/config.yaml), copied in; `DEX_CONTAINER=` and `DEX_PORT=` move it; keeps nothing, so `make dex-down` loses nothing |
 | Dex users | `ada@example.com` (`cowork-admins`, `cowork-users`), `bob@example.com` (`cowork-users`, `team-red`), `cyd@example.com` (`cowork-users`), `dan@example.com` (`team-red`), each with the password `dev-only-dex` | every credential of Dex is development-only and public in this repository |
-| Container binding | `CONTAINER_BIND=127.0.0.1` `# default` | `make postgres-up`, `minio-up` and `dex-up` publish their ports on the loopback address only; a container made before keeps its binding until it is removed |
-| All three at once | `make dev-up` | PostgreSQL, MinIO and Dex, what `make dev` and the integration tier need |
-| Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>` | one database and one bucket per run; at the end the database is dropped and the bucket emptied and removed |
+| Container binding | `CONTAINER_BIND=127.0.0.1` `# default` | `make postgres-up`, `postgres-tls-up`, `minio-up` and `dex-up` publish their ports on the loopback address only; a container made before keeps its binding until it is removed |
+| All three at once | `make dev-up` | PostgreSQL, MinIO and Dex, what `make dev` needs; the integration tier needs `make postgres-tls-up` besides |
+| Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>`; on the PostgreSQL that serves TLS the same roles and a database `cowork_it_tls_<unix-nanoseconds>` | one database and one bucket per run, and one database per run of the authority's test; at the end the databases are dropped and the bucket emptied and removed |
 | End-to-end stack | the network `cowork-e2e` and the containers `cowork-e2e-postgres`, `-minio`, `-dex`, `-backend`, `-frontend`, `-ingress` (`E2E_NAME=` renames them); the UI on `https://localhost:18443` (`E2E_PORT`), Dex on `http://localhost:5557/dex` (`E2E_DEX_PORT`); the database `cowork_e2e`, the bucket `cowork-e2e` | `make e2e` makes and removes it, `make e2e-up` and `make e2e-down` keep it between runs; the local administrator `e2e-admin` with the password `e2e-only-cowork`, development values |
 | End-to-end data | the tenants `e2e` (a project per test, key `E` and seven random characters; the mapping `team-red` → `member`), `e2e-other` (the administrator's second tenant, a project per test that needs one there), `e2e-visual` (the project `VIEW` of the screenshots) and `e2e-d<random>` (one per run of the dashboard's path, its projects `OPEN` and `HIDDEN`), the token `e2e-seed`, local accounts `e2e-<random>` | made by the suite through the API ([testing.md](docs/developer/testing.md#end-to-end-tests)) |
 | Development seed | person `dev`, tenant `dev`, an admin membership, a token named `dev-seed` | `make dev-seed`; every run prints a new token once |
@@ -333,7 +336,7 @@ COWORK_S3_ENDPOINT=http://localhost:9000 COWORK_S3_BUCKET=cowork \
 
 ```bash
 make test                       # backend unit + frontend unit
-make dev-up                     # the integration tier needs PostgreSQL, MinIO and Dex
+make dev-up postgres-tls-up     # the integration tier needs PostgreSQL, one that serves TLS, MinIO and Dex
 make test-integration           # a database and a bucket of its own per run
 make e2e-browsers               # once: Playwright's Chromium and WebKit
 make docker-build e2e           # the end-to-end tier: both images behind the Ingress stand-in, a stack of its own
@@ -491,6 +494,7 @@ size is a number of bytes or a number with `KiB`, `MiB` or `GiB`; a duration is 
 | `COWORK_DATABASE_OWNER_URL` | empty `# default` | `postgres://cowork_owner:…@postgres:5432/cowork?sslmode=require` `# example` | The owner role's URL, which the migrations run under; it must name another role than `COWORK_DATABASE_URL`. Set it or its components below, not both. Required by `cowork migrate`, and by `cowork serve` while `COWORK_MIGRATE_ON_START` is `true`. **Security:** the owner can switch row-level security off, so a serving process that holds this URL loses the second line of tenant isolation against its own compromise. The chart hands it to the migration run only: the `migrate` init container, or the migration Job in job mode |
 | `COWORK_DATABASE_HOST`, `COWORK_DATABASE_PORT`, `COWORK_DATABASE_NAME`, `COWORK_DATABASE_USER`, `COWORK_DATABASE_PASSWORD`, `COWORK_DATABASE_SSLMODE` | empty `# default` | `postgres.cowork.svc`, `5432`, `cowork`, `cowork_app`, `CHANGE-ME`, `require` `# example` | The runtime role's connection as components, for a Secret that holds no URL ([ADR 0058](docs/adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D4): the backend composes `postgres://user:password@host:port/name?sslmode=…`, the user, the password and the name escaped. The host, the name, the user and the password are required together; without the port it is 5432, without the sslmode the driver's default, `prefer`. One of them beside `COWORK_DATABASE_URL`, a port that is no port, an sslmode other than `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`, or a host with `/`, `?`, `#`, `@` or a space refuses the start. **Security:** the password is a credential, read as it is and never echoed — an error quotes the port, the sslmode or the host, never the password |
 | `COWORK_DATABASE_OWNER_HOST`, `_PORT`, `_NAME`, `_USER`, `_PASSWORD`, `_SSLMODE` | empty `# default` | as above `# example` | The owner role's connection as components, by the same rules, in place of `COWORK_DATABASE_OWNER_URL`. **Security:** as `COWORK_DATABASE_OWNER_URL` |
+| `COWORK_DATABASE_CA` | empty `# default` | `/etc/cowork/database-ca/ca.crt` `# example` | A PEM file of the private authority the database server's certificate chains to, such as CloudNativePG's own ([ADR 0058](docs/adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3). The backend names it as the `sslrootcert` of both roles' connections, a URL and one composed of components alike, so the runtime pool, the owner's and the migration run trust that authority alone — the system pool is not consulted —; the driver reads it as libpq does: `verify-full` checks the chain and the host, `verify-ca` and `require` the chain. Beside an sslmode that checks nothing — `disable`, `allow`, `prefer`, or none, the driver's `prefer` —, beside a URL that names an `sslrootcert` of its own, or beside a connection that is no `postgres://` URL, the start is refused, the error naming the variables and never the URL. Empty leaves the connections as they are given. **Security:** with `verify-full`, a peer that redirects the connection cannot present a certificate of its own; whoever may replace the file is trusted like whoever may read the roles' Secrets |
 | `COWORK_MIGRATE_BOOTSTRAP` | `false` `# default` | `true`, `false` | Read by `cowork migrate`: with `true`, after the schema step it synchronises the local administrator and the bootstrap tenant as `cowork serve` does at its start — as the runtime role, under the bootstrap's advisory lock, with the same variables ([ADR 0057](docs/adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md) D4). The chart's migration Job sets it; the init container does not, because a bootstrap given no administrator would deactivate the one the serving container keeps |
 | `COWORK_MIGRATE_ON_START` | `true` `# default` | `true`, `false` | `serve` applies pending migrations before it listens; with `false` it refuses to start while migrations are pending. The chart sets `false` and migrates in an init container or, in job mode, in a Job |
 | `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key: keys derived from it sign the list cursors, key the fingerprint of an idempotent request and the hashes of a client's address — the login throttle's and the one every audit row of a request carries — and seal the identity provider's login state and refresh tokens. Every replica needs the same key. A new key invalidates the cursors clients hold (`400 invalid_cursor`), fails the logins through the provider under way, gives every address another hash — the login throttle counts it anew, and audit rows before and after cannot be compared —, refuses the retry of an idempotent request keyed before it (`422 idempotency_mismatch`), and ends each session of the provider that holds a refresh token at its next refresh — no previous key is kept to open what the old one sealed ([ADR 0031](docs/adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1; [rotating it](docs/operations/installation.md#the-secrets)); it signs no session, and a session of the local login survives it. **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. With the database, it opens the stored refresh tokens ([H-27](docs/security/identity-provider.md#h-27)) and reverses the audit rows' IPv4 hashes ([H-30](docs/security/tokens.md#h-30)). `make run` makes a throw-away one |
@@ -1181,6 +1185,11 @@ database:                             # the runtime role: owns nothing, held to 
   existingSecretKey: ""               # the URL's key under its earlier name; set, it wins over keys.url
   existingConfigMap: ""               # with keys.url empty: host, port, name and sslmode from this ConfigMap
   url: ""                             # renders <fullname>-database; plain text in the release Secret and in `helm get values`
+  tls:
+    caConfigMap: ""                   # ConfigMap with the database's private authority's PEM, mounted at /etc/cowork/database-ca into
+                                      # the migration run and the serving container; both roles' sslmode must check it (verify-full)
+    keys:
+      ca: ca.crt                      # the ConfigMap's key; COWORK_DATABASE_CA=/etc/cowork/database-ca/<key>
   owner:                              # the role the migrations run as; only the migration run reads it — the init container or the Job
     existingSecret: ""                # preferred, and the only source in job mode; required while the release migrates
     keys:                             # as above: COWORK_DATABASE_OWNER_URL or COWORK_DATABASE_OWNER_HOST, _PORT, _NAME, _USER, _PASSWORD, _SSLMODE
@@ -1450,11 +1459,14 @@ The modes that change what is exposed:
 - **A database role as components.** With its `keys.url` empty, a role's Secret is read key by
   key — the user and the password always from the Secret, the host, port, name and sslmode from
   `existingConfigMap` when one is named — and the backend composes the URL; a named key a Secret or
-  ConfigMap lacks stops the pod rather than falling back. The chart mounts no authority for the
-  database's certificate, so `sslmode` can be `require` but not `verify-full` against a private
-  authority ([the Secrets](docs/operations/installation.md#the-secrets)). Whoever may write the
-  `existingConfigMap` is trusted like whoever may read the Secret beside it
-  ([trust boundaries](docs/security/trust-boundaries.md)).
+  ConfigMap lacks stops the pod rather than falling back.
+- **`database.tls.caConfigMap` lets `sslmode` be `verify-full` against a private authority**, such
+  as CloudNativePG's: the backend trusts that authority alone for both roles' connections and the
+  migration run, and refuses to start beside an `sslmode` that checks nothing. Without it a server
+  that is not under a public authority can only be reached with `require` — encrypted, the server
+  not verified ([the database](docs/operations/installation.md#the-database-and-its-two-roles)).
+  Whoever may write the `existingConfigMap` or `database.tls.caConfigMap` is trusted like whoever
+  may read the Secret beside it ([trust boundaries](docs/security/trust-boundaries.md)).
 - **The server key has no inline path.** One Secret gives every replica the same key;
   rotating it invalidates the cursors clients hold and ends each session of the identity provider
   that holds a refresh token at its next refresh.

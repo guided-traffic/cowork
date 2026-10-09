@@ -266,8 +266,20 @@ jobs:
       - name: Start the identity provider
         run: make dex-up
 
+      # The PostgreSQL that serves TLS under a private authority, for the
+      # test of COWORK_DATABASE_CA (docs/adr/0058 D3): its entrypoint is
+      # copied in and its authority's certificate copied out, which a service
+      # container cannot do; it listens on 5433 beside the service's 5432,
+      # and the tests read COWORK_TEST_DATABASE_TLS_* from make's defaults.
+      - name: Start the PostgreSQL that serves TLS
+        run: make postgres-tls-up
+
       - name: Run integration tests with coverage
         run: make test-integration-coverage
+
+      - name: Stop the PostgreSQL that serves TLS
+        if: always()
+        run: make postgres-tls-down
 
       - name: Stop the identity provider
         if: always()

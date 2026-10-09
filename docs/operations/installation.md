@@ -124,10 +124,42 @@ CloudNativePG's. The runtime role is not part of that bootstrap:
 [`deploy/examples/cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml)
 creates it and keeps its password from a `kubernetes.io/basic-auth` Secret, and reads both roles'
 location from a ConfigMap of its own, which is how `sslmode` gets set. CloudNativePG serves TLS
-with a certificate of its own authority; the chart mounts no authority for the database, so
-`require` — encrypted, the server not verified — is the strongest mode it can use with it. Not
-verified against a CloudNativePG cluster in this repository: the example is checked for syntax
+with a certificate of its own authority, whose certificate is `ca.crt` of the Secret `<cluster>-ca`
+beside the authority's key; copied into a ConfigMap of its own, it is the chart's
+`database.tls.caConfigMap` ([below](#tls-and-a-private-authority)). Not verified against a
+CloudNativePG cluster in this repository: the example is checked for syntax
 ([example manifests](#example-manifests)).
+
+<a id="tls-and-a-private-authority"></a>
+**TLS and a private authority.** The connection's `sslmode` decides what is checked: `verify-full`
+checks that the server's certificate chains to an authority the backend trusts and names the host
+connected to, `verify-ca` and `require` the chain alone where an authority is named, `prefer` and
+`allow` nothing — and they fall back to plain text —, `disable` connects in plain text. A server
+whose certificate chains to a public authority is checked against the image's system pool. One
+whose authority is private — CloudNativePG's own, a cluster's internal one — is named by
+`database.tls.caConfigMap`, a ConfigMap with the authority's certificate under `database.tls.keys.ca`
+(`ca.crt` `# default`):
+
+```bash
+# CloudNativePG: the authority's certificate, never its key, out of the cluster's Secret
+kubectl -n cowork get secret cowork-db-ca -o jsonpath='{.data.ca\.crt}' | base64 -d >ca.crt
+kubectl -n cowork create configmap cowork-db-ca-cert --from-file=ca.crt=./ca.crt
+# values: database.tls.caConfigMap=cowork-db-ca-cert, and each role's sslmode verify-full
+```
+
+The chart mounts it read-only at `/etc/cowork/database-ca` into the `migrate` init container, the
+migration Job and the serving container, and sets `COWORK_DATABASE_CA` to the key; the backend names
+it as the `sslrootcert` of both roles' connections, so the runtime role's pool, the owner's and the
+migration run trust that authority and no other
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3). The start is refused
+while a role's `sslmode` checks nothing beside it — none, `disable`, `allow` or `prefer` —, with
+`COWORK_DATABASE_CA checks nothing while the sslmode of COWORK_DATABASE_URL is …`, and so is a URL
+that names an `sslrootcert` of its own. A server outside the authority fails the connection with
+`tls: failed to verify certificate: x509: certificate signed by unknown authority`; the migration
+run then logs `migration failed`, the serving container `database connection failed`.
+Whoever may write the ConfigMap decides which server the backend trusts with both roles'
+credentials, as whoever may write the roles' Secrets does
+([trust boundaries](../security/trust-boundaries.md)).
 
 ## The Secrets
 

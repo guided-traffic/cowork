@@ -1,5 +1,6 @@
 {{- if eq (include "cowork.migrationsMode" .) "job" }}
 {{- include "cowork.jobReferencesOnly" . }}
+{{- $databaseCA := include "cowork.databaseCAConfigMap" . }}
 # The migrations as a Helm hook (docs/adr/0057 D2): before the release's
 # resources are installed or upgraded, so a failed run fails the release before
 # a new pod starts. One attempt: a migration that fails fails the same way
@@ -54,6 +55,10 @@ spec:
           env:
             {{- include "cowork.databaseEnv" (dict "root" . "owner" false) | nindent 12 }}
             {{- include "cowork.databaseEnv" (dict "root" . "owner" true) | nindent 12 }}
+            {{- with $databaseCA }}
+            - name: COWORK_DATABASE_CA
+              value: /etc/cowork/database-ca/{{ include "cowork.databaseCAKey" $ }}
+            {{- end }}
             - name: COWORK_MIGRATE_BOOTSTRAP
               value: "true"
             - name: COWORK_LOG_LEVEL
@@ -92,6 +97,18 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+          {{- if $databaseCA }}
+          volumeMounts:
+            - name: database-ca
+              mountPath: /etc/cowork/database-ca
+              readOnly: true
+          {{- end }}
+      {{- if $databaseCA }}
+      volumes:
+        - name: database-ca
+          configMap:
+            name: {{ $databaseCA }}
+      {{- end }}
       {{- with .Values.backend.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

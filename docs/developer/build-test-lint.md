@@ -10,7 +10,7 @@ the backend and the frontend locally and the two images together behind a stand-
 |---|---|---|
 | Go | 1.27 (`backend/go.mod`: 1.27.1; the toolchain downloads it if yours is older) | the backend, its generators and tools |
 | Node.js + npm | 26 (`NODE_VERSION` in the workflow's frontend job; `node:26-alpine` in the Containerfile); the workflow's release jobs use the current LTS | the frontend and the release tooling |
-| Docker | any recent | `make postgres-up`, `make minio-up`, `make dex-up`, `make docker-build`, `make e2e` |
+| Docker | any recent | `make postgres-up`, `make postgres-tls-up`, `make minio-up`, `make dex-up`, `make docker-build`, `make e2e` |
 | Helm | 3 or 4 (CI installs 4.3.0) | `make helm-lint`, `make helm-template` |
 | `openssl`, `curl` | any; `curl` with `--aws-sigv4` (7.75 or newer) for `make e2e` | `make run` draws a throw-away server key with `openssl rand`; `make minio-up` and `make dex-up` wait for their servers with `curl`; `make e2e` makes its server key and TLS certificate with `openssl` and its bucket and readiness checks with `curl`; `make examples-lint` fetches the operators' CustomResourceDefinitions with `curl` |
 | Chromium and WebKit of Playwright | the version of `@playwright/test` in `frontend/package.json` | `make e2e`; `make e2e-browsers` installs them |
@@ -37,10 +37,11 @@ module so the same toolchain builds them.
 | Backend tests | `make test-unit` | — | verbose, no database |
 | | `make test-unit-coverage` | — | `coverage/unit.out` |
 | | `make postgres-up` / `postgres-down` | Docker | `postgres:18` on `localhost:5432` (`POSTGRES_PORT=` to move it) with the development database `cowork` and its roles `cowork_owner` and `cowork_app` |
+| | `make postgres-tls-up` / `postgres-tls-down` | Docker | `postgres:18` on `localhost:5433` (`POSTGRES_TLS_PORT=`) that serves TLS under a private authority, which [`hack/postgres-tls/entrypoint.sh`](../../hack/postgres-tls/entrypoint.sh) makes in the container at its first start with a server certificate for `localhost` and `127.0.0.1`; the target copies the authority's certificate to `bin/<container>-ca.crt` (`POSTGRES_TLS_CA`), the test of `COWORK_DATABASE_CA` trusts it; `postgres-tls-down` removes the container and the copy |
 | | `make minio-up` / `minio-down` | Docker | MinIO on `localhost:9000` (`MINIO_PORT=`), the attachment tests' S3 server |
 | | `make dex-up` / `dex-down` | Docker | Dex on `localhost:5556` (`DEX_PORT=`, which moves the issuer with it), configured from [`hack/dex/config.yaml`](../../hack/dex/config.yaml): the identity provider of `make dev` and of the login tests ([testing.md](testing.md#the-identity-provider-in-the-tests)); it keeps nothing, so `dex-down` loses nothing, and `dex-down dex-up` loads a changed configuration |
 | | `make dev-up` | Docker | `postgres-up`, `minio-up` and `dex-up` together; each `-up` starts its container again when it exists but stopped — after a restart of Docker or of the machine |
-| | `make test-integration` | PostgreSQL 18, S3 and Dex | `COWORK_TEST_DATABASE_URL`, `COWORK_TEST_S3_*` and `COWORK_TEST_OIDC_ISSUER` default to the three containers ([testing.md](testing.md#environment-variables-the-suites-read)) |
+| | `make test-integration` | PostgreSQL 18, one that serves TLS, S3 and Dex | `COWORK_TEST_DATABASE_URL`, `COWORK_TEST_DATABASE_TLS_URL` with `COWORK_TEST_DATABASE_TLS_CA`, `COWORK_TEST_S3_*` and `COWORK_TEST_OIDC_ISSUER` default to the four containers ([testing.md](testing.md#environment-variables-the-suites-read)) |
 | | `make test-integration-coverage` | the same | `coverage/integration.out` |
 | Frontend | `make frontend-install` | npm | `npm ci` when `frontend/package-lock.json` changed |
 | | `make frontend-lint` | | `ng lint` |

@@ -55,6 +55,20 @@ database:
   # and throw-away installations: the value is stored in plain text in the
   # release Secret and in every `helm get values` output.
   url: ""
+  # A private authority the database server's certificate chains to, such as
+  # CloudNativePG's own: a ConfigMap with its PEM under keys.ca, mounted
+  # read-only into the migration run and the serving container and named by
+  # COWORK_DATABASE_CA, which the backend sets as the sslrootcert of both
+  # roles' connections — the server must chain to it alone. Each role's
+  # sslmode must then check the certificate: verify-full (or verify-ca,
+  # require); the backend refuses to start beside one that checks nothing.
+  # Empty leaves the connections to the system pool. Whoever may write the
+  # ConfigMap is trusted like whoever may read the Secrets above
+  # (docs/adr/0058 D3).
+  tls:
+    caConfigMap: ""
+    keys:
+      ca: ca.crt
   # The owner role's connection, read only by the migration run — the
   # migrate init container or the migration Job (migrations.mode) — never by
   # the serving container. Required while the release migrates. Its blocks mean

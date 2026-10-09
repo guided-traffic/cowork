@@ -144,7 +144,7 @@ which takes `existingSecret` references only; the session key, the storage key, 
 | Tier | Target | Needs |
 |---|---|---|
 | Backend unit | `make test-unit` | nothing |
-| Backend integration (tag `integration`) | `make postgres-up minio-up && make test-integration` | Docker; `POSTGRES_PORT=` and `MINIO_PORT=` move the containers |
+| Backend integration (tag `integration`) | `make postgres-up postgres-tls-up minio-up dex-up && make test-integration` | Docker; `POSTGRES_PORT=`, `POSTGRES_TLS_PORT=`, `MINIO_PORT=` and `DEX_PORT=` move the containers |
 | Frontend unit | `make frontend-test` | Node.js 26 |
 | Static analysis | `make lint cyclo gosec vuln`, `make frontend-lint` | — |
 | Chart | `make helm-lint helm-template` | Helm |
@@ -152,8 +152,8 @@ which takes `existingSecret` references only; the session key, the storage key, 
 | Everything a PR gets | see [docs/developer/ci-and-release.md](docs/developer/ci-and-release.md) | |
 
 No `-short`, no `testing.Short()`, no skip on a missing dependency: the integration tier fails
-without `COWORK_TEST_DATABASE_URL` or the `COWORK_TEST_S3_*` variables and says how to set
-them. A fix comes with the test that failed without it. Every CI job is in the `needs:` list
+without `COWORK_TEST_DATABASE_URL`, the `COWORK_TEST_DATABASE_TLS_*` or the `COWORK_TEST_S3_*`
+variables and says how to set them. A fix comes with the test that failed without it. Every CI job is in the `needs:` list
 of `semantic-release`; a new job is added there in the same change.
 
 ## Conventions that bite

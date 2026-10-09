@@ -28,6 +28,7 @@ const (
 	EnvMetricsAddr      = "COWORK_METRICS_ADDR"
 	EnvDatabaseURL      = "COWORK_DATABASE_URL"
 	EnvDatabaseOwnerURL = "COWORK_DATABASE_OWNER_URL"
+	EnvDatabaseCA       = "COWORK_DATABASE_CA"
 	EnvMigrateOnStart   = "COWORK_MIGRATE_ON_START"
 	EnvMigrateBootstrap = "COWORK_MIGRATE_BOOTSTRAP"
 	EnvLogLevel         = "COWORK_LOG_LEVEL"
@@ -155,6 +156,12 @@ type Config struct {
 	// migrations run under, given the same two ways. Required where migrations
 	// run: `cowork migrate`, and `cowork serve` while MigrateOnStart is true.
 	DatabaseOwnerURL string
+	// DatabaseCA is a PEM file of the private authority the database server's
+	// certificate chains to, COWORK_DATABASE_CA (docs/adr/0058 D3): Load has
+	// named it as the sslrootcert of both URLs above, so the runtime pool, the
+	// owner's and the migration run trust that authority alone. Empty leaves
+	// the URLs as they were given.
+	DatabaseCA string
 	// MigrateOnStart makes `cowork serve` apply pending migrations before it listens.
 	MigrateOnStart bool
 	// MigrateBootstrap makes `cowork migrate` run the bootstrap after the
@@ -428,6 +435,11 @@ func (l *loader) database(cfg *Config) {
 		l.fail("%s is required", runtimeDatabase.connection())
 	}
 	cfg.DatabaseOwnerURL, _ = l.databaseURL(ownerDatabase)
+	if ca, ok := l.get(EnvDatabaseCA); ok {
+		cfg.DatabaseCA = ca
+		cfg.DatabaseURL = l.withRootCert(runtimeDatabase, cfg.DatabaseURL, ca)
+		cfg.DatabaseOwnerURL = l.withRootCert(ownerDatabase, cfg.DatabaseOwnerURL, ca)
+	}
 	for _, b := range []struct {
 		env string
 		dst *bool

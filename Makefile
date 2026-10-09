@@ -46,6 +46,19 @@ DEV_DATABASE_URL ?= postgres://cowork_app:cowork_app@localhost:$(POSTGRES_PORT)/
 DEV_DATABASE_OWNER_URL ?= postgres://cowork_owner:cowork_owner@localhost:$(POSTGRES_PORT)/cowork?sslmode=disable
 DEV_ADMIN_URL ?= postgres://postgres:postgres@localhost:$(POSTGRES_PORT)/cowork?sslmode=disable
 
+# A second local PostgreSQL 18, which serves TLS under a private authority
+# (make postgres-tls-up / postgres-tls-down), for the integration test of
+# COWORK_DATABASE_CA (docs/adr/0058 D3). hack/postgres-tls/entrypoint.sh makes
+# the authority and a server certificate for localhost and 127.0.0.1 in the
+# container at its first start; postgres-tls-up copies the authority's
+# certificate out to POSTGRES_TLS_CA. The script is copied in, not mounted, as
+# Dex's configuration is. The superuser is postgres/postgres, a development
+# value; the URL names no sslmode, the test chooses one per connection.
+POSTGRES_TLS_CONTAINER ?= cowork-postgres-tls
+POSTGRES_TLS_PORT ?= 5433
+POSTGRES_TLS_CA ?= $(BIN_DIR)/$(POSTGRES_TLS_CONTAINER)-ca.crt
+TEST_DATABASE_TLS_URL ?= postgres://postgres:postgres@localhost:$(POSTGRES_TLS_PORT)/postgres
+
 # Local S3-compatible storage (make minio-up / minio-down) for the attachment
 # tests: the MinIO build Chainguard publishes, pinned by digest. Its
 # entrypoint is the minio binary without arguments, so `server /data` is its
@@ -203,19 +216,23 @@ test-unit-coverage: ## Run the backend unit tests with a coverage profile in cov
 	@mkdir -p $(COVERAGE_DIR)
 	cd $(BACKEND_DIR) && $(GOTEST) -v -count=1 -coverprofile=$(COVERAGE_DIR)/unit.out -covermode=atomic ./...
 
-# The integration tests need PostgreSQL 18 at COWORK_TEST_DATABASE_URL, an
-# S3-compatible server at COWORK_TEST_S3_* and an OpenID Connect issuer at
-# COWORK_TEST_OIDC_ISSUER; the variables default to the containers
-# `make postgres-up`, `make minio-up` and `make dex-up` start.
+# The integration tests need PostgreSQL 18 at COWORK_TEST_DATABASE_URL, one
+# that serves TLS at COWORK_TEST_DATABASE_TLS_URL under the authority in
+# COWORK_TEST_DATABASE_TLS_CA, an S3-compatible server at COWORK_TEST_S3_* and
+# an OpenID Connect issuer at COWORK_TEST_OIDC_ISSUER; the variables default to
+# the containers `make postgres-up`, `make postgres-tls-up`, `make minio-up`
+# and `make dex-up` start.
 TEST_ENV = COWORK_TEST_DATABASE_URL="$${COWORK_TEST_DATABASE_URL:-$(TEST_DATABASE_URL)}" \
+	COWORK_TEST_DATABASE_TLS_URL="$${COWORK_TEST_DATABASE_TLS_URL:-$(TEST_DATABASE_TLS_URL)}" \
+	COWORK_TEST_DATABASE_TLS_CA="$${COWORK_TEST_DATABASE_TLS_CA:-$(POSTGRES_TLS_CA)}" \
 	COWORK_TEST_S3_ENDPOINT="$${COWORK_TEST_S3_ENDPOINT:-$(TEST_S3_ENDPOINT)}" \
 	COWORK_TEST_S3_ACCESS_KEY_ID="$${COWORK_TEST_S3_ACCESS_KEY_ID:-$(MINIO_ACCESS_KEY)}" \
 	COWORK_TEST_S3_SECRET_ACCESS_KEY="$${COWORK_TEST_S3_SECRET_ACCESS_KEY:-$(MINIO_SECRET_KEY)}" \
 	COWORK_TEST_OIDC_ISSUER="$${COWORK_TEST_OIDC_ISSUER:-$(TEST_OIDC_ISSUER)}"
 
 .PHONY: test-integration
-test-integration: ## Run the backend integration tests against PostgreSQL, S3 and Dex (make dev-up first).
-	@echo "Running integration tests against $${COWORK_TEST_DATABASE_URL:-$(TEST_DATABASE_URL)}, $${COWORK_TEST_S3_ENDPOINT:-$(TEST_S3_ENDPOINT)} and $${COWORK_TEST_OIDC_ISSUER:-$(TEST_OIDC_ISSUER)}..."
+test-integration: ## Run the backend integration tests against PostgreSQL, a PostgreSQL that serves TLS, S3 and Dex (make dev-up postgres-tls-up first).
+	@echo "Running integration tests against $${COWORK_TEST_DATABASE_URL:-$(TEST_DATABASE_URL)}, $${COWORK_TEST_DATABASE_TLS_URL:-$(TEST_DATABASE_TLS_URL)}, $${COWORK_TEST_S3_ENDPOINT:-$(TEST_S3_ENDPOINT)} and $${COWORK_TEST_OIDC_ISSUER:-$(TEST_OIDC_ISSUER)}..."
 	cd $(BACKEND_DIR) && $(TEST_ENV) $(GOTEST) -v -tags=integration -count=1 -timeout=10m ./test/integration/...
 
 .PHONY: test-integration-coverage
@@ -362,6 +379,23 @@ postgres-up: ## Start a local PostgreSQL 18 container for the integration tests.
 .PHONY: postgres-down
 postgres-down: ## Remove the local PostgreSQL container and its data.
 	docker rm -f -v $(POSTGRES_CONTAINER) >/dev/null 2>&1 || true
+
+.PHONY: postgres-tls-up
+postgres-tls-up: ## Start a local PostgreSQL 18 that serves TLS under a private authority, for the test of COWORK_DATABASE_CA; the authority's certificate lands in POSTGRES_TLS_CA.
+	@if docker inspect $(POSTGRES_TLS_CONTAINER) >/dev/null 2>&1; then echo "$(POSTGRES_TLS_CONTAINER) already exists" && docker start $(POSTGRES_TLS_CONTAINER) >/dev/null; else \
+	    docker create --name $(POSTGRES_TLS_CONTAINER) -e POSTGRES_PASSWORD=postgres -p $(CONTAINER_BIND):$(POSTGRES_TLS_PORT):5432 \
+	        --entrypoint /usr/local/bin/cowork-tls-entrypoint.sh $(POSTGRES_IMAGE) >/dev/null && \
+	    docker cp hack/postgres-tls/entrypoint.sh $(POSTGRES_TLS_CONTAINER):/usr/local/bin/cowork-tls-entrypoint.sh && \
+	    docker start $(POSTGRES_TLS_CONTAINER) >/dev/null; fi
+	@echo "Waiting for PostgreSQL with TLS..."
+	@for i in $$(seq 1 30); do docker exec $(POSTGRES_TLS_CONTAINER) pg_isready -U postgres >/dev/null 2>&1 && break; sleep 1; [ $$i -lt 30 ] || { docker logs --tail 20 $(POSTGRES_TLS_CONTAINER); echo "PostgreSQL with TLS did not become ready"; exit 1; }; done
+	@mkdir -p $(dir $(POSTGRES_TLS_CA)) && docker cp $(POSTGRES_TLS_CONTAINER):/etc/postgresql-tls/ca.crt $(POSTGRES_TLS_CA)
+	@echo "PostgreSQL with TLS is ready on port $(POSTGRES_TLS_PORT): superuser postgres, its authority's certificate in $(POSTGRES_TLS_CA)"
+
+.PHONY: postgres-tls-down
+postgres-tls-down: ## Remove the local PostgreSQL that serves TLS, its data, its authority and the copy of the authority's certificate.
+	docker rm -f -v $(POSTGRES_TLS_CONTAINER) >/dev/null 2>&1 || true
+	rm -f $(POSTGRES_TLS_CA)
 
 .PHONY: verify-phase-2
 verify-phase-2: ## Verify phase 2 by hand: both built images behind the Ingress stand-in, against make postgres-up and make minio-up, driven by an agent token from make dev-seed.
