@@ -49,8 +49,9 @@ report from them.
 Verified in the integration tier: a viewer is `403 forbidden` and a `read` token
 `403 insufficient_scope` at the dry run, another writer `404` at the read and the execution of a
 job not theirs, its maker's agent reads it, and a member of another tenant `404`
-(`TestImportADryRunAndItsExecution`); a member's agent token makes a dry run, executes it and reads
-its job, and the confidential ticket it imports is assigned to nobody (`TestAWriterAndTheirAgentImport`);
+(`TestImportADryRunAndItsExecution`); a member's agent token without any capability makes a dry run,
+executes it, reads its job and sets a parent afterwards, and the confidential ticket it imports is
+assigned to nobody (`TestAWriterAndTheirAgentImport`);
 a member, a viewer and an agent export, a member of another tenant and a member outside a
 restricted project get `404` (`TestTheExportFollowsItsReader`); its maker and an administrator read
 a job at the database, another member reads, changes and inserts none in another's name, and an

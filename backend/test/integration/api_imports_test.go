@@ -426,14 +426,16 @@ func TestImportLeavesOutWhatItCannotImport(t *testing.T) {
 }
 
 // docs/adr/0051 D6, docs/adr/0043 D2, D3: a writer of the project imports, as
-// creating a ticket needs, an agent of theirs too — its dry run, its
-// execution, its report —, and the agent sets a parent afterwards as its
-// baseline allows; the agent assigns a confidential ticket to nobody but its
-// person; a viewer does not import.
+// creating a ticket needs, an agent of theirs too, with the baseline and no
+// capability — its dry run, its execution, its report —, and the agent sets
+// a parent afterwards at the same baseline; the agent assigns a confidential
+// ticket to nobody but its person; a viewer does not import.
 func TestAWriterAndTheirAgentImport(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
-	agent := caller{Token: e.tk.AgentA}
+	baseline, _, err := f.Token(e.ctx, fixture.TokenSpec{UserID: e.MemberA, Agent: true, Capabilities: []string{}})
+	require.NoError(t, err)
+	agent := caller{Token: baseline}
 	var adminName string
 	require.NoError(t, f.QueryRow(e.ctx, `SELECT username FROM users WHERE id = $1`, e.AdminA).Scan(&adminName))
 	parentFile := ticketFile(1, "")
