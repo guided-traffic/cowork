@@ -1,17 +1,18 @@
 ---
 id: T63
 title: a restore leaves attachments dangling and nobody sees it
-state: in-progress    # filed -> analysed -> decided -> in-progress -> done | dropped
+state: done
 severity: medium      # a restore that loses files goes unnoticed until a reader opens one
 security: none
 threat:
-urgency: release      # gated on the export of T57, which brings the last instrument and alert of this list
+urgency: release      # built: the last instrument of the family came with 0.14.0
 effort: S
 blocked-by:
 filed-from: phase 7, ADR 0059 D4-D6 and the consistency family of ADR 0060 D4-D6
 opened: 2026-10-06
 decided:
-done:
+done: 2026-10-09
+shipped: 0.10.0, and the age of the last export with its alert in 0.14.0
 ---
 
 ## Current state
@@ -47,17 +48,7 @@ What is left:
 
 ## Required changes
 
-### Once the export of T57 is integrated
-
-- `internal/metrics`: the third gauge of the family, the seconds since a tenant's last export, read
-  from the database at a scrape like the two counts, by tenant id; `tenantLabelled` in
-  `metrics_test.go` names it; a panel in `dashboard.go`; `make generate`.
-- The chart: the alert on the age, with its number of days a value of `metrics.prometheusRule`, and
-  its runbook section in [docs/operations/metrics.md](../operations/metrics.md); a `promtool` rule test
-  as for `CoworkAttachmentsOutOfStep`.
-- The tenant's settings page: the time of the last export beside the check.
-- ADR 0060's Status and D4, D6; ADR 0059's residual risks; README, Metrics and Helm values;
-  [backups.md](../operations/backups.md), which says that nothing watches the schedule yet.
+None. Built: the age of the last export, its alert `CoworkExportOverdue` and the line on the tenant's settings page (0.14.0).
 
 ## Open questions
 
