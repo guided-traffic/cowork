@@ -19,15 +19,12 @@ info:
     creating a token, a tenant or a local account, resetting or changing a
     password, logging out, a turn of the chat and stopping one, choosing the
     chat's capabilities, a global administrator's list of every tenant, purging a
-    deleted ticket — the one irreversible act on a ticket —, making or rotating
-    the tenant's GitHub webhook secret, removing the orphaned objects a
-    consistency check found — gone for good as well —, and the
+    deleted ticket — the one irreversible act on a ticket —, removing the
+    orphaned objects a consistency check found — gone for good as well —, and the
     administration acts that give access: adding a member, setting a grant,
     making or changing a group mapping, restricting or opening a project,
     putting a person on its access list. A request of a session that writes must come from the installation's
-    origin and carry `X-Requested-With: cowork` (docs/adr/0037). GitHub's
-    webhook takes neither credential: its deliveries are signed with the
-    tenant's secret (docs/adr/0071). A request
+    origin and carry `X-Requested-With: cowork` (docs/adr/0037). A request
     marked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:
     name/model/session` header — is bound by the agent rules
     (docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable
@@ -55,7 +52,6 @@ tags:
   - name: events
   - name: chat
   - name: dashboard
-  - name: integrations
   - name: imports
 paths:
   /api/v1/version:
@@ -166,12 +162,6 @@ paths:
     $ref: './chat.yaml#/turns'
   /api/v1/tenants/{tenant}/dashboard:
     $ref: './dashboard.yaml#/dashboard'
-  /api/v1/tenants/{tenant}/integrations/github:
-    $ref: './integrations.yaml#/github'
-  /api/v1/tenants/{tenant}/integrations/github/secret:
-    $ref: './integrations.yaml#/githubSecret'
-  /api/v1/tenants/{tenant}/integrations/github/webhook:
-    $ref: './integrations.yaml#/githubWebhook'
   /api/v1/tenants/{tenant}/tickets:
     $ref: './tenants.yaml#/tenantTickets'
   /api/v1/tenants/{tenant}/search:
@@ -256,10 +246,6 @@ paths:
     $ref: './tickets.yaml#/links'
   /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}:
     $ref: './tickets.yaml#/link'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests:
-    $ref: './tickets.yaml#/pullRequests'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests/{pull_request}:
-    $ref: './tickets.yaml#/pullRequest'
   /api/v1/tickets/{tenant}/{key}:
     $ref: './tickets.yaml#/resolve'
 components:

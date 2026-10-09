@@ -105,10 +105,10 @@ the person's token, like a script — no path to the database, nothing the API d
    ([chat.md](chat.md)).
 10. `api.New` loads the embedded API document and builds the router and the generated server
     (it also makes the dummy hash the login verifies unknown usernames against, and derives from
-    the server key the keys of the cursors, the fingerprints, the two address hashes, the two
-    sealers of the identity provider and the sealer of the tenants' GitHub webhook secrets);
+    the server key the keys of the cursors, the fingerprints, the two address hashes and the two
+    sealers of the identity provider);
     `httpserver.New` wraps it with the health endpoints.
-11. `go runJobs` runs the idempotency, session, login, notification, GitHub delivery and import expiries and
+11. `go runJobs` runs the idempotency, session, login, notification and import expiries and
     the purge of the tickets deleted thirty days ago at start and every hour, and asks as often whether the daily
     consistency check of the attachments is due ([data-access.md](data-access.md#jobs),
     [storage.md](storage.md#the-consistency-check)).
@@ -165,14 +165,9 @@ route in the document ─► authenticate ─► session rules ─► tenant bou
                           (token or         agent_forbidden /              │                                       └─► runChatTurn: serveChat
                            session)         password_change_required       │                                           (the turn's own limits; a stream)
                                                                            └─► streamEvents: validate ─► serveEvents (no timeout, no limit)
-
-receiveGitHubWebhook (public, x-cowork-signed): route ─► webhookTenant (the tenant and its secret; 404) ─► timeout ─► body limit (413)
-                                                ─► validate the headers, not the body ─► serveGitHubWebhook: signature (401) ─► 400 / 415
-                                                ─► the delivery kept a day (200 again) ─► 202
 ```
 
-Each step, and what it answers, is [api.md](api.md#the-pipeline) — GitHub's webhook, which takes
-no person's credential and meets no boundary, is [api.md](api.md#githubs-webhook). Every error is an
+Each step, and what it answers, is [api.md](api.md#the-pipeline). Every error is an
 RFC 9457 problem details body written by `problem.Write` ([ADR 0047]).
 
 **Authentication may call the identity provider.** For a session of the identity provider whose

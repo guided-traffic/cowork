@@ -227,18 +227,6 @@ describe('Conversation', () => {
     });
   });
 
-  describe('removePullRequest', () => {
-    it('deletes the link of a pull request by its id (docs/adr/0071)', async () => {
-      const id = '0199aaaa-0000-7000-8000-0000000000aa';
-      const done = conversation.removePullRequest(key, id);
-
-      const sent = http.expectOne(`${base}/pull-requests/${id}`);
-      expect(sent.request.method).toBe('DELETE');
-      sent.flush('', { status: 204, statusText: 'No Content' });
-      await done;
-    });
-  });
-
   describe('setInterest', () => {
     it('puts the weight and the note of the stake', async () => {
       const done = conversation.setInterest(key, 'need', 'Blocks the release.');

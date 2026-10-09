@@ -5,9 +5,8 @@
 /**
  * Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
  * question they asked answered, a ticket they watch changed state or got a comment, a ticket that
- * blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a
- * comment that mentions them (docs/adr/0015 D5), a pull request of a ticket they watch or that is
- * assigned to them merged (docs/adr/0071 D6) — its state unchanged, the move a person's
+ * blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, or a
+ * comment that mentions them (docs/adr/0015 D5)
  */
-export type InboxReason = 'assigned' | 'asked' | 'answered' | 'state_changed' | 'blocker_closed' | 'commented' | 'urgent' | 'mentioned' | 'merged';
+export type InboxReason = 'assigned' | 'asked' | 'answered' | 'state_changed' | 'blocker_closed' | 'commented' | 'urgent' | 'mentioned';
 

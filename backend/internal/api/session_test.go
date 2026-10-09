@@ -239,27 +239,14 @@ func TestCredentialsComeFromTheDocument(t *testing.T) {
 		"createAccount": {session: true}, "resetAccountPassword": {session: true},
 		"getChatAvailability": both, "runChatTurn": {session: true},
 		"getVersion": {}, "getOpenAPI": {}, "loginLocal": {}, "getAuthOptions": {},
-		"getGitHubIntegration": both, "createGitHubSecret": {session: true}, "revokeGitHubSecret": both,
-		"receiveGitHubWebhook": {}, "listTicketPullRequests": both, "removeTicketPullRequest": both,
 	} {
 		got, ok := opCredentials[id]
 		require.True(t, ok, id)
 		assert.Equal(t, want, got, id)
 	}
 	for _, path := range doc.Paths.InMatchingOrder() {
-		post := doc.Paths.Value(path).Post
-		if post == nil {
-			continue
-		}
-		switch post.OperationID {
-		case "loginLocal":
+		if post := doc.Paths.Value(path).Post; post != nil && post.OperationID == "loginLocal" {
 			assert.True(t, originChecked(post), "the login is origin-checked")
-			assert.False(t, signed(post), "the login is no signed delivery")
-		case opReceiveGitHubWebhook:
-			assert.True(t, signed(post), "GitHub's webhook is signed (docs/adr/0071 D3)")
-			assert.False(t, originChecked(post), "GitHub sends no Origin")
-		default:
-			assert.False(t, signed(post), "%s is not signed", post.OperationID)
 		}
 	}
 }

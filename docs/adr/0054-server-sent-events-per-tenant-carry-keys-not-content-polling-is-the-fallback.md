@@ -8,6 +8,10 @@ updates?": sub-second updates through Server-Sent Events, over adaptive polling 
 The rules of D4–D9 are this record's design for the owner's requirement and were not objected
 to.
 
+Amended 2026-10-09 with the removal of GitHub's webhook, which the owner dropped before its trial
+(D2: `pull_request.changed` is gone; [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+Status).
+
 Amended 2026-10-02 (D3: the visible projects are recomputed at every heartbeat; D4: what a
 payload carries and which acts are published; D5: the heartbeat checks the token and the
 membership again, and a replica that lost its listener keeps no replay point from before). Revocation is immediate
@@ -150,12 +154,12 @@ access lists, its projects when a `project_id` is there, and the person's own `G
 *(Added 2026-10-05:)* `project.changed`, `{"key": "<tenant>/<PROJECT>", "kind": "ranked"}` without a
 version, says that a project's rank was set as a whole — the sort by the score — and reaches whoever
 sees the project, as its tickets' events do (D3); the client loads its open lists again.
-*(Added 2026-10-06, [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+~~*(Added 2026-10-06, [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
 D6:)* `pull_request.changed`, a ticket's event like the others — `{"key", "version", "kind"}`, the
 kind `linked`, `merged`, `closed`, `reopened`, `updated` or `unlinked` — says that GitHub's webhook
 linked a pull request or a commit to the ticket or reported its state, or that a person removed a
 link; the ticket's version is the one it has, which the act did not move. The client loads the
-ticket's list of pull requests and its activity again.
+ticket's list of pull requests and its activity again.~~ *(Removed 2026-10-09 with the webhook.)*
 *(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* an import's
 execution ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D3) is announced the same way, with the kind
 `imported`: its acts on the tickets, questions and links it creates are recorded and not

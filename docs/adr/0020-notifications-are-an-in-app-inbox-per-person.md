@@ -20,9 +20,15 @@ Amended 2026-10-06 by GitHub's webhook of
 [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md),
 whose D6 gives this record's D2 the merge as an event (D2: a pull request of a ticket merged tells
 its assignee and its watchers, by the reason `merged`; built the same day,
-[`api/github_links.go`](../../backend/internal/api/github_links.go) `mergeNotices`,
+`api/github_links.go` `mergeNotices`,
 [migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql)). D5 stands:
 the webhook is inbound, and nothing leaves cowork.
+
+Amended 2026-10-09 with the removal of GitHub's webhook, which the owner dropped before its trial
+([ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md) Status): D2 no longer holds the merge, and no
+act makes a notification of the reason `merged`. The enum value stays in the database until a later
+contract migration; the inbox leaves out a notification of that reason a release up to 0.12.0 made
+([`inbox.sql`](../../backend/internal/store/queries/read/inbox.sql)).
 
 **Built** (phase 3, 2026-10-04), ~~but for D2's mention~~ *(built 2026-10-05, below)*: D1 — the inbox `GET /api/v1/me/inbox`, a
 union of per-tenant reads newest first, each entry with its tenant, its ticket as it is now and its
@@ -76,15 +82,16 @@ D3); every entry names its tenant beside the key.
 | a ticket that blocks a ticket I watch reaches `done` or `dropped` | the watchers of the blocked ticket |
 | a comment is written on a ticket I watch | the watchers |
 | an `urgent` interest is registered on a ticket assigned to me | the assignee |
-| *(added 2026-10-06, ADR 0071 D6)* a pull request of a ticket I watch, or that is assigned to me, is merged at GitHub | the assignee and the watchers |
+| ~~*(added 2026-10-06, ADR 0071 D6)* a pull request of a ticket I watch, or that is assigned to me, is merged at GitHub~~ *(removed 2026-10-09 with the webhook, ADR 0071 Status)* | ~~the assignee and the watchers~~ |
 
 The watcher set is ADR 0013 D6. A person's own acts create no notification for that person;
 an agent's act in a person's name creates none for that person either. *(Added 2026-10-05: one act
 tells a person once about a ticket, by the first reason that names them — a comment that mentions a
-watcher tells them `mentioned`, not also `commented`.)* *(Added 2026-10-06:)* a merge is told by GitHub's
+watcher tells them `mentioned`, not also `commented`.)* ~~*(Added 2026-10-06:)* a merge is told by GitHub's
 webhook, the system actor `system:github`, so nobody is left out as its actor; a person who cannot see
 the ticket is told nothing of it, as of any act, and the ticket's state stays as it was — the merge is
-a fact told, not a move (ADR 0071 D6). A commit that reaches the default branch tells nobody.
+a fact told, not a move (ADR 0071 D6). A commit that reaches the default branch tells nobody.~~
+*(Removed 2026-10-09 with the webhook, ADR 0071 Status.)*
 
 **D3 — Notifications are created by the same transaction as the act** and are rows, not
 messages: a notification references the act in the audit record and renders from it, so a

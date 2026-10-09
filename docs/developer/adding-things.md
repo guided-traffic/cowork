@@ -21,9 +21,7 @@ the mechanics are [api.md](api.md)).
    keeps the default — added to the test's `sessionOnly` set and to
    [ADR 0035](../adr/0035-personal-access-tokens.md) D5; or `security: []` for what a client
    reads or does before it authenticates, which as a write also carries `x-cowork-origin-check:
-   true` — or, for a write whose credential is a signature over its body that its handler
-   verifies, `x-cowork-signed` instead, which the test holds to GitHub's webhook alone
-   ([api.md](api.md#githubs-webhook)). Only the identity provider's callback takes query parameters it does not declare
+   true`. Only the identity provider's callback takes query parameters it does not declare
    (`x-cowork-open-query`). A creating `POST` takes the `IdempotencyKey` parameter, an overwriting
    write `IfMatch`, a list `Cursor` and `Limit`.
 2. **The examples** ([api.md](api.md#examples)). The request body's on the operation; each answer

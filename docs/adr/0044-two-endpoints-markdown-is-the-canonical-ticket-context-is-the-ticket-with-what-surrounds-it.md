@@ -46,7 +46,9 @@ Amended 2026-10-06 for GitHub's webhook of
 (D2: `## Pull requests`, between `## Attachments` and `## Recent activity`, written only when the
 ticket has one; made concrete by the implementer and built the same day, open to the owner's
 objection — `writePullRequests` in [`internal/markdown/context.go`](../../backend/internal/markdown/context.go),
-the golden file `context-pull-requests.md`).
+the golden file `context-pull-requests.md`). Amended 2026-10-09 with the webhook's removal, which the
+owner dropped before its trial (D2: `## Pull requests` and the activity's names of a pull request
+and a commit are gone, the function and the golden file with them; ADR 0071 Status).
 
 ~~**Partly built**~~ **Built** *(whole since 2026-10-06, with D3)* (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03; a person as `Name <identity>` since 2026-10-06): D1, D5 and D6 for `/markdown`
 ([`internal/markdown`](../../backend/internal/markdown/), golden files in its `testdata/`); every
@@ -158,14 +160,16 @@ the place of `via <agent>` says `through the token <name>`, or `through a token`
 not record the name; the first line `(through the token <name>)`. Everything else reads as
 before.)* *(Amended 2026-10-05, ADR 0010 D1: the act on the horizon, which the audit record keeps
 as `overridden`, reads `set the horizon to <value>`, or `returned the ticket to later` where the
-horizon set was cleared.)* *(Amended 2026-10-06, ADR 0071 D6:)* after `## Attachments`, `## Pull
+horizon set was cleared.)* ~~*(Amended 2026-10-06, ADR 0071 D6:)* after `## Attachments`, `## Pull
 requests` lists what GitHub's webhook linked — each pull request by its repository and number,
 each default-branch commit by its repository and short id, its title quoted, as text from outside
 the tenant, its state with the time of its merge, its author and where its key was read, and its
 page — and is written only when the ticket has one, so a tenant without the webhook reads the
 document as before; an act on a pull request or a commit names it in the activity, `merged pull
 request github.com/acme/app#34`. `/markdown` names no pull request: D1's document is the canonical
-ticket alone.
+ticket alone.~~ *(Removed 2026-10-09 with the webhook, ADR 0071 Status: the document has no
+`## Pull requests`, and an act the webhook recorded in a release up to 0.12.0 reads by its name
+alone, `system:github — merged`.)*
 
 **D3 — The importer reads D1's form only.** A file that carries D2's sections is refused
 with the line where the first read-only section starts, so a context export is never

@@ -16,7 +16,6 @@ export const PROBLEM_CODE: ProblemCode[] = [
   'token_revoked',
   'not_allowed',
   'invalid_credentials',
-  'signature_invalid',
   'forbidden',
   'insufficient_scope',
   'agent_forbidden',

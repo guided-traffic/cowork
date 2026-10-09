@@ -140,10 +140,7 @@ revocation on the token page when a machine is in doubt.
 ### H-34 — Text in the backlog can steer the agent within its token
 
 Live by design. Anyone who may write a ticket, a comment or an answer that a person's session
-reads can write instructions into it; a model may follow them. Where a tenant takes GitHub's webhook,
-so can the author of a pull request or a commit it links, whose title a ticket's context carries: of
-a pull request the repository's owner, a member of its organisation or a collaborator only, of a
-commit whoever wrote one that reached the default branch ([github-webhook.md](github-webhook.md#whose-pull-requests-are-linked)). Quoting and the instructions make
+reads can write instructions into it; a model may follow them. Quoting and the instructions make
 that less likely, not impossible. What follows is bounded by the token and nothing else: a
 "full" agent token closes tickets in progress, decides, drops, ranks, sets horizons (`set-horizon`),
 sets `need` and `urgent` stakes, uploads files, creates projects, binds and unbinds repositories,

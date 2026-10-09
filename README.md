@@ -72,7 +72,6 @@ flowchart LR
 - 📝 **Markdown rendered on the server** — the body, comments, options and answers rendered with goldmark and held to an allow-list by bluemonday: raw HTML shown as text, links with `rel="noopener noreferrer nofollow"`, images only of the ticket's own raster attachments; Angular's sanitiser runs over it again.
 - 📦 **Import and export** — a repository's Markdown tickets, open and archived, or an earlier export come into a project through a dry run whose report names every file's outcome, type, state and warnings for a tenant administrator to correct, on the project's import page or through the API, then one transaction that keeps their numbers, or nothing; a project or a whole tenant leaves as an archive of the tickets' Markdown with manifests of their links and attachments, fetched by anyone who reads it — from the project's header, the tenant's settings or the API — the backup's second line, and the round trip a test.
 - 🔔 **An inbox and the lists across tenants** — a notification for an assignment, a mention in a comment (`@` picks the person), a question asked of you, your question answered, a state change or a comment on a ticket you watch, a blocker closed and an urgent need, written with the act and shown from it; a bell with the unread count, live; and "next for me" — the start page —, "assigned to me" and "open decisions" across every tenant of the person, each item beside its tenant.
-- 🔗 **Pull requests on their tickets** — optional per tenant and on trial: a GitHub webhook signed with the tenant's secret links the pull requests of the repository's owner, members and collaborators and the default-branch commits whose titles, bodies and messages name a ticket, tells its watchers of a merge and hints that the work may be ready to move — and never moves a ticket; cowork calls nothing at GitHub.
 - 📊 **A dashboard per tenant** — its front page: nine fixed tiles — open tickets by state and by severity, open security findings, the blocked, their age, done per week, lead time, open decisions, time booked — filtered by project and period, counted only over what the reader may see, and live.
 - 🎯 **Rank is the decision, score is the warning** — each project's backlog is ranked by hand, grouped by horizon; a versioned score of severity, horizon, stakes and age marks where it disagrees, can be adopted in one recorded act, and orders the lists across tenants.
 - 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
@@ -164,9 +163,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Event channel | the PostgreSQL `NOTIFY` channel `cowork_events` | — |
 | Metric | `cowork_<subsystem>_<name>_<unit>`, a counter's ending in `_total`, a duration's in `_seconds` ([Metrics](#metrics)) | `cowork_http_requests_total` |
 | Alert | `Cowork<what>`, in the chart's `PrometheusRule`, its section in [docs/operations/metrics.md](docs/operations/metrics.md) | `CoworkSchemaDirty` |
-| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `pull_request.changed`, `membership.changed`; on a person-level stream (`?me=true`) also `inbox.changed`; the control events `resync` and `unavailable` | — |
-| GitHub webhook URL | `<COWORK_BASE_URL>/api/v1/tenants/<slug>/integrations/github/webhook`, one per tenant; its secret 64 hexadecimal characters, made in the tenant's settings | `https://cowork.example.com/api/v1/tenants/acme/integrations/github/webhook` |
-| A pull request's or a commit's page on a ticket | `https://<repository identity>/pull/<number>`, `https://<repository identity>/commit/<sha>` — written from the bound repository, never taken from a delivery | `https://github.com/acme/app/pull/34` |
+| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`; on a person-level stream (`?me=true`) also `inbox.changed`; the control events `resync` and `unavailable` | — |
 
 ### Development environment
 
@@ -238,7 +235,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
 | [docs/developer/development-credentials.md](docs/developer/development-credentials.md) | Every development-only username, password, key and token of `make dev`, its containers and the test tiers, with the file that sets it |
-| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; [upgrading](docs/operations/upgrade.md); [backups, the consistency check and a restore](docs/operations/backups.md); runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation; [GitHub's webhook](docs/operations/github.md) per repository; [importing tickets and the export as a backup](docs/operations/import-and-export.md) |
+| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; [upgrading](docs/operations/upgrade.md); [backups, the consistency check and a restore](docs/operations/backups.md); runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation; [importing tickets and the export as a backup](docs/operations/import-and-export.md) |
 | [deploy/examples/](deploy/examples/) | A CloudNativePG cluster and a MinIO bucket to copy and adapt — examples checked for syntax against the operators' CRD schemas, not supported deployments |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
@@ -496,7 +493,7 @@ size is a number of bytes or a number with `KiB`, `MiB` or `GiB`; a duration is 
 | `COWORK_DATABASE_OWNER_HOST`, `_PORT`, `_NAME`, `_USER`, `_PASSWORD`, `_SSLMODE` | empty `# default` | as above `# example` | The owner role's connection as components, by the same rules, in place of `COWORK_DATABASE_OWNER_URL`. **Security:** as `COWORK_DATABASE_OWNER_URL` |
 | `COWORK_MIGRATE_BOOTSTRAP` | `false` `# default` | `true`, `false` | Read by `cowork migrate`: with `true`, after the schema step it synchronises the local administrator and the bootstrap tenant as `cowork serve` does at its start — as the runtime role, under the bootstrap's advisory lock, with the same variables ([ADR 0057](docs/adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md) D4). The chart's migration Job sets it; the init container does not, because a bootstrap given no administrator would deactivate the one the serving container keeps |
 | `COWORK_MIGRATE_ON_START` | `true` `# default` | `true`, `false` | `serve` applies pending migrations before it listens; with `false` it refuses to start while migrations are pending. The chart sets `false` and migrates in an init container or, in job mode, in a Job |
-| `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key: keys derived from it sign the list cursors, key the fingerprint of an idempotent request and the hashes of a client's address — the login throttle's and the one every audit row of a request carries — and seal the identity provider's login state and refresh tokens and every tenant's GitHub webhook secret. Every replica needs the same key. A new key invalidates the cursors clients hold (`400 invalid_cursor`), fails the logins through the provider under way, gives every address another hash — the login throttle counts it anew, and audit rows before and after cannot be compared —, refuses the retry of an idempotent request keyed before it (`422 idempotency_mismatch`), ends each session of the provider that holds a refresh token at its next refresh, and leaves every tenant's GitHub webhook secret unopenable, so its webhook answers `404` until its administrators make a new one — no previous key is kept to open what the old one sealed ([ADR 0031](docs/adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1; [rotating it](docs/operations/installation.md#the-secrets)); it signs no session, and a session of the local login survives it. **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. With the database, it opens the stored refresh tokens ([H-27](docs/security/identity-provider.md#h-27)) and reverses the audit rows' IPv4 hashes ([H-30](docs/security/tokens.md#h-30)). `make run` makes a throw-away one |
+| `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key: keys derived from it sign the list cursors, key the fingerprint of an idempotent request and the hashes of a client's address — the login throttle's and the one every audit row of a request carries — and seal the identity provider's login state and refresh tokens. Every replica needs the same key. A new key invalidates the cursors clients hold (`400 invalid_cursor`), fails the logins through the provider under way, gives every address another hash — the login throttle counts it anew, and audit rows before and after cannot be compared —, refuses the retry of an idempotent request keyed before it (`422 idempotency_mismatch`), and ends each session of the provider that holds a refresh token at its next refresh — no previous key is kept to open what the old one sealed ([ADR 0031](docs/adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1; [rotating it](docs/operations/installation.md#the-secrets)); it signs no session, and a session of the local login survives it. **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. With the database, it opens the stored refresh tokens ([H-27](docs/security/identity-provider.md#h-27)) and reverses the audit rows' IPv4 hashes ([H-30](docs/security/tokens.md#h-30)). `make run` makes a throw-away one |
 | `COWORK_LISTEN_ADDR` | `:8080` `# default` | `host:port` | The backend listener for API and health |
 | `COWORK_METRICS_ADDR` | `:8081` `# default` | `host:port`, another than `COWORK_LISTEN_ADDR`; empty switches it off | The metrics listener: Prometheus text at `/metrics` and nothing else ([Metrics](#metrics), [docs/operations/metrics.md](docs/operations/metrics.md)). Bound beside the API's listener before either serves — a taken port refuses the start — and shut down with it. Unlike every other variable, one set to an empty value is not unset: it closes the port, and nothing is recorded. An address without a port, or the API's, refuses the start, naming the variable. **Security:** no authentication — every pod that reaches the backend pods reads the installation's activity in counts, never a person, a ticket or a token, and a tenant only by its id on the consistency check's counts ([H-63](docs/security/metrics.md#h-63)); admit only the monitoring namespace to the port, or switch it off |
 | `COWORK_LOG_LEVEL` | `info` `# default` | `debug`, `info`, `warn`, `error` | Minimum level |
@@ -701,9 +698,8 @@ serves it at `/api/v1/openapi.json` with `info.version` set to its own version, 
 every request against it. What this section says in one line per route, the document says in
 full.
 
-- **Authentication.** Every route under `/api/v1/` except `version`, `openapi.json`,
-  `schemas/cowork-yaml.json` and GitHub's webhook — whose credential is the signature of its body,
-  [below](#integrations) — takes
+- **Authentication.** Every route under `/api/v1/` except `version`, `openapi.json` and
+  `schemas/cowork-yaml.json` takes
   one of two credentials, and the document says which per operation (`bearerToken`,
   `sessionCookie`). A personal access token, `Authorization: Bearer cwk_…`, is for scripts and
   agents; the session cookie `__Host-cowork-session` of a browser login — `POST /auth/local`, or
@@ -711,11 +707,11 @@ full.
   `Authorization` header is a token's, whatever cookie it carries. Without a valid credential the
   answer is `401` (`unauthenticated`, `token_expired`, `token_revoked`, and `not_allowed` for a
   token whose person the identity provider's gate no longer admits) with
-  `WWW-Authenticate: Bearer realm="cowork"`. Nineteen routes take a **session only** and answer a
+  `WWW-Authenticate: Bearer realm="cowork"`. Eighteen routes take a **session only** and answer a
   token `403 session_required`: creating a token, a tenant or a local account, resetting or
   changing a password, logging out, a turn of the chat and stopping one, choosing the chat's
-  capabilities, a global administrator's list of every tenant, purging a deleted ticket, making or
-  rotating the tenant's GitHub webhook secret, removing the orphaned objects of a consistency check,
+  capabilities, a global administrator's list of every tenant, purging a deleted ticket, removing
+  the orphaned objects of a consistency check,
   and the administration acts that can give access — adding a
   member, setting a grant, making or changing a group mapping, restricting or opening a project,
   putting a person on its access list ([ADR 0035](docs/adr/0035-personal-access-tokens.md) D5,
@@ -760,7 +756,7 @@ full.
   `page` and `per_page`, up to row 10 000 — not together with `cursor` or `limit`;
   the ticket lists, the projects, the members, the group mappings, a project's access list, the
   lists of a ticket — comments, activity, questions, links, interest, attachments, time entries,
-  the prerequisite tree, the pull requests —, the person's inbox, "next for me", assigned tickets and decisions, the bin of deleted
+  the prerequisite tree —, the person's inbox, "next for me", assigned tickets and decisions, the bin of deleted
   tickets, the saved filters, the tenant's dashboard, the tenant's tokens, the attachments' usage and their consistency check answer
   a weak `ETag`, the caller's page, and `304` without a body to it in `If-None-Match`. A query
   parameter the route does not declare is `400`; a path parameter that cannot name anything is
@@ -800,7 +796,7 @@ full.
 | `GET /api/v1/me/chat` | the capabilities the person gives the chat in the UI: `{"capabilities": [...], "chosen": bool}` — `chosen` false is the default, every capability but `decide`, `close`, `drop` and `record-answer` |
 | `PUT /api/v1/me/chat` | a session only, never an agent-marked one: `{"capabilities": [...]}`, the whole set, unique — empty leaves the chat the baseline; `200` with the set in the catalogue's order; the chat's next request holds it; no `If-Match`; a change is the person's recorded act |
 | `GET /api/v1/me/repositories/lookup` | `remote` (1–10, repeatable, in order of preference) and `path` → `status` `bound`, `ambiguous` or `unbound`; the remotes with their identities (`null` for one that names no host); the bindings of the first remote that has one covering `path`, in the projects the caller sees across the person's tenants — a restricted token's only; for `unbound` a `proposal` (identity, name, the tenant and the reason `only-tenant`, `remote-owner` or `choose`, a free key per tenant) or `proposal_unavailable` saying why not. A remote's credentials are dropped, and a proxy's log may still carry the query |
-| `GET /api/v1/me/inbox` | the person's notifications across their tenants, newest first: `{"items": [...], "next_cursor", "unread"}`, each item `id`, `tenant` `{slug, name}`, `ticket` `{key, title, state}` as it is now, `reason` — `assigned`, `asked`, `answered`, `state_changed`, `blocker_closed`, `commented`, `urgent`, `mentioned`, `merged` (a pull request of the ticket merged at GitHub, told by GitHub's webhook as `system:github`) —, `act` (the act it renders from, as the ticket's activity shows it, without its payload where it names a ticket the person cannot see), `blocker` (for `blocker_closed`, the ticket that blocked it, as it is now), `withdrawn` (the comment or question has been withdrawn since), `read`, `created_at`; `unread` counts the unread ones. A notification of a ticket the person no longer sees, or of a tenant they left, is absent and counts nowhere. `tenant`, `limit`, `cursor` |
+| `GET /api/v1/me/inbox` | the person's notifications across their tenants, newest first: `{"items": [...], "next_cursor", "unread"}`, each item `id`, `tenant` `{slug, name}`, `ticket` `{key, title, state}` as it is now, `reason` — `assigned`, `asked`, `answered`, `state_changed`, `blocker_closed`, `commented`, `urgent`, `mentioned` —, `act` (the act it renders from, as the ticket's activity shows it, without its payload where it names a ticket the person cannot see), `blocker` (for `blocker_closed`, the ticket that blocked it, as it is now), `withdrawn` (the comment or question has been withdrawn since), `read`, `created_at`; `unread` counts the unread ones. A notification of a ticket the person no longer sees, or of a tenant they left, is absent and counts nowhere. `tenant`, `limit`, `cursor` |
 | `PUT /api/v1/me/inbox/read` | `{"through": "<notification id>"}`: every unread notification of the person up to and including that one, read — one that arrived after it stays unread; `tenant` narrows; `write` scope; `200 {"unread"}`; one act `read` per tenant where something changed |
 | `PUT /api/v1/me/inbox/{notification}/read` | one notification read; `write` scope; `200 {"unread"}`; one already read records nothing; another person's, or one of a ticket the person no longer sees, `404 not_found` |
 | `GET /api/v1/me/next` | "next for me": the open tickets — neither `done` nor `dropped` — assigned to the person or to nobody, in the projects they see across their tenants; another person's is not in it: `{"items": [{"tenant": {slug, name}, "ticket": {...}, "place"}], "next_cursor"}`, by the score, highest first — a ticket without one last — then by the ticket's id; `place` is the ticket's place in its project's rank among the open tickets of its horizon the caller sees, 1 for the first; `tenant`, `project` (a project key within `tenant`, which it needs: `400` without), `limit`, `cursor` |
@@ -906,7 +902,7 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 </details>
 
 <details>
-<summary>Tickets — 27 routes</summary>
+<summary>Tickets — 25 routes</summary>
 
 | Method and path | Does |
 |---|---|
@@ -927,8 +923,6 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 | `GET …/{number}/links` | its links in both directions |
 | `PUT …/{number}/links/{type}/{other}` | link it, as the source, to `other` (a short key): `blocks`, `relates-to`, `duplicates`, `found-in`; `201` new, `200` existing; a `blocks` cycle is `409 link_cycle` |
 | `DELETE …/{number}/links/{type}/{other}` | remove the link; `204` also when there was none |
-| `GET …/{number}/pull-requests` | the pull requests and default-branch commits GitHub's webhook linked to it, oldest link first: each `id`, `kind` (`pull_request` or `commit`), `repository` (the identity), `number` or `sha`, `title` as GitHub sent it, `state` (`open`, `closed`, `merged`; a commit is `merged`), `url` (the page at GitHub, written from the repository's identity), `author`, `merged_at`, `found_in` (`trailer`, `body`, `subject`), `first_seen_at`, `last_seen_at`; under the ticket's visibility; a weak `ETag`, `304` to it |
-| `DELETE …/{number}/pull-requests/{pull_request}` | remove a wrong link — a member's act with `write` scope, in the agent baseline; the removal stays, a later delivery does not link it again; `unlinked` recorded; `204` also when it is gone |
 | `GET …/{number}/prerequisites` | its prerequisite tree ([ADR 0012](docs/adr/0012-four-typed-directed-links-within-a-tenant.md) D6): the tickets that block it, what blocks those, and so on, eight levels deep, depth first; `direction=up` reads it upward, its dependents. Each node with its key, title, state, `blocked_from`, assignee, the three progress stages, `depth`, `settled` (done or dropped) and `repeated` — a ticket the tree holds under two others stands in full under the first and as `repeated` under each other; `open` counts the open ones of the whole tree, each once, on every page. A ticket the caller cannot see is absent, and so is what lies only behind it |
 | `GET …/{number}/interest` | who holds a stake in it |
 | `PUT …/{number}/interest` | set the caller's own stake; `201` new, `200` otherwise; the stake carries the agent mark and the token of the write that set it |
@@ -1028,24 +1022,6 @@ to a project is refused like an unknown tenant.
 
 </details>
 
-#### Integrations
-
-<details>
-<summary>GitHub's webhook — 4 routes</summary>
-
-Optional per tenant and on trial ([ADR 0071](docs/adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md));
-setting it up is [docs/operations/github.md](docs/operations/github.md), what it lets in
-[docs/security/github-webhook.md](docs/security/github-webhook.md).
-
-| Method and path | Does |
-|---|---|
-| `GET /api/v1/tenants/{tenant}/integrations/github` | the tenant's administrators, `read` scope: `{"secret": {"created_at", "created_by"} or null, "webhook_path", "events": ["pull_request", "push"]}` — never the secret; anybody else `403 forbidden` |
-| `POST …/integrations/github/secret` | a session only, a tenant administrator, never an agent: draw a new secret — 256 random bits as 64 hexadecimal characters — and replace the one there was at once; `201 {"secret", "created_at", "created_by", "replaced"}`, the secret **once**, kept sealed; no `Idempotency-Key`; recorded `created` without it |
-| `DELETE …/integrations/github/secret` | revoke it — an administrator with `admin` scope, a token too, never an agent; from then on every delivery is `404`; the links stay; `204` also when there is none |
-| `POST …/integrations/github/webhook` | GitHub's deliveries, public: no session, no token — the credential is `X-Hub-Signature-256`, the HMAC-SHA256 of the raw body under the tenant's secret. An unknown tenant and one without a secret `404 not_found`; a body above `COWORK_MAX_JSON_BODY` `413 payload_too_large`; a missing or wrong signature `401 signature_invalid` with `WWW-Authenticate: X-Hub-Signature-256 realm="cowork"` before anything is parsed; `X-GitHub-Delivery` not a UUID `400 validation_failed`, a type other than `application/json` `415 unsupported_media_type`, a `pull_request` or `push` body that is not GitHub's shape `400 validation_failed`; the same delivery within a day `200` without effect; everything else taken `202` with no body: `pull_request` (`opened`, `edited`, `synchronize`, `reopened`, `closed`) of an author GitHub names the repository's `OWNER`, a `MEMBER` of its organisation or a `COLLABORATOR` (`author_association`), and `push` to the default branch, of a repository a project of the tenant binds, link the tickets their texts name — `Cowork-Ticket:` trailers and full-key lines first, the short keys at the end of a title or subject otherwise —, a merge tells the ticket's assignee and watchers, no state changes; every other delivery is passed over |
-
-</details>
-
 <details>
 <summary>Import and export — 5 routes</summary>
 
@@ -1086,7 +1062,6 @@ every error body carries one of these as `code`.
 | `token_revoked` | 401 | The token was revoked, or its person deactivated (docs/adr/0035 D6) |
 | `not_allowed` | 401 | The token's person is outside the identity provider's gate: none of their groups, as of their last login or groups refresh, is in COWORK_OIDC_ALLOWED_GROUPS or is COWORK_ADMIN_GROUP, or the person belongs to another issuer than the configured one, or their groups were read longer ago than COWORK_OIDC_GROUPS_MAX_AGE, until a sign-in in the browser reads them again. The token is refused, not revoked, and works again once the person is back inside (docs/adr/0035 D8) |
 | `invalid_credentials` | 401 | The local login failed: the same answer, in the same time, for an unknown username, a wrong password, a locked or a deactivated account (docs/adr/0033 D6) |
-| `signature_invalid` | 401 | A GitHub webhook delivery's `X-Hub-Signature-256` is missing or is not the HMAC of its body under the tenant's secret; nothing was read or written (docs/adr/0071 D3) |
 | `forbidden` | 403 | The person's role does not allow the act (docs/adr/0034) |
 | `insufficient_scope` | 403 | The token's scope does not reach the act (docs/adr/0035 D3) |
 | `agent_forbidden` | 403 | The act is on the agent hard-off list, needs a capability the token lacks, or lies outside what the capability grants — `close` closes from in-progress and review only; `detail` names which (docs/adr/0043 D4, D5) |
@@ -1156,7 +1131,7 @@ target's `namespace`, `pod`, `container` and `job`.
 | `cowork_db_pool_wait_duration_seconds` | summary: `_count`, `_sum` | — | The acquires among them that waited because no connection was free, and the time they waited; `rate(_sum)` is the mean number waiting |
 | `cowork_db_pool_canceled_acquires_total` | counter | — | Acquires a context ended before a connection was free |
 | `cowork_db_query_errors_total` | counter | `kind`: `unique_violation`, `foreign_key_violation`, `check_violation`, `not_null_violation`, `integrity_violation`, `serialization_failure`, `deadlock_detected`, `insufficient_privilege`, `lock_not_available`, `query_canceled`, `connection`, `other_sqlstate`, `canceled`, `timeout`, `other` | Failed statements by the SQLSTATE's meaning or what the client saw; a row that was not found is no failure. `insufficient_privilege` is a policy, a grant or a guard that refused |
-| `cowork_jobs_runs_total` | counter | `name` | Runs of a background job on this replica that took its lock, or failed before it could; `name` is the job's system actor: `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `github-delivery-expiry`, `import-expiry`, `ticket-purge`, `consistency-check` (once a day), `bootstrap` |
+| `cowork_jobs_runs_total` | counter | `name` | Runs of a background job on this replica that took its lock, or failed before it could; `name` is the job's system actor: `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `import-expiry`, `ticket-purge`, `consistency-check` (once a day), `bootstrap` |
 | `cowork_jobs_failures_total` | counter | `name` | The runs that failed |
 | `cowork_jobs_duration_seconds` | histogram, 10 ms to 600 s | `name` | A run's duration |
 | `cowork_jobs_consecutive_failures` | gauge | `name` | Runs that failed one after the other since the job's last success on this replica; `CoworkJobFailing` fires at 2 |

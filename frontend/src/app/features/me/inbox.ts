@@ -21,7 +21,6 @@ import { keepShown, refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
 import { AgentMark } from '../../shared/agent-mark';
 import { StateBadge } from '../../shared/badges';
-import { actorName, codeName } from '../../shared/pull-requests';
 import { ago, Clock, count } from '../../shared/time';
 import { changesExistence } from '../../core/event-stream.service';
 import { reloadOn, shortKey, ticketRoute } from './person-list';
@@ -76,15 +75,12 @@ export function happening(entry: InboxEntry): string {
       return 'registered an urgent need';
     case 'mentioned':
       return 'mentioned you in a comment';
-    case 'merged':
-      // GitHub's webhook reports the merge; the ticket's state stays a person's (docs/adr/0071 D6).
-      return `reported ${codeName(entry.act) ?? 'a pull request'} merged — the work may be ready to move`;
   }
 }
 
-/** Who made the act: the person, or the system actor by its name — GitHub's webhook as GitHub. */
+/** Who made the act: the person, or the system actor. */
 export function actor(entry: InboxEntry): string {
-  return entry.act.actor || entry.act.actor_system ? actorName(entry.act) : 'someone';
+  return entry.act.actor?.display_name ?? entry.act.actor_system ?? 'someone';
 }
 
 /**

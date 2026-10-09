@@ -154,8 +154,10 @@ type DeleteTicketPullRequestsParams struct {
 	TicketID uuid.UUID
 }
 
-// The pull requests and commits GitHub's webhook linked to the ticket
-// (docs/adr/0071 D6), the removed links among them.
+// The pull requests and commits GitHub's webhook linked to the ticket in the
+// releases up to 0.12.0 (docs/adr/0071 Status), the removed links among them:
+// nothing writes the table any more, but its rows reference the ticket until
+// a later contract migration drops it (docs/adr/0028).
 func (q *Queries) DeleteTicketPullRequests(ctx context.Context, arg DeleteTicketPullRequestsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteTicketPullRequests, arg.TenantID, arg.TicketID)
 	if err != nil {

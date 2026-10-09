@@ -194,7 +194,6 @@ describe('EventStreamService', () => {
         'comment.changed',
         'interest.changed',
         'link.changed',
-        'pull_request.changed',
         'question.changed',
         'ticket.changed',
       ]);

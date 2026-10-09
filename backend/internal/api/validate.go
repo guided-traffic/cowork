@@ -99,9 +99,7 @@ func requestInput(r *http.Request, route *routers.Route, pathParams map[string]s
 		Options: &openapi3filter.Options{
 			AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
 			MultiError:         true,
-			// A signed body is read by its handler, whole and unparsed, until
-			// its signature holds (docs/adr/0071 D3).
-			ExcludeRequestBody: isMultipart(r) || signed(route.Operation),
+			ExcludeRequestBody: isMultipart(r),
 			// The handlers apply the defaults; a default written into the
 			// request would look like a parameter the client sent.
 			SkipSettingDefaults: true,

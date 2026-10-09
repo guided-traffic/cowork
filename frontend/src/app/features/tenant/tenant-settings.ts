@@ -28,7 +28,6 @@ import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
 import { byteSize } from '../../shared/bytes';
 import { AttachmentConsistencySection } from './attachment-consistency';
-import { GitHubWebhook } from './github-webhook';
 import { saveFile } from '../../shared/download';
 
 /**
@@ -61,14 +60,13 @@ export function quotaShare(usage: AttachmentUsage): number | null {
  * the version read (docs/adr/0050 D3); what the tenant's attachments hold against the quota
  * of the installation (docs/adr/0016 D6), read when the page opens and again on an upload or a
  * purge in the tenant; the latest consistency check of the attachments against the bucket
- * (docs/adr/0059 D4), {@link AttachmentConsistencySection}; GitHub's webhook with its secret
- * (docs/adr/0071, {@link GitHubWebhook}); and the export of the whole tenant as one archive
- * (docs/adr/0051 D4), the second line of a backup (docs/adr/0059 D2).
+ * (docs/adr/0059 D4), {@link AttachmentConsistencySection}; and the export of the whole tenant as
+ * one archive (docs/adr/0051 D4), the second line of a backup (docs/adr/0059 D2).
  */
 @Component({
   selector: 'app-tenant-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AttachmentConsistencySection, ButtonDirective, FormsModule, GitHubWebhook, InputText, ToggleSwitch],
+  imports: [AttachmentConsistencySection, ButtonDirective, FormsModule, InputText, ToggleSwitch],
   template: `
     <section class="page">
       <h1>Settings</h1>
@@ -198,7 +196,6 @@ export function quotaShare(usage: AttachmentUsage): number | null {
             </button>
           </div>
         </section>
-        <app-github-webhook />
       }
     </section>
   `,

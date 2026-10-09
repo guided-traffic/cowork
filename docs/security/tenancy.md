@@ -30,8 +30,8 @@ one that holds the visibility predicate: a query that forgot it would show a res
 confidential ticket to everyone in the tenant, which is why a unit test holds every query to the
 predicate ("Visibility inside a tenant"). Several tables carry a second line inside the tenant as
 well, restrictive policies that hold them to whom they belong: a notification and a saved filter to
-their person, an import job, a consistency check's result and the webhook's secret to the tenant's
-administrators and the jobs that need them ([below](#row-level-security-forced-on-every-table)). Neither line stops a process that runs SQL of an
+their person, an import job and a consistency check's result to the tenant's administrators and
+the jobs that need them ([below](#row-level-security-forced-on-every-table)). Neither line stops a process that runs SQL of an
 attacker's choosing — see "A compromised serving process" at the end.
 
 ## The tenant is in the path, and a refusal looks like absence
@@ -73,15 +73,10 @@ restricted to a tenant reads that tenant only, and one restricted to a project r
 project's bindings only ([`api/repositories.go`](../../backend/internal/api/repositories.go)
 `LookupRepository`, `TestLookingUpARepository`).
 
-**GitHub's webhook meets no boundary**, because no person sends it: the boundary admits persons.
-`POST …/tenants/{tenant}/integrations/github/webhook` reads the tenant by its slug and its sealed secret
-itself, in a transaction of the job `github-webhook` that the `tenants` policy admits to every tenant's
-row and that names no person, and answers an unknown tenant and one without a secret with the same
-`404` — but a tenant with a secret answers a delivery whose signature does not hold `401`, so its
-refusal tells that the tenant exists ([github-webhook.md](github-webhook.md#h-64) H-64). What a
-delivery writes stays in the tenant of its path: the secret is that tenant's, a key of another tenant
-is passed over, and its links are read under each ticket's predicate
-([github-webhook.md](github-webhook.md)).
+**Every route under a tenant meets the boundary.** The one route that did not, GitHub's webhook,
+which read its tenant by the slug itself, is removed with the webhook ([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+Status), and with it the one answer — its `401` — that told a tenant's existence to a caller
+without a credential.
 
 **A turn of the chat stays in its tenant** on top of the boundary. Its tool calls are the person's
 requests and could reach every tenant the person belongs to; the loopback that sends them refuses
@@ -112,9 +107,7 @@ in can be given one again ([identity-provider.md](identity-provider.md#h-29) H-2
   ([`api/tenant.go`](../../backend/internal/api/tenant.go) `oversight`, `oversees`, `overseen`).
   `TestAGlobalAdministratorWithoutARoleSeesTheAdministrationOnly` walks every route of the API
   document under a tenant as such a global administrator and compares each refusal with the unknown
-  tenant's answer, so a route added later is held to it the day it exists — GitHub's webhook answers
-  like an unknown tenant there only while the tenant has no secret; with one it answers everybody
-  `401` ([github-webhook.md](github-webhook.md#h-64) H-64). The handlers of the four
+  tenant's answer, so a route added later is held to it the day it exists. The handlers of the four
   read the boundary's mark (`tenantScope.Oversight`, `administrationRead`); every other handler
   asks for a role the scope does not carry and would answer `403` besides.
 - **They grant themselves a role** with `PUT …/members/{their id}/grant`, in any role: a marked
@@ -162,8 +155,9 @@ by column on the tenants, projects (their restriction among them), tokens, ticke
 comments, stakes, time entries, persons (the identity provider's columns among them), local
 accounts, sessions (the groups refresh's among them), repository bindings, memberships and group
 mappings (a role and a version each), a project's access list (its role), a person's chat
-capabilities, a notification's read mark, saved filters, the webhook's secret, its deliveries and its
-pull-request links, a consistency check's result and an import job, table-wide on
+capabilities, a notification's read mark, saved filters, a consistency check's result and an import
+job — and, until a contract migration drops them, the tables of GitHub's webhook, which no code writes
+since its removal ([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md) Status) —, table-wide on
 `ticket_counters`, `idempotency_keys` and `login_locks` — `DELETE` only on `ticket_links`,
 `ticket_interest`, `project_repositories`, `idempotency_keys`, `sessions`, `login_attempts`,
 `login_locks`, `memberships`, `group_mappings`, `project_access`, `saved_filters`,
@@ -223,7 +217,7 @@ which have no tenant at all:
 
 | Table | Its policy admits |
 |---|---|
-| `tenants` | the row inside its own tenant's transaction, and to its members; every row to a global administrator (`tenants_read`, migration 26); updates only inside its own transaction; read by the login, the start-up synchronisation, the identity provider, GitHub's webhook and the consistency check named in `app.job` — so a login can ask whether any tenant exists, a delivery finds the tenant its path names, and the check every tenant (migrations 41, 42); inserted by a global administrator or the synchronisation |
+| `tenants` | the row inside its own tenant's transaction, and to its members; every row to a global administrator (`tenants_read`, migration 26); updates only inside its own transaction; read by the login, the start-up synchronisation, the identity provider, GitHub's webhook and the consistency check named in `app.job` — so a login can ask whether any tenant exists and the check every tenant (migrations 41, 42); the webhook's job is named by no code since its removal; inserted by a global administrator or the synchronisation |
 | `users` | the person, everyone who shares the current tenant with them, the login and the synchronisation, and the identity provider every person; a tenant's administrator also the persons a lookup by address or username names (`app.person_lookup`, below); inserted by an administrator of the current tenant (never a global administrator, never a person of the identity provider), by the synchronisation, or by the identity provider (only a person of the provider, without a username); updated by the administrators of the accounts their tenant manages, by the synchronisation, and by the identity provider (only its own persons) |
 | `memberships` | the tenant's rows inside the tenant, and the person's own rows everywhere; a grant inserted by an administrator into their own tenant, by a global administrator for themselves in any role (migration 26), or by the synchronisation, and changed and removed by an administrator of the tenant — a global administrator's own also changed by them (migration 26); a mapped membership inserted, changed and removed by the identity provider alone |
 | `tokens` | the person's own rows, and during the lookup the one row whose hash the transaction names in `app.token_hash`; the administrators of a managed account and the synchronisation read and revoke its tokens; an administrator of the current tenant reads and revokes every token of a member of it that is unrestricted or restricted to it, and no token restricted to another tenant (`app_tenant_reaches_token`, migration 35; [tokens.md](tokens.md#h-57) H-57); inserted for the person's own account only |
@@ -242,8 +236,10 @@ their person ([below](#the-person-level-lists-are-unions-one-tenant-at-a-time),
 [below](#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw));
 `github_webhook_secrets` to the tenant's administrators and the webhook's job, `github_deliveries`'s
 writes to that job and its reads and deletes past the tenant to its expiry job, and
-`ticket_pull_requests`' inserts to the webhook's job
-([migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql));
+`ticket_pull_requests`' inserts to the webhook's job and its deletes to the purge
+([migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql)) — tables
+no code reads or writes since the webhook's removal but the purge, which deletes a deleted ticket's
+links, and which a contract migration of a later release drops;
 `consistency_checks` and `consistency_acceptances` to the tenant's administrators and the check's job
 ([migration 42](../../backend/internal/store/migrations/000042_attachment_consistency.up.sql));
 `import_jobs` to the tenant's administrators, its expiry job and the purge
@@ -296,9 +292,8 @@ together with an audit row per act; `RunJob`, a background job under a system ac
 the token and session lookups, the last-used write and the session's idle clock, the login's
 reads, the transaction that counts and decides a login attempt, the person lookup, the claim of a
 groups refresh, the identity provider's transactions — a login, the application of a refresh's
-answer, a token's gate check —, the read of a person's chat capabilities (`ChatCapabilities`), the
-webhook's read of its tenant and secret and the transaction of a delivery (`WebhookSecret`,
-`ReceiveDelivery`), and the consistency check's reads past the tenants (`jobRead`), which set their
+answer, a token's gate check —, the read of a person's chat capabilities (`ChatCapabilities`) and the
+consistency check's reads past the tenants (`jobRead`), which set their
 own context. The connection pool is unexported; outside the wrappers the store reads only the schema
 version and the role catalog for its start-up checks, answers the readiness check's `Ping`, and holds
 the listener connection of the event stream
@@ -395,7 +390,6 @@ Among the exemptions, each with its reason written in its query file:
 | `TenantAttachmentUsage`, `ListCheckedAttachments` | the tenant's stored bytes, and the files of the tenant whose bytes are missing, for its administrators, who see every ticket ([attachments.md](attachments.md#the-consistency-check)) |
 | `ImportNumbersTaken` | whether a number exists in the project, as its unique key holds it ([import-and-export.md](import-and-export.md#what-an-import-creates)) |
 | `ExportHiddenConfidential` | the count of the confidential tickets an export leaves out ([import-and-export.md](import-and-export.md#h-74) H-74) |
-| `ResolveTicketKeys`, `UpdatePullRequestFacts` | the webhook's system actor resolves the keys a signed delivery names and keeps every link of a pull request; whoever reads a link is held to its ticket's predicate ([github-webhook.md](github-webhook.md)) |
 | `GetPurgedTicket`, `DeletePurgedTicket` and the acts of the purge | the purge of a deleted ticket, which an administrator or the job named |
 
 `person_sees_ticket` (migration 30) answers whether another person — not the caller — sees a ticket,
@@ -437,8 +431,7 @@ reasons in the query files: the bin and the purge, which read deleted tickets on
 reread; the publication of an act; a ticket read through the filter in the same transaction; the
 rank keys and the numbers an import finds taken, because a deleted ticket keeps its key and its
 number; the tenant's attachment usage and the consistency check's list of missing files, because a
-deleted ticket's files have their rows and objects until the purge; and the webhook's update of a
-pull request's facts, which a deleted ticket's link keeps. The integrity walks still step over deleted
+deleted ticket's files have their rows and objects until the purge. The integrity walks still step over deleted
 tickets, so that a restoration cannot close a cycle. A deleted ticket therefore answers exactly as a
 ticket that does not exist: `404` on its routes — its rendered body included — and on the key
 resolver, absent from every list, the full text and the search, the trees, the person-level lists
@@ -673,8 +666,8 @@ predicate (ADR 0065 D1).
 
 A ticket's activity (`…/activity`) is its audit rows, read after the ticket passed the
 predicate; it leaves out time entries, the reads of ADR 0026 D5, the `booked`, `voided` and
-`locked` acts, and a pull request's title or page changed at GitHub, which the ticket's list of pull
-requests shows. An act names the other tickets its payload mentions in `refs` — a link's other
+`locked` acts, and a pull request's title or page changed at GitHub, an act GitHub's webhook of a
+release up to 0.12.0 recorded. An act names the other tickets its payload mentions in `refs` — a link's other
 end, the ticket a block waits on, the prerequisites a close overrode, the old and the new
 parent. When the reader cannot see one of them, the act is shown with `redacted: true` and
 without its `before`, `after`, reason and note
@@ -1081,19 +1074,6 @@ nothing records a refused attempt. It tells nothing of the ticket's content or o
 Mitigation: none in cowork; the access list of a restricted project is a matter of the tenant's own
 members, and an administrator who must keep it from them keeps the project's work in a tenant of
 its own.
-
-<a id="h-96"></a>
-### H-96 — The webhook's links and deliveries are held to their writers by the handlers alone
-
-Hardening. Of the webhook's tables, only some writes carry a restrictive policy: a pull-request link
-is inserted by the webhook's job alone and deleted by the purge alone, a delivery inserted and
-updated by the job alone. A link's update — the facts the webhook keeps, a person's removal — and a
-delivery's delete pass `tenant_isolation` and the grants
-([migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql)), so any
-transaction of the tenant may make them: what keeps a member's request from changing a link's
-title or state, or from deleting the deliveries that keep a replay out, is the handlers and their
-queries, not the data layer. A forgotten `WHERE` in a later query of a tenant's transaction would
-reach the tenant's links or deliveries; no other tenant's. Mitigation: none in configuration.
 
 <a id="h-97"></a>
 ### H-97 — A job's read across the tenants admits whole rows

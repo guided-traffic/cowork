@@ -207,7 +207,7 @@ replica.
 
 **What it means.** A background job failed at its last two runs on a pod — the jobs run at start
 and every hour. The label `name` is the job: `idempotency-expiry`, `session-expiry`, `login-expiry`,
-`notification-expiry`, `github-delivery-expiry`, `import-expiry`, `ticket-purge`, `consistency-check` — asked every hour whether it is due,
+`notification-expiry`, `import-expiry`, `ticket-purge`, `consistency-check` — asked every hour whether it is due,
 and due again every hour while it fails —, or `bootstrap`, the start's synchronisation, which ends the
 process when it fails, so its alert shows only as a pod that does not start. While a job fails,
 what it removes stays: stored responses of idempotent requests, sessions past their limits — which are

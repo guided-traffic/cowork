@@ -221,9 +221,6 @@ once:
   from the server key, and is refused with `422 idempotency_mismatch`, neither replayed nor run a
   second time. A client that retries a creation across a rotation reads the list to see whether it
   happened.
-- **Every tenant's GitHub webhook secret no longer opens**: its webhook answers `404` and the log
-  says to rotate the secret, until the tenant's administrators make a new one and set it at GitHub
-  ([github.md](github.md)).
 - **The sessions of the local login survive**, and so does every personal access token: a session
   row and a token are found by the SHA-256 of their value, which no key enters.
 
@@ -1073,6 +1070,13 @@ with a warning; `helm rollback` runs no Job at all. A migration never removes wh
 release still reads, which is what makes that safe
 ([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md));
 there is no schema rollback and no `migrate down`.
+
+**The release that removes GitHub's webhook**
+([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+Status, 2026-10-09): a tenant that set the webhook up at GitHub gets `404` for every delivery from
+then on, and the tenant's settings no longer show it — remove the webhook from each repository's
+settings at GitHub. The tables of migration 41 stay, written by nothing, until a later release drops
+them; nothing else needs doing.
 
 **The release with the migration Job and the component keys**
 ([ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)

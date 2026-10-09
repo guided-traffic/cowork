@@ -116,11 +116,11 @@ which takes `existingSecret` references only; the session key, the storage key, 
 - Login (phase 3): server-side sessions in the `__Host-cowork-session` cookie, the local
   administrator from configuration, local accounts made by administrators, CSRF by origin and
   `X-Requested-With: cowork`; token creation, password changes, tenant creation, creating or
-  resetting a local account, the acts that give access, a turn of the chat, the purge of a ticket,
-  the GitHub webhook secret and the removal of orphaned objects are session-only — nineteen
-  operations, held by a unit test; a token gets `403` (ADR 0031–0033, 0035, 0037). A session's idle
-  clock moves only on a write or the browser's keep-alive read, and the login page signs a person
-  of the identity provider in again with `prompt=none` without a click (ADR 0029 D6, 0031 D3).
+  resetting a local account, the acts that give access, a turn of the chat, the purge of a ticket
+  and the removal of orphaned objects are session-only — eighteen operations, held by a unit test;
+  a token gets `403` (ADR 0031–0033, 0035, 0037). A session's idle clock moves only on a write or
+  the browser's keep-alive read, and the login page signs a person of the identity provider in
+  again with `prompt=none` without a click (ADR 0029 D6, 0031 D3).
 - `cowork-mcp` (`backend/cmd/cowork-mcp` over `internal/mcpcli`, `internal/mcpserver`,
   `internal/tools`): the MCP server and hooks for Claude Code, a client of `/api/v1` through the
   generated client and nothing else — it imports no store and no API handler, and a unit test
