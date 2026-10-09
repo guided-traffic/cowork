@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -299,6 +300,100 @@ func TestOnlyAGlobalAdministratorCreatesATenant(t *testing.T) {
 	require.Equal(t, http.StatusCreated, replay.StatusCode)
 	assert.Equal(t, "/api/v1/tenants/"+keyed["slug"], replay.Header.Get("Location"))
 	assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM tenants WHERE slug = $1`, keyed["slug"]))
+}
+
+// docs/adr/0035 D5 as amended 2026-10-07: a change of the tenant's settings
+// that widens what the members may see or do — their sight of everyone's
+// time, their creation of projects, closed days opened by an earlier or a
+// lifted time lock — takes a browser session; an administrator's admin-scope
+// token narrows them and renames the tenant, and its refused change writes
+// nothing.
+func TestWideningTheTenantSettingsTakesASession(t *testing.T) {
+	w := newWorld(t)
+	tk := issueTokens(t, w)
+	s := newAPI(t, withLogin)
+	token, session := caller{Token: tk.AdminA}, sessionOf(t, w.AdminA)
+	path := "/api/v1/tenants/" + w.SlugA
+	read := func() (apigen.Tenant, string) {
+		t.Helper()
+		res := s.do(t, token, http.MethodGet, path, nil)
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		return decode[apigen.Tenant](t, res), res.Header.Get("ETag")
+	}
+	patch := func(c caller, body map[string]any) *http.Response {
+		t.Helper()
+		_, etag := read()
+		return s.do(t, c, http.MethodPatch, path, body, "If-Match", etag)
+	}
+
+	narrowed := patch(token, map[string]any{"name": "Narrowed", "members_create_projects": false, "time_locked_until": "2026-09-30"})
+	require.Equal(t, http.StatusOK, narrowed.StatusCode, "a token narrows and renames")
+	before, _ := read()
+	for name, widen := range map[string]map[string]any{
+		"time shown to members":   {"time_visible_to_members": true},
+		"members create projects": {"members_create_projects": true},
+		"the lock moved earlier":  {"time_locked_until": "2026-09-01"},
+		"the lock lifted":         {"time_locked_until": nil},
+		"with a new name":         {"name": "Renamed", "members_create_projects": true},
+	} {
+		assertProblem(t, patch(token, widen), http.StatusForbidden, "session_required")
+		after, _ := read()
+		assert.Equal(t, before, after, "%s: nothing was written", name)
+	}
+	require.Equal(t, http.StatusOK, patch(token, map[string]any{"time_locked_until": "2026-10-31"}).StatusCode, "a token moves the lock later")
+
+	widened := patch(session, map[string]any{"time_visible_to_members": true, "members_create_projects": true, "time_locked_until": nil})
+	require.Equal(t, http.StatusOK, widened.StatusCode, "a session widens")
+	got := decode[apigen.Tenant](t, widened)
+	assert.True(t, got.TimeVisibleToMembers)
+	assert.True(t, got.MembersCreateProjects)
+	assert.True(t, got.TimeLockedUntil.IsNull())
+	require.Equal(t, http.StatusOK, patch(token, map[string]any{"time_visible_to_members": false}).StatusCode, "a token narrows again")
+}
+
+// docs/adr/0026 D5 as amended 2026-10-07: the five reads that record an act
+// take a session's request only from the installation's own pages. A page on a
+// sibling host or another site — Sec-Fetch-Site same-site or cross-site — is
+// refused before anything is read or recorded; the UI (same-origin), the
+// address bar (none) and a browser that sends no such header are served and
+// recorded; a token's request is not looked at.
+func TestARecordedReadOfASessionComesFromTheInstallationsOwnPages(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	member, session := caller{Token: e.tk.MemberA}, sessionOf(t, e.MemberA)
+	tk := e.file(t, member, "ALPHA", task("Recorded reads"))
+	a := decodeAttachment(t, e.uploadTo(t, member, tk, "shot.png", "image/png", pngBytes, nil, ""))
+	ticket := e.projectTickets("ALPHA") + "/" + strconv.Itoa(tk.Number)
+	recorded := func() int64 {
+		t.Helper()
+		n, err := f.QueryCount(e.ctx, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND action IN ('downloaded', 'exported')`, e.A)
+		require.NoError(t, err)
+		return n
+	}
+
+	reads := []string{a.ContentUrl, ticket + "/markdown", ticket + "/context",
+		"/api/v1/tenants/" + e.SlugA + "/projects/ALPHA/export", "/api/v1/tenants/" + e.SlugA + "/export"}
+	for _, path := range reads {
+		before := recorded()
+		for _, site := range []string{"same-site", "cross-site"} {
+			assertProblem(t, e.s.do(t, session, http.MethodGet, path, nil, "Sec-Fetch-Site", site), http.StatusForbidden, "csrf")
+		}
+		assert.Equal(t, before, recorded(), "%s: a refused read records nothing", path)
+		for _, site := range []string{"same-origin", "none", ""} {
+			var res *http.Response
+			if site == "" {
+				res = e.s.do(t, session, http.MethodGet, path, nil)
+			} else {
+				res = e.s.do(t, session, http.MethodGet, path, nil, "Sec-Fetch-Site", site)
+			}
+			require.Equal(t, http.StatusOK, res.StatusCode, "%s from %q", path, site)
+		}
+		assert.Equal(t, before+3, recorded(), "%s: each served read is recorded", path)
+		require.Equal(t, http.StatusOK, e.s.do(t, member, http.MethodGet, path, nil, "Sec-Fetch-Site", "cross-site").StatusCode,
+			"%s: a token's request is not held to it", path)
+	}
+	require.Equal(t, http.StatusOK, e.s.do(t, session, http.MethodGet, ticket, nil, "Sec-Fetch-Site", "cross-site").StatusCode,
+		"a read that records nothing is not held to it")
 }
 
 // docs/adr/0037 D1, D2, D5, D6, docs/adr/0035 D7: a write of a session needs the

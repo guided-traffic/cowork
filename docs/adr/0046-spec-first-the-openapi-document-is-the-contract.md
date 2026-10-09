@@ -26,10 +26,14 @@ D7; D6, D8: seventeen session-only operations), and on 2026-10-06 for GitHub's w
 would parse its body before its signature holds; D6, D8: eighteen session-only operations, and a
 signed public write, `x-cowork-signed`, without the origin check; built the same day), and on 2026-10-06 for the consistency check of
 [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-D4 (D6, D8: nineteen session-only operations, by the rule of ADR 0035 D5), and on 2026-10-09 with
-the webhook's removal, which the owner dropped before its trial (D1: `integrations.yaml` and a
-ticket's pull requests gone; D2: no webhook outside the generated server; D6, D8: eighteen
-session-only operations, `x-cowork-signed` gone; ADR 0071 Status). `oapi-codegen`
+D4 (D6, D8: nineteen session-only operations, by the rule of ADR 0035 D5), and on 2026-10-07 by
+the owner's answer recorded in [ADR 0035](0035-personal-access-tokens.md) D5 (D6, D8: twenty
+session-only operations, unlocking a local account the twentieth; built 2026-10-09), and on
+2026-10-09 (D4: the body left to its handler is the operation's declaration, never the request's
+`Content-Type`, and a body of an undeclared type is `415`), and on 2026-10-09 with the webhook's
+removal, which the owner dropped before its trial (D1: `integrations.yaml` and a ticket's pull
+requests gone; D2: no webhook outside the generated server; D6, D8: nineteen session-only
+operations, `x-cowork-signed` gone; ADR 0071 Status). `oapi-codegen`
 does not resolve references into other files, so the split document is bundled first; a stream
 is not a response a strict handler returns; and the rule D8 wants checked is three assertions
 over the loaded document, which a unit test makes without a Node toolchain in the backend's
@@ -114,7 +118,12 @@ and answers a schema violation with the API's error shape; responses are validat
 test and development builds, so a handler that drifts from the document fails a test, not a
 client. *(Amended 2026-10-02: the validator does not check the security requirements — the
 pipeline has authenticated the caller before it validates — because its own check reads every
-body into memory first; a multipart body is left to the handler.)*
+body into memory first; a multipart body is left to the handler.)* *(Amended 2026-10-09, made
+concrete by the fix of the security review of 2026-10-07: which body is left to its handler is the
+operation's declaration in the document, an upload's or a signed delivery's, never the request's
+`Content-Type`; and a body of a type the operation does not declare is `415 unsupported_media_type`
+before it is read ([`api/validate.go`](../../backend/internal/api/validate.go) `acceptedBody`,
+`declaresMultipart`), so no request escapes the validation by naming another type.)*
 
 **D5 — The document is served by the API** at `GET /api/v1/openapi.json`, unauthenticated,
 with `info.version` equal to the backend version; the MCP server compares the major version
@@ -130,8 +139,8 @@ for the ~~six~~ routes a token must not call *(amended 2026-10-04: ~~twelve~~ ~~
 tenant among them — [ADR 0035](0035-personal-access-tokens.md) D5; amended 2026-10-05: ~~seventeen~~,
 the purge of a deleted ticket the seventeenth; amended 2026-10-06: ~~eighteen~~, making or rotating the
 tenant's GitHub webhook secret the eighteenth, and ~~nineteen~~, the removal of a consistency check's
-orphaned objects the nineteenth; amended 2026-10-09: eighteen, the webhook secret gone with the
-webhook)*; or none, for the public ones — and the pipeline reads
+orphaned objects the nineteenth; amended 2026-10-07: twenty, unlocking a local account the
+twentieth; amended 2026-10-09: nineteen, the webhook secret gone with the webhook)*; or none, for the public ones — and the pipeline reads
 the credentials an operation takes from its own requirement. A public write carries the
 extension `x-cowork-origin-check: true`, which makes the pipeline hold it to the origin check of
 [ADR 0037](0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md) D5.)*
@@ -170,7 +179,7 @@ document ([`backend/api/document_test.go`](../../backend/api/document_test.go)) 
 `operationId`, the bearer requirement (or an explicit empty one on the public operations), the
 problem response and a tag on every operation. *(Amended 2026-10-03: the requirement is either
 credential, the session cookie alone for exactly the ~~six~~ session-only operations *(amended
-2026-10-04: ~~twelve~~ ~~thirteen~~ ~~fourteen~~ ~~sixteen~~; amended 2026-10-05: ~~seventeen~~; amended 2026-10-06: ~~eighteen~~ ~~nineteen~~; amended 2026-10-09: eighteen)*, or an explicit empty one on the public operations, which as writes also carry
+2026-10-04: ~~twelve~~ ~~thirteen~~ ~~fourteen~~ ~~sixteen~~; amended 2026-10-05: ~~seventeen~~; amended 2026-10-06: ~~eighteen~~ ~~nineteen~~; amended 2026-10-07: ~~twenty~~; amended 2026-10-09: nineteen)*, or an explicit empty one on the public operations, which as writes also carry
 `x-cowork-origin-check` ~~*(amended 2026-10-06: or, signed, `x-cowork-signed`, which the test holds to
 GitHub's webhook alone)*~~ *(the signed form removed 2026-10-09 with the webhook)*.)* *(Added 2026-10-04: the same test holds `x-cowork-open-query` to the
 callback alone.)*

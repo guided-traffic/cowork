@@ -25,8 +25,9 @@ is [docs/developer/import-and-export.md](../developer/import-and-export.md).
 A token restricted to a project exports its project; the tenant export is outside that project
 and answers it `404`, as every tenant route outside the project does (`tenantWideForProjectTokens`
 in [`tenant.go`](../../backend/internal/api/tenant.go)). A session's dry run and execution are
-writes and pass the CSRF check ([csrf.md](csrf.md)); an export is a read, which the check leaves
-alone ([csrf.md, H-22](csrf.md#h-22)). The browser offers the import page to a tenant's
+writes and pass the CSRF check ([csrf.md](csrf.md)); an export is a read that records an act, which
+a session makes only from the installation's own pages — `Sec-Fetch-Site` `same-site` or
+`cross-site` is `403 csrf` ([csrf.md](csrf.md#the-reads-that-record-an-act), [H-22](csrf.md#h-22)). The browser offers the import page to a tenant's
 administrators only and the tenant's export in its settings to them alone; that is what the pages
 offer, not a check — the routes above are the check.
 

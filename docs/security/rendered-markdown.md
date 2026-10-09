@@ -103,8 +103,10 @@ the installation — but one written `//host/…`, which has no scheme either, l
 cookie (`SameSite=Lax` admits it), and a `GET` changes no ticket, member or setting: every write of a
 session is another method and must pass the CSRF check ([csrf.md](csrf.md)). A `GET` of the API that a
 link names is read with the reader's rights, and five reads record an act in the reader's name — an
-attachment's bytes, a ticket's Markdown export and its context, a project's and a tenant's export
-([csrf.md](csrf.md#h-22) H-22).
+attachment's bytes, a ticket's Markdown export and its context, a project's and a tenant's export —:
+a link in a text of the installation is `same-origin` and is served, as an inline image of rendered
+Markdown is ([csrf.md](csrf.md#the-reads-that-record-an-act); what a browser without
+`Sec-Fetch-Site` leaves open is [csrf.md](csrf.md#h-22) H-22).
 
 ## What a rendering reads
 

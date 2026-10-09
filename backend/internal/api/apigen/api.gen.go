@@ -5477,7 +5477,9 @@ type ClientInterface interface {
 	// ChangeMyPasswordWithBody Change the password of the person's local account
 	//
 	// Needs the current password, which counts like a login attempt towards
-	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// the lockout of the account and the throttle of the client's address —
+	// `429 too_many_attempts` with `Retry-After` before it is hashed
+	// (docs/adr/0033 D6). The new one must be as long
 	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 	// other session of the account ends (D4), and a temporary password is no
 	// longer temporary. The local administrator's password is set by the
@@ -5491,7 +5493,9 @@ type ClientInterface interface {
 	// ChangeMyPassword Change the password of the person's local account
 	//
 	// Needs the current password, which counts like a login attempt towards
-	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// the lockout of the account and the throttle of the client's address —
+	// `429 too_many_attempts` with `Retry-After` before it is hashed
+	// (docs/adr/0033 D6). The new one must be as long
 	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 	// other session of the account ends (D4), and a temporary password is no
 	// longer temporary. The local administrator's password is set by the
@@ -5698,6 +5702,12 @@ type ClientInterface interface {
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 	// `If-Match` is required (docs/adr/0050 D3).
 	//
+	// A change that widens what the members may see or do — switching
+	// `time_visible_to_members` or `members_create_projects` on, or moving
+	// `time_locked_until` earlier or clearing it — takes a browser session: a
+	// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+	// and the name, stay open to an administrator's token.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PATCH /api/v1/tenants/{tenant} (the `UpdateTenant` operationId).
@@ -5707,6 +5717,12 @@ type ClientInterface interface {
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 	// `If-Match` is required (docs/adr/0050 D3).
+	//
+	// A change that widens what the members may see or do — switching
+	// `time_visible_to_members` or `members_create_projects` on, or moving
+	// `time_locked_until` earlier or clearing it — takes a browser session: a
+	// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+	// and the name, stay open to an administrator's token.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5778,6 +5794,11 @@ type ClientInterface interface {
 	// (docs/adr/0033 D6). Not for the administrator's own account
 	// (`403 forbidden`). Unlocking an account that is not locked changes
 	// nothing.
+	//
+	// A browser session only (`403 session_required` for a token): a leaked
+	// token that could unlock an account between guesses would make its
+	// lockout hold never, long after the token's revocation
+	// (docs/adr/0035 D5).
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/lockout (the `UnlockAccount` operationId).
 	UnlockAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6022,7 +6043,8 @@ type ClientInterface interface {
 	// all of them, each link once. A restricted project the caller cannot see is absent, without a
 	// count; the confidential tickets left out are counted per project and in total. Any member, an
 	// agent too; a token restricted to a project is refused, as on every route of the tenant outside
-	// a project. One act `exported` on the tenant, never published.
+	// a project. One act `exported` on the tenant, never published. A recorded read: a session's
+	// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/export (the `ExportTenant` operationId).
 	ExportTenant(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6449,7 +6471,8 @@ type ClientInterface interface {
 	// The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
 	// an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
 	// is `404`. Every export is recorded, one act `exported` on the project — data left the system
-	// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+	// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's
+	// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/export (the `ExportProject` operationId).
 	ExportProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6693,7 +6716,9 @@ type ClientInterface interface {
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+	// 403 `session_required` — admitting another person takes a browser session
+	// (docs/adr/0035 D5). An archived project refuses.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -6711,7 +6736,9 @@ type ClientInterface interface {
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+	// 403 `session_required` — admitting another person takes a browser session
+	// (docs/adr/0035 D5). An archived project refuses.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -6743,7 +6770,9 @@ type ClientInterface interface {
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3).
+	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+	// new assignee is 403 `session_required` — admitting a person takes a browser session
+	// (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -6770,7 +6799,9 @@ type ClientInterface interface {
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3).
+	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+	// new assignee is 403 `session_required` — admitting a person takes a browser session
+	// (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -6834,6 +6865,10 @@ type ClientInterface interface {
 	// everything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system
 	// (docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so
 	// (docs/adr/0059 D4).
+	//
+	// A recorded read (`x-cowork-recorded-read`): a session's request whose
+	// `Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and
+	// no header pass, and a token's request is not looked at (docs/adr/0026 D5).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content (the `DownloadAttachment` operationId).
 	DownloadAttachment(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, attachment AttachmentID, params *DownloadAttachmentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6945,7 +6980,9 @@ type ClientInterface interface {
 	// SetConfidentialWithBody Set or lift the confidential flag
 	//
 	// A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-	// Lifting needs a reason and is recorded (D3).
+	// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+	// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+	// Setting the flag stays open to an administrator's token.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -6955,7 +6992,9 @@ type ClientInterface interface {
 	// SetConfidential Set or lift the confidential flag
 	//
 	// A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-	// Lifting needs a reason and is recorded (D3).
+	// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+	// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+	// Setting the flag stays open to an administrator's token.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -6978,7 +7017,9 @@ type ClientInterface interface {
 	// the caller cannot see is absent. The document carries no `ETag`: it is not
 	// one entity. Every call is recorded: data left the system (D5). It is no
 	// import format (D3): there is no importer yet, and the one ADR 0044
-	// decides refuses a file that carries these sections.
+	// decides refuses a file that carries these sections. A recorded read: a
+	// session's request with `Sec-Fetch-Site` `same-site` or `cross-site` is
+	// `403 csrf` (docs/adr/0026 D5).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
 	ExportTicketContext(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7079,7 +7120,8 @@ type ClientInterface interface {
 	// Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the
 	// body, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the
 	// document is never answered 304. Every call is recorded: data left the system
-	// (docs/adr/0044 D5).
+	// (docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`
+	// `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown (the `ExportTicket` operationId).
 	ExportTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7860,7 +7902,9 @@ func (c *Client) ListMyNext(ctx context.Context, params *ListMyNextParams, reqEd
 // ChangeMyPasswordWithBody Change the password of the person's local account
 //
 // Needs the current password, which counts like a login attempt towards
-// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// the lockout of the account and the throttle of the client's address —
+// `429 too_many_attempts` with `Retry-After` before it is hashed
+// (docs/adr/0033 D6). The new one must be as long
 // as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 // other session of the account ends (D4), and a temporary password is no
 // longer temporary. The local administrator's password is set by the
@@ -7884,7 +7928,9 @@ func (c *Client) ChangeMyPasswordWithBody(ctx context.Context, contentType strin
 // ChangeMyPassword Change the password of the person's local account
 //
 // Needs the current password, which counts like a login attempt towards
-// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// the lockout of the account and the throttle of the client's address —
+// `429 too_many_attempts` with `Retry-After` before it is hashed
+// (docs/adr/0033 D6). The new one must be as long
 // as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 // other session of the account ends (D4), and a temporary password is no
 // longer temporary. The local administrator's password is set by the
@@ -8231,6 +8277,12 @@ func (c *Client) GetTenant(ctx context.Context, tenant TenantSlug, reqEditors ..
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 // `If-Match` is required (docs/adr/0050 D3).
 //
+// A change that widens what the members may see or do — switching
+// `time_visible_to_members` or `members_create_projects` on, or moving
+// `time_locked_until` earlier or clearing it — takes a browser session: a
+// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+// and the name, stay open to an administrator's token.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with PATCH /api/v1/tenants/{tenant} (the `UpdateTenant` operationId).
@@ -8250,6 +8302,12 @@ func (c *Client) UpdateTenantWithBody(ctx context.Context, tenant TenantSlug, pa
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 // `If-Match` is required (docs/adr/0050 D3).
+//
+// A change that widens what the members may see or do — switching
+// `time_visible_to_members` or `members_create_projects` on, or moving
+// `time_locked_until` earlier or clearing it — takes a browser session: a
+// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+// and the name, stay open to an administrator's token.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -8371,6 +8429,11 @@ func (c *Client) DeactivateAccount(ctx context.Context, tenant TenantSlug, usern
 // (docs/adr/0033 D6). Not for the administrator's own account
 // (`403 forbidden`). Unlocking an account that is not locked changes
 // nothing.
+//
+// A browser session only (`403 session_required` for a token): a leaked
+// token that could unlock an account between guesses would make its
+// lockout hold never, long after the token's revocation
+// (docs/adr/0035 D5).
 //
 // Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/lockout (the `UnlockAccount` operationId).
 func (c *Client) UnlockAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -8785,7 +8848,8 @@ func (c *Client) RestoreTicket(ctx context.Context, tenant TenantSlug, key Ticke
 // all of them, each link once. A restricted project the caller cannot see is absent, without a
 // count; the confidential tickets left out are counted per project and in total. Any member, an
 // agent too; a token restricted to a project is refused, as on every route of the tenant outside
-// a project. One act `exported` on the tenant, never published.
+// a project. One act `exported` on the tenant, never published. A recorded read: a session's
+// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/export (the `ExportTenant` operationId).
 func (c *Client) ExportTenant(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -9522,7 +9586,8 @@ func (c *Client) ArchiveProject(ctx context.Context, tenant TenantSlug, project 
 // The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
 // an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
 // is `404`. Every export is recorded, one act `exported` on the project — data left the system
-// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's
+// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/export (the `ExportProject` operationId).
 func (c *Client) ExportProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -9906,7 +9971,9 @@ func (c *Client) ListProjectTickets(ctx context.Context, tenant TenantSlug, proj
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+// 403 `session_required` — admitting another person takes a browser session
+// (docs/adr/0035 D5). An archived project refuses.
 //
 // Takes any type of body and a specified content type.
 //
@@ -9934,7 +10001,9 @@ func (c *Client) CreateTicketWithBody(ctx context.Context, tenant TenantSlug, pr
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+// 403 `session_required` — admitting another person takes a browser session
+// (docs/adr/0035 D5). An archived project refuses.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -9996,7 +10065,9 @@ func (c *Client) GetTicket(ctx context.Context, tenant TenantSlug, project Proje
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 // makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3).
+// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+// new assignee is 403 `session_required` — admitting a person takes a browser session
+// (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -10033,7 +10104,9 @@ func (c *Client) UpdateTicketWithBody(ctx context.Context, tenant TenantSlug, pr
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 // makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3).
+// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+// new assignee is 403 `session_required` — admitting a person takes a browser session
+// (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -10147,6 +10220,10 @@ func (c *Client) GetAttachment(ctx context.Context, tenant TenantSlug, project P
 // everything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system
 // (docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so
 // (docs/adr/0059 D4).
+//
+// A recorded read (`x-cowork-recorded-read`): a session's request whose
+// `Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and
+// no header pass, and a token's request is not looked at (docs/adr/0026 D5).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content (the `DownloadAttachment` operationId).
 func (c *Client) DownloadAttachment(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, attachment AttachmentID, params *DownloadAttachmentParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -10378,7 +10455,9 @@ func (c *Client) WithdrawComment(ctx context.Context, tenant TenantSlug, project
 // SetConfidentialWithBody Set or lift the confidential flag
 //
 // A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-// Lifting needs a reason and is recorded (D3).
+// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+// Setting the flag stays open to an administrator's token.
 //
 // Takes any type of body and a specified content type.
 //
@@ -10398,7 +10477,9 @@ func (c *Client) SetConfidentialWithBody(ctx context.Context, tenant TenantSlug,
 // SetConfidential Set or lift the confidential flag
 //
 // A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-// Lifting needs a reason and is recorded (D3).
+// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+// Setting the flag stays open to an administrator's token.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -10431,7 +10512,9 @@ func (c *Client) SetConfidential(ctx context.Context, tenant TenantSlug, project
 // the caller cannot see is absent. The document carries no `ETag`: it is not
 // one entity. Every call is recorded: data left the system (D5). It is no
 // import format (D3): there is no importer yet, and the one ADR 0044
-// decides refuses a file that carries these sections.
+// decides refuses a file that carries these sections. A recorded read: a
+// session's request with `Sec-Fetch-Site` `same-site` or `cross-site` is
+// `403 csrf` (docs/adr/0026 D5).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
 func (c *Client) ExportTicketContext(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -10632,7 +10715,8 @@ func (c *Client) LinkTickets(ctx context.Context, tenant TenantSlug, project Pro
 // Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the
 // body, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the
 // document is never answered 304. Every call is recorded: data left the system
-// (docs/adr/0044 D5).
+// (docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`
+// `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown (the `ExportTicket` operationId).
 func (c *Client) ExportTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -20626,7 +20710,9 @@ type ClientWithResponsesInterface interface {
 	// ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
 	//
 	// Needs the current password, which counts like a login attempt towards
-	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// the lockout of the account and the throttle of the client's address —
+	// `429 too_many_attempts` with `Retry-After` before it is hashed
+	// (docs/adr/0033 D6). The new one must be as long
 	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 	// other session of the account ends (D4), and a temporary password is no
 	// longer temporary. The local administrator's password is set by the
@@ -20640,7 +20726,9 @@ type ClientWithResponsesInterface interface {
 	// ChangeMyPasswordWithResponse Change the password of the person's local account
 	//
 	// Needs the current password, which counts like a login attempt towards
-	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// the lockout of the account and the throttle of the client's address —
+	// `429 too_many_attempts` with `Retry-After` before it is hashed
+	// (docs/adr/0033 D6). The new one must be as long
 	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 	// other session of the account ends (D4), and a temporary password is no
 	// longer temporary. The local administrator's password is set by the
@@ -20865,6 +20953,12 @@ type ClientWithResponsesInterface interface {
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 	// `If-Match` is required (docs/adr/0050 D3).
 	//
+	// A change that widens what the members may see or do — switching
+	// `time_visible_to_members` or `members_create_projects` on, or moving
+	// `time_locked_until` earlier or clearing it — takes a browser session: a
+	// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+	// and the name, stay open to an administrator's token.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /api/v1/tenants/{tenant} (the `UpdateTenant` operationId).
@@ -20874,6 +20968,12 @@ type ClientWithResponsesInterface interface {
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 	// `If-Match` is required (docs/adr/0050 D3).
+	//
+	// A change that widens what the members may see or do — switching
+	// `time_visible_to_members` or `members_create_projects` on, or moving
+	// `time_locked_until` earlier or clearing it — takes a browser session: a
+	// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+	// and the name, stay open to an administrator's token.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -20949,6 +21049,11 @@ type ClientWithResponsesInterface interface {
 	// (docs/adr/0033 D6). Not for the administrator's own account
 	// (`403 forbidden`). Unlocking an account that is not locked changes
 	// nothing.
+	//
+	// A browser session only (`403 session_required` for a token): a leaked
+	// token that could unlock an account between guesses would make its
+	// lockout hold never, long after the token's revocation
+	// (docs/adr/0035 D5).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -21215,7 +21320,8 @@ type ClientWithResponsesInterface interface {
 	// all of them, each link once. A restricted project the caller cannot see is absent, without a
 	// count; the confidential tickets left out are counted per project and in total. Any member, an
 	// agent too; a token restricted to a project is refused, as on every route of the tenant outside
-	// a project. One act `exported` on the tenant, never published.
+	// a project. One act `exported` on the tenant, never published. A recorded read: a session's
+	// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -21668,7 +21774,8 @@ type ClientWithResponsesInterface interface {
 	// The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
 	// an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
 	// is `404`. Every export is recorded, one act `exported` on the project — data left the system
-	// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+	// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's
+	// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -21922,7 +22029,9 @@ type ClientWithResponsesInterface interface {
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+	// 403 `session_required` — admitting another person takes a browser session
+	// (docs/adr/0035 D5). An archived project refuses.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -21940,7 +22049,9 @@ type ClientWithResponsesInterface interface {
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+	// 403 `session_required` — admitting another person takes a browser session
+	// (docs/adr/0035 D5). An archived project refuses.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -21976,7 +22087,9 @@ type ClientWithResponsesInterface interface {
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3).
+	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+	// new assignee is 403 `session_required` — admitting a person takes a browser session
+	// (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -22003,7 +22116,9 @@ type ClientWithResponsesInterface interface {
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3).
+	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+	// new assignee is 403 `session_required` — admitting a person takes a browser session
+	// (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -22073,6 +22188,10 @@ type ClientWithResponsesInterface interface {
 	// everything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system
 	// (docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so
 	// (docs/adr/0059 D4).
+	//
+	// A recorded read (`x-cowork-recorded-read`): a session's request whose
+	// `Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and
+	// no header pass, and a token's request is not looked at (docs/adr/0026 D5).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -22196,7 +22315,9 @@ type ClientWithResponsesInterface interface {
 	// SetConfidentialWithBodyWithResponse Set or lift the confidential flag
 	//
 	// A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-	// Lifting needs a reason and is recorded (D3).
+	// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+	// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+	// Setting the flag stays open to an administrator's token.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -22206,7 +22327,9 @@ type ClientWithResponsesInterface interface {
 	// SetConfidentialWithResponse Set or lift the confidential flag
 	//
 	// A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-	// Lifting needs a reason and is recorded (D3).
+	// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+	// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+	// Setting the flag stays open to an administrator's token.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -22229,7 +22352,9 @@ type ClientWithResponsesInterface interface {
 	// the caller cannot see is absent. The document carries no `ETag`: it is not
 	// one entity. Every call is recorded: data left the system (D5). It is no
 	// import format (D3): there is no importer yet, and the one ADR 0044
-	// decides refuses a file that carries these sections.
+	// decides refuses a file that carries these sections. A recorded read: a
+	// session's request with `Sec-Fetch-Site` `same-site` or `cross-site` is
+	// `403 csrf` (docs/adr/0026 D5).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -22342,7 +22467,8 @@ type ClientWithResponsesInterface interface {
 	// Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the
 	// body, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the
 	// document is never answered 304. Every call is recorded: data left the system
-	// (docs/adr/0044 D5).
+	// (docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`
+	// `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -30639,7 +30765,9 @@ func (c *ClientWithResponses) ListMyNextWithResponse(ctx context.Context, params
 // ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
 //
 // Needs the current password, which counts like a login attempt towards
-// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// the lockout of the account and the throttle of the client's address —
+// `429 too_many_attempts` with `Retry-After` before it is hashed
+// (docs/adr/0033 D6). The new one must be as long
 // as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 // other session of the account ends (D4), and a temporary password is no
 // longer temporary. The local administrator's password is set by the
@@ -30659,7 +30787,9 @@ func (c *ClientWithResponses) ChangeMyPasswordWithBodyWithResponse(ctx context.C
 // ChangeMyPasswordWithResponse Change the password of the person's local account
 //
 // Needs the current password, which counts like a login attempt towards
-// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// the lockout of the account and the throttle of the client's address —
+// `429 too_many_attempts` with `Retry-After` before it is hashed
+// (docs/adr/0033 D6). The new one must be as long
 // as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 // other session of the account ends (D4), and a temporary password is no
 // longer temporary. The local administrator's password is set by the
@@ -30968,6 +31098,12 @@ func (c *ClientWithResponses) GetTenantWithResponse(ctx context.Context, tenant 
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 // `If-Match` is required (docs/adr/0050 D3).
 //
+// A change that widens what the members may see or do — switching
+// `time_visible_to_members` or `members_create_projects` on, or moving
+// `time_locked_until` earlier or clearing it — takes a browser session: a
+// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+// and the name, stay open to an administrator's token.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PATCH /api/v1/tenants/{tenant} (the `UpdateTenant` operationId).
@@ -30983,6 +31119,12 @@ func (c *ClientWithResponses) UpdateTenantWithBodyWithResponse(ctx context.Conte
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 // `If-Match` is required (docs/adr/0050 D3).
+//
+// A change that widens what the members may see or do — switching
+// `time_visible_to_members` or `members_create_projects` on, or moving
+// `time_locked_until` earlier or clearing it — takes a browser session: a
+// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+// and the name, stay open to an administrator's token.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -31088,6 +31230,11 @@ func (c *ClientWithResponses) DeactivateAccountWithResponse(ctx context.Context,
 // (docs/adr/0033 D6). Not for the administrator's own account
 // (`403 forbidden`). Unlocking an account that is not locked changes
 // nothing.
+//
+// A browser session only (`403 session_required` for a token): a leaked
+// token that could unlock an account between guesses would make its
+// lockout hold never, long after the token's revocation
+// (docs/adr/0035 D5).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -31456,7 +31603,8 @@ func (c *ClientWithResponses) RestoreTicketWithResponse(ctx context.Context, ten
 // all of them, each link once. A restricted project the caller cannot see is absent, without a
 // count; the confidential tickets left out are counted per project and in total. Any member, an
 // agent too; a token restricted to a project is refused, as on every route of the tenant outside
-// a project. One act `exported` on the tenant, never published.
+// a project. One act `exported` on the tenant, never published. A recorded read: a session's
+// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -32095,7 +32243,8 @@ func (c *ClientWithResponses) ArchiveProjectWithResponse(ctx context.Context, te
 // The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
 // an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
 // is `404`. Every export is recorded, one act `exported` on the project — data left the system
-// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's
+// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -32433,7 +32582,9 @@ func (c *ClientWithResponses) ListProjectTicketsWithResponse(ctx context.Context
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+// 403 `session_required` — admitting another person takes a browser session
+// (docs/adr/0035 D5). An archived project refuses.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -32457,7 +32608,9 @@ func (c *ClientWithResponses) CreateTicketWithBodyWithResponse(ctx context.Conte
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+// 403 `session_required` — admitting another person takes a browser session
+// (docs/adr/0035 D5). An archived project refuses.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -32511,7 +32664,9 @@ func (c *ClientWithResponses) GetTicketWithResponse(ctx context.Context, tenant 
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 // makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3).
+// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+// new assignee is 403 `session_required` — admitting a person takes a browser session
+// (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -32544,7 +32699,9 @@ func (c *ClientWithResponses) UpdateTicketWithBodyWithResponse(ctx context.Conte
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 // makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3).
+// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+// new assignee is 403 `session_required` — admitting a person takes a browser session
+// (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -32644,6 +32801,10 @@ func (c *ClientWithResponses) GetAttachmentWithResponse(ctx context.Context, ten
 // everything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system
 // (docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so
 // (docs/adr/0059 D4).
+//
+// A recorded read (`x-cowork-recorded-read`): a session's request whose
+// `Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and
+// no header pass, and a token's request is not looked at (docs/adr/0026 D5).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -32839,7 +33000,9 @@ func (c *ClientWithResponses) WithdrawCommentWithResponse(ctx context.Context, t
 // SetConfidentialWithBodyWithResponse Set or lift the confidential flag
 //
 // A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-// Lifting needs a reason and is recorded (D3).
+// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+// Setting the flag stays open to an administrator's token.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -32855,7 +33018,9 @@ func (c *ClientWithResponses) SetConfidentialWithBodyWithResponse(ctx context.Co
 // SetConfidentialWithResponse Set or lift the confidential flag
 //
 // A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-// Lifting needs a reason and is recorded (D3).
+// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+// Setting the flag stays open to an administrator's token.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -32884,7 +33049,9 @@ func (c *ClientWithResponses) SetConfidentialWithResponse(ctx context.Context, t
 // the caller cannot see is absent. The document carries no `ETag`: it is not
 // one entity. Every call is recorded: data left the system (D5). It is no
 // import format (D3): there is no importer yet, and the one ADR 0044
-// decides refuses a file that carries these sections.
+// decides refuses a file that carries these sections. A recorded read: a
+// session's request with `Sec-Fetch-Site` `same-site` or `cross-site` is
+// `403 csrf` (docs/adr/0026 D5).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -33057,7 +33224,8 @@ func (c *ClientWithResponses) LinkTicketsWithResponse(ctx context.Context, tenan
 // Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the
 // body, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the
 // document is never answered 304. Every call is recorded: data left the system
-// (docs/adr/0044 D5).
+// (docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`
+// `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 //
 // Returns a wrapper object for the known response body format(s).
 //

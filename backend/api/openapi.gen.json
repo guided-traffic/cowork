@@ -9668,7 +9668,7 @@
     },
     "/api/v1/me/password": {
       "put": {
-        "description": "Needs the current password, which counts like a login attempt towards\nthe lockout of the account (docs/adr/0033 D6). The new one must be as long\nas `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every\nother session of the account ends (D4), and a temporary password is no\nlonger temporary. The local administrator's password is set by the\nconfiguration and cannot be changed here (`403 forbidden`).\n",
+        "description": "Needs the current password, which counts like a login attempt towards\nthe lockout of the account and the throttle of the client's address —\n`429 too_many_attempts` with `Retry-After` before it is hashed\n(docs/adr/0033 D6). The new one must be as long\nas `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every\nother session of the account ends (D4), and a temporary password is no\nlonger temporary. The local administrator's password is set by the\nconfiguration and cannot be changed here (`403 forbidden`).\n",
         "operationId": "changeMyPassword",
         "requestBody": {
           "content": {
@@ -10202,7 +10202,7 @@
         }
       ],
       "patch": {
-        "description": "An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).\n`If-Match` is required (docs/adr/0050 D3).\n",
+        "description": "An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).\n`If-Match` is required (docs/adr/0050 D3).\n\nA change that widens what the members may see or do — switching\n`time_visible_to_members` or `members_create_projects` on, or moving\n`time_locked_until` earlier or clearing it — takes a browser session: a\ntoken is `403 session_required` (docs/adr/0035 D5). The other direction,\nand the name, stay open to an administrator's token.\n",
         "operationId": "updateTenant",
         "parameters": [
           {
@@ -10362,7 +10362,7 @@
     },
     "/api/v1/tenants/{tenant}/accounts/{username}/lockout": {
       "delete": {
-        "description": "Forgets the failed attempts and the lock of the username\n(docs/adr/0033 D6). Not for the administrator's own account\n(`403 forbidden`). Unlocking an account that is not locked changes\nnothing.\n",
+        "description": "Forgets the failed attempts and the lock of the username\n(docs/adr/0033 D6). Not for the administrator's own account\n(`403 forbidden`). Unlocking an account that is not locked changes\nnothing.\n\nA browser session only (`403 session_required` for a token): a leaked\ntoken that could unlock an account between guesses would make its\nlockout hold never, long after the token's revocation\n(docs/adr/0035 D5).\n",
         "operationId": "unlockAccount",
         "responses": {
           "204": {
@@ -10372,6 +10372,11 @@
             "$ref": "#/components/responses/Problem"
           }
         },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Lift the lockout of an account",
         "tags": [
           "accounts"
@@ -11074,7 +11079,7 @@
     },
     "/api/v1/tenants/{tenant}/export": {
       "get": {
-        "description": "The export of every project of the tenant the caller can see, archived ones included, in one\n`tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all\nof them under `\u003ctenant\u003e/`, and one `manifest.json`, `links.json` and `attachments.json` over\nall of them, each link once. A restricted project the caller cannot see is absent, without a\ncount; the confidential tickets left out are counted per project and in total. Any member, an\nagent too; a token restricted to a project is refused, as on every route of the tenant outside\na project. One act `exported` on the tenant, never published.\n",
+        "description": "The export of every project of the tenant the caller can see, archived ones included, in one\n`tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all\nof them under `\u003ctenant\u003e/`, and one `manifest.json`, `links.json` and `attachments.json` over\nall of them, each link once. A restricted project the caller cannot see is absent, without a\ncount; the confidential tickets left out are counted per project and in total. Any member, an\nagent too; a token restricted to a project is refused, as on every route of the tenant outside\na project. One act `exported` on the tenant, never published. A recorded read: a session's\nrequest with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).\n",
         "operationId": "exportTenant",
         "responses": {
           "200": {
@@ -11103,7 +11108,8 @@
         "summary": "The tenant's tickets as an archive, the union over its projects",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -12123,7 +12129,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/export": {
       "get": {
-        "description": "A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done\nand dropped ones included, deleted ones not —, its `…/markdown` document named by its key,\n`\u003ctenant\u003e/\u003cPROJECT\u003e-\u003cn\u003e.md`; and three manifests at the root:\n\n- `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of\n  tickets, the time, the exporter, and the confidential tickets the caller cannot see and the\n  archive therefore leaves out, as a count (docs/adr/0065 D5);\n- `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends\n  the caller can see, once, by its source key, its type and its target key;\n- `attachments.json`, an array of `ExportAttachment`: every attachment of those tickets by its\n  ticket, name, type, size and URL — never its bytes (docs/adr/0016 D5).\n\nThe importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,\nan agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see\nis `404`. Every export is recorded, one act `exported` on the project — data left the system\n(docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.\n",
+        "description": "A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done\nand dropped ones included, deleted ones not —, its `…/markdown` document named by its key,\n`\u003ctenant\u003e/\u003cPROJECT\u003e-\u003cn\u003e.md`; and three manifests at the root:\n\n- `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of\n  tickets, the time, the exporter, and the confidential tickets the caller cannot see and the\n  archive therefore leaves out, as a count (docs/adr/0065 D5);\n- `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends\n  the caller can see, once, by its source key, its type and its target key;\n- `attachments.json`, an array of `ExportAttachment`: every attachment of those tickets by its\n  ticket, name, type, size and URL — never its bytes (docs/adr/0016 D5).\n\nThe importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,\nan agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see\nis `404`. Every export is recorded, one act `exported` on the project — data left the system\n(docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's\nrequest with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.\n",
         "operationId": "exportProject",
         "responses": {
           "200": {
@@ -12152,7 +12158,8 @@
         "summary": "The project's tickets as an archive",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -12974,7 +12981,7 @@
         }
       ],
       "post": {
-        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is\nthe project's next. `horizon` is the ticket's horizon, a planning category independent of\nthe state, `later` when left out; another horizon is the ticket's set horizon, set by the\ncaller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,\nthe end of its horizon, or directly `after` or `before` the open ticket of the project\nnamed, which must stand in the same horizon (docs/adr/0014 D2). An agent needs\n`set-horizon` for a horizon other than `later` and `rank` for a place, else 403\n`agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket\nconfidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own\nperson, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.\n",
+        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is\nthe project's next. `horizon` is the ticket's horizon, a planning category independent of\nthe state, `later` when left out; another horizon is the ticket's set horizon, set by the\ncaller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,\nthe end of its horizon, or directly `after` or `before` the open ticket of the project\nnamed, which must stand in the same horizon (docs/adr/0014 D2). An agent needs\n`set-horizon` for a horizon other than `later` and `rank` for a place, else 403\n`agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket\nconfidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own\nperson, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else\n403 `session_required` — admitting another person takes a browser session\n(docs/adr/0035 D5). An archived project refuses.\n",
         "operationId": "createTicket",
         "parameters": [
           {
@@ -13126,7 +13133,7 @@
         }
       ],
       "patch": {
-        "description": "`If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new\nassignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change\nmakes confidential — only to its own person or to nobody, and another new assignee is 403\n`agent_forbidden` (docs/adr/0043 D3).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
+        "description": "`If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new\nassignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change\nmakes confidential — only to its own person or to nobody, and another new assignee is 403\n`agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another\nnew assignee is 403 `session_required` — admitting a person takes a browser session\n(docs/adr/0035 D5).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
         "operationId": "updateTicket",
         "parameters": [
           {
@@ -13382,7 +13389,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content": {
       "get": {
-        "description": "Streamed from storage after the ticket's read check, with the detected type, `nosniff`,\n`Content-Security-Policy: sandbox`, inline for raster images and a download for\neverything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system\n(docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so\n(docs/adr/0059 D4).\n",
+        "description": "Streamed from storage after the ticket's read check, with the detected type, `nosniff`,\n`Content-Security-Policy: sandbox`, inline for raster images and a download for\neverything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system\n(docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so\n(docs/adr/0059 D4).\n\nA recorded read (`x-cowork-recorded-read`): a session's request whose\n`Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and\nno header pass, and a token's request is not looked at (docs/adr/0026 D5).\n",
         "operationId": "downloadAttachment",
         "parameters": [
           {
@@ -13442,7 +13449,8 @@
         "summary": "An attachment's bytes",
         "tags": [
           "attachments"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -13868,7 +13876,7 @@
         }
       ],
       "put": {
-        "description": "A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).\nLifting needs a reason and is recorded (D3).\n",
+        "description": "A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).\nLifting needs a reason and is recorded (D3), and a browser session: it shows the\nticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).\nSetting the flag stays open to an administrator's token.\n",
         "operationId": "setConfidential",
         "parameters": [
           {
@@ -13917,7 +13925,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context": {
       "get": {
-        "description": "The canonical document of `…/markdown` (docs/adr/0044 D1) under one first\nline, `\u003c!-- cowork: context of \u003ckey\u003e, exported \u003ctime\u003e by \u003cperson\u003e (via\n\u003cagent\u003e) — not an import format --\u003e`, followed by read-only sections in a\nfixed order (D2): `## Links` (typed, read from this ticket, each other\nend's key, title, state and assignee), `## Prerequisites` (the tree of the\ntickets that block it, to a depth of eight, with state, assignee and the\nimplementation stage, and the count of open ones), `## Recent comments`\n(the last `comments`, oldest of them first, each quoted under its author,\nagent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`\n(name, type, size and URL, never content) and `## Recent activity` (the\nlast `activity`). `comments=0` or `activity=0` leaves its section out. What\nthe caller cannot see is absent. The document carries no `ETag`: it is not\none entity. Every call is recorded: data left the system (D5). It is no\nimport format (D3): there is no importer yet, and the one ADR 0044\ndecides refuses a file that carries these sections.\n",
+        "description": "The canonical document of `…/markdown` (docs/adr/0044 D1) under one first\nline, `\u003c!-- cowork: context of \u003ckey\u003e, exported \u003ctime\u003e by \u003cperson\u003e (via\n\u003cagent\u003e) — not an import format --\u003e`, followed by read-only sections in a\nfixed order (D2): `## Links` (typed, read from this ticket, each other\nend's key, title, state and assignee), `## Prerequisites` (the tree of the\ntickets that block it, to a depth of eight, with state, assignee and the\nimplementation stage, and the count of open ones), `## Recent comments`\n(the last `comments`, oldest of them first, each quoted under its author,\nagent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`\n(name, type, size and URL, never content) and `## Recent activity` (the\nlast `activity`). `comments=0` or `activity=0` leaves its section out. What\nthe caller cannot see is absent. The document carries no `ETag`: it is not\none entity. Every call is recorded: data left the system (D5). It is no\nimport format (D3): there is no importer yet, and the one ADR 0044\ndecides refuses a file that carries these sections. A recorded read: a\nsession's request with `Sec-Fetch-Site` `same-site` or `cross-site` is\n`403 csrf` (docs/adr/0026 D5).\n",
         "operationId": "exportTicketContext",
         "parameters": [
           {
@@ -13962,7 +13970,8 @@
         "summary": "The ticket for reading, with what surrounds it",
         "tags": [
           "tickets"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -14278,7 +14287,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown": {
       "get": {
-        "description": "Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the\nbody, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the\ndocument is never answered 304. Every call is recorded: data left the system\n(docs/adr/0044 D5).\n",
+        "description": "Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the\nbody, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the\ndocument is never answered 304. Every call is recorded: data left the system\n(docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`\n`same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).\n",
         "operationId": "exportTicket",
         "responses": {
           "200": {
@@ -14304,7 +14313,8 @@
         "summary": "The canonical Markdown of the ticket",
         "tags": [
           "tickets"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {

@@ -5,7 +5,8 @@
 Accepted, amended 2026-10-01 the same day (D1, D2: example manifests are provided after
 all, syntax-checked, with the tests remaining what is verified), amended 2026-10-02 (D3, D4,
 D5: the owner role of ADR 0021 D2 has its own credential), amended 2026-10-04 (D3: the chat's
-key row). Decided by the owner as the
+key row), amended 2026-10-07 by the owner (D3: while an inline credential is set, the backend pods
+carry the release's revision, not a checksum of the credential; built 2026-10-09). Decided by the owner as the
 answer to the catalog questions "how is PostgreSQL provided?" and "how is the object storage
 provided?", taken together: both external, the chart consuming references, over optional
 subcharts and over an umbrella chart; the owner first declined example manifests and then
@@ -160,7 +161,24 @@ pattern for each of them:
 
 Where an earlier record allows a value rendered from the values file (`database.url`,
 `localAdmin.password`), that stays as the throw-away path with its warning; the reference
-is the production path.
+is the production path. *(Amended 2026-10-07 by the owner's answer to "do the pod's annotations
+keep a checksum of an inline credential?" — one annotation with the release's revision, over
+dropping the annotations and over keeping the checksums named as a gap; built 2026-10-09:)* ~~a
+changed inline value rolls the backend pods through a checksum annotation of the value~~
+(`checksum/database-secret`, `checksum/database-owner-secret`, `checksum/local-admin-secret`, the
+plain SHA-256 of a URL or of `user:password`, which a namespace viewer without access to Secrets
+reads in the pod template and can guess offline). **While any inline credential is set — the
+runtime URL, the owner URL while the init container migrates, the local administrator's username
+and password — the backend pod template carries one annotation,
+`cowork/inline-credentials-revision`, the release's revision, and no hash of a credential**
+([`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml); `make
+helm-template` renders `ci/inline-url-values.yaml` and refuses a `checksum/` annotation). Every
+upgrade then restarts the pods, so a changed value — a rotated local administrator's password among
+them, which the start-up synchronisation applies only at a start — takes effect at once. A checksum
+over every input of the template would not salt it: every other input is readable by the same
+viewer or is the public chart. Cost: on the inline path every upgrade restarts the pods; under
+`helm template` and Argo CD the revision stays `1`, and a changed inline value takes a manual
+`rollout restart`, as a referenced Secret does.
 
 *(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* for each database
 role, `keys.url` empty selects the components, whatever else is set; `existingSecretKey`, the URL's

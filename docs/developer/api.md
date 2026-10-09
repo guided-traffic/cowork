@@ -154,8 +154,11 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    ([Authentication](#authentication)); the `auth.Principal` and the `store.Caller` — with the
    keyed hash of the client's address every audit row of the request carries — go into the context. A public operation that writes and says
    `x-cowork-origin-check: true` — the login — gets the origin half of the CSRF check instead.
-   **For a request authenticated by a session** three more rules run here, before the tenant
-   boundary: **the CSRF check** on an unsafe method (`403 csrf`); a session the agent header marks
+   **For a request authenticated by a session** four more rules run here, before the tenant
+   boundary: **the CSRF check** on an unsafe method (`403 csrf`); on an operation marked
+   `x-cowork-recorded-read` — the five reads that record an act — the page it comes from, where
+   `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (`recordedRead`, `fromOwnPages`;
+   [csrf.md](../security/csrf.md#the-reads-that-record-an-act)); a session the agent header marks
    is refused an operation that takes a session only (`403 agent_forbidden`); and the gate of a
    temporary password (`403 password_change_required` for everything but `getMe`,
    `changeMyPassword` and `logout`) — `sessionRules` in [`api.go`](../../backend/internal/api/api.go).
@@ -166,11 +169,18 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
 7. **Timeout:** the context gets `COWORK_REQUEST_TIMEOUT` (0 disables), and `bodyDeadline`
    holds reading the body to the same deadline — a read deadline on the connection, lifted once
    the body is read, so a body that trickles in fails instead of holding the request.
-8. **Body limit** (`limitBody` in [`validate.go`](../../backend/internal/api/validate.go)): a
-   JSON body `COWORK_MAX_JSON_BODY` (0 disables), a multipart upload
+8. **Body type and limit** (`limitBody` in [`validate.go`](../../backend/internal/api/validate.go)):
+   a body whose `Content-Type` the operation does not declare — a JSON body sent as
+   `multipart/form-data`, an upload sent as JSON, a body without a type — is
+   `415 unsupported_media_type` before a byte is read (`acceptedBody`, matching as the validator
+   does: parameters ignored); a request without a body and an operation that takes none are not
+   looked at. Then the limit **of the operation**, as the document declares its body
+   (`declaresMultipart`), never of the request's `Content-Type`: a JSON body
+   `COWORK_MAX_JSON_BODY` (0 disables), a multipart upload
    `COWORK_ATTACHMENT_MAX_BYTES` plus 64 KiB of multipart overhead — an import's upload
    (`createImport`) `COWORK_MAX_IMPORT_BYTES` plus the same — (0 disables). A declared length above it is
-   `413 payload_too_large` before anything is read; a longer body fails while it is read.
+   `413 payload_too_large` before anything is read; a longer body fails while it is read
+   (`TestABodyIsTheTypeTheOperationDeclares`, `TestABodyOfATypeTheRouteDoesNotTakeIsRefusedBeforeItIsRead`).
 9. **Request validation** against the document (kin-openapi `openapi3filter`): every error is an
    `errors[]` entry of `400 validation_failed` — a body's failure at its field, a parameter at
    `query:<name>` or `header:<name>`, one entry whose message holds the failures of a repeated
@@ -183,8 +193,9 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    `x-cowork-open-query`, the identity provider's callback, to which an issuer may add its own; a
    path parameter that breaks its schema is
    `404`, because it names nothing that can exist; `format: uuid` accepts any UUID version (the
-   ids are UUIDv7); defaults are not written into the request — the handlers apply them; a
-   multipart body is left to the handler. The validator sees the route without its security
+   ids are UUIDv7); defaults are not written into the request — the handlers apply them; the body
+   of an operation that declares a multipart one is left to the handler — the operation's
+   declaration decides, never the request's `Content-Type`. The validator sees the route without its security
    requirement (`unsecured`): step 4 has authenticated the caller, and the validator's own
    security check would read the whole body into memory before the handler checks anything.
 10. The generated mux dispatches to the strict handler — or, with `Options.ValidateResponses`,
@@ -205,20 +216,28 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
 ([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
 `sessionCookie` the operation declares — the default is both, written once at the root; the
-eighteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
+nineteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
 `resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
 `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`,
 `runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`,
-`purgeTicket`, `removeOrphanedObjects`) declare `sessionCookie` alone, the seven public ones declare nothing — and
+`purgeTicket`, `removeOrphanedObjects`, `unlockAccount`) declare `sessionCookie` alone, the seven public ones declare nothing — and
 `authenticate` decides. What the first twelve make — a token, a tenant, an account, a password only
 its setter knows, a role, a mapping, a way into a restricted project — would outlive the revocation
 of a leaked token, which is why a token cannot call them, and so would the chat's capabilities
-(`setMyChat`), what a purge destroys (`purgeTicket`, [ADR 0024] D7 as amended 2026-10-05) and the removal of a consistency check's orphaned objects
-(`removeOrphanedObjects`, ADR 0035 D5 as amended 2026-10-06); a turn of the chat acts with the person's session and its stop ends the session's
+(`setMyChat`), what a purge destroys (`purgeTicket`, [ADR 0024] D7 as amended 2026-10-05), the
+removal of a consistency check's orphaned objects (`removeOrphanedObjects`, ADR 0035 D5 as amended
+2026-10-06), and the unlock of a local account, with which a leaked token could keep its lockout
+from ever holding (`unlockAccount`, ADR 0035 D5 as amended 2026-10-07); a turn of the chat acts with the person's session and its stop ends the session's
 person's turns, and a token's agent has the MCP server; the list of every tenant is a global
 administrator's view of the installation's clients, which a token of theirs does not get
 ([ADR 0033] D1, D5, [ADR 0035] D5, [ADR 0034] D2; the rule is
-[tokens.md](../security/tokens.md#what-only-a-session-does)):
+[tokens.md](../security/tokens.md#what-only-a-session-does)). Three acts of operations that take
+either credential refuse a token `403 session_required` in their handler, in their giving direction
+only: a tenant settings change that widens what the members may see or do (`UpdateTenant` with
+`tenantSettings.gives` and `sessionToGive` in [`tenants.go`](../../backend/internal/api/tenants.go)),
+lifting the confidential flag (`SetConfidential`), and assigning a confidential ticket to anyone but
+the token's own person or the assignee as it was (`mayAssign` in
+[`tickets.go`](../../backend/internal/api/tickets.go)):
 
 - **A request with an `Authorization` header is a token's**, whatever cookie it carries; the
   cookie is not looked at. A valid token on a session-only operation is `403 session_required`
@@ -250,11 +269,9 @@ administrator's view of the installation's clients, which a token of theirs does
   groups are due runs its groups refresh first — the request that claims it waits for the issuer,
   the session's others are served on its groups — and a refresh that ends it is that `401` too
   ([architecture.md](architecture.md#the-groups-refresh-in-the-request-path)). A live session moves
-  its idle clock only for the person's activity — a write that passes the CSRF check, or a read
-  that carries `X-Cowork-Activity: input` (`api.ActivityHeader`, `api.ActivityInput`), which the
-  UI's keep-alive sends after the person's input; no other read, the event stream's included
-  ([ADR 0031] D3; `movesIdleClock`) — and then at most once a minute (`DB.TouchSession`,
-  bookkeeping outside `Mutate`; a failure is logged).
+  its idle clock on every request but a write the CSRF check refuses — every read, the event
+  stream's connection included ([ADR 0031] D3; `movesIdleClock`) — and then at most once a minute
+  (`DB.TouchSession`, bookkeeping outside `Mutate`; a failure is logged).
   The principal has `Session: true`, the cookie's hash in `SessionHash`, the scope `admin` — a
   session has no scope, the role decides — no agent mark but the header's, `GlobalAdmin` and
   `PasswordChangeRequired` from the person. `callerOf` puts the hash into `store.Caller`, which
@@ -293,10 +310,14 @@ at `/auth/` as well as `/api/`; the Ingress routes `/auth/` to the backend like 
 dev proxy forwards it the same way. They are browser flows, but they are no secret: the served document lists them, and a
 script that wants a session can read how.
 
-[`login.go`](../../backend/internal/api/login.go): `LoginLocal` runs `throttled` (the limit per
-client address), `NormaliseUsername`, `DB.LookupLogin`, **one** `passwordFits` — against the stored hash or
-the dummy — and `DB.RecordLoginAttempt` (the lock and the counting in one transaction under the
-username's advisory lock), then `DB.CreateSession` for a success; every failure is the same
+[`login.go`](../../backend/internal/api/login.go): `LoginLocal` runs `NormaliseUsername`,
+`reserveAttempt` (`DB.ReserveLoginAttempt`: the limit per client address, the count and the
+attempt's reservation in one transaction under the address's advisory lock, before any hash),
+`DB.LookupLogin`, **one** `passwordFits` — against the stored hash or the dummy — and
+`DB.RecordLoginAttempt` (the lock and the counting in one transaction under the username's advisory
+lock, the reservation replaced by the outcome's row), then `DB.CreateSession` for a success; the
+password change of [`me.go`](../../backend/internal/api/me.go) runs `reserveAttempt` and
+`RecordLoginAttempt` the same way around its `passwordFits`; every failure is the same
 `invalid_credentials`. `Logout` deletes the session's row, and for a session of the identity
 provider whose issuer names an end-session endpoint answers `200` with its URL instead of `204`.
 The store's side is [data-access.md](data-access.md#the-login-and-the-sessions); the security
@@ -433,7 +454,8 @@ another token and marking notifications read (`write` scope,
    review: …` (ADR 0043 D4), and `mayAssign` in [`tickets.go`](../../backend/internal/api/tickets.go)
    hands `Authorize` the hard-off rule `assigning a confidential ticket to anyone but the agent's
    person` for a filing or a `PATCH` that leaves a ticket confidential with an assignee who is
-   neither the caller's person nor the one it had (ADR 0043 D3, [ADR 0065] D9).
+   neither the caller's person nor the one it had (ADR 0043 D3, [ADR 0065] D9), and answers a
+   token's such assignment `403 session_required` (ADR 0035 D5 as amended 2026-10-07).
 
 | Need | Role, scope | Agent rule | Defined in |
 |---|---|---|---|

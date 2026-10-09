@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/guided-traffic/cowork/backend/internal/auth"
+	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 )
 
@@ -112,10 +114,9 @@ func TestCSRFFailsClosedWithoutABaseURL(t *testing.T) {
 	assert.Nil(t, h.csrf(request(http.MethodGet)), "a read never mutates")
 }
 
-// docs/adr/0031 D3 as amended 2026-10-06: only the person's activity moves a
-// session's idle clock — a write that passes the CSRF check, or a read that
-// carries X-Cowork-Activity: input, which the browser's keep-alive sends; any
-// other value, or none, moves nothing, and neither does a refused write.
+// docs/adr/0031 D3 as amended 2026-10-07: every request of a session moves its
+// idle clock — a read of any kind, from any site, a write that passes the CSRF
+// check — but a write the CSRF check refuses.
 func TestWhatMovesTheIdleClock(t *testing.T) {
 	const base = "https://cowork.example.com"
 	h := &handler{opts: Options{BaseOrigin: base}}
@@ -124,25 +125,22 @@ func TestWhatMovesTheIdleClock(t *testing.T) {
 		r     *http.Request
 		moves bool
 	}{
-		"a read":                         {request(http.MethodGet), false},
-		"the keep-alive's read":          {request(http.MethodGet, ActivityHeader, ActivityInput), true},
-		"a read with another value":      {request(http.MethodGet, ActivityHeader, "yes"), false},
-		"a read with the value shouted":  {request(http.MethodGet, ActivityHeader, "INPUT"), false},
-		"a read with an empty value":     {request(http.MethodGet, ActivityHeader, ""), false},
-		"a POST":                         {request(http.MethodPost, write...), true},
-		"a PUT":                          {request(http.MethodPut, write...), true},
-		"a PATCH":                        {request(http.MethodPatch, write...), true},
-		"a DELETE":                       {request(http.MethodDelete, write...), true},
-		"a write of another origin":      {request(http.MethodPost, "Origin", "https://evil.example.com", "X-Requested-With", "cowork"), false},
-		"a write without the header":     {request(http.MethodPost, "Origin", base), false},
-		"a refused write that is marked": {request(http.MethodPost, "Origin", "https://a.example.com", ActivityHeader, ActivityInput), false},
+		"a read":                     {request(http.MethodGet), true},
+		"a read from another site":   {request(http.MethodGet, "Origin", "https://evil.example.com"), true},
+		"a HEAD":                     {request(http.MethodHead), true},
+		"a POST":                     {request(http.MethodPost, write...), true},
+		"a PUT":                      {request(http.MethodPut, write...), true},
+		"a PATCH":                    {request(http.MethodPatch, write...), true},
+		"a DELETE":                   {request(http.MethodDelete, write...), true},
+		"a write of another origin":  {request(http.MethodPost, "Origin", "https://evil.example.com", "X-Requested-With", "cowork"), false},
+		"a write of a sibling host":  {request(http.MethodPost, "Origin", "https://a.example.com", "X-Requested-With", "cowork"), false},
+		"a write without the header": {request(http.MethodPost, "Origin", base), false},
 	} {
 		assert.Equal(t, c.moves, h.movesIdleClock(c.r), name)
 	}
 	assert.False(t, (&handler{}).movesIdleClock(request(http.MethodPost, write...)),
 		"without COWORK_BASE_URL no write passes the check, and none moves the clock")
-	assert.Equal(t, "X-Cowork-Activity", ActivityHeader)
-	assert.Equal(t, "input", ActivityInput)
+	assert.True(t, (&handler{}).movesIdleClock(request(http.MethodGet)), "a read moves it all the same")
 }
 
 func TestSessionLiveHonoursBothLimits(t *testing.T) {
@@ -234,7 +232,7 @@ func TestCredentialsComeFromTheDocument(t *testing.T) {
 	both := credentials{bearer: true, session: true}
 	for id, want := range map[string]credentials{
 		"getMe": both, "listMyTokens": both, "getTenant": both, "createTicket": both, "streamEvents": both,
-		"listAccounts": both, "unlockAccount": both, "deactivateAccount": both, "endAccountSessions": both,
+		"listAccounts": both, "unlockAccount": {session: true}, "deactivateAccount": both, "endAccountSessions": both,
 		"createMyToken": {session: true}, "changeMyPassword": {session: true}, "createTenant": {session: true}, "logout": {session: true},
 		"createAccount": {session: true}, "resetAccountPassword": {session: true},
 		"getChatAvailability": both, "runChatTurn": {session: true},
@@ -264,13 +262,76 @@ func TestAnAgentSessionIsRefusedWhatOnlyASessionDoes(t *testing.T) {
 	sessionOnly, either := credentials{session: true}, credentials{bearer: true, session: true}
 
 	for _, op := range []string{"createMyToken", "changeMyPassword", "setMemberGrant", "runChatTurn", "logout"} {
-		perr := h.sessionRules(write, agent, op, sessionOnly)
+		perr := h.sessionRules(write, agent, operation(op), sessionOnly)
 		require.NotNil(t, perr, op)
 		assert.Equal(t, problem.AgentForbidden, perr.Code, op)
-		assert.Nil(t, h.sessionRules(write, person, op, sessionOnly), "a person's session may: %s", op)
+		assert.Nil(t, h.sessionRules(write, person, operation(op), sessionOnly), "a person's session may: %s", op)
 	}
-	assert.Nil(t, h.sessionRules(write, agent, "createTicket", either), "the agent rules decide the rest")
-	perr := h.sessionRules(request(http.MethodPost), agent, "createMyToken", sessionOnly)
+	assert.Nil(t, h.sessionRules(write, agent, operation("createTicket"), either), "the agent rules decide the rest")
+	perr := h.sessionRules(request(http.MethodPost), agent, operation("createMyToken"), sessionOnly)
 	require.NotNil(t, perr)
 	assert.Equal(t, problem.Csrf, perr.Code, "the CSRF check comes first")
+}
+
+// operation is an operation of the document by its id alone.
+func operation(id string) *openapi3.Operation { return &openapi3.Operation{OperationID: id} }
+
+// docs/adr/0026 D5 as amended 2026-10-07: a session's request for one of the
+// five recorded reads comes from the installation's own pages — Sec-Fetch-Site
+// same-origin, or none for the address bar — or from a browser that sends no
+// such header; a page on a sibling host or another site is refused. Other
+// reads and a token's request are not looked at.
+func TestARecordedReadComesFromTheInstallationsOwnPages(t *testing.T) {
+	h := &handler{opts: Options{BaseOrigin: "https://cowork.example.com"}}
+	person := auth.Principal{Session: true}
+	token := auth.Principal{Scope: domain.ScopeRead}
+	either := credentials{bearer: true, session: true}
+	read := func(site ...string) *http.Request {
+		r := request(http.MethodGet)
+		for _, s := range site {
+			r.Header.Add("Sec-Fetch-Site", s)
+		}
+		return r
+	}
+
+	doc, _, err := loadDocument("test")
+	require.NoError(t, err)
+	var recorded []string
+	for _, path := range doc.Paths.InMatchingOrder() {
+		for method, op := range doc.Paths.Value(path).Operations() {
+			if recordedRead(op) {
+				recorded = append(recorded, op.OperationID)
+				assert.Equal(t, http.MethodGet, method, "%s is a read", op.OperationID)
+			}
+		}
+	}
+	assert.ElementsMatch(t, []string{"downloadAttachment", "exportTicket", "exportTicketContext", "exportProject", "exportTenant"}, recorded,
+		"the five reads that record an act")
+
+	marked := &openapi3.Operation{OperationID: "downloadAttachment", Extensions: map[string]any{"x-cowork-recorded-read": true}}
+	for name, c := range map[string]struct {
+		r       *http.Request
+		refused bool
+	}{
+		"same-origin":                {read("same-origin"), false},
+		"none":                       {read("none"), false},
+		"no header":                  {read(), false},
+		"same-site":                  {read("same-site"), true},
+		"cross-site":                 {read("cross-site"), true},
+		"cross-site shouted":         {read(" Cross-Site "), true},
+		"a second header cross-site": {read("same-origin", "cross-site"), true},
+		"a list with same-site":      {read("same-origin, same-site"), true},
+		"a value no browser sends":   {read("elsewhere"), false},
+	} {
+		perr := h.sessionRules(c.r, person, marked, either)
+		if !c.refused {
+			assert.Nil(t, perr, name)
+			continue
+		}
+		require.NotNil(t, perr, name)
+		assert.Equal(t, problem.Csrf, perr.Code, name)
+		assert.Equal(t, http.StatusForbidden, perr.Code.Status, name)
+	}
+	assert.Nil(t, h.sessionRules(read("cross-site"), person, operation("getTicket"), either), "a read that records nothing")
+	assert.Nil(t, h.sessionRules(read("cross-site"), token, marked, either), "a token's request carries no cookie")
 }

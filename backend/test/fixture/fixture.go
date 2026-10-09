@@ -238,6 +238,24 @@ func (f *DB) Token(ctx context.Context, spec TokenSpec) (plaintext string, id uu
 	return plaintext, id, nil
 }
 
+// Session creates a browser session of the person, as a local login makes
+// one, live for twelve hours from now, and returns its cookie value, which
+// exists nowhere else (docs/adr/0031 D1).
+func (f *DB) Session(ctx context.Context, userID uuid.UUID) (string, error) {
+	value, hash, err := auth.GenerateSession()
+	if err != nil {
+		return "", err
+	}
+	err = f.pool.QueryRow(ctx,
+		`INSERT INTO sessions (user_id, token_hash, created_at, last_seen_at, expires_at)
+		 VALUES ($1, $2, now(), now(), now() + interval '12 hours') RETURNING id`,
+		userID, hash[:]).Scan(new(uuid.UUID))
+	if err != nil {
+		return "", fmt.Errorf("create session: %w", err)
+	}
+	return value, nil
+}
+
 // TokenHash is the stored hash of a plaintext token, for tests that look a
 // token up directly.
 func TokenHash(plaintext string) [sha256.Size]byte { return auth.HashToken(plaintext) }

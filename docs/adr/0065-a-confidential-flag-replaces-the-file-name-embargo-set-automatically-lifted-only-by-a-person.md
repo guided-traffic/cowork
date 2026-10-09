@@ -6,7 +6,10 @@ Accepted, amended 2026-10-06 by the owner (D9: an agent assigns a confidential t
 its own person or to nobody — the answer to the review after experience of the agent acts no
 record had listed, a hard-off rule of
 [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
-D3 — built the same day). Date: 2026-10-01. Decided by the owner as the answer to the catalog
+D3 — built the same day), and 2026-10-07 by the owner's answer recorded in
+[ADR 0035](0035-personal-access-tokens.md) D5 (D3: lifting the flag takes a browser session; D9: a
+person's token, too, assigns a confidential ticket only to its own person or keeps the assignee;
+built 2026-10-09). Date: 2026-10-01. Decided by the owner as the answer to the catalog
 question "embargoed tickets?": a per-ticket flag with a narrow circle, over a dedicated restricted
 project, over a per-ticket person list, and over encryption of the body. The rules of D6–D9
 were put to the owner with the question and not objected to.
@@ -62,6 +65,13 @@ its reason.)*
 `none`, reaching `done`, reaching `dropped` — none of these lifts it. Only a tenant
 administrator's explicit act, with a reason, lifts it; that act is the successor of the
 `publication-accepted:` date and is recorded ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md)).
+*(Amended 2026-10-07 by the owner's answer recorded in
+[ADR 0035](0035-personal-access-tokens.md) D5, built 2026-10-09: **the lift takes a browser
+session** — a token, an administrator's `admin`-scope token included, is
+`403 session_required`, because a lift shows the ticket to every member, which would outlive a
+leaked token's revocation. Setting the flag only takes sight away and stays open to an
+administrator's token ([`tickets.go`](../../backend/internal/api/tickets.go) `SetConfidential`;
+`TestConfidentialTickets`).)*
 
 **D4 — Enforcement is the data layer's, in the same place as the project restriction.** The
 wrapper of [ADR 0027](0027-data-access-is-sqlc-over-pgx-behind-a-tenant-transaction-and-a-mutation-wrapper.md)
@@ -115,7 +125,12 @@ nobody, at a filing and on a change — the change that makes the ticket confide
 and otherwise is refused `403 agent_forbidden` by the hard-off rule "assigning a confidential
 ticket to anyone but the agent's person" (ADR 0043 D3; `mayAssign` in
 [`tickets.go`](../../backend/internal/api/tickets.go)). An assignee the write leaves as it was is
-no admission. Bringing in a reviewer stays a person's act.
+no admission. Bringing in a reviewer stays a person's act. *(Amended 2026-10-07 by the owner's
+answer recorded in [ADR 0035](0035-personal-access-tokens.md) D5, built 2026-10-09:)* and a
+person's act **in a browser session**. A person's token is held as an agent is — its own person,
+nobody, or the assignee as it was — and another new assignee is `403 session_required`: an
+admission made with a leaked token would outlive its revocation (`mayAssign`;
+`TestATokenAssignsAConfidentialTicketOnlyToItsPerson`, `TestConfidentialTickets`).
 
 ## Consequences
 

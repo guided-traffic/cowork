@@ -489,6 +489,11 @@ helm-lint: ## Lint the chart with every values file under deploy/helm/cowork/ci/
 .PHONY: helm-template
 helm-template: ## Render the chart with every values file under deploy/helm/cowork/ci/ and print nothing unless it fails.
 	@for f in $(HELM_CHART)/ci/*-values.yaml; do echo "helm template with $$f"; helm template cowork $(HELM_CHART) -f $$f > /dev/null; done
+	@echo "helm template with the inline credentials: the release revision on the backend pods, no checksum of a credential"
+	@out=$$(helm template cowork $(HELM_CHART) -f $(HELM_CHART)/ci/inline-url-values.yaml --show-only templates/backend-deployment.yaml) && \
+	  echo "$$out" | grep -q 'cowork/inline-credentials-revision: "1"' && \
+	  ! echo "$$out" | grep -q 'checksum/' || \
+	  { echo "the backend pod template of the inline values must carry the release revision and no checksum of a credential (docs/adr/0058 D3)"; exit 1; }
 
 # CloudNativePG's Cluster CustomResourceDefinition is fetched at its tag and
 # turned into the JSON schema kubeconform reads (backend/tools/crdschema). Silo's

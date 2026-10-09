@@ -71,7 +71,11 @@ body is read only by its handler, after those checks and inside the
 upload budget ([attachments.md](attachments.md) H-12): the validator neither reads a multipart
 body nor runs its own security check, which would read every body first
 ([`api/validate.go`](../../backend/internal/api/validate.go) `unsecured`;
-`TestAnUploadIsRefusedBeforeItsBodyIsRead`). How many requests a token sends at once is not
+`TestAnUploadIsRefusedBeforeItsBodyIsRead`). Which body is an upload is the operation's, as the
+document declares it, never the request's `Content-Type`: a body of a type the operation does not
+declare is `415` before it is read, so no request — the login and GitHub's webhook, which take no
+credential, included — escapes the JSON limit or the validation by calling itself multipart
+(`acceptedBody`, `declaresMultipart`; `TestABodyIsTheTypeTheOperationDeclares`). How many requests a token sends at once is not
 bounded ([ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
 D1).
 
@@ -198,7 +202,12 @@ value. The inline `database.url`, `database.owner.url` and `localAdmin.username`
 `localAdmin.password` put the credential in plain text into `helm get values`, and into a release
 Secret while the chart uses it — `database.owner.url` only while the init container migrates; the
 chart notes warn while an inline value is in use, and not for one set beside its `existingSecret`
-([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt), [H-88](#h-88)). The identity provider's client
+([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt), [H-88](#h-88)). Nothing derived from an
+inline credential reaches the pod template, which a namespace viewer without access to Secrets reads:
+while one is set, the backend pods carry the release's revision, `cowork/inline-credentials-revision`,
+so an upgrade rolls them, and no hash of the value
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
+D3; `make helm-template` holds it). The identity provider's client
 secret and the chat providers' API keys have no inline path at all.
 
 The server key is one secret with six uses, each under a key derived from it by HKDF-SHA256 with a

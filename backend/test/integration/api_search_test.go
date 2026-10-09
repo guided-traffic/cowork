@@ -249,8 +249,9 @@ func TestSearchNeverShowsWhatTheCallerCannotSee(t *testing.T) {
 	assert.Equal(t, []string{open.Key}, hitKeys(e.search(t, caller{Token: projectToken}, e.SlugA, "zebracorn", "")))
 	assert.Equal(t, []string{open.Key}, hitKeys(e.search(t, caller{Token: projectToken}, "", "zebracorn", "")))
 
-	// An assignee joins the confidential ticket's circle, and finds it.
+	// An assignee joins the confidential ticket's circle, and finds it; the
+	// admission is a session's act (docs/adr/0035 D5).
 	etag := strconv.Quote(strconv.Itoa(confidential.Version))
-	e.send(t, admin, http.StatusOK, http.MethodPatch, confidentialPath, map[string]any{"assignee": e.MemberA}, "If-Match", etag)
+	e.send(t, sessionOf(t, e.AdminA), http.StatusOK, http.MethodPatch, confidentialPath, map[string]any{"assignee": e.MemberA}, "If-Match", etag)
 	assert.ElementsMatch(t, []string{open.Key, confidential.Key}, hitKeys(e.search(t, member, e.SlugA, "zebracorn", "")))
 }

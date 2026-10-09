@@ -7,6 +7,16 @@ VALUES (sqlc.arg(user_id), sqlc.arg(token_hash), sqlc.narg(user_agent_hash), sql
         sqlc.arg(created_at), sqlc.arg(expires_at), sqlc.arg(method), sqlc.narg(groups),
         sqlc.narg(groups_refreshed_at), sqlc.narg(refresh_token_sealed));
 
+-- name: LockLoginPassword :one
+-- The password a local login verified, read again in the transaction that makes
+-- its session, under a share lock that a change of the password waits for
+-- (docs/adr/0033 D4): a change committed meanwhile is seen, and one that comes
+-- later finds the session to end.
+SELECT password_hash
+FROM local_accounts
+WHERE user_id = sqlc.arg(user_id)
+FOR SHARE;
+
 -- name: ClaimSessionRefresh :one
 -- A request claims a session's groups refresh by a lease (docs/adr/0030 D5, the
 -- security review of 2026-10-04, M1): the one statement that moves

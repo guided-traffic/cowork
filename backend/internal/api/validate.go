@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"mime"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -34,16 +33,23 @@ func init() {
 		`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`))
 }
 
-// limitBody holds a JSON body to COWORK_MAX_JSON_BODY, an upload to
+// limitBody refuses a body of a type the operation does not declare
+// (acceptedBody), and holds a JSON body to COWORK_MAX_JSON_BODY, an upload to
 // COWORK_ATTACHMENT_MAX_BYTES and an import's upload to
 // COWORK_MAX_IMPORT_BYTES, each with its multipart overhead (docs/adr/0039 D2,
 // docs/adr/0051 D7): a declared length above it is refused before the body is
-// read, and a body that turns out longer fails while it is read.
-func (h *handler) limitBody(w http.ResponseWriter, r *http.Request, operationID string) *problem.Error {
+// read, and a body that turns out longer fails while it is read. Which limit
+// holds is the operation's, as the API document declares its body, never the
+// Content-Type the request names: an operation without a multipart body is
+// held to the JSON limit, whatever the client says.
+func (h *handler) limitBody(w http.ResponseWriter, r *http.Request, op *openapi3.Operation) *problem.Error {
+	if perr := acceptedBody(r, op); perr != nil {
+		return perr
+	}
 	limit := h.opts.MaxJSONBody
-	if isMultipart(r) {
+	if declaresMultipart(op) {
 		max := h.opts.AttachmentMaxBytes
-		if operationID == opCreateImport {
+		if op.OperationID == opCreateImport {
 			max = h.opts.MaxImportBytes
 		}
 		limit = 0
@@ -51,7 +57,7 @@ func (h *handler) limitBody(w http.ResponseWriter, r *http.Request, operationID 
 			limit = max + multipartOverhead
 		}
 	}
-	if r.Body == nil || r.Body == http.NoBody || limit <= 0 {
+	if !hasBody(r) || limit <= 0 {
 		return nil
 	}
 	if r.ContentLength > limit {
@@ -69,9 +75,41 @@ func tooLarge(limit int64) *problem.Error {
 	return problem.New(problem.PayloadTooLarge, fmt.Sprintf("the body is larger than %d bytes", limit))
 }
 
-func isMultipart(r *http.Request) bool {
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	return err == nil && strings.HasPrefix(mediaType, "multipart/")
+// hasBody reports whether a request carries a body to read: one of a declared
+// length above zero, or one sent in chunks.
+func hasBody(r *http.Request) bool {
+	return r.Body != nil && r.Body != http.NoBody && r.ContentLength != 0
+}
+
+// declaresMultipart reports whether the API document gives the operation a
+// multipart body: an upload, which the validator leaves to its handler.
+func declaresMultipart(op *openapi3.Operation) bool {
+	if op.RequestBody == nil || op.RequestBody.Value == nil {
+		return false
+	}
+	for mediaType := range op.RequestBody.Value.Content {
+		if strings.HasPrefix(mediaType, "multipart/") {
+			return true
+		}
+	}
+	return false
+}
+
+// acceptedBody refuses a body whose Content-Type the operation does not
+// declare, with 415 and before a byte of it is read: the type decides the limit
+// and whether the document validates the body, so a JSON body sent as
+// multipart, say, would otherwise escape both. A request without a body, and
+// an operation that takes none, are not looked at — the validator says
+// whether a body is required.
+func acceptedBody(r *http.Request, op *openapi3.Operation) *problem.Error {
+	if op.RequestBody == nil || op.RequestBody.Value == nil || !hasBody(r) {
+		return nil
+	}
+	content := op.RequestBody.Value.Content
+	if content.Get(r.Header.Get("Content-Type")) != nil {
+		return nil
+	}
+	return problem.New(problem.UnsupportedMediaType, "the body's Content-Type must be "+strings.Join(slices.Sorted(maps.Keys(content)), " or "))
 }
 
 // validateRequest holds the request to the API document (docs/adr/0046 D4,
@@ -99,7 +137,11 @@ func requestInput(r *http.Request, route *routers.Route, pathParams map[string]s
 		Options: &openapi3filter.Options{
 			AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
 			MultiError:         true,
-			ExcludeRequestBody: isMultipart(r),
+			// An upload is read by its handler, part by part, under the
+			// limits of its own; that is the operation's, as the document
+			// declares it: a request's Content-Type exempts no body from the
+			// validation.
+			ExcludeRequestBody: declaresMultipart(route.Operation),
 			// The handlers apply the defaults; a default written into the
 			// request would look like a parameter the client sent.
 			SkipSettingDefaults: true,

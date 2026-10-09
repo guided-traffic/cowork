@@ -71,8 +71,13 @@ D2).
    request is not from `COWORK_BASE_URL`.
 2. **The address throttle**: `COWORK_LOGIN_ADDRESS_LIMIT` (20) attempts of one client address
    within a minute, whatever their outcome, and the next is `429 too_many_attempts` with
-   `Retry-After: 60` — before any hash is computed, so a flood costs the server a read. A
-   throttled attempt is not counted, so the minute slides. The client address is the one
+   `Retry-After: 60` — before any hash is computed, so a flood costs the server a short
+   transaction. The count and the attempt are **one step under an advisory lock on the
+   address** (`store.ReserveLoginAttempt`, `cowr`): the attempt is written as a reservation
+   before its password is hashed, and its outcome replaces it in step 5, so a burst of parallel
+   requests from one address makes as many guesses as the limit allows and no more
+   (`TestTheAddressThrottleHoldsForParallelAttemptsAndThePasswordChange`; ADR 0033 D6 as amended
+   2026-10-07). A throttled attempt is not counted, so the minute slides. The client address is the one
    found under [the rule below](#the-client-address) — an IPv6 client by its /64, the network
    one subscriber is given, whose addresses would otherwise each be a fresh bucket — keyed-hashed
    with a key derived from the server key; the address itself is stored nowhere
@@ -86,8 +91,9 @@ D2).
    deactivated account, a wrong password and a success: one each
    (`TestEveryLoginFailureIsTheSame`).
 5. **One transaction under the username's advisory lock decides the outcome**
-   (`store.RecordLoginAttempt`): the lock of the username is read, the attempt is counted, and
-   the outcome follows — success, failure, locked, or refused for the init state. Concurrent
+   (`store.RecordLoginAttempt`): the lock of the username is read, the attempt's reservation gives
+   way to the row of its outcome, and the outcome follows — success, failure, locked, or refused
+   for the init state. Concurrent
    attempts at one name are decided one after the other, so a burst of parallel guesses cannot
    make more guesses than the lock allows.
 6. **Every refusal is the same `401 invalid_credentials`** — same status, same body, same
@@ -99,7 +105,14 @@ D2).
    fitted is `403 not_initialised` and gets no session. Only after the password fitted: a wrong
    password stays `401`, so the `403` tells nothing to anyone who does not know the password.
 8. **A session** is made in a transaction of its own, as the person
-   ([sessions.md](sessions.md)); the answer says whether the password is temporary.
+   ([sessions.md](sessions.md)); the answer says whether the password is temporary. The
+   transaction first reads the account's password hash again under a share lock
+   (`store.CreateSession`, `LockLoginPassword`) and makes no session when it is no longer the hash
+   the login verified — the same `401 invalid_credentials`. A change of the password — the
+   person's own, an administrator's reset, the start-up synchronisation — writes the row and so
+   waits for that lock: it either committed before and is seen, or comes after and ends the new
+   session with the others. A login in flight therefore never keeps a session the change was to
+   end (`TestALoginInFlightMakesNoSessionAfterThePasswordChanged`).
 
 ## The client address
 
@@ -150,7 +163,8 @@ lock is refused whatever its password and counts as one more failure.
 - `COWORK_LOGIN_LOCKOUT=window` (the default): the lock ends when the window has passed since
   it was set.
 - `COWORK_LOGIN_LOCKOUT=admin`: a lock on an account stays until an administrator unlocks it
-  (`DELETE …/accounts/{username}/lockout`), or — for the local administrator — until the Secret
+  in a browser session (`DELETE …/accounts/{username}/lockout`, never with a token,
+  [below](#who-may-manage-which-account)), or — for the local administrator — until the Secret
   is rotated and the backend restarted. A lock on a username nobody has ends with the window
   all the same; nobody could unlock it, and nothing can show the difference.
 - **What an unlock forgets** is the failures and the lock of the username; the creation of an
@@ -166,7 +180,11 @@ lock is refused whatever its password and counts as one more failure.
 - The attempts older than the window and the locks of the `window` mode that ended are removed
   by the job `login-expiry`, hourly, which records one `expired` act per run that removed any.
 - A wrong **current password** in `PUT /api/v1/me/password` is a failed attempt of the account
-  as well, so a stolen session cannot guess the password through it.
+  as well, so a stolen session cannot guess the password through it. The change is held to the
+  address throttle before its hash is computed, like a login — `429 too_many_attempts` — so where
+  `COWORK_LOGIN_MAX_FAILURES` is `0` and no lock ever holds, a stolen session still guesses at the
+  throttle's pace from one address, not at the hash's
+  (`TestTheAddressThrottleHoldsForParallelAttemptsAndThePasswordChange`).
 
 ## Temporary passwords, changes and resets
 
@@ -212,14 +230,17 @@ condition, the managing tenant's administrators (`TestPoliciesOfThePersonsAndThe
 - **Who may.** The tenant's administrators with `admin` scope, never an agent: account
   administration is the hard-off rule "administration" ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
   D3). A member and a viewer are `403`.
-- **Creating an account and resetting a password take a browser session only.** A token — an
-  administrator's, with `admin` scope — is `403 session_required` before anything is written
+- **Creating an account, resetting a password and unlocking an account take a browser session
+  only.** A token — an administrator's, with `admin` scope — is `403 session_required` before
+  anything is written
   ([ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
-  D1, D5; `TestAccountAdministration`), because what these two routes make outlives the token:
+  D1, D5; `TestAccountAdministration`), because what these routes make outlives the token:
   an account, or a password only the administrator and the person know, would stay with whoever
-  held a leaked token after the token was revoked. The API document declares the two with the
-  session cookie alone, and the unit test over the document holds that set. Listing the
-  accounts, unlocking one, deactivating one and ending its sessions remove or restrict access,
+  held a leaked token after the token was revoked, and an unlock undoes the lockout — a token that
+  could unlock between guesses would keep the lockout of an account from ever holding
+  ([ADR 0035](../adr/0035-personal-access-tokens.md) D5 as amended 2026-10-07). The API document
+  declares the three with the session cookie alone, and the unit test over the document holds that
+  set. Listing the accounts, deactivating one and ending its sessions remove or restrict access,
   leave nothing behind, and stay open to an administrator's token
   (`TestAccountRoutesAnAdministratorsTokenMayStillCall`).
 - **A deactivation** ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
@@ -257,8 +278,14 @@ migration Job after the schema step as well, under the same lock
 
 - the account is **created** — a global administrator, display name its username;
 - a password that does not verify against the stored hash is **re-hashed**, every session of
-  the account ends, and the failures and the lock of its username are forgotten — rotating the
-  Secret and restarting is how a locked or leaked administrator is recovered;
+  the account ends, **every token of it is revoked**, and the failures and the lock of its username
+  are forgotten — rotating the Secret and restarting is how a locked or leaked administrator is
+  recovered, and a token made with the leaked password, or a stolen session of it, does not outlive
+  the rotation ([ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
+  D4 as amended 2026-10-07). The grants that password made — a membership the account gave itself,
+  an account it created — stay: the recovery reviews them
+  ([installation.md](../operations/installation.md#the-local-administrator)). A person's own
+  password change keeps their tokens, which are theirs;
 - an account that was **deactivated** because the variables went is reactivated; a revoked
   token stays revoked;
 - a **tenant administrator's account of the same name** is taken over: the configured password,
@@ -331,7 +358,10 @@ is closed:
 - **One address is one bucket.** An IPv6 client counts by its /64, but a client that holds
   many networks or addresses — a shorter IPv6 prefix, which some providers give out, or a
   botnet — has a bucket for each and is slowed by this limit only that much; the lockout of
-  the username is what bounds the guesses against one account, at the price of H-18.
+  the username is what bounds the guesses against one account, at the price of H-18. That holds
+  for the current password of a change as well: where `COWORK_LOGIN_MAX_FAILURES` is `0`, the
+  holder of a stolen session guesses through `PUT /api/v1/me/password` at the throttle's pace per
+  address they hold.
 
 The keyed address hash every audit row of a request carries is found by the same rule and is as
 good as the list in the same way ([tokens.md](tokens.md#what-is-recorded)). Rate limits at the

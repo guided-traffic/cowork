@@ -8,6 +8,8 @@ package writeq
 import (
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const deleteExpiredLoginAttempts = `-- name: DeleteExpiredLoginAttempts :execrows
@@ -49,6 +51,16 @@ func (q *Queries) DeleteFailedLoginAttempts(ctx context.Context, username string
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const deleteLoginAttempt = `-- name: DeleteLoginAttempt :exec
+DELETE FROM login_attempts WHERE id = $1
+`
+
+// The reservation of an attempt, which the attempt's outcome replaces.
+func (q *Queries) DeleteLoginAttempt(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteLoginAttempt, id)
+	return err
 }
 
 const deleteLoginLock = `-- name: DeleteLoginLock :execrows
@@ -100,6 +112,27 @@ type NoteLoginLockParams struct {
 func (q *Queries) NoteLoginLock(ctx context.Context, arg NoteLoginLockParams) error {
 	_, err := q.db.Exec(ctx, noteLoginLock, arg.NotedAt, arg.Username)
 	return err
+}
+
+const reserveLoginAttempt = `-- name: ReserveLoginAttempt :one
+INSERT INTO login_attempts (username, address, failed, created_at)
+VALUES ($1, $2, false, $3)
+RETURNING id
+`
+
+type ReserveLoginAttemptParams struct {
+	Username  string
+	Address   []byte
+	CreatedAt time.Time
+}
+
+// An attempt counted against its address's throttle before its password is
+// hashed, under the address's lock (docs/adr/0033 D6); its outcome replaces it.
+func (q *Queries) ReserveLoginAttempt(ctx context.Context, arg ReserveLoginAttemptParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, reserveLoginAttempt, arg.Username, arg.Address, arg.CreatedAt)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const upsertLoginLock = `-- name: UpsertLoginLock :exec

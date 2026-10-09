@@ -254,12 +254,12 @@ ends none of the local login's, and each session of the identity provider that h
 token at its next refresh, whose sealed token no longer opens — no previous key is kept to open it,
 so each such person logs in again once their session's refresh is due; what else a change of the key
 does is in [installation.md](installation.md#the-secrets). The absolute lifetime is
-`COWORK_SESSION_LIFETIME` (12 hours), the idle limit `COWORK_SESSION_IDLE` (2 hours). Only the
-person's activity moves the idle clock, at most once a minute: a write, or a read with
-`X-Cowork-Activity: input`, which the UI sends every five minutes while a person works in a page. No
-other read moves it — not the event stream, not a page loading —, so a tab nobody works in signs out
-at the idle limit, and an idle limit of about six minutes or less signs out a person who only reads.
-A proxy in front must pass the header through. When a limit ends a session of the identity
+`COWORK_SESSION_LIFETIME` (12 hours), the idle limit `COWORK_SESSION_IDLE` (2 hours). Every
+request of a session moves the idle clock, at most once a minute — a page loading, the event
+stream's connections and reconnects, the polling fallback — but a write the CSRF check refuses, so
+an open tab whose stream reconnects or polls stays signed in up to the absolute limit with nobody at
+it ([sessions.md](../security/sessions.md#h-109), H-109): a shorter `COWORK_SESSION_LIFETIME` is
+what bounds that. When a limit ends a session of the identity
 provider, the login page signs the person in again at their first input while the provider's own
 session lives, so for such persons the provider's session policy is what ends access
 ([identity-provider.md](../security/identity-provider.md#h-62), H-62). An administrator ends a
@@ -276,8 +276,8 @@ administrator unlocks it with `COWORK_LOGIN_LOCKOUT=admin`; the local administra
 recovered by rotating its Secret and restarting
 ([installation.md](installation.md#the-local-administrator)). More than
 `COWORK_LOGIN_ADDRESS_LIMIT` (20) attempts a minute from one client address — an IPv6 client by
-its /64 — are `429` with
-`Retry-After: 60`. The client address is the TCP peer's unless the peer is inside
+its /64 —, logins and the current passwords of a password change together, are `429` with
+`Retry-After: 60`, parallel ones as sequential ones. The client address is the TCP peer's unless the peer is inside
 `COWORK_TRUSTED_PROXIES`, in which case it is the first address of `X-Forwarded-For`, from the
 right, that is not a proxy of ours. **With the list empty — the default — the address behind the
 Ingress is the controller pod's**, so the limit is one for every browser behind it and one client's

@@ -27,6 +27,14 @@ var public = map[string]bool{
 // (docs/adr/0049 D4).
 var openQuery = map[string]bool{"oidcCallback": true}
 
+// recordedRead are the reads that record an act, data leaving the system
+// (docs/adr/0026 D5): a session's request for one of them is held to the
+// installation's own pages by Sec-Fetch-Site (docs/adr/0026 D5 as amended
+// 2026-10-07).
+var recordedRead = map[string]bool{
+	"downloadAttachment": true, "exportTicket": true, "exportTicketContext": true, "exportProject": true, "exportTenant": true,
+}
+
 // sessionOnly are the operations a personal access token cannot call: it
 // answers `403 session_required` (docs/adr/0035 D5, docs/adr/0033 D1, D4, D5,
 // docs/adr/0005 D5, docs/adr/0031 D4, docs/adr/0030 D2, D3, docs/adr/0034 D3).
@@ -43,10 +51,12 @@ var openQuery = map[string]bool{"oidcCallback": true}
 // theirs does not get (docs/adr/0034 D2). Purging a deleted ticket is the one
 // irreversible act on a ticket, which a leaked token must not make either
 // (docs/adr/0024 D7 as amended 2026-10-05). Removing the orphaned objects of a
-// consistency check is irreversible like a purge (docs/adr/0059 D4).
+// consistency check is irreversible like a purge (docs/adr/0059 D4). Unlocking a
+// local account undoes its lockout, which a leaked token could do between
+// guesses until the lockout held never (docs/adr/0035 D5 as amended 2026-10-07).
 var sessionOnly = map[string]bool{
 	"logout": true, "changeMyPassword": true, "createMyToken": true, "createTenant": true, "listTenants": true,
-	"createAccount": true, "resetAccountPassword": true,
+	"createAccount": true, "resetAccountPassword": true, "unlockAccount": true,
 	"addMember": true, "setMemberGrant": true, "createGroupMapping": true, "updateGroupMapping": true,
 	"setProjectRestriction": true, "setProjectAccess": true, "runChatTurn": true, "stopChatTurns": true,
 	"setMyChat": true, "purgeTicket": true, "removeOrphanedObjects": true,
@@ -101,6 +111,11 @@ func TestEveryOperationIsDeclaredCompletely(t *testing.T) {
 			assert.NotEmpty(t, op.Tags, "%s has a tag", where)
 			open, _ := op.Extensions["x-cowork-open-query"].(bool)
 			assert.Equal(t, openQuery[op.OperationID], open, "%s takes unknown query parameters only where the document allows it", where)
+			recorded, _ := op.Extensions["x-cowork-recorded-read"].(bool)
+			assert.Equal(t, recordedRead[op.OperationID], recorded, "%s is a recorded read only where the test names it", where)
+			if recorded {
+				assert.Equal(t, http.MethodGet, method, "%s is a read", where)
+			}
 		}
 	}
 	for id := range sessionOnly {

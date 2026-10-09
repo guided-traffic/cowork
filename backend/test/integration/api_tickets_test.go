@@ -22,7 +22,8 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 )
 
-// ticketEnv is a world with its tokens and a running API.
+// ticketEnv is a world with its tokens and a running API, which takes a
+// session made by sessionOf as well (withLogin).
 type ticketEnv struct {
 	world
 	tk  tokens
@@ -33,7 +34,7 @@ type ticketEnv struct {
 func newTicketEnv(t *testing.T) ticketEnv {
 	t.Helper()
 	w := newWorld(t)
-	return ticketEnv{world: w, tk: issueTokens(t, w), s: newAPI(t), ctx: context.Background()}
+	return ticketEnv{world: w, tk: issueTokens(t, w), s: newAPI(t, withLogin), ctx: context.Background()}
 }
 
 // task is a plain ticket body; edit adjusts it.
@@ -463,12 +464,15 @@ func TestConfidentialTickets(t *testing.T) {
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberB}, http.MethodGet, e.projectTickets("ALPHA")+"/"+strconv.Itoa(secret.Number), nil),
 		http.StatusNotFound, "not_found")
 
-	res := e.patch(t, member, secret, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.Both)})
+	byToken := e.patch(t, member, secret, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.Both)})
+	problemIn(t, http.StatusForbidden, byToken.StatusCode(), byToken.Body, "session_required")
+	assert.False(t, sees(both), "a token admits nobody else to a confidential ticket (docs/adr/0035 D5)")
+	res := e.patch(t, sessionOf(t, e.MemberA), secret, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.Both)})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
 	assert.True(t, sees(both), "assignment admits the assignee (docs/adr/0065 D9)")
 	assert.False(t, sees(viewer))
 
-	res = e.patch(t, both, *res.JSON200, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.ViewerA)})
+	res = e.patch(t, sessionOf(t, e.Both), *res.JSON200, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.ViewerA)})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
 	assert.Equal(t, e.ViewerA, res.JSON200.Assignee.MustGet().Id, "the writer is answered with what it wrote")
 	assert.False(t, sees(both), "the former assignee is out")
@@ -500,9 +504,13 @@ func TestConfidentialTickets(t *testing.T) {
 	assert.Equal(t, "insufficient_scope", string(set(caller{Token: e.tk.AdminAWrite}, false, ptr("fixed"), current).ApplicationproblemJSONDefault.Code))
 	hardOff := set(caller{Token: e.tk.AdminA, Agent: "claude-code/opus/s1"}, false, ptr("fixed"), current)
 	assert.Equal(t, "hard-off: setting or lifting the confidential flag", *hardOff.ApplicationproblemJSONDefault.Detail)
-	noReason := set(admin, false, nil, current)
+	adminSession := sessionOf(t, e.AdminA)
+	noReason := set(adminSession, false, nil, current)
 	assert.Equal(t, http.StatusBadRequest, noReason.StatusCode())
-	lifted := set(admin, false, ptr("the leak is fixed and rotated"), current)
+	tokenLift := set(admin, false, ptr("the leak is fixed and rotated"), current)
+	problemIn(t, http.StatusForbidden, tokenLift.StatusCode(), tokenLift.Body, "session_required")
+	assert.False(t, sees(viewer), "a token lifts nothing (docs/adr/0035 D5)")
+	lifted := set(adminSession, false, ptr("the leak is fixed and rotated"), current)
 	require.Equal(t, http.StatusOK, lifted.StatusCode(), string(lifted.Body))
 	assert.False(t, lifted.JSON200.Confidential)
 	assert.True(t, sees(caller{Token: e.tk.ViewerA}), "lifted: every member sees it")
@@ -514,7 +522,7 @@ func TestConfidentialTickets(t *testing.T) {
 	res = e.patch(t, member, plain, apigen.TicketPatch{Security: ptr(apigen.SecurityClassBoundary), Threat: nullable.NewNullableWithValue("tenant crossing")})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
 	assert.True(t, res.JSON200.Confidential, "a change to boundary sets the flag")
-	lifted = set(admin, false, ptr("not a boundary after all"), *res.JSON200)
+	lifted = set(adminSession, false, ptr("not a boundary after all"), *res.JSON200)
 	require.Equal(t, http.StatusOK, lifted.StatusCode())
 	res = e.patch(t, member, *lifted.JSON200, apigen.TicketPatch{Title: ptr("Plain again")})
 	require.Equal(t, http.StatusOK, res.StatusCode())
@@ -527,7 +535,7 @@ func TestConfidentialTickets(t *testing.T) {
 // nobody new, and a ticket that is not confidential takes any assignee.
 func TestAnAgentAssignsAConfidentialTicketOnlyToItsPerson(t *testing.T) {
 	e := newTicketEnv(t)
-	member, both := caller{Token: e.tk.MemberA}, caller{Token: e.tk.Both}
+	member, both := sessionOf(t, e.MemberA), caller{Token: e.tk.Both}
 	agent := caller{Token: e.tk.AgentA, Agent: "claude-code/opus/s1"}
 	hardOff := "hard-off: assigning a confidential ticket to anyone but the agent's person"
 	live := func(title string, assignee *uuid.UUID) apigen.TicketCreate {
@@ -546,7 +554,7 @@ func TestAnAgentAssignsAConfidentialTicketOnlyToItsPerson(t *testing.T) {
 	assert.Equal(t, e.Both, open.Assignee.MustGet().Id, "a ticket that is not confidential takes any assignee")
 
 	res := e.patch(t, member, own, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.Both)})
-	require.Equal(t, http.StatusOK, res.StatusCode(), "a person admits whom they assign")
+	require.Equal(t, http.StatusOK, res.StatusCode(), "a person admits whom they assign, in a session")
 	kept := e.patch(t, agent, *res.JSON200, apigen.TicketPatch{Assignee: nullable.NewNullableWithValue(e.Both)})
 	require.Equal(t, http.StatusOK, kept.StatusCode(), "the assignee as it was admits nobody new")
 	cleared := e.patch(t, agent, *res.JSON200, apigen.TicketPatch{Assignee: nullable.NewNullNullable[uuid.UUID]()})

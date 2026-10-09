@@ -22,6 +22,7 @@ import (
 
 	"github.com/guided-traffic/cowork/backend/internal/api"
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
+	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/internal/events"
 	"github.com/guided-traffic/cowork/backend/internal/httpserver"
@@ -117,21 +118,40 @@ func (l testLog) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// caller is a token, and optionally an agent header, presented on every
-// request.
+// caller is a token, or a session cookie, and optionally an agent header,
+// presented on every request. A session's unsafe request carries the origin
+// and the custom header the browser sends, so the server needs withLogin's
+// COWORK_BASE_URL (docs/adr/0037 D1).
 type caller struct {
-	Token string
-	Agent string
+	Token  string
+	Cookie string
+	Agent  string
 }
 
 func (c caller) editor(_ context.Context, req *http.Request) error {
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
+	if c.Cookie != "" {
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookie, Value: c.Cookie})
+		if req.Method != http.MethodGet && req.Method != http.MethodHead {
+			req.Header.Set("Origin", testOrigin)
+			req.Header.Set("X-Requested-With", "cowork")
+		}
+	}
 	if c.Agent != "" {
 		req.Header.Set("X-Cowork-Agent", c.Agent)
 	}
 	return nil
+}
+
+// sessionOf makes a session of the person directly in the database, as a
+// login would, and returns it as a caller (docs/adr/0031 D1).
+func sessionOf(t *testing.T, person uuid.UUID) caller {
+	t.Helper()
+	cookie, err := fixtures(t).Session(context.Background(), person)
+	require.NoError(t, err)
+	return caller{Cookie: cookie}
 }
 
 // client returns the generated Go client acting as c (docs/adr/0046 D2).

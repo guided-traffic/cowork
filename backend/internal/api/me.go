@@ -401,8 +401,9 @@ func (s *Server) restrictTo(ctx context.Context, p auth.Principal, spec *tokenSp
 
 // ChangeMyPassword changes the password of the calling person's local account
 // (docs/adr/0033 D3, D4). The current password is verified like a login's —
-// a wrong one counts towards the account's lockout, so a stolen session cannot
-// guess it — the new one meets the length policy and differs, every other
+// held to the address throttle before it is hashed, and a wrong one counts
+// towards the account's lockout, so a stolen session cannot guess it at the
+// hash's speed — the new one meets the length policy and differs, every other
 // session of the account ends, and a temporary password stops being one. The
 // password of the local administrator is the configuration's, and is not
 // changed here.
@@ -416,12 +417,19 @@ func (s *Server) ChangeMyPassword(ctx context.Context, req apigen.ChangeMyPasswo
 	if err := auth.CheckPassword(body.NewPassword, s.h.opts.PasswordMinLength); err != nil {
 		return nil, problem.Field("/new_password", strings.TrimPrefix(err.Error(), auth.ErrPasswordLength.Error()+": "))
 	}
+	address := s.h.addressHash(clientFrom(ctx).Client)
+	reserved, err := s.reserveAttempt(ctx, *person.Username, address, s.h.opts.Now(), attemptPasswordChange)
+	if err != nil {
+		return nil, err
+	}
 	matched, err := s.passwordFits(ctx, body.CurrentPassword, stored.PasswordHash)
 	if err != nil {
 		return nil, err
 	}
 	acc := store.LoginAccount{Found: true, UserID: p.PersonID, Hash: stored.PasswordHash, Deactivated: person.DeactivatedAt != nil}
-	outcome, err := s.db.RecordLoginAttempt(ctx, s.attempt(ctx, *person.Username, acc, matched, s.h.addressHash(clientFrom(ctx).Client), "password change"))
+	attempt := s.attempt(ctx, *person.Username, acc, matched, address, attemptPasswordChange)
+	attempt.Reserved = reserved
+	outcome, err := s.db.RecordLoginAttempt(ctx, attempt)
 	if err != nil {
 		return nil, err
 	}

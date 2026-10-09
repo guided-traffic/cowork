@@ -27,7 +27,9 @@ a login becomes. The design
 is the coordinator's of the night of 2026-10-06, built the same day; one of its conditions, that a
 tab tries once between two sessions, was not in that design and **awaits the owner's answer**,
 built on the recommendation (D6). The owner checks the whole on his own installation, whose issuer
-is not Dex.
+is not Dex. Amended 2026-10-07 by the owner's answer recorded in
+[ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D3 (the Alternatives Considered: the
+event stream moving the idle clock is the rule again; D6 is unchanged).
 
 ~~**Not built.** No OIDC client, no session, no login route.~~ **Built** (phase 4, 2026-10-04):
 D1–D5 — the relying party [`internal/oidc`](../../backend/internal/oidc/oidc.go), the start and the
@@ -249,7 +251,10 @@ so with Dex the page's own attempt lands on that form — where the button led a
   default. Lost. **Signing in at once when the login page comes, without a sign of a person.** An open tab
   whose session ended would sign itself in and show its content again: the idle limit would protect
   nothing. Lost. **The event stream moving the idle clock.** An open tab without a person would never
-  reach the idle limit ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D3). Lost.
+  reach the idle limit ([ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D3). ~~Lost.~~
+  *(Amended 2026-10-07: the owner's answer recorded in ADR 0031 D3 made every request of a session
+  keep it again, the stream's connections included, and accepted that cost; D6 is unchanged by it —
+  the page still signs in only at a sign of a person.)*
   **No probe of `GET /api/v1/me` before the attempt.** A tab whose sibling has signed in meanwhile
   would go through the issuer for nothing. Lost to one request.
 
@@ -284,5 +289,5 @@ so with Dex the page's own attempt lands on that form — where the button led a
 - [ADR 0003](0003-test-and-ci-policy.md) D2 — the integration tier the Dex fixture joins
 - [`backend/internal/oidc/oidc.go`](../../backend/internal/oidc/oidc.go), [`backend/internal/api/oidc.go`](../../backend/internal/api/oidc.go), [`backend/internal/config/oidc.go`](../../backend/internal/config/oidc.go), [`hack/dex/config.yaml`](../../hack/dex/config.yaml) — the implementation and the fixture
 - [docs/security/identity-provider.md](../security/identity-provider.md) — what the login checks, and what it leaves open
-- [ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D3 — the limits that end the session D6 brings back, and the keep-alive beside it
+- [ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D3 — the limits that end the session D6 brings back ~~, and the keep-alive beside it~~ *(gone 2026-10-07: every request of a session keeps it again)*
 - [`frontend/src/app/features/auth/login.ts`](../../frontend/src/app/features/auth/login.ts), [`presence.ts`](../../frontend/src/app/features/auth/presence.ts), [`frontend/src/app/core/sign-in-memory.ts`](../../frontend/src/app/core/sign-in-memory.ts) — D6 in the browser

@@ -167,6 +167,24 @@ func (q *Queries) InsertSession(ctx context.Context, arg InsertSessionParams) er
 	return err
 }
 
+const lockLoginPassword = `-- name: LockLoginPassword :one
+SELECT password_hash
+FROM local_accounts
+WHERE user_id = $1
+FOR SHARE
+`
+
+// The password a local login verified, read again in the transaction that makes
+// its session, under a share lock that a change of the password waits for
+// (docs/adr/0033 D4): a change committed meanwhile is seen, and one that comes
+// later finds the session to end.
+func (q *Queries) LockLoginPassword(ctx context.Context, userID uuid.UUID) (string, error) {
+	row := q.db.QueryRow(ctx, lockLoginPassword, userID)
+	var password_hash string
+	err := row.Scan(&password_hash)
+	return password_hash, err
+}
+
 const lockSessionForRefresh = `-- name: LockSessionForRefresh :one
 SELECT id, groups, refresh_retry_at
 FROM sessions
