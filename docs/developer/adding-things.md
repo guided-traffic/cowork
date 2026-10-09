@@ -24,7 +24,11 @@ the mechanics are [api.md](api.md)).
    true` — or, for a write whose credential is a signature over its body that its handler
    verifies, `x-cowork-signed` instead, which the test holds to GitHub's webhook alone
    ([api.md](api.md#githubs-webhook)). Only the identity provider's callback takes query parameters it does not declare
-   (`x-cowork-open-query`). A creating `POST` takes the `IdempotencyKey` parameter, an overwriting
+   (`x-cowork-open-query`). A read that records an act — data leaving the system,
+   [ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D5 — says
+   `x-cowork-recorded-read: true` and joins the test's `recordedRead` set, and a session's request
+   for it is then held to the installation's own pages
+   ([csrf.md](../security/csrf.md#the-reads-that-record-an-act)). A creating `POST` takes the `IdempotencyKey` parameter, an overwriting
    write `IfMatch`, a list `Cursor` and `Limit`.
 2. **The examples** ([api.md](api.md#examples)). The request body's on the operation; each answer
    names a schema that carries an `example` — a new schema gets one, a new list an anchor to its

@@ -11,7 +11,10 @@ D3; nothing of the decision changes), and on 2026-10-06 for GitHub's webhook of
 [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
 (D5: a third route outside D1, a public write whose credential is a signature over its body, which
 carries no origin check; made concrete by the implementer and built the same day, open to the
-owner's objection). Date:
+owner's objection), and on 2026-10-07 by the owner's answer recorded in
+[ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D5 (Residual risks:
+the reads that record an act take a session's request only from the installation's own pages;
+built 2026-10-09). Date:
 2026-10-01. Decided by the owner as the answer to the catalog question "CSRF
 for the cookie session?": origin check plus custom header, over a synchroniser token, over
 `SameSite=Lax` alone, and over `SameSite=Strict`. The rules of D4–D6 were put to the owner
@@ -136,7 +139,12 @@ still work.)* *(Built 2026-10-04 for the issuer as well: the backend refuses to 
   leaving the system must be recorded: an attachment's download and a ticket's Markdown export.
   A link to one of them, followed from another site, carries the `Lax` cookie and records the
   act under the person; it changes no ticket and the answer is unreadable to the other site
-  (H-22 of the same page).
+  (H-22 of the same page). *(Amended 2026-10-07 by the owner's answer recorded in
+  [ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D5: the reads that
+  record an act are five, and a session's request for one of them that a page on a sibling host
+  or of another site makes is refused by its `Sec-Fetch-Site`, `403 csrf`; ~~a link followed from
+  another site records the act~~ only in a browser that sends no such header, which H-22 names
+  now.)*
 - Privacy-hardened browsers that strip both `Origin` and `Referer` on same-origin requests
   are refused by D1; the UI tells the person why. Not verified against any particular
   browser; the integration tier tests the rule, not browsers.

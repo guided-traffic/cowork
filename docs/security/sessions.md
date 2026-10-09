@@ -217,10 +217,11 @@ the CSRF check, at most once a minute. A person who reads a ticket, scrolls a bo
 comment keeps the session with the reads the page makes; the UI sends nothing of its own to keep
 it. **A forged write extends nothing**: a write a page of the same site sends, where `SameSite=Lax`
 lets the cookie ride along, fails the CSRF check and leaves the idle clock where it was
-(`TestEveryRequestButARefusedWriteMovesTheIdleClock`). A read is a different matter: a link or an
-image of another site, or of a sibling host, that names an address of the API is a read of the
-session where the browser sends the cookie, and moves the clock like any
-([csrf.md](csrf.md#h-22) H-22). What this leaves open — an open tab nobody uses keeps its session up
+(`TestEveryRequestButARefusedWriteMovesTheIdleClock`). A read is a different matter: a link of
+another site, or an image or a link on a sibling host, that names an address of the API is a read
+of the session — the browser sends the `Lax` cookie with it — and moves the clock like any, a
+recorded read that is then refused for the page it came from included
+([csrf.md](csrf.md#the-reads-that-record-an-act)). What this leaves open — an open tab nobody uses keeps its session up
 to the absolute limit — is [H-109](#h-109), the owner's accepted risk. The absolute limit is
 untouched.
 
@@ -314,14 +315,18 @@ navigation on the first `401` would close it. Mitigation: a locked screen; close
 <a id="h-93"></a>
 ### H-93 — The way back after a sign-in may be a read that records an act
 
-Live today. The path a sign-in returns to is any path of the installation
+Live today for the local login. The path a sign-in returns to is any path of the installation
 ([identity-provider.md](identity-provider.md#the-login) `safeReturnTo`, and the login page's
 `safeReturn`), the API's included: a link of another site that leads to the login with a way back to an
 attachment's bytes or a ticket's export or context makes the browser of the person who signs in fetch
-that path with their new session — a read recorded in their name, as [csrf.md](csrf.md#h-22) H-22
-describes for a plain link, and here also after a silent sign-in ([identity-provider.md](identity-provider.md#h-81)
-H-81). Nothing of the answer reaches the other site. Refusing a way back under `/api/` and `/auth/`
-in both functions would close it.
+that path with their new session — a read recorded in their name. After a local sign-in the login
+page itself navigates there, a `same-origin` request that the recorded reads take
+([csrf.md](csrf.md#the-reads-that-record-an-act)). After a sign-in through the identity provider,
+a silent one included ([identity-provider.md](identity-provider.md#h-81) H-81), the way back is the
+callback's redirect at the end of a chain through the issuer, which by the Fetch Metadata rules makes
+the request `cross-site`, and the read is refused `403 csrf` — not verified in a browser. Nothing of
+the answer reaches the other site. Refusing a way back under `/api/` and `/auth/` in both functions
+would close it.
 
 <a id="h-109"></a>
 ### H-109 — A tab open with nobody at it keeps its session up to the absolute limit

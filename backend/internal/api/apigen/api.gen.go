@@ -6216,7 +6216,8 @@ type ClientInterface interface {
 	// all of them, each link once. A restricted project the caller cannot see is absent, without a
 	// count; the confidential tickets left out are counted per project and in total. Any member, an
 	// agent too; a token restricted to a project is refused, as on every route of the tenant outside
-	// a project. One act `exported` on the tenant, never published.
+	// a project. One act `exported` on the tenant, never published. A recorded read: a session's
+	// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/export (the `ExportTenant` operationId).
 	ExportTenant(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6680,7 +6681,8 @@ type ClientInterface interface {
 	// The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
 	// an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
 	// is `404`. Every export is recorded, one act `exported` on the project — data left the system
-	// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+	// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's
+	// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/export (the `ExportProject` operationId).
 	ExportProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7074,6 +7076,10 @@ type ClientInterface interface {
 	// (docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so
 	// (docs/adr/0059 D4).
 	//
+	// A recorded read (`x-cowork-recorded-read`): a session's request whose
+	// `Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and
+	// no header pass, and a token's request is not looked at (docs/adr/0026 D5).
+	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content (the `DownloadAttachment` operationId).
 	DownloadAttachment(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, attachment AttachmentID, params *DownloadAttachmentParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -7224,7 +7230,9 @@ type ClientInterface interface {
 	// the caller cannot see is absent. The document carries no `ETag`: it is not
 	// one entity. Every call is recorded: data left the system (D5). It is no
 	// import format (D3): there is no importer yet, and the one ADR 0044
-	// decides refuses a file that carries these sections.
+	// decides refuses a file that carries these sections. A recorded read: a
+	// session's request with `Sec-Fetch-Site` `same-site` or `cross-site` is
+	// `403 csrf` (docs/adr/0026 D5).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
 	ExportTicketContext(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7325,7 +7333,8 @@ type ClientInterface interface {
 	// Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the
 	// body, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the
 	// document is never answered 304. Every call is recorded: data left the system
-	// (docs/adr/0044 D5).
+	// (docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`
+	// `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown (the `ExportTicket` operationId).
 	ExportTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -9070,7 +9079,8 @@ func (c *Client) RestoreTicket(ctx context.Context, tenant TenantSlug, key Ticke
 // all of them, each link once. A restricted project the caller cannot see is absent, without a
 // count; the confidential tickets left out are counted per project and in total. Any member, an
 // agent too; a token restricted to a project is refused, as on every route of the tenant outside
-// a project. One act `exported` on the tenant, never published.
+// a project. One act `exported` on the tenant, never published. A recorded read: a session's
+// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/export (the `ExportTenant` operationId).
 func (c *Client) ExportTenant(ctx context.Context, tenant TenantSlug, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -9874,7 +9884,8 @@ func (c *Client) ArchiveProject(ctx context.Context, tenant TenantSlug, project 
 // The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
 // an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
 // is `404`. Every export is recorded, one act `exported` on the project — data left the system
-// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's
+// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/export (the `ExportProject` operationId).
 func (c *Client) ExportProject(ctx context.Context, tenant TenantSlug, project ProjectKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -10508,6 +10519,10 @@ func (c *Client) GetAttachment(ctx context.Context, tenant TenantSlug, project P
 // (docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so
 // (docs/adr/0059 D4).
 //
+// A recorded read (`x-cowork-recorded-read`): a session's request whose
+// `Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and
+// no header pass, and a token's request is not looked at (docs/adr/0026 D5).
+//
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content (the `DownloadAttachment` operationId).
 func (c *Client) DownloadAttachment(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, attachment AttachmentID, params *DownloadAttachmentParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDownloadAttachmentRequest(c.Server, tenant, project, number, attachment, params)
@@ -10798,7 +10813,9 @@ func (c *Client) SetConfidential(ctx context.Context, tenant TenantSlug, project
 // the caller cannot see is absent. The document carries no `ETag`: it is not
 // one entity. Every call is recorded: data left the system (D5). It is no
 // import format (D3): there is no importer yet, and the one ADR 0044
-// decides refuses a file that carries these sections.
+// decides refuses a file that carries these sections. A recorded read: a
+// session's request with `Sec-Fetch-Site` `same-site` or `cross-site` is
+// `403 csrf` (docs/adr/0026 D5).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context (the `ExportTicketContext` operationId).
 func (c *Client) ExportTicketContext(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, params *ExportTicketContextParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -10999,7 +11016,8 @@ func (c *Client) LinkTickets(ctx context.Context, tenant TenantSlug, project Pro
 // Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the
 // body, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the
 // document is never answered 304. Every call is recorded: data left the system
-// (docs/adr/0044 D5).
+// (docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`
+// `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown (the `ExportTicket` operationId).
 func (c *Client) ExportTicket(ctx context.Context, tenant TenantSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -21900,7 +21918,8 @@ type ClientWithResponsesInterface interface {
 	// all of them, each link once. A restricted project the caller cannot see is absent, without a
 	// count; the confidential tickets left out are counted per project and in total. Any member, an
 	// agent too; a token restricted to a project is refused, as on every route of the tenant outside
-	// a project. One act `exported` on the tenant, never published.
+	// a project. One act `exported` on the tenant, never published. A recorded read: a session's
+	// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -22396,7 +22415,8 @@ type ClientWithResponsesInterface interface {
 	// The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
 	// an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
 	// is `404`. Every export is recorded, one act `exported` on the project — data left the system
-	// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+	// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's
+	// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -22810,6 +22830,10 @@ type ClientWithResponsesInterface interface {
 	// (docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so
 	// (docs/adr/0059 D4).
 	//
+	// A recorded read (`x-cowork-recorded-read`): a session's request whose
+	// `Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and
+	// no header pass, and a token's request is not looked at (docs/adr/0026 D5).
+	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content (the `DownloadAttachment` operationId).
@@ -22972,7 +22996,9 @@ type ClientWithResponsesInterface interface {
 	// the caller cannot see is absent. The document carries no `ETag`: it is not
 	// one entity. Every call is recorded: data left the system (D5). It is no
 	// import format (D3): there is no importer yet, and the one ADR 0044
-	// decides refuses a file that carries these sections.
+	// decides refuses a file that carries these sections. A recorded read: a
+	// session's request with `Sec-Fetch-Site` `same-site` or `cross-site` is
+	// `403 csrf` (docs/adr/0026 D5).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -23085,7 +23111,8 @@ type ClientWithResponsesInterface interface {
 	// Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the
 	// body, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the
 	// document is never answered 304. Every call is recorded: data left the system
-	// (docs/adr/0044 D5).
+	// (docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`
+	// `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -32517,7 +32544,8 @@ func (c *ClientWithResponses) RestoreTicketWithResponse(ctx context.Context, ten
 // all of them, each link once. A restricted project the caller cannot see is absent, without a
 // count; the confidential tickets left out are counted per project and in total. Any member, an
 // agent too; a token restricted to a project is refused, as on every route of the tenant outside
-// a project. One act `exported` on the tenant, never published.
+// a project. One act `exported` on the tenant, never published. A recorded read: a session's
+// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -33217,7 +33245,8 @@ func (c *ClientWithResponses) ArchiveProjectWithResponse(ctx context.Context, te
 // The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
 // an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
 // is `404`. Every export is recorded, one act `exported` on the project — data left the system
-// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+// (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's
+// request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -33775,6 +33804,10 @@ func (c *ClientWithResponses) GetAttachmentWithResponse(ctx context.Context, ten
 // (docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so
 // (docs/adr/0059 D4).
 //
+// A recorded read (`x-cowork-recorded-read`): a session's request whose
+// `Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and
+// no header pass, and a token's request is not looked at (docs/adr/0026 D5).
+//
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content (the `DownloadAttachment` operationId).
@@ -34021,7 +34054,9 @@ func (c *ClientWithResponses) SetConfidentialWithResponse(ctx context.Context, t
 // the caller cannot see is absent. The document carries no `ETag`: it is not
 // one entity. Every call is recorded: data left the system (D5). It is no
 // import format (D3): there is no importer yet, and the one ADR 0044
-// decides refuses a file that carries these sections.
+// decides refuses a file that carries these sections. A recorded read: a
+// session's request with `Sec-Fetch-Site` `same-site` or `cross-site` is
+// `403 csrf` (docs/adr/0026 D5).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -34194,7 +34229,8 @@ func (c *ClientWithResponses) LinkTicketsWithResponse(ctx context.Context, tenan
 // Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the
 // body, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the
 // document is never answered 304. Every call is recorded: data left the system
-// (docs/adr/0044 D5).
+// (docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`
+// `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
 //
 // Returns a wrapper object for the known response body format(s).
 //

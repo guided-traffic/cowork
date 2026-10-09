@@ -392,7 +392,9 @@ projectExport:
       The importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,
       an agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see
       is `404`. Every export is recorded, one act `exported` on the project — data left the system
-      (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.
+      (docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's
+      request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.
+    x-cowork-recorded-read: true
     responses:
       '200':
         description: The archive
@@ -419,7 +421,9 @@ tenantExport:
       all of them, each link once. A restricted project the caller cannot see is absent, without a
       count; the confidential tickets left out are counted per project and in total. Any member, an
       agent too; a token restricted to a project is refused, as on every route of the tenant outside
-      a project. One act `exported` on the tenant, never published.
+      a project. One act `exported` on the tenant, never published. A recorded read: a session's
+      request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
+    x-cowork-recorded-read: true
     responses:
       '200':
         description: The archive

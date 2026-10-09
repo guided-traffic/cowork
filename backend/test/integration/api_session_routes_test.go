@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -348,6 +349,51 @@ func TestWideningTheTenantSettingsTakesASession(t *testing.T) {
 	assert.True(t, got.MembersCreateProjects)
 	assert.True(t, got.TimeLockedUntil.IsNull())
 	require.Equal(t, http.StatusOK, patch(token, map[string]any{"time_visible_to_members": false}).StatusCode, "a token narrows again")
+}
+
+// docs/adr/0026 D5 as amended 2026-10-07: the five reads that record an act
+// take a session's request only from the installation's own pages. A page on a
+// sibling host or another site — Sec-Fetch-Site same-site or cross-site — is
+// refused before anything is read or recorded; the UI (same-origin), the
+// address bar (none) and a browser that sends no such header are served and
+// recorded; a token's request is not looked at.
+func TestARecordedReadOfASessionComesFromTheInstallationsOwnPages(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	member, session := caller{Token: e.tk.MemberA}, sessionOf(t, e.MemberA)
+	tk := e.file(t, member, "ALPHA", task("Recorded reads"))
+	a := decodeAttachment(t, e.uploadTo(t, member, tk, "shot.png", "image/png", pngBytes, nil, ""))
+	ticket := e.projectTickets("ALPHA") + "/" + strconv.Itoa(tk.Number)
+	recorded := func() int64 {
+		t.Helper()
+		n, err := f.QueryCount(e.ctx, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND action IN ('downloaded', 'exported')`, e.A)
+		require.NoError(t, err)
+		return n
+	}
+
+	reads := []string{a.ContentUrl, ticket + "/markdown", ticket + "/context",
+		"/api/v1/tenants/" + e.SlugA + "/projects/ALPHA/export", "/api/v1/tenants/" + e.SlugA + "/export"}
+	for _, path := range reads {
+		before := recorded()
+		for _, site := range []string{"same-site", "cross-site"} {
+			assertProblem(t, e.s.do(t, session, http.MethodGet, path, nil, "Sec-Fetch-Site", site), http.StatusForbidden, "csrf")
+		}
+		assert.Equal(t, before, recorded(), "%s: a refused read records nothing", path)
+		for _, site := range []string{"same-origin", "none", ""} {
+			var res *http.Response
+			if site == "" {
+				res = e.s.do(t, session, http.MethodGet, path, nil)
+			} else {
+				res = e.s.do(t, session, http.MethodGet, path, nil, "Sec-Fetch-Site", site)
+			}
+			require.Equal(t, http.StatusOK, res.StatusCode, "%s from %q", path, site)
+		}
+		assert.Equal(t, before+3, recorded(), "%s: each served read is recorded", path)
+		require.Equal(t, http.StatusOK, e.s.do(t, member, http.MethodGet, path, nil, "Sec-Fetch-Site", "cross-site").StatusCode,
+			"%s: a token's request is not held to it", path)
+	}
+	require.Equal(t, http.StatusOK, e.s.do(t, session, http.MethodGet, ticket, nil, "Sec-Fetch-Site", "cross-site").StatusCode,
+		"a read that records nothing is not held to it")
 }
 
 // docs/adr/0037 D1, D2, D5, D6, docs/adr/0035 D7: a write of a session needs the

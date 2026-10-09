@@ -158,8 +158,11 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    `x-cowork-origin-check: true` — the login — gets the origin half of the CSRF check instead; one
    that says `x-cowork-signed` — GitHub's webhook — gets neither, its credential being the signature
    its handler verifies (`signed` in [`github.go`](../../backend/internal/api/github.go)).
-   **For a request authenticated by a session** three more rules run here, before the tenant
-   boundary: **the CSRF check** on an unsafe method (`403 csrf`); a session the agent header marks
+   **For a request authenticated by a session** four more rules run here, before the tenant
+   boundary: **the CSRF check** on an unsafe method (`403 csrf`); on an operation marked
+   `x-cowork-recorded-read` — the five reads that record an act — the page it comes from, where
+   `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (`recordedRead`, `fromOwnPages`;
+   [csrf.md](../security/csrf.md#the-reads-that-record-an-act)); a session the agent header marks
    is refused an operation that takes a session only (`403 agent_forbidden`); and the gate of a
    temporary password (`403 password_change_required` for everything but `getMe`,
    `changeMyPassword` and `logout`) — `sessionRules` in [`api.go`](../../backend/internal/api/api.go).

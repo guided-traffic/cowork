@@ -35,6 +35,14 @@ var signed = map[string]string{"receiveGitHubWebhook": "github"}
 // (docs/adr/0049 D4).
 var openQuery = map[string]bool{"oidcCallback": true}
 
+// recordedRead are the reads that record an act, data leaving the system
+// (docs/adr/0026 D5): a session's request for one of them is held to the
+// installation's own pages by Sec-Fetch-Site (docs/adr/0026 D5 as amended
+// 2026-10-07).
+var recordedRead = map[string]bool{
+	"downloadAttachment": true, "exportTicket": true, "exportTicketContext": true, "exportProject": true, "exportTenant": true,
+}
+
 // sessionOnly are the operations a personal access token cannot call: it
 // answers `403 session_required` (docs/adr/0035 D5, docs/adr/0033 D1, D4, D5,
 // docs/adr/0005 D5, docs/adr/0031 D4, docs/adr/0030 D2, D3, docs/adr/0034 D3).
@@ -122,6 +130,11 @@ func TestEveryOperationIsDeclaredCompletely(t *testing.T) {
 			assert.Equal(t, openQuery[op.OperationID], open, "%s takes unknown query parameters only where the document allows it", where)
 			_, isSigned := op.Extensions["x-cowork-signed"]
 			assert.Equal(t, signed[op.OperationID] != "", isSigned, "%s is signed only where the test names it", where)
+			recorded, _ := op.Extensions["x-cowork-recorded-read"].(bool)
+			assert.Equal(t, recordedRead[op.OperationID], recorded, "%s is a recorded read only where the test names it", where)
+			if recorded {
+				assert.Equal(t, http.MethodGet, method, "%s is a read", where)
+			}
 		}
 	}
 	for id := range sessionOnly {

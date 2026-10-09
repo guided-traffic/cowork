@@ -11375,7 +11375,7 @@
     },
     "/api/v1/tenants/{tenant}/export": {
       "get": {
-        "description": "The export of every project of the tenant the caller can see, archived ones included, in one\n`tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all\nof them under `\u003ctenant\u003e/`, and one `manifest.json`, `links.json` and `attachments.json` over\nall of them, each link once. A restricted project the caller cannot see is absent, without a\ncount; the confidential tickets left out are counted per project and in total. Any member, an\nagent too; a token restricted to a project is refused, as on every route of the tenant outside\na project. One act `exported` on the tenant, never published.\n",
+        "description": "The export of every project of the tenant the caller can see, archived ones included, in one\n`tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all\nof them under `\u003ctenant\u003e/`, and one `manifest.json`, `links.json` and `attachments.json` over\nall of them, each link once. A restricted project the caller cannot see is absent, without a\ncount; the confidential tickets left out are counted per project and in total. Any member, an\nagent too; a token restricted to a project is refused, as on every route of the tenant outside\na project. One act `exported` on the tenant, never published. A recorded read: a session's\nrequest with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).\n",
         "operationId": "exportTenant",
         "responses": {
           "200": {
@@ -11404,7 +11404,8 @@
         "summary": "The tenant's tickets as an archive, the union over its projects",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -12596,7 +12597,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/export": {
       "get": {
-        "description": "A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done\nand dropped ones included, deleted ones not —, its `…/markdown` document named by its key,\n`\u003ctenant\u003e/\u003cPROJECT\u003e-\u003cn\u003e.md`; and three manifests at the root:\n\n- `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of\n  tickets, the time, the exporter, and the confidential tickets the caller cannot see and the\n  archive therefore leaves out, as a count (docs/adr/0065 D5);\n- `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends\n  the caller can see, once, by its source key, its type and its target key;\n- `attachments.json`, an array of `ExportAttachment`: every attachment of those tickets by its\n  ticket, name, type, size and URL — never its bytes (docs/adr/0016 D5).\n\nThe importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,\nan agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see\nis `404`. Every export is recorded, one act `exported` on the project — data left the system\n(docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.\n",
+        "description": "A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done\nand dropped ones included, deleted ones not —, its `…/markdown` document named by its key,\n`\u003ctenant\u003e/\u003cPROJECT\u003e-\u003cn\u003e.md`; and three manifests at the root:\n\n- `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of\n  tickets, the time, the exporter, and the confidential tickets the caller cannot see and the\n  archive therefore leaves out, as a count (docs/adr/0065 D5);\n- `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends\n  the caller can see, once, by its source key, its type and its target key;\n- `attachments.json`, an array of `ExportAttachment`: every attachment of those tickets by its\n  ticket, name, type, size and URL — never its bytes (docs/adr/0016 D5).\n\nThe importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,\nan agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see\nis `404`. Every export is recorded, one act `exported` on the project — data left the system\n(docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's\nrequest with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.\n",
         "operationId": "exportProject",
         "responses": {
           "200": {
@@ -12625,7 +12626,8 @@
         "summary": "The project's tickets as an archive",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -13855,7 +13857,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content": {
       "get": {
-        "description": "Streamed from storage after the ticket's read check, with the detected type, `nosniff`,\n`Content-Security-Policy: sandbox`, inline for raster images and a download for\neverything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system\n(docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so\n(docs/adr/0059 D4).\n",
+        "description": "Streamed from storage after the ticket's read check, with the detected type, `nosniff`,\n`Content-Security-Policy: sandbox`, inline for raster images and a download for\neverything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system\n(docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so\n(docs/adr/0059 D4).\n\nA recorded read (`x-cowork-recorded-read`): a session's request whose\n`Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and\nno header pass, and a token's request is not looked at (docs/adr/0026 D5).\n",
         "operationId": "downloadAttachment",
         "parameters": [
           {
@@ -13915,7 +13917,8 @@
         "summary": "An attachment's bytes",
         "tags": [
           "attachments"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -14390,7 +14393,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context": {
       "get": {
-        "description": "The canonical document of `…/markdown` (docs/adr/0044 D1) under one first\nline, `\u003c!-- cowork: context of \u003ckey\u003e, exported \u003ctime\u003e by \u003cperson\u003e (via\n\u003cagent\u003e) — not an import format --\u003e`, followed by read-only sections in a\nfixed order (D2): `## Links` (typed, read from this ticket, each other\nend's key, title, state and assignee), `## Prerequisites` (the tree of the\ntickets that block it, to a depth of eight, with state, assignee and the\nimplementation stage, and the count of open ones), `## Recent comments`\n(the last `comments`, oldest of them first, each quoted under its author,\nagent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`\n(name, type, size and URL, never content), `## Pull requests` (each pull\nrequest and default-branch commit GitHub's webhook linked, with its state,\nauthor and URL, its title quoted — written only when the ticket has one,\ndocs/adr/0071 D6) and `## Recent activity` (the\nlast `activity`). `comments=0` or `activity=0` leaves its section out. What\nthe caller cannot see is absent. The document carries no `ETag`: it is not\none entity. Every call is recorded: data left the system (D5). It is no\nimport format (D3): there is no importer yet, and the one ADR 0044\ndecides refuses a file that carries these sections.\n",
+        "description": "The canonical document of `…/markdown` (docs/adr/0044 D1) under one first\nline, `\u003c!-- cowork: context of \u003ckey\u003e, exported \u003ctime\u003e by \u003cperson\u003e (via\n\u003cagent\u003e) — not an import format --\u003e`, followed by read-only sections in a\nfixed order (D2): `## Links` (typed, read from this ticket, each other\nend's key, title, state and assignee), `## Prerequisites` (the tree of the\ntickets that block it, to a depth of eight, with state, assignee and the\nimplementation stage, and the count of open ones), `## Recent comments`\n(the last `comments`, oldest of them first, each quoted under its author,\nagent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`\n(name, type, size and URL, never content), `## Pull requests` (each pull\nrequest and default-branch commit GitHub's webhook linked, with its state,\nauthor and URL, its title quoted — written only when the ticket has one,\ndocs/adr/0071 D6) and `## Recent activity` (the\nlast `activity`). `comments=0` or `activity=0` leaves its section out. What\nthe caller cannot see is absent. The document carries no `ETag`: it is not\none entity. Every call is recorded: data left the system (D5). It is no\nimport format (D3): there is no importer yet, and the one ADR 0044\ndecides refuses a file that carries these sections. A recorded read: a\nsession's request with `Sec-Fetch-Site` `same-site` or `cross-site` is\n`403 csrf` (docs/adr/0026 D5).\n",
         "operationId": "exportTicketContext",
         "parameters": [
           {
@@ -14435,7 +14438,8 @@
         "summary": "The ticket for reading, with what surrounds it",
         "tags": [
           "tickets"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -14751,7 +14755,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown": {
       "get": {
-        "description": "Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the\nbody, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the\ndocument is never answered 304. Every call is recorded: data left the system\n(docs/adr/0044 D5).\n",
+        "description": "Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the\nbody, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the\ndocument is never answered 304. Every call is recorded: data left the system\n(docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`\n`same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).\n",
         "operationId": "exportTicket",
         "responses": {
           "200": {
@@ -14777,7 +14781,8 @@
         "summary": "The canonical Markdown of the ticket",
         "tags": [
           "tickets"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {

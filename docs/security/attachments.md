@@ -181,7 +181,9 @@ address another object.
   ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D5).
   The UI's preview of a raster image is such a download each time a page loads it.
   The act is written before the bytes are sent, and a download whose act cannot be written
-  fails.
+  fails. A session's download comes from the installation's own pages: a request a page on a
+  sibling host or of another site makes — `Sec-Fetch-Site` `same-site` or `cross-site` — is
+  `403 csrf`, and nothing is read or recorded ([csrf.md](csrf.md#the-reads-that-record-an-act)).
 - A row whose object the bucket lacks — a restore that brought the database back without its
   bytes — answers `404` with a detail saying the bytes are missing from storage, never a bare
   `404` (ADR 0059 D4).

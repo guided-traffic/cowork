@@ -321,7 +321,9 @@ markdown:
       Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the
       body, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the
       document is never answered 304. Every call is recorded: data left the system
-      (docs/adr/0044 D5).
+      (docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`
+      `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
+    x-cowork-recorded-read: true
     responses:
       '200':
         description: The document
@@ -401,7 +403,10 @@ context:
       the caller cannot see is absent. The document carries no `ETag`: it is not
       one entity. Every call is recorded: data left the system (D5). It is no
       import format (D3): there is no importer yet, and the one ADR 0044
-      decides refuses a file that carries these sections.
+      decides refuses a file that carries these sections. A recorded read: a
+      session's request with `Sec-Fetch-Site` `same-site` or `cross-site` is
+      `403 csrf` (docs/adr/0026 D5).
+    x-cowork-recorded-read: true
     parameters:
       - name: comments
         in: query

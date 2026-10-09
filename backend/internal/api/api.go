@@ -310,14 +310,13 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// client sent (docs/adr/0060 D5).
 	metrics.SetRoute(r.Context(), route.Path)
 	ctx := withClient(withAccept(r.Context(), r.Header.Get("Accept")), r, h.trusted)
-	opID := route.Operation.OperationID
 	if accepts := credentialsOf(h.doc, route.Operation); accepts.any() {
 		p, perr := h.authenticate(r.WithContext(ctx), accepts)
 		if perr != nil {
 			problem.Write(w, r, perr)
 			return
 		}
-		if perr := h.sessionRules(r, p, opID, accepts); perr != nil {
+		if perr := h.sessionRules(r, p, route.Operation, accepts); perr != nil {
 			problem.Write(w, r, perr)
 			return
 		}
@@ -442,26 +441,58 @@ func openQuery(op *openapi3.Operation) bool {
 	return v
 }
 
+// recordedRead reports whether an operation records an act when it is read:
+// an attachment's bytes, a ticket's Markdown and its context, a project's and
+// the tenant's export — data leaving the system (docs/adr/0026 D5).
+func recordedRead(op *openapi3.Operation) bool {
+	v, _ := op.Extensions["x-cowork-recorded-read"].(bool)
+	return v
+}
+
 // sessionRules are what holds a request authenticated by a session and no
-// other: the CSRF check on its writes (docs/adr/0037 D1); what only a session
-// does, which is a person's and never an agent's — a session marked as an
-// agent's by its header is refused it, so the mark cannot make a token, change
-// a password or give access (docs/adr/0035 D5, docs/adr/0043 D3); and the
-// temporary password that has to be changed before anything else
-// (docs/adr/0033 D4). A token's request has no cookie, and none of them
-// applies (docs/adr/0035 D7).
-func (h *handler) sessionRules(r *http.Request, p auth.Principal, opID string, accepts credentials) *problem.Error {
+// other: the CSRF check on its writes (docs/adr/0037 D1), and on a recorded
+// read the page it came from (fromOwnPages); what only a session does, which
+// is a person's and never an agent's — a session marked as an agent's by its
+// header is refused it, so the mark cannot make a token, change a password or
+// give access (docs/adr/0035 D5, docs/adr/0043 D3); and the temporary password
+// that has to be changed before anything else (docs/adr/0033 D4). A token's
+// request has no cookie, and none of them applies (docs/adr/0035 D7).
+func (h *handler) sessionRules(r *http.Request, p auth.Principal, op *openapi3.Operation, accepts credentials) *problem.Error {
 	if !p.Session {
 		return nil
 	}
 	if perr := h.csrf(r); perr != nil {
 		return perr
 	}
+	if recordedRead(op) {
+		if perr := fromOwnPages(r); perr != nil {
+			return perr
+		}
+	}
 	if p.IsAgent() && !accepts.bearer {
 		return problem.New(problem.AgentForbidden, "hard-off: what only a browser session does is a person's act, never an agent's")
 	}
-	if p.PasswordChangeRequired && !whileChangingPassword[opID] {
+	if p.PasswordChangeRequired && !whileChangingPassword[op.OperationID] {
 		return problem.New(problem.PasswordChangeRequired, "the password of this account is temporary: change it with PUT /api/v1/me/password first")
+	}
+	return nil
+}
+
+// fromOwnPages holds a session's recorded read to the installation's own pages
+// (docs/adr/0026 D5 as amended 2026-10-07). A browser names in Sec-Fetch-Site
+// where a request comes from, and no script of a page can set the header:
+// same-site — a page on a sibling host, whose image or link the SameSite=Lax
+// cookie follows — and cross-site are refused; same-origin — the UI, the
+// inline images of rendered Markdown — and none — the address bar, a bookmark
+// — pass, and so does a request without the header, which an older browser
+// sends.
+func fromOwnPages(r *http.Request) *problem.Error {
+	for _, values := range r.Header.Values("Sec-Fetch-Site") {
+		for v := range strings.SplitSeq(values, ",") {
+			if site := strings.ToLower(strings.TrimSpace(v)); site == "same-site" || site == "cross-site" {
+				return problem.New(problem.Csrf, "a recorded read of a session comes from this installation's own pages; this one is "+site+" (Sec-Fetch-Site)")
+			}
+		}
 	}
 	return nil
 }

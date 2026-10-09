@@ -728,7 +728,11 @@ full.
   ([tokens](docs/security/tokens.md#acts-that-take-a-session-in-their-giving-direction)). A **write of a session** must come
   from `COWORK_BASE_URL` — its `Origin`, or without one its `Referer` — and carry
   `X-Requested-With: cowork`, else `403 csrf`; a token's writes need neither
-  ([CSRF](docs/security/csrf.md)). A session's **idle clock** moves on every request of it, the
+  ([CSRF](docs/security/csrf.md)). The five **reads that record an act** — an attachment's bytes, a
+  ticket's `…/markdown` and `…/context`, a project's and the tenant's export — answer a session's
+  request whose `Sec-Fetch-Site` is `same-site` or `cross-site` with `403 csrf`; `same-origin`,
+  `none` and no header pass, and a token's request is not looked at
+  ([CSRF](docs/security/csrf.md#the-reads-that-record-an-act)). A session's **idle clock** moves on every request of it, the
   event stream's included, but a write that check refuses
   ([sessions](docs/security/sessions.md#what-keeps-a-session-and-what-brings-a-person-back)).
   A session whose account has a temporary password can only read
