@@ -284,7 +284,9 @@ It calls the installation's own address, so the token travels over TLS; the back
 inside the cluster answers plain HTTP. Keep the archives as the backups they are: they hold the
 tickets' text, the persons' identities and, for an administrator's token, the confidential tickets
 ([docs/security/import-and-export.md, H-75](../security/import-and-export.md#h-75)). Rotation and
-retention are the volume's, or whatever stores the files further.
+retention are the volume's, or whatever stores the files further. The tenant's settings page shows
+its administrators when it was last exported, and the chart's alert `CoworkExportOverdue` fires when
+that lies too far back ([backups.md](backups.md#watching-the-schedule)).
 
 **Restoring tickets from an export.** The import reads an export's documents and its links
 manifest, so a project comes back through it, with its numbers, states, questions and the links

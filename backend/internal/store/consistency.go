@@ -156,25 +156,34 @@ func (db *DB) LastConsistencyCheck(ctx context.Context) (last time.Time, checked
 	return last, checked, err
 }
 
-// consistencyForMetrics reads every tenant's counts of its latest result for
-// a scrape (docs/adr/0060 D4); a failed read is logged, never scraped.
-func (db *DB) consistencyForMetrics(ctx context.Context) ([]metrics.ConsistencyCounts, error) {
-	var out []metrics.ConsistencyCounts
+// consistencyForMetrics reads every tenant's counts of its latest result and
+// every tenant's last export — or its creation, where it was never exported —
+// for a scrape (docs/adr/0060 D4); a failed read is logged, never scraped.
+func (db *DB) consistencyForMetrics(ctx context.Context) (metrics.Consistency, error) {
+	var out metrics.Consistency
 	err := db.jobRead(ctx, JobConsistencyCheck, func(r *Reader) error {
 		rows, err := r.ListConsistencyCounts(ctx)
 		if err != nil {
 			return err
 		}
-		out = make([]metrics.ConsistencyCounts, 0, len(rows))
+		out.Counts = make([]metrics.ConsistencyCounts, 0, len(rows))
 		for _, row := range rows {
-			out = append(out, metrics.ConsistencyCounts{Tenant: row.TenantID.String(),
+			out.Counts = append(out.Counts, metrics.ConsistencyCounts{Tenant: row.TenantID.String(),
 				Dangling: int64(row.Dangling), Orphans: int64(row.Orphans)})
+		}
+		exports, err := r.ListLastExports(ctx)
+		if err != nil {
+			return err
+		}
+		out.Exports = make([]metrics.TenantExport, 0, len(exports))
+		for _, row := range exports {
+			out.Exports = append(out.Exports, metrics.TenantExport{Tenant: row.TenantID.String(), Since: row.Since})
 		}
 		return nil
 	})
 	if err != nil {
 		db.logger.Warn("the consistency counts could not be read for the metrics", "error", err)
-		return nil, err
+		return metrics.Consistency{}, err
 	}
 	return out, nil
 }

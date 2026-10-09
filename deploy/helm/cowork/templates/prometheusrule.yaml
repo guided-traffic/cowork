@@ -1,16 +1,26 @@
 {{- $metrics := include "cowork.metrics" . | fromYaml }}
 {{- /*
-The alerts of docs/adr/0060 D6, but for the last export's age, which comes
-with the export. Each is narrowed to this release's backend pods and links its
-section of docs/operations/metrics.md at the version the chart installs. The
-consistency check's alert waits the restore window, a value: a restore leaves
-the counts above zero until it is settled (docs/adr/0059 D5). Needs the
-Prometheus Operator's CRDs.
+The alerts of docs/adr/0060 D6. Each is narrowed to this release's backend
+pods and links its section of docs/operations/metrics.md at the version the
+chart installs. The consistency check's alert waits the restore window, a
+value: a restore leaves the counts above zero until it is settled
+(docs/adr/0059 D5). The export's alert fires after exportMaxAgeDays, a value:
+how often a tenant is exported is the installation's schedule (docs/adr/0059
+D2). A release upgraded with --reuse-values from a chart without the value
+gets its default, 7. Needs the Prometheus Operator's CRDs.
 */}}
 {{- if $metrics.prometheusRule.enabled }}
 {{- if not (include "cowork.metricsEnabled" .) }}
 {{- fail "metrics.prometheusRule.enabled needs metrics.enabled: the alerts read the backend's metrics" }}
 {{- end }}
+{{- $exportDays := 7 }}
+{{- if hasKey $metrics.prometheusRule "exportMaxAgeDays" }}
+{{- $exportDays = $metrics.prometheusRule.exportMaxAgeDays }}
+{{- end }}
+{{- if not (and (has (kindOf $exportDays) (list "int" "int64" "float64")) (ge (float64 $exportDays) 1.0) (eq (float64 $exportDays) (float64 (int64 $exportDays)))) }}
+{{- fail "metrics.prometheusRule.exportMaxAgeDays must be a whole number of days, 1 or more: how long a tenant may go without an export before CoworkExportOverdue fires" }}
+{{- end }}
+{{- $exportDays = int64 $exportDays }}
 {{- $sel := printf "namespace=%q,pod=~%q" .Release.Namespace (printf "%s-.*" (include "cowork.backend.fullname" .)) }}
 {{- $runbook := printf "https://github.com/guided-traffic/cowork/blob/v%s/docs/operations/metrics.md" .Chart.AppVersion }}
 apiVersion: monitoring.coreos.com/v1
@@ -83,4 +93,13 @@ spec:
             summary: The attachments of a cowork tenant are out of step with the bucket.
             description: {{ quote `The latest consistency check of the tenant with the id {{ $labels.tenant }} in {{ $labels.namespace }} found {{ $value }} files whose bytes are missing or objects no file names, and they have stayed for longer than the restore window. Its administrators see the lists on its settings page.` }}
             runbook_url: {{ $runbook }}#coworkattachmentsoutofstep
+        - alert: CoworkExportOverdue
+          expr: |-
+            max by (namespace, tenant) (cowork_consistency_last_export_age_seconds{ {{- $sel -}} }) > {{ mul $exportDays 86400 }}
+          labels:
+            {{- include "cowork.alertLabels" (dict "root" . "severity" "warning") | nindent 12 }}
+          annotations:
+            summary: A cowork tenant has not been exported for longer than its schedule allows.
+            description: {{ quote (printf `Neither the tenant with the id {{ $labels.tenant }} in {{ $labels.namespace }} nor a project of it has been exported for {{ $value | humanizeDuration }}, longer than %d days, or the tenant was never exported since it was made: the export, the second line of its backup, is not running.` $exportDays) }}
+            runbook_url: {{ $runbook }}#coworkexportoverdue
 {{- end }}

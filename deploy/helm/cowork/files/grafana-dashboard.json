@@ -1062,7 +1062,7 @@
     {
       "id": 26,
       "type": "row",
-      "title": "Attachment consistency",
+      "title": "Consistency and export",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1161,25 +1161,69 @@
     },
     {
       "id": 29,
+      "type": "timeseries",
+      "title": "Time since the last export by tenant",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 98
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "max by (tenant) (cowork_consistency_last_export_age_seconds{namespace=~\"$namespace\"})",
+          "legendFormat": "{{tenant}}"
+        }
+      ]
+    },
+    {
+      "id": 30,
       "type": "row",
       "title": "Process",
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 98
+        "y": 106
       },
       "collapsed": false
     },
     {
-      "id": 30,
+      "id": 31,
       "type": "timeseries",
       "title": "Goroutines",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 99
+        "y": 107
       },
       "datasource": {
         "type": "prometheus",
@@ -1216,14 +1260,14 @@
       ]
     },
     {
-      "id": 31,
+      "id": 32,
       "type": "timeseries",
       "title": "Resident memory",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 99
+        "y": 107
       },
       "datasource": {
         "type": "prometheus",
@@ -1260,14 +1304,14 @@
       ]
     },
     {
-      "id": 32,
+      "id": 33,
       "type": "timeseries",
       "title": "CPU",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 107
+        "y": 115
       },
       "datasource": {
         "type": "prometheus",

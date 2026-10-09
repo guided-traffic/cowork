@@ -1084,16 +1084,19 @@ its own.
 <a id="h-97"></a>
 ### H-97 — A job's read across the tenants admits whole rows
 
-Hardening. Three policies admit a job to rows of every tenant with no tenant set: `tickets_purge_due`
-the deleted tickets due, `consistency_checks_counts` every tenant's check result, and
-`import_jobs_expiry_read` every dry run
+Hardening. Four policies admit a job to rows of every tenant with no tenant set: `tickets_purge_due`
+the deleted tickets due, `consistency_checks_counts` every tenant's check result,
+`import_jobs_expiry_read` every dry run, and `audit_exports_read` every act of a project's or a
+tenant's export, for the age of the last export a scrape reads
 ([migrations 32](../../backend/internal/store/migrations/000032_ticket_deletion.up.sql),
 [42](../../backend/internal/store/migrations/000042_attachment_consistency.up.sql),
-[43](../../backend/internal/store/migrations/000043_import_jobs.up.sql)). Each job needs a few
-columns — the ids and tenants, the counts, the expiry — and each policy admits the whole row: a
-ticket's text, a check's lists of missing files and orphans, a dry run's report and the files it
-keeps. A query of those jobs that read more than it needs would read it across every tenant. The
-jobs' queries read the columns they need; nothing in the data layer holds them to that.
+[43](../../backend/internal/store/migrations/000043_import_jobs.up.sql),
+[46](../../backend/internal/store/migrations/000046_last_export_read_at_a_scrape.up.sql)). Each job
+needs a few columns — the ids and tenants, the counts, the expiry, the time of an act — and each
+policy admits the whole row: a ticket's text, a check's lists of missing files and orphans, a dry
+run's report and the files it keeps, an export act's exporter, token, agent and counts. A query of
+those jobs that read more than it needs would read it across every tenant. The jobs' queries read
+the columns they need; nothing in the data layer holds them to that.
 
 <a id="h-98"></a>
 ### H-98 — A rollback by one release leaves the purge behind the schema

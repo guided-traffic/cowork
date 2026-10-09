@@ -1220,7 +1220,7 @@
         "type": "object"
       },
       "AttachmentConsistency": {
-        "description": "The tenant's latest consistency check of its attachments (docs/adr/0059 D4): the files whose\nmetadata is there and whose bytes the bucket lacks — dangling — and the objects under the\ntenant's prefix that no metadata names — orphans —, with the counts exact and each list at most\n1000 entries long. `check_id` is null, and everything else empty, while no check has run in the\ntenant.\n",
+        "description": "The tenant's latest consistency check of its attachments (docs/adr/0059 D4): the files whose\nmetadata is there and whose bytes the bucket lacks — dangling — and the objects under the\ntenant's prefix that no metadata names — orphans —, with the counts exact and each list at most\n1000 entries long. `check_id` is null, and everything else of the check empty, while no check has\nrun in the tenant. Beside it, `last_exported_at`: the second line of the tenant's backup\n(docs/adr/0059 D2).\n",
         "example": {
           "accepted": 0,
           "check_id": "01a10f27-5b80-71db-8b7c-37825a4703a9",
@@ -1238,6 +1238,7 @@
               "uploaded_at": "2026-04-14T10:22:00Z"
             }
           ],
+          "last_exported_at": "2026-10-06T02:30:04Z",
           "orphan_bytes": 3145728,
           "orphan_removal": null,
           "orphaned_objects": [
@@ -1285,6 +1286,14 @@
             },
             "type": "array"
           },
+          "last_exported_at": {
+            "description": "When a project of the tenant or the whole tenant was last exported, by anybody, as the act\n`exported` records it; a ticket's Markdown or context is no export of the tenant. Null while\nnone was.\n",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "orphan_bytes": {
             "description": "The orphans' sizes, summed",
             "format": "int64",
@@ -1322,7 +1331,8 @@
           "orphan_bytes",
           "dangling_attachments",
           "orphaned_objects",
-          "orphan_removal"
+          "orphan_removal",
+          "last_exported_at"
         ],
         "type": "object"
       },
@@ -10462,7 +10472,7 @@
     },
     "/api/v1/tenants/{tenant}/attachment-consistency": {
       "get": {
-        "description": "What the daily check found last: the files whose metadata is there and whose bytes the bucket\nlacks — dangling, after a restore that brought the database back without them; their download\nanswers 404 saying so — and the objects under the tenant's prefix that no metadata names —\norphans, after a restore that brought the bucket back from a later point, or a removal that\nfailed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,\na token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets\nthey may not see. Before the first check `check_id` is null. An answer the client holds\nunchanged is `304` to its weak `ETag` (docs/adr/0054 D7).\n",
+        "description": "What the daily check found last: the files whose metadata is there and whose bytes the bucket\nlacks — dangling, after a restore that brought the database back without them; their download\nanswers 404 saying so — and the objects under the tenant's prefix that no metadata names —\norphans, after a restore that brought the bucket back from a later point, or a removal that\nfailed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,\na token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets\nthey may not see. Before the first check `check_id` is null. Beside the check, when a project\nof the tenant or the whole tenant was last exported — the second line of its backup\n(docs/adr/0059 D2) —, null before the first. An answer the client holds unchanged is `304` to\nits weak `ETag` (docs/adr/0054 D7).\n",
         "operationId": "getAttachmentConsistency",
         "parameters": [
           {

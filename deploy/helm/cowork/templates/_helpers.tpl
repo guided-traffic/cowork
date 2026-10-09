@@ -69,6 +69,8 @@ prometheusRule:
   enabled: false
   labels: {}
   alertLabels: {}
+  restoreWindow: 24h
+  exportMaxAgeDays: 7
 grafanaDashboard:
   enabled: false
   labels:

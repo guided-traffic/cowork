@@ -10,7 +10,9 @@ for the metrics port is the installation's again), amended 2026-10-06 for what w
 D1–D7 but for the `consistency` family; what the record left open is made concrete in place, in
 D1, D3, D4, D6 and D7, by the implementer, open to the owner's objection), amended 2026-10-06 a
 second time for the `consistency` family's two counts and their alert, built with the check (D4,
-D5, D6, made concrete in place the same way). Date: 2026-10-01. Decided
+D5, D6, made concrete in place the same way), amended 2026-10-09 for the family's third gauge, the
+seconds since a tenant's last export, and its alert, built with the export (D4, D6, made concrete
+in place the same way). Date: 2026-10-01. Decided
 by the owner as the answer to the catalog question "metrics?": Prometheus on a separate port with `client_golang`, together with the
 kube-prometheus custom resources (`ServiceMonitor`/`PodMonitor`, `PrometheusRule`) rendered
 by the chart, over metrics on the main port behind authentication, over OpenTelemetry push,
@@ -22,7 +24,7 @@ the owner with the question and not objected to.
 **Built** (2026-10-06), but for the `consistency` family of D4 and its two alerts of D6 —
 consistency counts above zero, the last export too old —, which come with the consistency check of
 [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-D4 that sets them:
+D4 that sets them *(both built since, below)*:
 
 - **D1** — the registry and every instrument in [`internal/metrics`](../../backend/internal/metrics/metrics.go),
   `client_golang` v1.24.1, a registry of its own and never the library's default, which no other
@@ -55,12 +57,31 @@ D4 that sets them:
 D4): the `consistency` family's two counts, `cowork_consistency_dangling_attachments` and
 `cowork_consistency_orphaned_objects`, the dashboard's row for them and the alert
 `CoworkAttachmentsOutOfStep`; made concrete in D4, D5 and D6 by the implementer, open to the owner's
-objection. The seconds since the last export and the alert on its age come with the export, which
-is not part of it. `TestNoInstrumentCarriesAForbiddenLabel` admits the tenant on those two families
-alone, as an id, and holds them to that one label; the integration tier scrapes the counts of a
+objection. ~~The seconds since the last export and the alert on its age come with the export, which
+is not part of it.~~ *(Built 2026-10-09, below.)* `TestNoInstrumentCarriesAForbiddenLabel` admits the
+tenant on ~~those two families~~ the family's gauges alone, as an id, and holds them to that one
+label; the integration tier scrapes the counts of a
 check through a second store (`TestTheConsistencyCheckFindsWhatARestoreLeftAndTheAdministratorSettlesIt`);
 `promtool` of Prometheus 3.5.0 parsed the rendered rules and fired the alert in a rule test after the
 window, for a tenant out of step on two replicas and not for a clean one. Not run: a Prometheus
+scraping a release.
+
+**Built** (2026-10-09, with the export of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4): the
+family's third gauge, `cowork_consistency_last_export_age_seconds`, read by the store's
+`consistencyForMetrics` with the counts, through the policy `audit_exports_read` of
+[migration 46](../../backend/internal/store/migrations/000046_last_export_read_at_a_scrape.up.sql);
+its panel in the dashboard's row, renamed *Consistency and export*; the alert `CoworkExportOverdue`
+with `metrics.prometheusRule.exportMaxAgeDays`; made concrete in D4 and D6 by the implementer, open
+to the owner's objection. With it every instrument of D4 and every alert of D6 is built.
+`TestNoInstrumentCarriesAForbiddenLabel` names the gauge in `tenantLabelled`;
+`TestTheLastExportsAgeIsCountedAtEveryScrape` holds its read and its age; the integration tier reads
+it on a second store before any export — counted from the tenant's creation —, after a ticket's
+Markdown, which does not count, and after a project's and a tenant's export, and holds the job's read
+across the tenants to the acts of those exports (`TestTheLastExportIsReadFromTheAuditRecord`);
+`promtool` of Prometheus 3.5.0 parsed the rendered rules and, in a rule test run by hand on
+2026-10-09, fired the alert once per tenant past the days on two replicas, not for a tenant exported
+within them, not for another release's pod, and no more after an export. Not run: a Prometheus
 scraping a release.
 
 ## Context
@@ -164,7 +185,16 @@ family, by the implementer, open to the owner's objection:)* two gauges,
 loss nobody accepted — and `cowork_consistency_orphaned_objects`, per tenant, as its latest check
 left them; read from the stored results at a scrape, at most once a minute and within two seconds,
 not set in the process that ran the check, so that every replica answers the same counts and one
-that starts answers them at once. A tenant without a result has no series.
+that starts answers them at once. A tenant without a result has no series. *(Made concrete
+2026-10-09 for the third gauge, by the implementer, open to the owner's objection:)*
+`cowork_consistency_last_export_age_seconds`, per tenant, every tenant of the installation: the
+seconds since a project of it or the whole tenant was last exported, by anybody, as the act
+`exported` records it — a ticket's Markdown or context is no copy of the tenant and does not count —,
+or since the tenant was made where it never was, so that a schedule nobody set up shows as well as
+one that stopped. It is read from the audit record in the same transaction as the counts, at most
+once a minute, and the age is counted at every scrape from the time read, so it grows between two
+reads. The read names the job and no tenant, and the policy `audit_exports_read` of migration 46
+admits it to the acts of a project's or a tenant's export and to no other row of the audit record.
 
 **D5 — Cardinality discipline.** No label carries a person, a ticket key, a token or a
 request id; route labels are the pattern (`/tenants/{slug}/projects/{KEY}/tickets/{number}`),
@@ -173,7 +203,8 @@ never the instance; the `tenant` label appears on the `consistency` family only.
 its slug: the listener has no authentication, a slug names a client, and the list of the clients is
 a session's view even for a global administrator
 ([ADR 0035](0035-personal-access-tokens.md) D5). The scrape then tells how many tenants have a result
-and each one's counts by an id, which [docs/security/metrics.md](../security/metrics.md) says.
+and each one's counts by an id — and, since 2026-10-09, the id of every tenant with the age of its
+last export —, which [docs/security/metrics.md](../security/metrics.md) says.
 
 **D6 — The alerts of the first release:** schema dirty; consistency counts above zero for
 longer than the restore window; last export older than a configurable number of days;
@@ -189,10 +220,19 @@ namespace and pod name; the thresholds are the template's, not values; `runbook_
 `appVersion`, so a runbook speaks of the release installed. *(Made concrete 2026-10-06 for the
 consistency counts, by the implementer, open to the owner's objection:)* `CoworkAttachmentsOutOfStep`,
 warning, per tenant, the two counts of its latest check above zero together for
-`metrics.prometheusRule.restoreWindow`, a day by default — the one threshold that is a value,
+`metrics.prometheusRule.restoreWindow`, a day by default — ~~the one threshold that is a value~~ a
+threshold that is a value *(one of two since 2026-10-09)*,
 because how long a restore takes to settle is the installation's; an accepted loss counts in
-neither, so the alert ends with an acceptance, a removal or bytes put back. The alert on the last
-export's age comes with the export.
+neither, so the alert ends with an acceptance, a removal or bytes put back. ~~The alert on the last
+export's age comes with the export.~~ *(Made concrete 2026-10-09 for the last export, by the
+implementer, open to the owner's objection:)* `CoworkExportOverdue`, warning, per tenant, its age of
+the last export above `metrics.prometheusRule.exportMaxAgeDays` days, 7 by default — a whole number
+of at least 1, the other threshold that is a value, because how often a tenant is exported is the
+installation's schedule; a release upgraded with `--reuse-values` from a chart without the value
+gets the 7. No `for`: the age only grows until an export, which the next read shows — a minute
+later at the most — and which ends the alert at the next evaluation after a scrape. A
+tenant never exported fires once it is older than the days, and a tenant nobody means to export
+fires until it is silenced in Alertmanager.
 
 **D7 — nginx metrics are opt-in.** `stub_status` on `127.0.0.1` inside the frontend
 container; `frontend.metrics.exporter.enabled` adds the nginx exporter sidecar and the

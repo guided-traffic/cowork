@@ -12,6 +12,7 @@
         Not checked yet. Once a day, after 03:00 UTC, cowork compares the tenant's files with the
         bucket that holds their bytes.
       </p>
+      <ng-container [ngTemplateOutlet]="lastExport" />
     } @else {
       <p data-testid="consistency-summary">
         <span class="muted"
@@ -21,6 +22,7 @@
         </span>
         {{ summary(c) }}
       </p>
+      <ng-container [ngTemplateOutlet]="lastExport" />
 
       @if (c.dangling_attachments.length > 0) {
         <h3>Files whose bytes are missing</h3>
@@ -168,3 +170,15 @@
     <p class="muted" data-testid="consistency-failure">{{ message }}</p>
   }
 </section>
+
+<ng-template #lastExport>
+  <p class="muted small" data-testid="consistency-last-export">
+    @if (lastExported(); as at) {
+      Last export
+      <span [pTooltip]="dateTime(at)" [showDelay]="400">{{ ago(at) }}</span
+      >, of the tenant or one of its projects.
+    } @else {
+      Never exported. An export on a schedule is the second line of the tenant's backup.
+    }
+  </p>
+</ng-template>

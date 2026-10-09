@@ -1030,7 +1030,7 @@ to a project is refused like an unknown tenant.
 | `GET …/{number}/attachments/{attachment}` | its metadata |
 | `GET …/{number}/attachments/{attachment}/content` | its bytes, with `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`; raster images inline, everything else as a download; the `ETag` is the SHA-256 of the bytes; every `200` is recorded |
 | `GET /api/v1/tenants/{tenant}/attachment-usage` | the tenant's administrators, `read` scope: `{"used_bytes","attachments","quota_bytes"}` — every attachment of the tenant summed, confidential tickets' included and a deleted ticket's until the purge, and `COWORK_ATTACHMENT_TENANT_QUOTA` or `null` without one; a weak `ETag`, `304` to it; anybody else `403 forbidden` |
-| `GET …/attachment-consistency` | the tenant's administrators, `read` scope: the latest consistency check — `check_id` and `checked_at` (`null` before the first), `dangling` (files whose bytes are missing, loss not accepted), `accepted`, `orphans` (objects under the tenant's prefix no file names) with `orphan_bytes`, `dangling_attachments` (id, file name, size, type, the ticket's key, whether the ticket is in the bin, uploaded, accepted) and `orphaned_objects` (key, size, last modified), at most 1000 each, and `orphan_removal` (who, when, removed, kept) or `null`; a weak `ETag`, `304` to it; anybody else `403 forbidden` |
+| `GET …/attachment-consistency` | the tenant's administrators, `read` scope: the latest consistency check — `check_id` and `checked_at` (`null` before the first), `dangling` (files whose bytes are missing, loss not accepted), `accepted`, `orphans` (objects under the tenant's prefix no file names) with `orphan_bytes`, `dangling_attachments` (id, file name, size, type, the ticket's key, whether the ticket is in the bin, uploaded, accepted) and `orphaned_objects` (key, size, last modified), at most 1000 each, and `orphan_removal` (who, when, removed, kept) or `null`; beside the check `last_exported_at`, when a project of the tenant or the whole tenant was last exported, by anybody (`null` while none was); a weak `ETag`, `304` to it; anybody else `403 forbidden` |
 | `POST …/attachment-consistency/orphan-removal` | a tenant administrator in a **browser session only**, never an agent: `{"check_id"}` → `200 {"removed","kept","failed"}` — each orphan of that check's list asked again whether a file names it now (`kept`), the act `purged` recorded, the objects removed after the commit, a failure logged and listed by the next check; another check than the latest, or one whose orphans were removed already, `409 consistency_check_stale`; no orphans, `200` with zeros and nothing recorded; a token `403 session_required`; without object storage `501 uploads_disabled` |
 | `POST …/attachment-consistency/dangling-acceptance` | a tenant administrator with `admin` scope, never an agent: `{"check_id"}` → `200 {"accepted"}` — the check's listed missing files nobody accepted count as accepted from now on, recorded as `accepted`; nothing is removed, and a file whose bytes come back is whole again; another check than the latest `409 consistency_check_stale` |
 
@@ -1163,11 +1163,8 @@ target's `namespace`, `pod`, `container` and `job`.
 | `cowork_migrations_schema_dirty` | gauge | — | `1` while the recorded version is dirty: a migration failed halfway, or one is running |
 | `cowork_consistency_dangling_attachments` | gauge | `tenant`: the tenant's id | Files of the tenant whose metadata is there and whose bytes the bucket lacks, and whose loss nobody accepted, at its latest consistency check; read from the stored results at a scrape at most once a minute, the same on every replica; no series for a tenant without a result |
 | `cowork_consistency_orphaned_objects` | gauge | `tenant`: the tenant's id | Objects under the tenant's prefix that no file names, at its latest check; after an administrator's confirmed removal, those its list of a thousand did not show |
+| `cowork_consistency_last_export_age_seconds` | gauge | `tenant`: the tenant's id | Seconds since a project of the tenant or the whole tenant was last exported, by anybody, as the act `exported` records it — a ticket's Markdown or context does not count —, or since the tenant was made where it never was; every tenant has one. Read from the audit record with the counts, at most once a minute, the age counted at every scrape; `CoworkExportOverdue` fires above `metrics.prometheusRule.exportMaxAgeDays` |
 | `go_*`, `process_*` | | | The Go runtime's and the process's, `client_golang`'s defaults |
-
-The consistency family's third instrument of
-[ADR 0059](docs/adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-D4, the seconds since the last export, comes with the export.
 
 </details>
 
@@ -1306,6 +1303,7 @@ metrics:                              # Prometheus text at /metrics on the backe
     labels: {}                        # what your Prometheus's ruleSelector matches
     alertLabels: {}                   # on every alert, for Alertmanager's routing; a severity here replaces the alert's own
     restoreWindow: 24h                # how long a tenant's consistency counts stay above zero before CoworkAttachmentsOutOfStep fires
+    exportMaxAgeDays: 7               # whole days a tenant may go without an export of it or a project before CoworkExportOverdue fires: your export schedule's interval with room for a failed run
   grafanaDashboard:                   # a ConfigMap with the dashboard, for the Grafana sidecar
     enabled: false
     labels:

@@ -38,7 +38,8 @@ var orphanRemoval = auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeAdmin, 
 // GetAttachmentConsistency answers the tenant's latest consistency check of its
 // attachments, for its administrators (docs/adr/0059 D4): the lists name files
 // of tickets a member may not see. Before the first check the counts are 0 and
-// the check's id null. An answer the client holds unchanged is a 304
+// the check's id null. Beside it, when the tenant was last exported
+// (docs/adr/0059 D2). An answer the client holds unchanged is a 304
 // (docs/adr/0054 D7).
 func (s *Server) GetAttachmentConsistency(ctx context.Context, req apigen.GetAttachmentConsistencyRequestObject) (apigen.GetAttachmentConsistencyResponseObject, error) {
 	t := tenantFrom(ctx)
@@ -50,13 +51,17 @@ func (s *Server) GetAttachmentConsistency(ctx context.Context, req apigen.GetAtt
 		OrphanRemoval: nullableOf[apigen.OrphanRemovalRecord](nil)}
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		row, err := r.GetAttachmentConsistency(ctx, t.ID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil
-		}
-		if err != nil {
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+		case err != nil:
 			return err
+		default:
+			if out, err = consistencyView(row); err != nil {
+				return err
+			}
 		}
-		out, err = consistencyView(row)
+		last, err := lastExport(ctx, r, t.ID)
+		out.LastExportedAt = nullableOf(last)
 		return err
 	})
 	if err != nil {
@@ -67,6 +72,19 @@ func (s *Server) GetAttachmentConsistency(ctx context.Context, req apigen.GetAtt
 		return apigen.GetAttachmentConsistency304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
 	}
 	return apigen.GetAttachmentConsistency200JSONResponse{Body: out, Headers: apigen.GetAttachmentConsistency200ResponseHeaders{ETag: &tag}}, nil
+}
+
+// lastExport is when a project of the tenant or the whole tenant was last
+// exported, as the act exported records it; nil while none was.
+func lastExport(ctx context.Context, r *store.Reader, tenantID uuid.UUID) (*time.Time, error) {
+	at, err := r.LastTenantExport(ctx, &tenantID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read the last export: %w", err)
+	}
+	return &at, nil
 }
 
 // consistencyView is a stored result as the API answers it.

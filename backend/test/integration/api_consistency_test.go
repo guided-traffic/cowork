@@ -5,6 +5,7 @@ package integration
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"os/exec"
 	"path/filepath"
@@ -303,6 +304,65 @@ func TestTheConsistencyCheckIsTheTenantAdministratorsAndNoAgents(t *testing.T) {
 		return err
 	})
 	assert.ErrorContains(t, err, "no rows", "a member's transaction reads no result")
+}
+
+// exportAge is the seconds since the tenant's last export a replica that
+// starts answers at its first scrape.
+func exportAge(t *testing.T, tenant uuid.UUID) float64 {
+	t.Helper()
+	m := metrics.New()
+	replica, err := store.Open(context.Background(), env.RuntimeURL, store.Options{Metrics: m})
+	require.NoError(t, err)
+	defer replica.Close()
+	samples, err := m.Samples()
+	require.NoError(t, err)
+	require.True(t, metrics.Has(samples, "cowork_consistency_last_export_age_seconds", "tenant", tenant.String()),
+		"every tenant has the age of its last export")
+	return metrics.Sum(samples, "cowork_consistency_last_export_age_seconds", "tenant", tenant.String())
+}
+
+// docs/adr/0059 D2, D3, docs/adr/0060 D4, D6: when a tenant was last exported
+// — a project of it or the whole tenant, by anybody, as the act exported
+// records it — is read from the audit record: by its administrators beside the
+// consistency check, null while it never was, and by a scrape on any replica
+// as the seconds since it, counted from the tenant's creation while it was
+// never exported, so that the alert sees a schedule nobody set up. A ticket's
+// Markdown is no export of the tenant. Across the tenants, the job's read
+// admits those acts and no other row of the audit record.
+func TestTheLastExportIsReadFromTheAuditRecord(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	admin, member := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberA}
+	require.NoError(t, f.Exec(e.ctx, `UPDATE tenants SET created_at = now() - interval '10 days' WHERE id = $1`, e.A))
+	require.NoError(t, f.Exec(e.ctx, `UPDATE tenants SET created_at = now() - interval '3 days' WHERE id = $1`, e.B))
+	const day = 24 * 60 * 60.0
+
+	assert.True(t, e.consistencyOf(t, admin, e.SlugA).LastExportedAt.IsNull(), "never exported")
+	assert.InDelta(t, 10*day, exportAge(t, e.A), 60, "never exported: counted from the tenant's creation")
+
+	tk := e.file(t, member, "ALPHA", task("Exported alone"))
+	res := e.s.do(t, member, http.MethodGet, fmt.Sprintf("%s/%d/markdown", e.projectTickets("ALPHA"), tk.Number), nil)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.True(t, e.consistencyOf(t, admin, e.SlugA).LastExportedAt.IsNull(), "a ticket's Markdown is no export of the tenant")
+	assert.InDelta(t, 10*day, exportAge(t, e.A), 60)
+
+	res, _, _ = e.exportOf(t, member, "ALPHA")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	last := e.consistencyOf(t, admin, e.SlugA).LastExportedAt.MustGet()
+	assert.WithinDuration(t, time.Now(), last, time.Minute, "a member's export of a project is the tenant's last")
+	assert.Less(t, exportAge(t, e.A), 60.0)
+	assert.InDelta(t, 3*day, exportAge(t, e.B), 60, "another tenant's export is not B's")
+
+	res, _, _ = e.exportOf(t, admin, "")
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.False(t, e.consistencyOf(t, admin, e.SlugA).LastExportedAt.MustGet().Before(last), "the tenant's export is its last")
+
+	job := settings{"app.job": store.JobConsistencyCheck}
+	assert.Equal(t, int64(2), count(t, job, `SELECT count(*) FROM audit_events WHERE tenant_id = $1`, e.A),
+		"the job reads the project's and the tenant's export, and nothing else of the tenant's record")
+	assert.Zero(t, count(t, settings{"app.job": "ticket-purge"}, `SELECT count(*) FROM audit_events WHERE tenant_id = $1`, e.A),
+		"another job reads none of them")
+	assert.Zero(t, count(t, settings{}, `SELECT count(*) FROM audit_events WHERE tenant_id = $1`, e.A), "nor a context without a job")
 }
 
 // docs/adr/0059 D5: `cowork check-consistency`, the step of a restore, runs

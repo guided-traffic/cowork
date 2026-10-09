@@ -19,6 +19,7 @@ const result = (overrides: Partial<AttachmentConsistency> = {}): AttachmentConsi
   dangling_attachments: [],
   orphaned_objects: [],
   orphan_removal: null,
+  last_exported_at: null,
   ...overrides,
 });
 
@@ -133,5 +134,21 @@ describe('AttachmentConsistencyService', () => {
     latest().flush(result({ dangling: 0, accepted: 1, orphans: 0 }));
     await settle();
     expect(service.latest.value()?.orphans).toBe(0);
+  });
+
+  it('reads the check again after an export, which moves the time of the last one', async () => {
+    TestBed.tick();
+    latest().flush(result(), { headers: { ETag: 'W/"c1"' } });
+    await settle();
+
+    service.exported();
+    await settle();
+    const again = latest();
+    expect(again.request.headers.get('If-None-Match')).toBe('W/"c1"');
+    again.flush(result({ last_exported_at: '2026-10-06T10:00:00Z' }), {
+      headers: { ETag: 'W/"c2"' },
+    });
+    await settle();
+    expect(service.latest.value()?.last_exported_at).toBe('2026-10-06T10:00:00Z');
   });
 });

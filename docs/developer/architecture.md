@@ -337,10 +337,7 @@ D2) — and, when LM Studio answers on `localhost:1234` with the model `COWORK_D
 The reactivation of a person, the deactivation of a person of the identity provider, and the list
 of one's own sessions; a global administrator's reading of the installation-level audit rows and
 the deletion of a tenant ([ADR 0034] D2); the
-revocation of a refresh token at the issuer when a session ends; the deletion of a project; the age
-of the last export among the metrics of
-[ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-D4 ([metrics.md](metrics.md#the-consistency-family)). The work lists in
+revocation of a refresh token at the issuer when a session ends; the deletion of a project. The work lists in
 [docs/tickets/](../tickets/README.md) say in which order they come; each gets its section here, or a
 page of its own, when it exists.
 

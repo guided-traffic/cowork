@@ -49,6 +49,7 @@ const result = (overrides: Partial<AttachmentConsistency> = {}): AttachmentConsi
     { key: 'tenant-id/stray.bin', size: 2048, last_modified: '2026-10-05T11:00:00Z' },
   ],
   orphan_removal: null,
+  last_exported_at: '2026-10-05T02:30:00Z',
   ...overrides,
 });
 
@@ -161,12 +162,24 @@ describe('AttachmentConsistencySection', () => {
         orphan_bytes: 0,
         dangling_attachments: [],
         orphaned_objects: [],
+        last_exported_at: null,
       }),
     );
     const fixture = await render();
 
     expect(text(el(fixture, 'consistency-never'))).toContain('Not checked yet');
     expect(el(fixture, 'consistency-summary')).toBeNull();
+    expect(text(el(fixture, 'consistency-last-export'))).toBe(
+      "Never exported. An export on a schedule is the second line of the tenant's backup.",
+    );
+  });
+
+  it('says beside the check when the tenant was last exported (docs/adr/0059 D2)', async () => {
+    const fixture = await render();
+
+    const line = el(fixture, 'consistency-last-export');
+    expect(text(line)).toBe('Last export yesterday, of the tenant or one of its projects.');
+    expect(line?.previousElementSibling?.getAttribute('data-testid')).toBe('consistency-summary');
   });
 
   it('lists the files whose bytes are missing with their tickets, and the objects no file names', async () => {

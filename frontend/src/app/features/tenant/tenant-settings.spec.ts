@@ -71,9 +71,11 @@ describe('TenantSettings', () => {
   >;
   let events: Subject<StreamEvent>;
   let exportTenant: MockInstance<ImportsService['exportTenant']>;
+  let exported: MockInstance<AttachmentConsistencyService['exported']>;
 
   beforeEach(() => {
     exportTenant = vi.fn<ImportsService['exportTenant']>();
+    exported = vi.fn<AttachmentConsistencyService['exported']>();
     value = signal<Tenant | undefined>(tenant());
     isAdmin = signal(true);
     update = vi.fn<TenantService['update']>().mockResolvedValue(tenant());
@@ -111,6 +113,7 @@ describe('TenantSettings', () => {
               error: signal(undefined),
               reload: vi.fn(),
             },
+            exported,
           },
         },
         { provide: ImportsService, useValue: { exportTenant } },
@@ -173,6 +176,7 @@ describe('TenantSettings', () => {
       expect(el(fixture, 'tenant-export-note')?.textContent?.trim()).toBe(
         '41 tickets in acme-20261007.tar.gz.',
       );
+      expect(exported).toHaveBeenCalledOnce();
     });
 
     it('names the confidential tickets it leaves out (docs/adr/0065 D5)', async () => {
@@ -196,6 +200,7 @@ describe('TenantSettings', () => {
       await settle(fixture);
 
       expect(clicked).not.toHaveBeenCalled();
+      expect(exported).not.toHaveBeenCalled();
       expect(add).toHaveBeenCalledOnce();
       expect(el(fixture, 'tenant-export-note')).toBeNull();
       expect((el(fixture, 'tenant-export-button') as HTMLButtonElement).disabled).toBe(false);

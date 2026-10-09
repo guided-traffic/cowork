@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog question
+Accepted, amended 2026-10-09 (Residual risks: the last export's time on the tenant's settings page,
+its age as a metric with its alert, and what they do not see, as built). Date: 2026-10-01. Decided
+by the owner as the answer to the catalog question
 "backups?": no backup code in cowork, the export as the second line and a consistency check
 after restore, over cowork-made backups, over automatic exports into the same object store,
 and over documentation alone. The rules of D4–D6 were put to the owner with the question and
@@ -23,8 +25,8 @@ not the comments, the time or the attachments' bytes (ADR 0051 Residual risks).
 page [docs/operations/backups.md](../operations/backups.md). The project and the tenant export
 of D2 and D3 come with the export of
 [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4, which the
-same release brings and the page describes as built; the metric of the last export's age comes
-with it. What the record left open is made concrete in place, in D4, D5 and D6, by the
+same release brings and the page describes as built; ~~the metric of the last export's age comes
+with it~~ *(built 2026-10-09, below)*. What the record left open is made concrete in place, in D4, D5 and D6, by the
 implementer, open to the owner's objection:
 
 - **D4** — the job `consistency-check` ([`store/consistency.go`](../../backend/internal/store/consistency.go)),
@@ -60,6 +62,18 @@ with the growth of the live heap below 8 MiB, where the whole listing and every 
 tier reading both orders back from PostgreSQL and MinIO. Not run: a tenant of that size against a
 real store. The job lock D4 names was wrong when it was made
 concrete: the code has held `(cowk, 8)` since the check was built.
+
+**Built** (2026-10-09): the watch on D2's schedule that the residual risks below rely on. The tenant's
+settings page shows, beside the consistency check, when a project of the tenant or the whole tenant
+was last exported (`last_exported_at` of `GET …/attachment-consistency`, read from the tenant's audit
+record); the metric `cowork_consistency_last_export_age_seconds` counts the seconds since, or since
+the tenant was made where it never was, and the chart's alert `CoworkExportOverdue` fires after
+`metrics.prometheusRule.exportMaxAgeDays`
+([ADR 0060](0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
+D4, D6). D6 holds: the days are a value of the chart, not of the backend. Verified by the unit tests
+of the family, the integration tier (`TestTheLastExportIsReadFromTheAuditRecord`), the frontend's
+specs and a `promtool` rule test run by hand; not run: the alert in a Prometheus, the page in a
+browser.
 
 ## Context
 
@@ -179,8 +193,16 @@ D6), not of the backend.
 ## Residual risks
 
 - D2 depends on an operator actually scheduling the export; the operations page lists it in
-  the installation checklist, and the installation-level audit shows the last export's time
-  on the administration page, so a missing schedule is visible too.
+  the installation checklist, and ~~the installation-level audit shows the last export's time
+  on the administration page~~ *(amended 2026-10-09, as built: the export is recorded in the
+  tenant's audit record, not the installation's)* the tenant's settings page shows the time of its
+  last export, the metrics count its age and `CoworkExportOverdue` fires when it passes the chart's
+  days, so a missing schedule is visible too — on the page to the tenant's administrators, and to
+  the operator only where the installation scrapes the metrics with the alert on. *(Added
+  2026-10-09:)* What is watched is the act, not the copy: an export is recorded before its archive
+  is written, so one whose download was cut off, or whose archive was never stored, counts as an
+  export all the same; one project's export counts for the whole tenant, and so does the export of
+  a person who sees less than all of it.
 - D4's orphan listing on a very large bucket is a prefix scan per tenant per day; at the
   expected sizes it is seconds, and the job is bounded by the per-tenant prefix of
   [ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
