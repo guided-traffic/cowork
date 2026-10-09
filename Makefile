@@ -103,7 +103,7 @@ LOCALBIN ?= $(BIN_DIR)
 # and installs itself instead of a stale unversioned binary surviving it.
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 GOCYCLO ?= $(LOCALBIN)/gocyclo-$(GOCYCLO_VERSION)
-GOSEC ?= $(LOCALBIN)/gosec-$(GOSEC_VERSION)
+GOSEC ?= $(LOCALBIN)/gosec-$(GOSEC_VERSION)-xtools-$(GOSEC_XTOOLS_VERSION)
 GOVULNCHECK ?= $(LOCALBIN)/govulncheck-$(GOVULNCHECK_VERSION)
 SQLC ?= $(LOCALBIN)/sqlc-$(SQLC_VERSION)
 OAPI_CODEGEN ?= $(LOCALBIN)/oapi-codegen-$(OAPI_CODEGEN_VERSION)
@@ -116,6 +116,12 @@ GOLANGCI_LINT_VERSION ?= v2.14.0
 GOCYCLO_VERSION ?= v0.6.0
 # renovate: datasource=go depName=github.com/securego/gosec/v2/cmd/gosec
 GOSEC_VERSION ?= v2.29.0
+# gosec v2.29.0 is built against a golang.org/x/tools that cannot read the
+# export data of Go 1.27.2 ("export data version 5 is greater than maximum
+# supported version 4"), so every package fails to type-check; it is built
+# here with this x/tools until a gosec release carries one that can.
+# renovate: datasource=go depName=golang.org/x/tools
+GOSEC_XTOOLS_VERSION ?= v0.51.0
 # renovate: datasource=go depName=golang.org/x/vuln/cmd/govulncheck
 GOVULNCHECK_VERSION ?= v1.8.0
 # renovate: datasource=go depName=github.com/sqlc-dev/sqlc/cmd/sqlc
@@ -532,8 +538,20 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 $(GOCYCLO): $(LOCALBIN)
 	$(call go-install-tool,$(GOCYCLO),github.com/fzipp/gocyclo/cmd/gocyclo,$(GOCYCLO_VERSION))
 
+# gosec is built in a module of its own that pins golang.org/x/tools to
+# GOSEC_XTOOLS_VERSION, with the Go toolchain the backend's go.mod selects.
 $(GOSEC): $(LOCALBIN)
-	$(call go-install-tool,$(GOSEC),github.com/securego/gosec/v2/cmd/gosec,$(GOSEC_VERSION))
+	@[ -f $(GOSEC) ] || { \
+	set -e; \
+	toolchain=$$(cd $(BACKEND_DIR) && go env GOVERSION); \
+	tmp=$$(mktemp -d); \
+	echo "Building gosec $(GOSEC_VERSION) with golang.org/x/tools $(GOSEC_XTOOLS_VERSION) on $$toolchain"; \
+	cd $$tmp; \
+	GOTOOLCHAIN=$$toolchain go mod init gosecbuild >/dev/null 2>&1; \
+	GOTOOLCHAIN=$$toolchain go get github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION) golang.org/x/tools@$(GOSEC_XTOOLS_VERSION); \
+	GOTOOLCHAIN=$$toolchain go build -o $(GOSEC) github.com/securego/gosec/v2/cmd/gosec; \
+	rm -rf $$tmp; \
+	}
 
 $(GOVULNCHECK): $(LOCALBIN)
 	$(call go-install-tool,$(GOVULNCHECK),golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))

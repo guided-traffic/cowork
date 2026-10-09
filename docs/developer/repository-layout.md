@@ -60,7 +60,7 @@ cowork/
 │   │   ├── problemdoc/         # writes the problem-code enum and the README table
 │   │   └── specbundle/         # bundles api/ into openapi.gen.json
 │   ├── sqlc.yaml               # readq/writeq from the migrations and queries/
-│   ├── Containerfile           # golang:1.27.1-alpine → distroless nonroot
+│   ├── Containerfile           # golang:1.27.2-alpine → distroless nonroot
 │   └── .golangci.yml
 ├── frontend/                   # Angular 22 workspace, project "frontend"
 │   ├── src/app/                # api/ (generated), brand/, theme/, core/, layout/, features/, shared/, dev/ (frontend.md)

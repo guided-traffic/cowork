@@ -8,7 +8,7 @@ the backend and the frontend locally and the two images together behind a stand-
 
 | Tool | Version | Why |
 |---|---|---|
-| Go | 1.27 (`backend/go.mod`: 1.27.1; the toolchain downloads it if yours is older) | the backend, its generators and tools |
+| Go | 1.27 (`backend/go.mod`: 1.27.2; the toolchain downloads it if yours is older) | the backend, its generators and tools |
 | Node.js + npm | 26 (`NODE_VERSION` in the workflow's frontend job; `node:26-alpine` in the Containerfile); the workflow's release jobs use the current LTS | the frontend and the release tooling |
 | Docker | any recent | `make postgres-up`, `make postgres-tls-up`, `make minio-up`, `make dex-up`, `make docker-build`, `make e2e` |
 | Helm | 3 or 4 (CI installs 4.3.0) | `make helm-lint`, `make helm-template` |
@@ -18,7 +18,10 @@ the backend and the frontend locally and the two images together behind a stand-
 
 The Go tools (`golangci-lint`, `gocyclo`, `gosec`, `govulncheck`, `sqlc`, `oapi-codegen`,
 `kubeconform`) install themselves into `bin/` under versioned names on first use, from the backend
-module so the same toolchain builds them.
+module so the same toolchain builds them. gosec is the exception: its latest release cannot read the
+export data of Go 1.27.2, so the Makefile builds it in a module of its own with `golang.org/x/tools`
+pinned to `GOSEC_XTOOLS_VERSION`, on the toolchain `backend/go.mod` selects, and names the binary
+after both versions.
 
 ## Targets
 

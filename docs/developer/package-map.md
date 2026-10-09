@@ -43,7 +43,7 @@ Where things live and what each part is responsible for. Read against the tree o
 | [`tools/problemdoc/`](../../backend/tools/problemdoc/), [`tools/specbundle/`](../../backend/tools/specbundle/), [`tools/dashboard/`](../../backend/tools/dashboard/) | The generators `make generate` runs first: the problem-code enum and README table; the bundled document; the chart's Grafana dashboard from `internal/metrics` | `main` |
 | [`tools/crdschema/`](../../backend/tools/crdschema/) | Turns CustomResourceDefinitions into the JSON schemas kubeconform reads, one per served version at `<group>/<kind>_<version>.json`, every nested object that lists its properties closed; `make examples-lint` runs it on CloudNativePG's `Cluster` CRD | `main`, `convert`, `closeObjects` |
 | [`sqlc.yaml`](../../backend/sqlc.yaml) | The sqlc configuration: the migrations as schema, `queries/read` → `readq`, `queries/write` → `writeq`, the database enums mapped onto the `domain` types | — |
-| [`Containerfile`](../../backend/Containerfile) | Two stages: `golang:1.27.1-alpine` builds the static binary, distroless `static-debian12:nonroot` runs it | — |
+| [`Containerfile`](../../backend/Containerfile) | Two stages: `golang:1.27.2-alpine` builds the static binary, distroless `static-debian12:nonroot` runs it | — |
 | [`.golangci.yml`](../../backend/.golangci.yml) | The linter set; golangci-lint runs from `backend/` | — |
 
 ### `internal/api`, file by file
