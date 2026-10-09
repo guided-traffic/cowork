@@ -112,10 +112,9 @@ func TestCSRFFailsClosedWithoutABaseURL(t *testing.T) {
 	assert.Nil(t, h.csrf(request(http.MethodGet)), "a read never mutates")
 }
 
-// docs/adr/0031 D3 as amended 2026-10-06: only the person's activity moves a
-// session's idle clock — a write that passes the CSRF check, or a read that
-// carries X-Cowork-Activity: input, which the browser's keep-alive sends; any
-// other value, or none, moves nothing, and neither does a refused write.
+// docs/adr/0031 D3 as amended 2026-10-07: every request of a session moves its
+// idle clock — a read of any kind, from any site, a write that passes the CSRF
+// check — but a write the CSRF check refuses.
 func TestWhatMovesTheIdleClock(t *testing.T) {
 	const base = "https://cowork.example.com"
 	h := &handler{opts: Options{BaseOrigin: base}}
@@ -124,25 +123,22 @@ func TestWhatMovesTheIdleClock(t *testing.T) {
 		r     *http.Request
 		moves bool
 	}{
-		"a read":                         {request(http.MethodGet), false},
-		"the keep-alive's read":          {request(http.MethodGet, ActivityHeader, ActivityInput), true},
-		"a read with another value":      {request(http.MethodGet, ActivityHeader, "yes"), false},
-		"a read with the value shouted":  {request(http.MethodGet, ActivityHeader, "INPUT"), false},
-		"a read with an empty value":     {request(http.MethodGet, ActivityHeader, ""), false},
-		"a POST":                         {request(http.MethodPost, write...), true},
-		"a PUT":                          {request(http.MethodPut, write...), true},
-		"a PATCH":                        {request(http.MethodPatch, write...), true},
-		"a DELETE":                       {request(http.MethodDelete, write...), true},
-		"a write of another origin":      {request(http.MethodPost, "Origin", "https://evil.example.com", "X-Requested-With", "cowork"), false},
-		"a write without the header":     {request(http.MethodPost, "Origin", base), false},
-		"a refused write that is marked": {request(http.MethodPost, "Origin", "https://a.example.com", ActivityHeader, ActivityInput), false},
+		"a read":                     {request(http.MethodGet), true},
+		"a read from another site":   {request(http.MethodGet, "Origin", "https://evil.example.com"), true},
+		"a HEAD":                     {request(http.MethodHead), true},
+		"a POST":                     {request(http.MethodPost, write...), true},
+		"a PUT":                      {request(http.MethodPut, write...), true},
+		"a PATCH":                    {request(http.MethodPatch, write...), true},
+		"a DELETE":                   {request(http.MethodDelete, write...), true},
+		"a write of another origin":  {request(http.MethodPost, "Origin", "https://evil.example.com", "X-Requested-With", "cowork"), false},
+		"a write of a sibling host":  {request(http.MethodPost, "Origin", "https://a.example.com", "X-Requested-With", "cowork"), false},
+		"a write without the header": {request(http.MethodPost, "Origin", base), false},
 	} {
 		assert.Equal(t, c.moves, h.movesIdleClock(c.r), name)
 	}
 	assert.False(t, (&handler{}).movesIdleClock(request(http.MethodPost, write...)),
 		"without COWORK_BASE_URL no write passes the check, and none moves the clock")
-	assert.Equal(t, "X-Cowork-Activity", ActivityHeader)
-	assert.Equal(t, "input", ActivityInput)
+	assert.True(t, (&handler{}).movesIdleClock(request(http.MethodGet)), "a read moves it all the same")
 }
 
 func TestSessionLiveHonoursBothLimits(t *testing.T) {

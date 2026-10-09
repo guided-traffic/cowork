@@ -87,7 +87,6 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links, a person's removal of a link GitHub's webhook made (`removePullRequest`), the person's stake |
 | `AuthService` | `/auth/options`, `/auth/local` — whose success forgets the identity provider (`SignInMemory`) —, `/auth/logout` — which forgets it first, before the backend is asked, and hands back the identity provider's logout where the backend names one —, `hasSession` (`GET /api/v1/me` asked anew: an answer is yes, a `401` no, anything else thrown), the password change; the session cookie is `HttpOnly`, no script sees it |
 | `SignInMemory` | What the browser remembers of the sign-in, for [the login page](#the-login-page)'s own sign-in: `cowork.sign-in` in `localStorage`, `oidc` once the button started the provider's sign-in, forgotten by a local sign-in and a sign-out; `cowork.sign-in.attempt` in `sessionStorage`, noted when the page leaves for its own attempt, cleared once the tab has a session again. Every access in `try`/`catch`; storage that throws remembers nothing, says the tab tried, and notes no attempt ([`sign-in-memory.ts`](../../frontend/src/app/core/sign-in-memory.ts)) |
-| `KeepAliveService` | The session's idle clock while a person works without a write: the time of the last pointer press, key, wheel or touch, through passive listeners, and every five minutes — while the document is visible and there was input since it last asked — one `GET /api/v1/me` marked `PERSON_ACTIVITY`, the one read that moves the clock; the shell starts it and stops it with itself ([*the idle clock*](#the-idle-clock), below) |
 | `TokensService` | The person's own tokens in numbered pages (`table`, [`tablePages`](../../frontend/src/app/core/table-pages.ts)), each naming the project it is restricted to by its key (`restricted_project`); `create` hands the plaintext to its caller once and keeps nothing; the projects of a tenant for the new token's restriction |
 | `AccountsService` | The local accounts the current tenant manages, loaded only while the person is its administrator (anybody else would get a `403`); create, reset, unlock, deactivate, end sessions |
 | `TenantTokensService` | A numbered page of the tokens that can act in the tenant, for its administrators, through a `ConditionalPages` of its own, and an administrator's revocation of one ([`tenant-tokens.service.ts`](../../frontend/src/app/core/tenant-tokens.service.ts)) |
@@ -967,21 +966,12 @@ replace it; a local sign-in on its way makes the page give up. The tab's attempt
 
 ## The idle clock
 
-The backend moves a session's idle clock only for the person's activity ([ADR 0031] D3): a write
-that passes the CSRF check, or a read that carries `X-Cowork-Activity: input`. No other read moves
-it — not the event stream, not the reloads its events or the polling fallback trigger, not a page
-that loads what it shows —, and reading or writing in a page sends no write.
-[`KeepAliveService`](../../frontend/src/app/core/keep-alive.service.ts) notes `Date.now()` on
-`pointerdown`, `keydown`, `wheel` and `touchstart` — captured, passive, nothing else —, and an
-interval of five minutes (`keepAliveEvery`) asks `GET /api/v1/me` through the generated client, with
-the `HttpContext` token `PERSON_ACTIVITY` set, when `document.visibilityState` is `visible` and the
-last input is no older than the last ask; the interceptor `personActivity` in
-[`http.ts`](../../frontend/src/app/core/http.ts) turns the token into the header
-(`activityHeader`), and no other request of the UI sets either. The answer is dropped, a failure
-too, and a `401` reaches `signInOnUnauthorised` like any. A pointer that only moves is no work, so a
-tab nobody works in reaches the idle limit whatever its stream does. The shell starts it in its
-constructor and stops it on its `DestroyRef`, so it runs exactly while a page of the shell is shown;
-`start` twice runs one interval, and the root injector's end stops it too.
+The UI does nothing of its own to keep a session. The backend moves a session's idle clock on
+every request of it but a write the CSRF check refuses ([ADR 0031] D3) — a page that loads what it
+shows, the event stream's connections and reconnects, the reloads its events or the polling
+fallback trigger among them —, so an open tab keeps its session while it asks anything, up to the
+absolute limit ([sessions.md H-109](../security/sessions.md#h-109)). No header marks a request as
+the person's, and no timer asks on the person's behalf.
 
 ## The tenant's administration
 
@@ -1250,8 +1240,7 @@ one the initial bundle holds the few operations the shell and its services call:
 JavaScript on 2026-10-05, about 7 kB of it operations.
 
 Every request carries `X-Requested-With: cowork` ([`http.ts`](../../frontend/src/app/core/http.ts),
-[ADR 0037] D4), a request marked `PERSON_ACTIVITY` — the keep-alive's alone — carries
-`X-Cowork-Activity: input` as well ([the idle clock](#the-idle-clock)), and a `401` from `/api/`
+[ADR 0037] D4), and a `401` from `/api/`
 sends the browser to `/login?return=<where it was>`; the login page only goes back to a path of this
 application, never to another site
 ([`login.ts`](../../frontend/src/app/features/auth/login.ts) `safeReturn`): one that starts with a

@@ -1,4 +1,4 @@
-import { HttpContextToken, HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
+import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { catchError, throwError } from 'rxjs';
@@ -16,23 +16,6 @@ export const requestedWithHeader = { 'X-Requested-With': 'cowork' } as const;
  */
 export const requestedWith: HttpInterceptorFn = (request, next) =>
   next(request.clone({ setHeaders: requestedWithHeader }));
-
-/**
- * The header that makes a read the person's own activity, which alone — besides a write — moves the
- * session's idle clock (docs/adr/0031 D3). A read without it moves nothing, so a tab that is only
- * open — its event stream, the reloads an event triggers, the polling fallback — reaches the idle
- * limit. Only the keep-alive's request carries it, after the person's input (`KeepAliveService`).
- */
-export const activityHeader = { 'X-Cowork-Activity': 'input' } as const;
-
-/** Marks a request as the person's activity; {@link personActivity} turns it into the header. */
-export const PERSON_ACTIVITY = new HttpContextToken<boolean>(() => false);
-
-/** Sets {@link activityHeader} on a request that carries {@link PERSON_ACTIVITY}, and on no other. */
-export const personActivity: HttpInterceptorFn = (request, next) =>
-  next(
-    request.context.get(PERSON_ACTIVITY) ? request.clone({ setHeaders: activityHeader }) : request,
-  );
 
 /**
  * The page a `401` must not send to the login again. The password page is not one of them: a

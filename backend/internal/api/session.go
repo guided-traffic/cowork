@@ -89,16 +89,8 @@ func (h *handler) authenticateSession(r *http.Request, value string) (auth.Princ
 	return p, nil
 }
 
-// The header that marks a read of a session as the person's own activity, and
-// its one value: the browser's keep-alive sends it after the person's input
-// (docs/adr/0031 D3).
-const (
-	ActivityHeader = "X-Cowork-Activity"
-	ActivityInput  = "input"
-)
-
-// touchOnActivity moves the session's idle clock when the request is the
-// person's activity (movesIdleClock), at most once a minute
+// touchOnActivity moves the session's idle clock when the request is one that
+// keeps a session (movesIdleClock), at most once a minute
 // (store.SessionTouchInterval). A failure is logged and the request served.
 func (h *handler) touchOnActivity(r *http.Request, rec store.SessionRecord, now time.Time) {
 	if !h.movesIdleClock(r) {
@@ -109,22 +101,15 @@ func (h *handler) touchOnActivity(r *http.Request, rec store.SessionRecord, now 
 	}
 }
 
-// movesIdleClock says whether a session's request is the person's activity,
-// which alone moves its idle clock (docs/adr/0031 D3 as amended 2026-10-06):
-// a write that passes the CSRF check, or a read that carries
-// X-Cowork-Activity: input — the browser's keep-alive sends one after the
-// person's input. A read without it moves nothing: not the event stream's
-// connections and reconnects, not its polling fallback's reloads, not the
-// reloads an event triggers, so a tab that is only open reaches the idle limit.
-// No other site can keep a session alive this way: a page of another origin
-// cannot send the header, because a custom header needs a CORS preflight and
-// the API answers none (docs/adr/0037 D3); and a write it sends from a page of
-// the same site, where SameSite=Lax lets the cookie ride along, fails the CSRF
-// check and moves nothing either.
+// movesIdleClock says whether a session's request keeps the session
+// (docs/adr/0031 D3 as amended 2026-10-07): every request does — every read,
+// the event stream's connections and reconnects and its polling fallback's
+// reloads among them — but a write the CSRF check refuses. A write that a
+// page of the same site forges, where SameSite=Lax lets the cookie ride
+// along, therefore extends no session. An open tab whose stream reconnects or
+// polls keeps its session up to the absolute limit with nobody at it, the
+// owner's accepted risk (docs/security/sessions.md H-109).
 func (h *handler) movesIdleClock(r *http.Request) bool {
-	if safeMethod(r.Method) {
-		return r.Header.Get(ActivityHeader) == ActivityInput
-	}
 	return h.csrf(r) == nil
 }
 
@@ -156,8 +141,8 @@ func agentHeader(r *http.Request) (string, *problem.Error) {
 }
 
 // sessionLive reports whether neither limit has passed: the absolute one, set
-// at login, and the idle one, which the person's activity moves
-// (movesIdleClock, docs/adr/0031 D3).
+// at login, and the idle one, which every request of the session but a refused
+// write moves (movesIdleClock, docs/adr/0031 D3).
 func (h *handler) sessionLive(expiresAt, lastSeenAt, now time.Time) bool {
 	return now.Before(expiresAt) && now.Before(lastSeenAt.Add(h.opts.SessionIdle))
 }

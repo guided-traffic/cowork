@@ -255,12 +255,12 @@ ends none of the local login's, and each session of the identity provider that h
 token at its next refresh, whose sealed token no longer opens — no previous key is kept to open it,
 so each such person logs in again once their session's refresh is due; what else a change of the key
 does is in [installation.md](installation.md#the-secrets). The absolute lifetime is
-`COWORK_SESSION_LIFETIME` (12 hours), the idle limit `COWORK_SESSION_IDLE` (2 hours). Only the
-person's activity moves the idle clock, at most once a minute: a write, or a read with
-`X-Cowork-Activity: input`, which the UI sends every five minutes while a person works in a page. No
-other read moves it — not the event stream, not a page loading —, so a tab nobody works in signs out
-at the idle limit, and an idle limit of about six minutes or less signs out a person who only reads.
-A proxy in front must pass the header through. When a limit ends a session of the identity
+`COWORK_SESSION_LIFETIME` (12 hours), the idle limit `COWORK_SESSION_IDLE` (2 hours). Every
+request of a session moves the idle clock, at most once a minute — a page loading, the event
+stream's connections and reconnects, the polling fallback — but a write the CSRF check refuses, so
+an open tab whose stream reconnects or polls stays signed in up to the absolute limit with nobody at
+it ([sessions.md](../security/sessions.md#h-109), H-109): a shorter `COWORK_SESSION_LIFETIME` is
+what bounds that. When a limit ends a session of the identity
 provider, the login page signs the person in again at their first input while the provider's own
 session lives, so for such persons the provider's session policy is what ends access
 ([identity-provider.md](../security/identity-provider.md#h-62), H-62). An administrator ends a

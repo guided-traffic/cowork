@@ -2,7 +2,7 @@
 
 What a browser session is, how a request is resolved to one, how a session of the identity
 provider keeps up with the person's groups, what a session may do, how it ends, what keeps it and
-what brings a person back after it ended, and what is recorded, as built on 2026-10-07. How a
+what brings a person back after it ended, and what is recorded, as built on 2026-10-09. How a
 password becomes a session — the login, the lockout, the accounts — is
 [local-accounts.md](local-accounts.md); how a login through the identity provider
 does, and what its groups decide, is [identity-provider.md](identity-provider.md); what keeps
@@ -67,13 +67,12 @@ predicates — is the code a token's request runs.
   `LookupSession`; `TestSessionLookupFindsThePresentedRowOnly`).
 - **Two limits** ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D3):
   the absolute one, `COWORK_SESSION_LIFETIME` (12 hours) from the login, and the idle one,
-  `COWORK_SESSION_IDLE` (2 hours) from the person's last activity. **Only the person's activity
-  moves the idle clock**: a write that passes the CSRF check, or a read that carries
-  `X-Cowork-Activity: input`, which the browser's keep-alive sends after the person's input
-  ([below](#what-keeps-a-session-and-what-brings-a-person-back)); no other read moves it
-  ([`api/session.go`](../../backend/internal/api/session.go) `movesIdleClock`;
-  `TestWhatMovesTheIdleClock`, `TestOnlyThePersonsActivityMovesTheIdleClock`). Such a request moves
-  it at most once a minute, `store.SessionTouchInterval`, so the idle limit is exact to the minute
+  `COWORK_SESSION_IDLE` (2 hours) from the session's last request. **Every request of the session
+  moves the idle clock but a write the CSRF check refuses**
+  ([below](#what-keeps-a-session-and-what-brings-a-person-back);
+  [`api/session.go`](../../backend/internal/api/session.go) `movesIdleClock`;
+  `TestWhatMovesTheIdleClock`, `TestEveryRequestButARefusedWriteMovesTheIdleClock`). Such a request
+  moves it at most once a minute, `store.SessionTouchInterval`, so the idle limit is exact to the minute
   and a busy page costs one write a minute, and never past the absolute limit. The backend's clock
   decides both (`sessionLive`; `TestSessionLifetimes` moves a fake clock past each).
 - **The job** `session-expiry` removes the rows past a limit, at start and hourly under its
@@ -161,8 +160,8 @@ person's.
   a delivery is not looked at ([github-webhook.md](github-webhook.md)).
 - **A turn of the chat presents the session again with every tool call.** Each call is a request of
   its own through the whole pipeline with the person's cookie ([chat.md](chat.md)): it is
-  authenticated anew — a call that writes moves the idle clock like any write, one that reads moves
-  nothing, as the turn's own `POST` moved it when the person sent it — and may run the groups
+  authenticated anew — each call moves the idle clock like any request, as the turn's own `POST`
+  did when the person sent it — and may run the groups
   refresh, and a session that ends while a turn runs refuses the turn's next call, which the model
   reads as a failed call.
 - **A temporary password gates the session.** While the account's password is one an
@@ -175,10 +174,10 @@ person's.
 - **An open event stream checks its session at every heartbeat** — the session row exists,
   neither limit has passed, the person is not deactivated — and ends when one fails
   ([`api/events.go`](../../backend/internal/api/events.go) `stillAdmitted`;
-  `TestEventStreamEndsWithItsSession`). A stream does not extend the idle limit — neither its
-  connection, a reconnect included, nor its heartbeats, nor the reloads its events or its polling
-  fallback trigger: they are reads without the person's mark — so a tab that is only open logs
-  out (`TestOnlyThePersonsActivityMovesTheIdleClock`).
+  `TestEventStreamEndsWithItsSession`). Its heartbeats do not extend the idle limit; its
+  connection does, a reconnect included, like the reloads its events or its polling fallback
+  trigger — each a request of the session — so a tab that is only open can stay signed in up to the
+  absolute limit ([H-109](#h-109); `TestEveryRequestButARefusedWriteMovesTheIdleClock`).
 
 ## How a session ends
 
@@ -203,33 +202,21 @@ takes away is not one of them: the page goes to the login page by a route change
 
 ## What keeps a session, and what brings a person back
 
-**Only the person's activity keeps a session**
-([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D3 as amended 2026-10-06;
-[`api/session.go`](../../backend/internal/api/session.go) `movesIdleClock`). A session's request
-moves the idle clock when it is a write that passes the CSRF check, or a read that carries
-`X-Cowork-Activity: input` — that value exactly; any other, or none, moves nothing. No other read
-moves it: not the event stream's connections and reconnects, not its polling fallback's reloads,
-not the reloads an event triggers, not a page that loads what it shows. So a tab that is only open
-reaches the idle limit, whatever its stream does. **No other site can keep a session alive this
-way**: a page of another origin cannot send the header, because a custom header needs a CORS
-preflight and the API answers none
-([ADR 0037](../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md)
-D3); a link or an image of another site is a read without it; and a write a page of the same site
-sends, where `SameSite=Lax` lets the cookie ride along, fails the CSRF check and moves nothing
-either — before this rule, any request moved the clock, a refused write among them.
-
-**The keep-alive** ([`keep-alive.service.ts`](../../frontend/src/app/core/keep-alive.service.ts)).
-Reading a ticket, scrolling a board or writing a long comment sends no write. While a page of the
-shell is open, the browser notes the time of the person's last pointer press, key, wheel or touch,
-and every five minutes — while the document is visible and there was such input since it last
-asked — makes one read of the session that carries the header, `GET /api/v1/me`
-(`PERSON_ACTIVITY` and the interceptor `personActivity` in
-[`http.ts`](../../frontend/src/app/core/http.ts); no other request of the UI sets it). A tab nobody
-works in makes none. So the idle limit ends a session about two hours after the person's last
-input or write in a page — the keep-alive asks up to five minutes after the input —; anyone's input
-at the browser counts, the person's or not. An idle limit of about six minutes or less cannot be
-held by the keep-alive's reads, five minutes apart, for a person who only reads. The absolute limit
-is untouched.
+**Every request of a session keeps it, but a write the CSRF check refuses**
+([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D3 as amended 2026-10-07;
+[`api/session.go`](../../backend/internal/api/session.go) `movesIdleClock`). Every read moves the
+idle clock — a page that loads what it shows, the event stream's connections and reconnects, its
+polling fallback's reloads, the reloads an event triggers —, and so does every write that passes
+the CSRF check, at most once a minute. A person who reads a ticket, scrolls a board or writes a long
+comment keeps the session with the reads the page makes; the UI sends nothing of its own to keep
+it. **A forged write extends nothing**: a write a page of the same site sends, where `SameSite=Lax`
+lets the cookie ride along, fails the CSRF check and leaves the idle clock where it was
+(`TestEveryRequestButARefusedWriteMovesTheIdleClock`). A read is a different matter: a link or an
+image of another site, or of a sibling host, that names an address of the API is a read of the
+session where the browser sends the cookie, and moves the clock like any
+([csrf.md](csrf.md#h-22) H-22). What this leaves open — an open tab nobody uses keeps its session up
+to the absolute limit — is [H-109](#h-109), the owner's accepted risk. The absolute limit is
+untouched.
 
 **Coming back after a limit ended the session**
 ([ADR 0029](../adr/0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md)
@@ -239,7 +226,7 @@ D6; [identity-provider.md](identity-provider.md#signing-in-again-without-a-click
 |---|---|---|
 | A session of the identity provider reaches the idle or the absolute limit | cowork's session ends as before — refused at its next request, the row gone with the job. The login page that follows, in a browser that remembers the provider, waits for a sign of a person and then signs them in again with `prompt=none`, without a click, while the provider's own session lives | **The provider's session policy.** An unattended, unlocked browser is one sign of a person away from cowork's content — an input, the window taking the focus, the tab coming back into view —, where it was one click away — the click passed without a password too ([H-62](identity-provider.md#h-62)). An open tab nobody touches does not sign itself in |
 | A person signs out | the session ends, and the browser forgets that the person signs in through the provider — before the backend is asked — so the login page never signs them in again by itself | the sign-out, as before; the provider's own session ends only where its end-session endpoint is followed ([H-28](identity-provider.md#h-28)) |
-| A local session reaches a limit | it ends; the login page waits for the form: a local sign-in forgets the provider, and the page signs in by itself only for the provider | the limits, as before; the keep-alive needs the person's input |
+| A local session reaches a limit | it ends; the login page waits for the form: a local sign-in forgets the provider, and the page signs in by itself only for the provider | the limits, as before |
 | Another end of the table above — a revocation, a password change, the gate | the session ends; for a session of the provider, the login page's own sign-in meets the issuer and the gate again like any login | what ended it, as before, and the issuer and the gate at the next sign-in |
 
 ## What is recorded
@@ -282,8 +269,8 @@ logged in. `HttpOnly` keeps a script in the page from reading it, and `Secure` a
 `__Host-` prefix keep it off plain HTTP and away from sibling subdomains; but whoever obtains
 the value — from a compromised machine, from a proxy in front that logs request headers, from
 a browser extension — presents it from anywhere and acts as the person until the idle limit
-(two hours without a write or a read marked as the person's activity, either of which whoever holds
-the cookie can send), the absolute limit (twelve hours) or an end. The row holds the
+(two hours without a request, which whoever holds the cookie sends with any read), the absolute
+limit (twelve hours) or an end. The row holds the
 SHA-256 of the `User-Agent` it was made with (`sessions.user_agent_hash`) and nothing compares
 it. A person cannot list their sessions, and ends the others only by changing their password;
 an administrator ends a managed account's through `DELETE …/accounts/{username}/sessions` — their
@@ -329,3 +316,23 @@ that path with their new session — a read recorded in their name, as [csrf.md]
 describes for a plain link, and here also after a silent sign-in ([identity-provider.md](identity-provider.md#h-81)
 H-81). Nothing of the answer reaches the other site. Refusing a way back under `/api/` and `/auth/`
 in both functions would close it.
+
+<a id="h-109"></a>
+### H-109 — A tab open with nobody at it keeps its session up to the absolute limit
+
+Live today, in every browser that leaves a page of cowork open; the owner's accepted risk of
+2026-10-07 ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D3). Every request
+of a session moves its idle clock but a write the CSRF check refuses, and an open tab makes requests
+of its own with nobody at it: its event stream connects again after the connection was cut — by the
+Ingress controller's timeouts, a restart of a backend pod, a network change of the machine —, its
+polling fallback reloads while the stream is down, and its page reloads what an event of another
+person's act changed. Whenever one of them falls inside each idle window, the session lives on until
+`COWORK_SESSION_LIFETIME` (twelve hours) ends it, and the idle limit, `COWORK_SESSION_IDLE`, guards
+only a tab that sends nothing — a stream that stays connected and a tenant where nobody acts. So an
+unattended, unlocked browser with cowork open shows the person's tenants to whoever sits at it for
+up to the absolute limit, where the idle limit would have ended the session after two hours; for a
+person of the identity provider, the login page then signs them in again at the first sign of a
+person while the issuer's session lives ([identity-provider.md](identity-provider.md#h-62) H-62).
+Not measured in a browser: how often an installation's stream reconnects, which depends on its
+controller and its network. Mitigation: a shorter `COWORK_SESSION_LIFETIME`; a locked screen; close
+the tab or sign out.

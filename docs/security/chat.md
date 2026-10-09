@@ -379,10 +379,10 @@ proxy, encrypted end to end. Mitigation: `https://`, or the provider's host in `
 
 Live where `COWORK_CHAT_TURN_TIMEOUT` and `COWORK_CHAT_MAX_STEPS` are both `0`. A turn is exempt from the
 request timeout and then bounded by nothing but the model, the person's Stop and the connection, and
-each tool call that writes moves the session's idle clock like any write of the person
+each tool call moves the session's idle clock like any request of the person
 ([sessions.md](sessions.md#what-keeps-a-session-and-what-brings-a-person-back)): a turn left running in
-an open tab keeps the session alive past the idle limit for as long as the model goes on writing, up
-to the absolute limit. Mitigation: leave at least one of the two limits set — the defaults are five
+an open tab keeps the session alive past the idle limit for as long as the model goes on calling
+tools, up to the absolute limit — as the tab's own event stream may anyway ([H-109](sessions.md#h-109)). Mitigation: leave at least one of the two limits set — the defaults are five
 minutes and eight calls of the model.
 
 ### What a provider does with what it receives

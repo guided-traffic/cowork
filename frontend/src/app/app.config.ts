@@ -9,7 +9,7 @@ import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import { provideApiConfiguration } from './api/api-configuration';
 import { routes } from './app.routes';
-import { personActivity, requestedWith, signInOnUnauthorised } from './core/http';
+import { requestedWith, signInOnUnauthorised } from './core/http';
 import { provideCoworkPrimeNG } from './theme/primeng';
 import { ThemeService } from './theme/theme.service';
 
@@ -17,10 +17,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes, withComponentInputBinding()),
-    provideHttpClient(
-      withFetch(),
-      withInterceptors([requestedWith, personActivity, signInOnUnauthorised]),
-    ),
+    provideHttpClient(withFetch(), withInterceptors([requestedWith, signInOnUnauthorised])),
     // The generated paths start with /api/v1; the root URL must not add a second slash.
     provideApiConfiguration(''),
     provideCoworkPrimeNG(),
