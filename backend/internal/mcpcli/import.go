@@ -116,7 +116,7 @@ func uploadOf(path string) (string, []byte, error) {
 		return "", nil, fmt.Errorf("%s cannot be read: %w", path, err)
 	}
 	if !info.IsDir() {
-		body, err := os.ReadFile(path)
+		body, err := os.ReadFile(path) // #nosec G304 -- the file the person names on the command line
 		if err != nil {
 			return "", nil, fmt.Errorf("%s cannot be read: %w", path, err)
 		}
@@ -140,10 +140,15 @@ func packDir(dir string) ([]byte, error) {
 	if filepath.IsAbs(dir) || prefix == ".." || strings.HasPrefix(prefix, "../") {
 		prefix = filepath.Base(filepath.Clean(dir))
 	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, fmt.Errorf("pack %s: %w", dir, err)
+	}
+	defer func() { _ = root.Close() }()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil || !d.Type().IsRegular() || !importRead(d.Name()) {
 			return err
 		}
@@ -155,7 +160,7 @@ func packDir(dir string) ([]byte, error) {
 		if prefix != "." && prefix != "" {
 			name = prefix + "/" + name
 		}
-		return packFile(tw, p, name)
+		return packFile(tw, root, rel, name)
 	})
 	if err != nil {
 		return nil, fmt.Errorf("pack %s: %w", dir, err)
@@ -174,9 +179,10 @@ func importRead(name string) bool {
 	return strings.HasSuffix(strings.ToLower(name), ".md") || name == "manifest.json" || name == "links.json"
 }
 
-// packFile writes one file into the archive under its name.
-func packFile(tw *tar.Writer, path, name string) error {
-	f, err := os.Open(path)
+// packFile writes the file at rel inside the root into the archive under its
+// name; the root holds the read inside the directory the person named.
+func packFile(tw *tar.Writer, root *os.Root, rel, name string) error {
+	f, err := root.Open(rel)
 	if err != nil {
 		return err
 	}

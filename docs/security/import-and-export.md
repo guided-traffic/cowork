@@ -213,7 +213,8 @@ requests carry the agent mark `cowork-mcp/unknown/export`, so the export's act n
 The subcommand ([`mcpcli/import.go`](../../backend/internal/mcpcli/import.go)) reads the path it is
 given and sends it to the installation `COWORK_URL` names, with the token, as an agent's request: a
 directory's regular files the import reads — `.md`, `manifest.json`, `links.json` —, no link
-followed, so a `.env` or a key beside the tickets stays on the machine
+followed and every read through a root opened at the directory (`os.OpenRoot`), so a `.env` or a key
+beside the tickets stays on the machine
 (`TestTheImportPacksADirectoryAndPrintsTheReports`); a file as it is, whatever it holds. Every
 Markdown file it sends is kept with the dry run for its day ([H-72](#h-72)), and the report it
 prints names every file with what was read of it. It writes nothing on the machine.

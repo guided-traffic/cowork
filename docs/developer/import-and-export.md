@@ -333,8 +333,8 @@ export's act names the binary ([mcp.md](mcp.md)).
 
 `importProject` in [`mcpcli/import.go`](../../backend/internal/mcpcli/import.go) takes
 `<tenant>/<PROJECT>`, a path and `--dry-run` anywhere among them ([ADR 0070] D2). `uploadOf` reads
-the path before anything is asked: a directory is packed by `packDir` as a `tar.gz` of the regular
-files the import reads (`importRead`: `.md`, `manifest.json`, `links.json`), named by their path
+the path before anything is asked: a directory is packed by `packDir`, reading through a root opened
+at it (`os.OpenRoot`), as a `tar.gz` of the regular files the import reads (`importRead`: `.md`, `manifest.json`, `links.json`), named by their path
 under the directory as it was given — `docs/tickets/001-….md` — or under its base name when the path
 is absolute or leaves the working directory; a file goes as it is, one part named `file`. It makes
 the dry run with the generated client's `CreateImportWithBodyWithResponse`, prints its report
