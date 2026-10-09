@@ -26,7 +26,7 @@ building and are recorded here so they can be argued with.
 
 **Partly built.** Verified in the working tree on 2026-09-29:
 
-- D1: [`backend/go.mod`](../../backend/go.mod) declares Go 1.27.1; [`frontend/`](../../frontend/)
+- D1: [`backend/go.mod`](../../backend/go.mod) declares Go 1.27.2; [`frontend/`](../../frontend/)
   is an Angular 22.2 workspace (`frontend/package.json`).
 - D2, D3: [`backend/Containerfile`](../../backend/Containerfile) builds the distroless backend
   image; [`frontend/Containerfile`](../../frontend/Containerfile) builds the Angular bundle and
