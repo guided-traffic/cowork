@@ -40,16 +40,20 @@ func exercise(m *Metrics) {
 	m.Login(LoginLocal, LoginSuccess)
 	m.Lockout()
 	m.TokenRefused(TokenExpired)
-	m.ObserveConsistency(func(context.Context) ([]ConsistencyCounts, error) {
-		return []ConsistencyCounts{{Tenant: "0199a7c2-1d2e-7f00-8000-0000000000aa", Dangling: 1, Orphans: 2}}, nil
+	m.ObserveConsistency(func(context.Context) (Consistency, error) {
+		const tenant = "0199a7c2-1d2e-7f00-8000-0000000000aa"
+		return Consistency{Counts: []ConsistencyCounts{{Tenant: tenant, Dangling: 1, Orphans: 2}},
+			Exports: []TenantExport{{Tenant: tenant, Since: time.Now().Add(-time.Hour)}}}, nil
 	})
 }
 
 // tenantLabelled are the families that carry a tenant, by its id: the
-// consistency check's counts, and nothing else (docs/adr/0060 D5).
+// consistency family's — the check's two counts and the age of the last
+// export —, and nothing else (docs/adr/0060 D5).
 var tenantLabelled = map[string]bool{
-	"cowork_consistency_dangling_attachments": true,
-	"cowork_consistency_orphaned_objects":     true,
+	"cowork_consistency_dangling_attachments":    true,
+	"cowork_consistency_orphaned_objects":        true,
+	"cowork_consistency_last_export_age_seconds": true,
 }
 
 func gathered(t *testing.T, m *Metrics) []Sample {
@@ -80,9 +84,9 @@ func TestEveryInstrumentIsNamedByTheRule(t *testing.T) {
 }
 
 // docs/adr/0060 D5: no label carries a person, a ticket, a key, a token or a
-// request id, anywhere; the tenant label belongs to the consistency check's two
-// counts alone, as the tenant's id — never its slug — and they carry nothing
-// else. Every family of the backend's is gathered, so a new instrument cannot
+// request id, anywhere; the tenant label belongs to the consistency family's
+// three gauges alone, as the tenant's id — never its slug — and they carry
+// nothing else. Every family of the backend's is gathered, so a new instrument cannot
 // slip past this test unexercised.
 func TestNoInstrumentCarriesAForbiddenLabel(t *testing.T) {
 	m := New()
@@ -265,11 +269,11 @@ func TestTheConsistencyCountsAreReadAtMostOnceAMinute(t *testing.T) {
 		counts []ConsistencyCounts
 		err    error
 	}{counts: []ConsistencyCounts{{Tenant: a, Dangling: 3, Orphans: 2}, {Tenant: b}}}
-	m.ObserveConsistency(func(ctx context.Context) ([]ConsistencyCounts, error) {
+	m.ObserveConsistency(func(ctx context.Context) (Consistency, error) {
 		reads++
 		_, ok := ctx.Deadline()
 		assert.True(t, ok, "the read is bounded")
-		return state.counts, state.err
+		return Consistency{Counts: state.counts}, state.err
 	})
 
 	samples := gathered(t, m)
@@ -298,6 +302,55 @@ func TestTheConsistencyCountsAreReadAtMostOnceAMinute(t *testing.T) {
 	clock = clock.Add(time.Second)
 	gathered(t, m)
 	assert.Equal(t, 3, reads, "a failed read is not repeated at every scrape either")
+}
+
+// docs/adr/0059 D2, docs/adr/0060 D4, D6: every tenant has the age of its last
+// export — of a project or of the whole —, read with the counts at most once a
+// minute and counted at every scrape from the time read, so that it grows
+// between two reads and the alert on it needs no read to fire; an export shows
+// at the next read; a time ahead of the replica's clock is no negative age; a
+// failed read leaves the age out with the counts.
+func TestTheLastExportsAgeIsCountedAtEveryScrape(t *testing.T) {
+	m := New()
+	clock := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	m.consistency.now = func() time.Time { return clock }
+	const a, b = "0199a7c2-1d2e-7f00-8000-0000000000aa", "0199a7c2-1d2e-7f00-8000-0000000000bb"
+	reads := 0
+	state := struct {
+		exports []TenantExport
+		err     error
+	}{exports: []TenantExport{{Tenant: a, Since: clock.Add(-8 * 24 * time.Hour)}, {Tenant: b, Since: clock.Add(-time.Hour)}}}
+	m.ObserveConsistency(func(context.Context) (Consistency, error) {
+		reads++
+		return Consistency{Exports: state.exports}, state.err
+	})
+
+	samples := gathered(t, m)
+	assert.Equal(t, (8 * 24 * time.Hour).Seconds(), Sum(samples, "cowork_consistency_last_export_age_seconds", "tenant", a))
+	assert.Equal(t, time.Hour.Seconds(), Sum(samples, "cowork_consistency_last_export_age_seconds", "tenant", b))
+	assert.False(t, Has(samples, "cowork_consistency_dangling_attachments"), "a tenant without a check has an age and no counts")
+
+	state.exports = []TenantExport{{Tenant: a, Since: clock.Add(30 * time.Second)}, {Tenant: b, Since: clock.Add(-time.Hour)}}
+	clock = clock.Add(30 * time.Second)
+	samples = gathered(t, m)
+	assert.Equal(t, 1, reads, "a scrape within the minute reuses the read")
+	assert.Equal(t, (8*24*time.Hour + 30*time.Second).Seconds(), Sum(samples, "cowork_consistency_last_export_age_seconds", "tenant", a),
+		"the age grows between two reads")
+
+	clock = clock.Add(30 * time.Second)
+	samples = gathered(t, m)
+	assert.Equal(t, 2, reads)
+	assert.Equal(t, 30.0, Sum(samples, "cowork_consistency_last_export_age_seconds", "tenant", a), "an export shows at the next read")
+
+	state.exports = []TenantExport{{Tenant: a, Since: clock.Add(time.Hour)}}
+	clock = clock.Add(time.Minute)
+	samples = gathered(t, m)
+	assert.Equal(t, 0.0, Sum(samples, "cowork_consistency_last_export_age_seconds", "tenant", a), "a clock ahead is no negative age")
+	assert.True(t, Has(samples, "cowork_consistency_last_export_age_seconds", "tenant", a))
+
+	state.err = errors.New("the database does not answer")
+	clock = clock.Add(time.Minute)
+	assert.False(t, Has(gathered(t, m), "cowork_consistency_last_export_age_seconds"), "a failed read shows nothing it does not know")
 }
 
 // The closed sets of labels exist at zero from the start, so a rate over them

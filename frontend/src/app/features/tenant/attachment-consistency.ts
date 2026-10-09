@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -72,7 +73,7 @@ function shortKey(key: string): string {
 @Component({
   selector: 'app-attachment-consistency',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, ConfirmDialog, RouterLink, TableModule, Tooltip],
+  imports: [ButtonDirective, ConfirmDialog, NgTemplateOutlet, RouterLink, TableModule, Tooltip],
   providers: [ConfirmationService],
   templateUrl: './attachment-consistency.html',
   styleUrl: './attachment-consistency.scss',
@@ -96,6 +97,12 @@ export class AttachmentConsistencySection {
   protected readonly result = computed(() =>
     this.consistency.latest.hasValue() ? this.consistency.latest.value() : undefined,
   );
+
+  /**
+   * When a project of the tenant or the whole tenant was last exported — the second line of its
+   * backup (docs/adr/0059 D2) —, shown beside the check; null while it never was.
+   */
+  protected readonly lastExported = computed(() => this.result()?.last_exported_at ?? null);
 
   protected readonly failure = computed(() => {
     const error = this.consistency.latest.error();

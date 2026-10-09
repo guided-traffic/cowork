@@ -32,9 +32,9 @@ and sizes — never their bytes, which only the bucket's backup keeps
 `GET /api/v1/tenants/{tenant}/projects/{project}/export` the same for one project. Every export is a
 recorded act (D3). This page describes the export as the release that brings this page builds it.
 
-**The installation fetches it, on its own schedule.** cowork does not export by itself and does not
-watch the schedule — the age of the last export as a metric, with its alert, comes later. Give the
-fetch a personal access token of its own (D2):
+**The installation fetches it, on its own schedule.** cowork does not export by itself; it watches
+that somebody does ([below](#watching-the-schedule)). Give the fetch a personal access token of its
+own (D2):
 
 - `read` scope, and **restricted to the tenant** — a token restricted to a project cannot fetch the
   tenant's export; one restricted to nothing reaches every tenant of its person.
@@ -89,6 +89,32 @@ spec:
 
 Keep the archives where your other backups are, not in the bucket cowork writes to, whose loss they
 insure against. Not run against a cluster here.
+
+### Watching the schedule
+
+Every export is recorded as the act `exported` in the tenant's audit record, and the last one shows
+in three places
+([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
+D4, D6):
+
+| Where | Shows | To whom |
+|---|---|---|
+| the tenant's settings page, *Files and the bucket*; `last_exported_at` of `GET /api/v1/tenants/{tenant}/attachment-consistency` | when a project of the tenant or the whole tenant was last exported, or that it never was | the tenant's administrators |
+| the metrics | `cowork_consistency_last_export_age_seconds` per tenant id: the seconds since, or since the tenant was made where it never was | Prometheus |
+| the alert [`CoworkExportOverdue`](metrics.md#coworkexportoverdue) | a tenant past `metrics.prometheusRule.exportMaxAgeDays` days (`7` `# default`) | Alertmanager's receivers |
+
+Set the days to your schedule's interval with room for a run that failed: a nightly fetch and the
+default of seven tell of a schedule that stopped within a week. What they watch is the act, not the
+copy:
+
+- **An export is recorded before its archive is written.** A fetch whose download was cut off, or
+  whose archive never reached the volume, counts as an export all the same; the CronJob's own
+  failures and the archives themselves are yours to check.
+- **One project's export counts for the whole tenant**, and so does an export by a person who sees
+  less than all of it — a copy without the confidential tickets or a restricted project.
+- **A ticket's Markdown or context counts not at all**: it is no copy of the tenant.
+- **A restore of the database** brings the audit record back to its point in time, and with it the
+  time of the last export.
 
 ## The consistency check
 
@@ -189,7 +215,8 @@ ticket's thirty days are over.
 
 - The database's and the bucket's own backup, retention and encryption, which are their operators'
   and checked by nothing in cowork.
-- The age of the last export: nothing in cowork knows when an export was last fetched.
+- Whether an export's archive is whole and kept: cowork knows when an export started and what it
+  held, not whether the archive arrived ([watching the schedule](#watching-the-schedule)).
 - Objects under the prefix of a tenant the restored database does not know: the check lists the
   prefixes of the tenants it knows only
   ([attachments.md H-69](../security/attachments.md#h-69)).

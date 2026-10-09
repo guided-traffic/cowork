@@ -418,6 +418,11 @@ metrics:
     # CoworkAttachmentsOutOfStep fires: the time a restore of the database
     # and the bucket takes to be settled (docs/adr/0059 D5).
     restoreWindow: 24h
+    # How many days a tenant may go without an export — of a project of it or
+    # of the whole tenant — before CoworkExportOverdue fires: your export
+    # schedule's interval with room for a run that failed (docs/adr/0059 D2).
+    # A whole number, at least 1.
+    exportMaxAgeDays: 7
   # A ConfigMap with the Grafana dashboard of the backend's metrics, for the
   # Grafana sidecar that loads labelled ConfigMaps.
   grafanaDashboard:

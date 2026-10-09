@@ -606,10 +606,33 @@ type ConsistencyCounts struct {
 	Dangling, Orphans int64
 }
 
-// consistencyReadEvery is how long a read of the counts for a scrape is
-// reused: they change at a run of the check — daily — and at an
-// administrator's removal or acceptance, and a scrape must not become a query
-// per request. consistencyReadTimeout bounds the read.
+// TenantExport is when a tenant was last exported — a project of it or the
+// whole tenant, as the act exported records it (docs/adr/0059 D3) — or, where
+// it never was, when it was made: what the seconds since its last export
+// count from (docs/adr/0060 D4).
+type TenantExport struct {
+	// Tenant is the tenant's id, as in ConsistencyCounts.
+	Tenant string
+	Since  time.Time
+}
+
+// Consistency is what a scrape reads of the consistency family from the
+// database: the counts of every tenant the check has a result of, and the
+// last export of every tenant.
+type Consistency struct {
+	Counts  []ConsistencyCounts
+	Exports []TenantExport
+}
+
+// tenantLabel is the consistency family's one label: the tenant's id.
+const tenantLabel = "tenant"
+
+// consistencyReadEvery is how long a read of the family for a scrape is
+// reused: the counts change at a run of the check — daily — and at an
+// administrator's removal or acceptance, the last export at an export, and a
+// scrape must not become a query per request. The age of the last export is
+// counted at every scrape from the time read. consistencyReadTimeout bounds
+// the read.
 const (
 	consistencyReadEvery   = time.Minute
 	consistencyReadTimeout = 2 * time.Second
@@ -619,21 +642,24 @@ func (m *Metrics) consistencyInstruments() {
 	m.consistency = &consistencyCollector{
 		dangling: prometheus.NewDesc(m.name("consistency", "dangling_attachments"),
 			"Attachments of a tenant whose metadata is there and whose object is missing, not accepted as lost, at its latest consistency check, by the tenant's id.",
-			[]string{"tenant"}, nil),
+			[]string{tenantLabel}, nil),
 		orphans: prometheus.NewDesc(m.name("consistency", "orphaned_objects"),
 			"Objects under a tenant's prefix that no attachment names, at its latest consistency check, by the tenant's id.",
-			[]string{"tenant"}, nil),
+			[]string{tenantLabel}, nil),
+		exportAge: prometheus.NewDesc(m.name("consistency", "last_export_age_seconds"),
+			"Seconds since a project of a tenant or the whole tenant was last exported, or since the tenant was made where it never was, by the tenant's id.",
+			[]string{tenantLabel}, nil),
 	}
 	m.registry.MustRegister(m.consistency)
 }
 
 // ObserveConsistency makes a scrape read every tenant's counts of its latest
-// consistency check through read, at most once a minute and within two
-// seconds; a read that fails leaves the family out of the scrapes until the
-// next read (docs/adr/0060 D4, D5). The counts are the database's, so every
-// replica answers the same, whichever ran the check, and a replica that
-// starts answers them at once.
-func (m *Metrics) ObserveConsistency(read func(ctx context.Context) ([]ConsistencyCounts, error)) {
+// consistency check and every tenant's last export through read, at most once
+// a minute and within two seconds; a read that fails leaves the family out of
+// the scrapes until the next read (docs/adr/0060 D4, D5). Both are the
+// database's, so every replica answers the same, whichever ran the check or
+// served the export, and a replica that starts answers them at once.
+func (m *Metrics) ObserveConsistency(read func(ctx context.Context) (Consistency, error)) {
 	if m == nil {
 		return
 	}
@@ -643,20 +669,22 @@ func (m *Metrics) ObserveConsistency(read func(ctx context.Context) ([]Consisten
 }
 
 type consistencyCollector struct {
-	dangling, orphans *prometheus.Desc
-	// now is the clock the reuse of a read is measured by; nil is time.Now.
+	dangling, orphans, exportAge *prometheus.Desc
+	// now is the clock the reuse of a read and the age of an export are
+	// measured by; nil is time.Now.
 	now func() time.Time
 
 	mu   sync.Mutex
-	read func(ctx context.Context) ([]ConsistencyCounts, error)
+	read func(ctx context.Context) (Consistency, error)
 	at   time.Time
 	ok   bool
-	last []ConsistencyCounts
+	last Consistency
 }
 
 func (c *consistencyCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dangling
 	ch <- c.orphans
+	ch <- c.exportAge
 }
 
 func (c *consistencyCollector) Collect(ch chan<- prometheus.Metric) {
@@ -669,17 +697,23 @@ func (c *consistencyCollector) Collect(ch chan<- prometheus.Metric) {
 	if clock == nil {
 		clock = time.Now
 	}
-	if now := clock(); c.at.IsZero() || now.Sub(c.at) >= consistencyReadEvery {
+	now := clock()
+	if c.at.IsZero() || now.Sub(c.at) >= consistencyReadEvery {
 		ctx, cancel := context.WithTimeout(context.Background(), consistencyReadTimeout)
-		counts, err := c.read(ctx)
+		state, err := c.read(ctx)
 		cancel()
-		c.at, c.ok, c.last = now, err == nil, counts
+		c.at, c.ok, c.last = now, err == nil, state
 	}
 	if !c.ok {
 		return
 	}
-	for _, t := range c.last {
+	for _, t := range c.last.Counts {
 		ch <- prometheus.MustNewConstMetric(c.dangling, prometheus.GaugeValue, float64(t.Dangling), t.Tenant)
 		ch <- prometheus.MustNewConstMetric(c.orphans, prometheus.GaugeValue, float64(t.Orphans), t.Tenant)
+	}
+	for _, e := range c.last.Exports {
+		// A database clock ahead of the replica's makes no negative age.
+		age := max(now.Sub(e.Since).Seconds(), 0)
+		ch <- prometheus.MustNewConstMetric(c.exportAge, prometheus.GaugeValue, age, e.Tenant)
 	}
 }

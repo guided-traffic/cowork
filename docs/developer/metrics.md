@@ -11,7 +11,7 @@ the names and labels are [README.md, Metrics](../../README.md#metrics); scraping
 
 ```
 runServe ─► metricsOf(cfg) ─► *metrics.Metrics, or nil while COWORK_METRICS_ADDR is empty
-   ├─► store.Open(Options{Metrics})      the pool, the schema state and the consistency counts, read at a scrape;
+   ├─► store.Open(Options{Metrics})      the pool, the schema state, the consistency counts and last exports, read at a scrape;
    │                                     failed statements; every RunJob; the acts, after their commit; the lockouts
    ├─► events.New(window, limit, m)      open streams, notifications received, streams dropped, replays
    ├─► api.New(Options{Metrics})         the route's pattern for every request; logins; refused tokens
@@ -89,13 +89,13 @@ registry answers, so a renamed instrument fails the test and not a panel.
 
 | Test | Holds |
 |---|---|
-| [`metrics_test.go`](../../backend/internal/metrics/metrics_test.go) | the naming rule; no forbidden label on any family, every family exercised (`exercise`), the tenant on the consistency family's two counts alone, an id, and nothing else beside it (`tenantLabelled`); a request recorded by its pattern, `unmatched` and `other`; a nil registry; a job's consecutive failures; the pool read at a scrape; the schema read at most every ten seconds and the consistency counts at most once a minute, each left out after a failure; the closed sets at zero; the text format; the dashboard; the import boundary |
+| [`metrics_test.go`](../../backend/internal/metrics/metrics_test.go) | the naming rule; no forbidden label on any family, every family exercised (`exercise`), the tenant on the consistency family's three gauges alone, an id, and nothing else beside it (`tenantLabelled`); a request recorded by its pattern, `unmatched` and `other`; a nil registry; a job's consecutive failures; the pool read at a scrape; the schema read at most every ten seconds and the consistency family at most once a minute, each left out after a failure, and the age of the last export counted at every scrape; the closed sets at zero; the text format; the dashboard; the import boundary |
 | [`httpserver/server_test.go`](../../backend/internal/httpserver/server_test.go) | the route through the outer handler, the metrics listener's paths, `ServeAll` |
 | [`api/metrics_test.go`](../../backend/internal/api/metrics_test.go) | the route label is the document's pattern, never the tenant, project or number sent; a malformed token; a failed callback |
 | [`events/hub_test.go`](../../backend/internal/events/hub_test.go) `TestTheHubRecordsItsInstruments` | open streams, published, the three drops — a shutdown none —, hits and misses |
 | [`store/metrics_test.go`](../../backend/internal/store/metrics_test.go) | the kinds of a failed statement, `ErrNoRows` none; an act's actor |
 | [`config_test.go`](../../backend/internal/config/config_test.go) `TestLoadMetricsAddr` | the default, the empty value that switches the listener off, an address without a port, the API's address |
-| [`api_consistency_test.go`](../../backend/test/integration/api_consistency_test.go) `TestTheConsistencyCheckFindsWhatARestoreLeftAndTheAdministratorSettlesIt` | a second store with a registry of its own answers the counts a check stored, by tenant id, a clean tenant's zero included |
+| [`api_consistency_test.go`](../../backend/test/integration/api_consistency_test.go) `TestTheConsistencyCheckFindsWhatARestoreLeftAndTheAdministratorSettlesIt`, `TestTheLastExportIsReadFromTheAuditRecord` | a second store with a registry of its own answers the counts a check stored, by tenant id, a clean tenant's zero included; and every tenant's age of its last export — from its creation before any, untouched by a ticket's Markdown, reset by a project's export —, the job's read across the tenants admitted to the export acts alone |
 | [`metrics_test.go`](../../backend/test/integration/metrics_test.go) `TestServeAnswersAScrapeOnItsMetricsListener` | the built binary against a database of its own: both listeners, a scrape after a few API requests — routes, acts by actor, a refused token, the pool, the schema, the jobs, no forbidden label —, the dirty flag seen while it serves, `SIGTERM`, and the empty variable |
 
 How to add an instrument is [adding-things.md](adding-things.md#an-instrument).
@@ -105,22 +105,37 @@ How to add an instrument is [adding-things.md](adding-things.md#an-instrument).
 `cowork_consistency_dangling_attachments` and `cowork_consistency_orphaned_objects` are the counts of
 each tenant's latest consistency check of
 [ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-D4 ([storage.md](storage.md#the-consistency-check)), and the only family with a `tenant` label —
-the tenant's id, never its slug, which names a client on a port without authentication (ADR 0060
-D5).
+D4 ([storage.md](storage.md#the-consistency-check)); `cowork_consistency_last_export_age_seconds` is
+the seconds since each tenant's last export, the second line of its backup (D2). They are the only
+family with a `tenant` label — the tenant's id, never its slug, which names a client on a port
+without authentication (ADR 0060 D5).
 
-**Read, not recorded.** The check runs on one replica, once a day; a gauge it set in its own process
-would stay behind on that replica and be missing on the others. So `consistencyCollector` reads the
-stored results at a scrape through `ObserveConsistency(read)` — the store's `consistencyForMetrics`,
-a `jobRead` that names the job and no tenant, the one transaction policy `consistency_checks_counts`
-admits —, at most once a minute and within two seconds, keeping the last answer between, and leaves
-the family out after a failed read, as `schemaCollector` does. Every replica answers the same counts,
-one that starts answers them at once, and an acceptance or a removal shows within a minute. A tenant
-without a result has no series.
+**Read, not recorded.** The check runs on one replica, once a day, and an export on whichever replica
+serves it; a gauge set in that process would stay behind there and be missing on the others. So
+`consistencyCollector` reads the database at a scrape through `ObserveConsistency(read)` — the
+store's `consistencyForMetrics`, one `jobRead` that names the job `consistency-check` and no tenant
+and reads `metrics.Consistency`: the stored results (`ListConsistencyCounts`, admitted by the policy
+`consistency_checks_counts`) and every tenant's last export (`ListLastExports`, admitted by
+`audit_exports_read` of migration 46, which lets the job read the acts of a project's or a tenant's
+export and no other row of the audit record, over the partial index `audit_exports_by_tenant`) —, at
+most once a minute and within two seconds, keeping the last answer between, and leaves the family
+out after a failed read, as `schemaCollector` does. Every replica answers the same, one that starts
+answers at once, and an acceptance, a removal or an export shows within a minute. A tenant without a
+result has no counts; every tenant has the age.
 
-`TestNoInstrumentCarriesAForbiddenLabel` holds the `tenant` label to these two families alone — their
-names in `tenantLabelled` —, its value to an id and the families to that one label. The alert
-`CoworkAttachmentsOutOfStep` in [`prometheusrule.yaml`](../../deploy/helm/cowork/templates/prometheusrule.yaml)
-sums the two per tenant, `max` over the replicas, for `metrics.prometheusRule.restoreWindow`; the
-dashboard's row *Attachment consistency* shows both. The family's third instrument, the seconds since
-the last export, and its alert come with the export.
+**The age.** `ListLastExports` answers, per tenant, the latest `exported` act on the entity
+`project` or `tenant` — a ticket's Markdown and context record `exported` on the ticket and do not
+count —, or the tenant's `created_at` where there is none, so that a tenant nobody ever exported
+ages from its creation and the alert sees a schedule that was never set up. The collector keeps that
+time (`TenantExport.Since`) and counts the age at every scrape from its own clock, never below zero,
+so the age grows between two reads.
+
+`TestNoInstrumentCarriesAForbiddenLabel` holds the `tenant` label to these three gauges alone —
+their names in `tenantLabelled` —, its value to an id and the gauges to that one label;
+`TestTheLastExportsAgeIsCountedAtEveryScrape` the age between reads, after an export, against a
+clock ahead and after a failed read. The alert `CoworkAttachmentsOutOfStep` in
+[`prometheusrule.yaml`](../../deploy/helm/cowork/templates/prometheusrule.yaml) sums the two counts
+per tenant, `max` over the replicas, for `metrics.prometheusRule.restoreWindow`; `CoworkExportOverdue`
+takes the age per tenant, `max` over the replicas, above `metrics.prometheusRule.exportMaxAgeDays`
+days, which the template holds to a whole number of at least 1 and defaults to 7 where the value is
+missing. The dashboard's row *Consistency and export* shows all three.

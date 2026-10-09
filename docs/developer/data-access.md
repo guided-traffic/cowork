@@ -101,7 +101,7 @@ provider's ([below](#the-identity-providers-transactions)), `FindPerson` (the pe
 member's addition, which sets `app.person_lookup`), `CheckRuntimeRole`, `SchemaState`, `Ping`, and
 `Listen`; and `jobRead` — a read-only transaction that names a job and no
 tenant, through which `LastConsistencyCheck` and a scrape read the consistency check's results of
-every tenant ([below](#the-consistency-checks-tables)).
+every tenant, and the scrape every tenant's last export ([below](#the-consistency-checks-tables)).
 
 `Open` registers `timestamptz` to scan in UTC and a tracer that logs a query slower than
 `DefaultSlowQuery` (500 ms) by its sqlc name, never its arguments, and counts a statement that
@@ -123,7 +123,7 @@ wrapper's transaction; an empty value leaves a setting unset.
 | `app.tenant_id` | the wrapper's tenant | `app_tenant_id()`: every `tenant_isolation` policy, the policies of `tenants`, `memberships`, `users`, `audit_events`, the visibility functions |
 | `app.user_id` | `Caller.UserID` | `app_user_id()`: the person's own user row, memberships, tenants, tokens, idempotency keys and installation-level audit rows; the visibility functions |
 | `app.restricted_project_id` | `Caller.RestrictedProjectID` | `app_restricted_project_id()` in `app_project_visible` |
-| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`); `consistency-check` for its job, and for the read-only transactions of `jobRead` that read its results across the tenants — the schedule's and a scrape's | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30, 32, 41, 42 and 43 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry`, `ticket-purge`, `github-webhook`, `github-delivery-expiry`, `consistency-check` and `import-expiry` for the rows those system actors keep (`app_job()`) — the two of migration 41 named by no code since GitHub's webhook was removed ([below](#github-webhooks-tables)) |
+| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`); `consistency-check` for its job, and for the read-only transactions of `jobRead` that read its results across the tenants — the schedule's and a scrape's | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30, 32, 41, 42, 43 and 46 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry`, `ticket-purge`, `github-webhook`, `github-delivery-expiry`, `consistency-check` and `import-expiry` for the rows those system actors keep (`app_job()`) — the two of migration 41 named by no code since GitHub's webhook was removed ([below](#github-webhooks-tables)) |
 | `app.token_hash` | `LookupToken`, the hex SHA-256 of the presented token | the `tokens` policy admits exactly that row |
 | `app.session_hash` | `LookupSession`, and `Caller.SessionHash` in every transaction of a session's request: the hex SHA-256 of the presented cookie; in the identity provider's transactions the session a login replaces or a refresh holds | `app_session_hash()`: the `sessions` policies admit exactly that row — to read it, to end it |
 | `app.person_lookup` | `FindPerson` only: the address or username an administrator adds a member by | `app_person_lookup()`: the `users` policy admits the persons it names to an administrator of the current tenant, and no other person of the installation (migration 20) |
@@ -622,6 +622,17 @@ The job reads every tenant with no tenant set: migration 42 adds `consistency-ch
 `tenants_read` admits. A member's transaction reads neither table, whatever its query says. The
 grants: `SELECT, INSERT` and `UPDATE` of the result's columns on `consistency_checks`, no `DELETE`;
 `SELECT, INSERT, DELETE` on `consistency_acceptances`.
+
+Beside the results a scrape reads every tenant's last export from the audit record
+(`ListLastExports`, [metrics.md](metrics.md#the-consistency-family)):
+[migration 46](../../backend/internal/store/migrations/000046_last_export_read_at_a_scrape.up.sql)
+adds the permissive policy `audit_exports_read`, which admits a transaction named
+`consistency-check` with no tenant set to the rows of `audit_events` whose action is `exported` on
+the entity `project` or `tenant`, and to no other row, and the partial index
+`audit_exports_by_tenant` on `(tenant_id, created_at)` over the same rows, so the latest export of a
+tenant is one step of an index the size of its exports. The tenant's administrators read their
+tenant's latest one beside the check (`LastTenantExport`) in the tenant's own transaction, under
+`audit_read`.
 
 ## Notifications
 

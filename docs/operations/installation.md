@@ -1250,6 +1250,17 @@ or answer edited, through the API or as the owner role in the database — befor
 before the version is set back after a failed run. A rollback to the release before serves over the
 checks: everything it writes keeps to them but an import's longer text, which the database refuses.
 
+**The release that watches the export's schedule**
+([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
+D4, D6, amended 2026-10-09): [migration 46](../../backend/internal/store/migrations/000046_last_export_read_at_a_scrape.up.sql)
+adds an index of the export acts to the audit record and a policy that lets a scrape read them; a
+rollback to the release before serves over it. With `metrics.prometheusRule.enabled` the rule gains
+[`CoworkExportOverdue`](metrics.md#coworkexportoverdue), which fires at once for every tenant of
+which neither the whole nor a project was exported within `metrics.prometheusRule.exportMaxAgeDays`
+days — 7 by default, also under `--reuse-values` —, a tenant never exported once it is older than
+that: set up the export's schedule first ([backups.md](backups.md#the-export-the-second-line)), or
+set the days to the one you run.
+
 ## Uninstall
 
 ```bash

@@ -1559,8 +1559,9 @@ type AttachmentContentType string
 // AttachmentConsistency The tenant's latest consistency check of its attachments (docs/adr/0059 D4): the files whose
 // metadata is there and whose bytes the bucket lacks — dangling — and the objects under the
 // tenant's prefix that no metadata names — orphans —, with the counts exact and each list at most
-// 1000 entries long. `check_id` is null, and everything else empty, while no check has run in the
-// tenant.
+// 1000 entries long. `check_id` is null, and everything else of the check empty, while no check has
+// run in the tenant. Beside it, `last_exported_at`: the second line of the tenant's backup
+// (docs/adr/0059 D2).
 type AttachmentConsistency struct {
 	// Accepted The files whose bytes are missing and whose loss an administrator accepted
 	Accepted int `json:"accepted"`
@@ -1574,6 +1575,11 @@ type AttachmentConsistency struct {
 
 	// DanglingAttachments The missing files, those nobody accepted first, at most 1000
 	DanglingAttachments []DanglingAttachment `json:"dangling_attachments"`
+
+	// LastExportedAt When a project of the tenant or the whole tenant was last exported, by anybody, as the act
+	// `exported` records it; a ticket's Markdown or context is no export of the tenant. Null while
+	// none was.
+	LastExportedAt nullable.Nullable[time.Time] `json:"last_exported_at"`
 
 	// OrphanBytes The orphans' sizes, summed
 	OrphanBytes int64 `json:"orphan_bytes"`
@@ -5848,8 +5854,10 @@ type ClientInterface interface {
 	// orphans, after a restore that brought the bucket back from a later point, or a removal that
 	// failed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,
 	// a token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets
-	// they may not see. Before the first check `check_id` is null. An answer the client holds
-	// unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+	// they may not see. Before the first check `check_id` is null. Beside the check, when a project
+	// of the tenant or the whole tenant was last exported — the second line of its backup
+	// (docs/adr/0059 D2) —, null before the first. An answer the client holds unchanged is `304` to
+	// its weak `ETag` (docs/adr/0054 D7).
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/attachment-consistency (the `GetAttachmentConsistency` operationId).
 	GetAttachmentConsistency(ctx context.Context, tenant TenantSlug, params *GetAttachmentConsistencyParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -8532,8 +8540,10 @@ func (c *Client) EndAccountSessions(ctx context.Context, tenant TenantSlug, user
 // orphans, after a restore that brought the bucket back from a later point, or a removal that
 // failed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,
 // a token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets
-// they may not see. Before the first check `check_id` is null. An answer the client holds
-// unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+// they may not see. Before the first check `check_id` is null. Beside the check, when a project
+// of the tenant or the whole tenant was last exported — the second line of its backup
+// (docs/adr/0059 D2) —, null before the first. An answer the client holds unchanged is `304` to
+// its weak `ETag` (docs/adr/0054 D7).
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/attachment-consistency (the `GetAttachmentConsistency` operationId).
 func (c *Client) GetAttachmentConsistency(ctx context.Context, tenant TenantSlug, params *GetAttachmentConsistencyParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -21125,8 +21135,10 @@ type ClientWithResponsesInterface interface {
 	// orphans, after a restore that brought the bucket back from a later point, or a removal that
 	// failed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,
 	// a token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets
-	// they may not see. Before the first check `check_id` is null. An answer the client holds
-	// unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+	// they may not see. Before the first check `check_id` is null. Beside the check, when a project
+	// of the tenant or the whole tenant was last exported — the second line of its backup
+	// (docs/adr/0059 D2) —, null before the first. An answer the client holds unchanged is `304` to
+	// its weak `ETag` (docs/adr/0054 D7).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -31339,8 +31351,10 @@ func (c *ClientWithResponses) EndAccountSessionsWithResponse(ctx context.Context
 // orphans, after a restore that brought the bucket back from a later point, or a removal that
 // failed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,
 // a token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets
-// they may not see. Before the first check `check_id` is null. An answer the client holds
-// unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+// they may not see. Before the first check `check_id` is null. Beside the check, when a project
+// of the tenant or the whole tenant was last exported — the second line of its backup
+// (docs/adr/0059 D2) —, null before the first. An answer the client holds unchanged is `304` to
+// its weak `ETag` (docs/adr/0054 D7).
 //
 // Returns a wrapper object for the known response body format(s).
 //

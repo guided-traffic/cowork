@@ -14,8 +14,10 @@ import { SessionService } from './session.service';
  * The tenant's latest consistency check of its attachments against the bucket (docs/adr/0059 D4),
  * and its administrators' two acts on it: accepting the loss of the files whose bytes are missing,
  * and removing the objects no file names. Only a tenant administrator reads the check, so it is not
- * asked for anybody else. The check runs once a day and is on no event stream: it is read when the
- * page opens, after either act, and again on `resync` and `poll`, a `304` when nothing changed.
+ * asked for anybody else. The answer carries the time of the tenant's last export beside it. The
+ * check runs once a day and is on no event stream: it is read when the page opens, after either act
+ * and after an export on the settings page, and again on `resync` and `poll`, a `304` when nothing
+ * changed.
  */
 @Injectable({ providedIn: 'root' })
 export class AttachmentConsistencyService {
@@ -48,6 +50,14 @@ export class AttachmentConsistencyService {
           refresh(this.latest, this.injector);
         }
       });
+  }
+
+  /**
+   * Reads the check again after the person exported the tenant on its settings page: the answer
+   * carries the time of the tenant's last export (docs/adr/0059 D2).
+   */
+  exported(): void {
+    refresh(this.latest, this.injector);
   }
 
   /**

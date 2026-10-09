@@ -19,6 +19,7 @@ import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Api } from '../../api/api';
 import { getAttachmentUsage } from '../../api/fn/attachments/get-attachment-usage';
 import { AttachmentUsage } from '../../api/models';
+import { AttachmentConsistencyService } from '../../core/attachment-consistency.service';
 import { ConditionalPages } from '../../core/conditional';
 import { EventStreamService, ofTenant, StreamEvent } from '../../core/event-stream.service';
 import { exportNote, ImportsService } from '../../core/imports.service';
@@ -284,6 +285,7 @@ export class TenantSettings {
   private readonly session = inject(SessionService);
   private readonly injector = inject(Injector);
   private readonly imports = inject(ImportsService);
+  private readonly consistency = inject(AttachmentConsistencyService);
   private readonly document = inject(DOCUMENT);
   protected readonly exporting = signal(false);
   /** What the last export of the tenant shown held; another tenant's page starts without it. */
@@ -346,7 +348,8 @@ export class TenantSettings {
 
   /**
    * Downloads every project of the tenant the person sees as one archive (docs/adr/0051 D4), saved
-   * under the name the server gives it, and says beside the button what it holds.
+   * under the name the server gives it, and says beside the button what it holds; the consistency
+   * section then reads the time of the tenant's last export again.
    */
   protected async exportTenant(): Promise<void> {
     const tenant = this.session.tenant();
@@ -359,6 +362,7 @@ export class TenantSettings {
       saveFile(this.document, archive.blob, archive.filename);
       if (this.session.tenant() === tenant) {
         this.exported.set(exportNote(archive));
+        this.consistency.exported();
       }
     } catch (error) {
       this.problems.report(error);

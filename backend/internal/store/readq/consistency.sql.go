@@ -42,7 +42,9 @@ type GetAttachmentConsistencyRow struct {
 // The consistency check of the attachments (docs/adr/0059 D4, migration 42):
 // the latest result of a tenant, read by its administrators, and every
 // tenant's counts and the time of the last run, read in a transaction that
-// names the job and no tenant — a scrape's and the schedule's.
+// names the job and no tenant — a scrape's and the schedule's. Beside them the
+// time of a tenant's last export, the second line of its backup (docs/adr/0059
+// D2, migration 46).
 // The tenant's latest result, with the administrator who removed its orphans;
 // the restrictive policy holds it to the tenant's administrators.
 func (q *Queries) GetAttachmentConsistency(ctx context.Context, tenantID uuid.UUID) (GetAttachmentConsistencyRow, error) {
@@ -86,6 +88,22 @@ func (q *Queries) LastConsistencyCheck(ctx context.Context) (LastConsistencyChec
 	return i, err
 }
 
+const lastTenantExport = `-- name: LastTenantExport :one
+SELECT created_at FROM audit_events
+WHERE tenant_id = $1 AND action = 'exported' AND entity_type IN ('project', 'tenant')
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+// When a project of the tenant or the whole tenant was last exported, for its
+// administrators beside the consistency check; no row where none was.
+func (q *Queries) LastTenantExport(ctx context.Context, tenantID *uuid.UUID) (time.Time, error) {
+	row := q.db.QueryRow(ctx, lastTenantExport, tenantID)
+	var created_at time.Time
+	err := row.Scan(&created_at)
+	return created_at, err
+}
+
 const listConsistencyCounts = `-- name: ListConsistencyCounts :many
 SELECT tenant_id, dangling, orphans FROM consistency_checks ORDER BY tenant_id
 `
@@ -107,6 +125,45 @@ func (q *Queries) ListConsistencyCounts(ctx context.Context) ([]ListConsistencyC
 	for rows.Next() {
 		var i ListConsistencyCountsRow
 		if err := rows.Scan(&i.TenantID, &i.Dangling, &i.Orphans); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLastExports = `-- name: ListLastExports :many
+SELECT t.id AS tenant_id,
+       coalesce((SELECT max(a.created_at) FROM audit_events a
+                 WHERE a.tenant_id = t.id AND a.action = 'exported' AND a.entity_type IN ('project', 'tenant')),
+                t.created_at)::timestamptz AS since
+FROM tenants t
+ORDER BY t.id
+`
+
+type ListLastExportsRow struct {
+	TenantID uuid.UUID
+	Since    time.Time
+}
+
+// When every tenant was last exported — a project of it or the whole tenant, as
+// the act exported records it —, or made, where it never was: what the seconds
+// since its last export count from, for a scrape (docs/adr/0060 D4). A
+// ticket's export is no copy of the tenant and does not count; the policy
+// audit_exports_read of migration 46 admits the job's read of those acts alone.
+func (q *Queries) ListLastExports(ctx context.Context) ([]ListLastExportsRow, error) {
+	rows, err := q.db.Query(ctx, listLastExports)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLastExportsRow{}
+	for rows.Next() {
+		var i ListLastExportsRow
+		if err := rows.Scan(&i.TenantID, &i.Since); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

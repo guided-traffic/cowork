@@ -18,8 +18,11 @@ const selector = `namespace=~"$namespace"`
 // container: the frontend's nginx exporter, when it is scraped, has them too.
 const backendOnly = `$sel,container="backend"`
 
-// byPod is the legend of a series per pod.
-const byPod = "{{pod}}"
+// byPod is the legend of a series per pod, byTenant of one per tenant id.
+const (
+	byPod    = "{{pod}}"
+	byTenant = "{{tenant}}"
+)
 
 // The units of the panels, as Grafana names them.
 const (
@@ -103,11 +106,13 @@ var dashboardRows = []dashboardRow{
 			{`sum(rate(cowork_auth_lockouts_total{$sel}[$__rate_interval]))`, "lockouts"},
 			{`sum by (reason) (rate(cowork_auth_token_refusals_total{$sel}[$__rate_interval]))`, "token {{reason}}"}}},
 	}},
-	{"Attachment consistency", []dashboardPanel{
+	{"Consistency and export", []dashboardPanel{
 		{title: "Dangling attachment metadata by tenant", unit: unitCount, queries: []dashboardQuery{
-			{`max by (tenant) (cowork_consistency_dangling_attachments{$sel})`, "{{tenant}}"}}},
+			{`max by (tenant) (cowork_consistency_dangling_attachments{$sel})`, byTenant}}},
 		{title: "Orphaned objects by tenant", unit: unitCount, queries: []dashboardQuery{
-			{`max by (tenant) (cowork_consistency_orphaned_objects{$sel})`, "{{tenant}}"}}},
+			{`max by (tenant) (cowork_consistency_orphaned_objects{$sel})`, byTenant}}},
+		{title: "Time since the last export by tenant", unit: unitSeconds, queries: []dashboardQuery{
+			{`max by (tenant) (cowork_consistency_last_export_age_seconds{$sel})`, byTenant}}},
 	}},
 	{"Process", []dashboardPanel{
 		{title: "Goroutines", unit: unitCount, queries: []dashboardQuery{

@@ -23,8 +23,11 @@ listener off, and nothing is recorded then.
 - **A scrape** reads the instruments from memory and the database pool's statistics from the pool;
   the schema's version and dirty flag come from one query of the version table at most every ten
   seconds, within two — a read that fails leaves both out of the scrape until the next read and logs
-  `the schema version could not be read for the metrics` at warn. At most four scrapes are served
-  at once; a fifth is answered `503`.
+  `the schema version could not be read for the metrics` at warn. The consistency family — the
+  check's counts and every tenant's last export — is one read-only transaction at most once a
+  minute, within two seconds; one that fails leaves the family out and logs `the consistency counts
+  could not be read for the metrics` at warn. At most four scrapes are served at once; a fifth is
+  answered `503`.
 - **Nothing of it is on a Service**: the chart puts the container port `metrics` on the backend pods
   and lists it in no Service the Ingress could reach. To look at it by hand:
 
@@ -66,8 +69,8 @@ matches; kube-prometheus-stack's is its release label unless its `ruleSelectorNi
 `false` —, `metrics.prometheusRule.alertLabels` go on every alert for Alertmanager's routing, and a
 `severity` there replaces each alert's own. Every alert reads the backend pods of the release
 (`namespace` and a `pod` name that begins with `<fullname>-backend-`), and its `runbook_url` is this
-page on GitHub at the tag of the chart's `appVersion`. The thresholds are the template's; to change
-one, switch the rule off and write your own from
+page on GitHub at the tag of the chart's `appVersion`. The thresholds are the template's but for the
+two below that are values; to change another, switch the rule off and write your own from
 [`prometheusrule.yaml`](../../deploy/helm/cowork/templates/prometheusrule.yaml).
 
 | Alert | Severity | Fires when |
@@ -77,12 +80,16 @@ one, switch the rule off and write your own from
 | [`CoworkDatabasePoolExhausted`](#coworkdatabasepoolexhausted) | warning | every connection of a pod's pool has been in use, with acquires waiting, for ten minutes |
 | [`CoworkJobFailing`](#coworkjobfailing) | warning | a background job failed at its last two runs on a pod |
 | [`CoworkAttachmentsOutOfStep`](#coworkattachmentsoutofstep) | warning | a tenant's latest consistency check found files whose bytes are missing or objects no file names, and they stayed for `metrics.prometheusRule.restoreWindow` (`24h` `# default`) |
+| [`CoworkExportOverdue`](#coworkexportoverdue) | warning | neither a tenant nor a project of it has been exported for more than `metrics.prometheusRule.exportMaxAgeDays` days (`7` `# default`), or it was never exported and was made longer ago than that |
 
-`metrics.prometheusRule.restoreWindow` is the one threshold that is a value: how long a restore takes
-to be settled is the installation's
+Two thresholds are values, because they are the installation's
 ([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
-D6). The alert on the age of the last export comes with the export; nothing watches the export's
-schedule yet ([backups.md](backups.md#the-export-the-second-line)).
+D6): `metrics.prometheusRule.restoreWindow`, how long a restore takes to be settled, and
+`metrics.prometheusRule.exportMaxAgeDays`, a whole number of days of at least 1 — your export
+schedule's interval with room for a run that failed ([backups.md](backups.md#the-export-the-second-line));
+anything else fails rendering. A release upgraded with `--reuse-values` from a chart without it gets
+the 7. Switching the rule on alerts at once for every tenant older than the days that nobody has
+exported within them.
 
 ## The dashboard
 
@@ -92,7 +99,8 @@ is `grafana_dashboard: "1"` `# default`, the label and value kube-prometheus-sta
 for, and `metrics.grafanaDashboard.annotations` carries what your sidecar reads beside it, a folder
 for one. The dashboard picks a Prometheus data source and a namespace, and has a row each for HTTP,
 the database, the background jobs, the event stream, the audit and the login, the attachments'
-consistency by tenant id, and the process — the last reads the series of the container `backend`,
+consistency and the time since the last export by tenant id, and the process — the last reads the
+series of the container `backend`,
 the label the operator's targets carry. Not run
 here: a Grafana loading it.
 
@@ -243,3 +251,25 @@ there — putting lost bytes back or accepting their loss, copying orphans out a
 [backups.md](backups.md#the-consistency-check) says. Bytes put back show at the next check, which
 `cowork check-consistency` runs at once; an acceptance or a removal shows within a minute. The alert
 ends when the counts are zero.
+
+## CoworkExportOverdue
+
+**What it means.** Neither the tenant with the id in the label `tenant` nor any project of it has
+been exported for longer than `metrics.prometheusRule.exportMaxAgeDays` days — or it was never
+exported, and was made longer ago than that. The value is the seconds since its last export, or since
+it was made. The export is the second line of the tenant's backup, a copy a person can read without
+cowork ([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+D2); the usual causes are a schedule that was never set up, a CronJob that fails — its token expired
+(`401 token_expired`) or was revoked, the person behind it lost the tenant, the address or the volume
+changed —, or a schedule that runs less often than the days. A restore of the database brings the
+audit record back to its point in time, and with it the time of the last export.
+
+**What to do.** Find the tenant: the label is its id; its administrators see the time of the last
+export on its settings page, under *Files and the bucket*. Look at the export's CronJob
+(`kubectl -n cowork get cronjob,job`, and the log of its last pod): a `401` is a token to renew,
+which only its person makes, in a browser session ([backups.md](backups.md#the-export-the-second-line)).
+Once a project of the tenant or the whole tenant is exported, the alert ends when a scrape after the
+next read shows it — the read is reused for a minute at the most. What
+counts is the recorded act: an export whose download was cut off ends the alert too, so check that
+the archive arrived where your backups are kept. A tenant nobody means to export — a scratch tenant —
+fires for as long as it exists: silence it in Alertmanager by its `tenant` label.

@@ -184,8 +184,10 @@ attachmentConsistency:
       orphans, after a restore that brought the bucket back from a later point, or a removal that
       failed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,
       a token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets
-      they may not see. Before the first check `check_id` is null. An answer the client holds
-      unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
+      they may not see. Before the first check `check_id` is null. Beside the check, when a project
+      of the tenant or the whole tenant was last exported — the second line of its backup
+      (docs/adr/0059 D2) —, null before the first. An answer the client holds unchanged is `304` to
+      its weak `ETag` (docs/adr/0054 D7).
     parameters:
       - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:
