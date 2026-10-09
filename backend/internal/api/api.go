@@ -377,7 +377,7 @@ func (h *handler) serveOperation(w http.ResponseWriter, r *http.Request, route *
 	}
 	r = r.WithContext(ctx)
 	bodyDeadline(w, r)
-	if perr := h.limitBody(w, r, route.Operation.OperationID); perr != nil {
+	if perr := h.limitBody(w, r, route.Operation); perr != nil {
 		problem.Write(w, r, perr)
 		return
 	}

@@ -16,6 +16,7 @@ import (
 
 	"github.com/guided-traffic/cowork/backend/internal/api"
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
+	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/test/fixture"
 )
 
@@ -210,6 +211,39 @@ func TestBodyLimit(t *testing.T) {
 	res := s.do(t, caller{Token: tk.AdminA}, http.MethodPost, "/api/v1/tenants/"+w.SlugA+"/projects",
 		map[string]any{"key": "BIG", "name": strings.Repeat("x", 200)})
 	assertProblem(t, res, http.StatusRequestEntityTooLarge, "payload_too_large")
+}
+
+// docs/adr/0039 D2, docs/adr/0046 D4: a body's type is the operation's, not the
+// request's. A JSON body sent as multipart/form-data — to the login, or to a
+// write of the API — is 415 before it is read: it escapes neither the JSON
+// limit nor the document's validation, and the login computes no hash and
+// counts no attempt.
+func TestABodyOfATypeTheRouteDoesNotTakeIsRefusedBeforeItIsRead(t *testing.T) {
+	w := newWorld(t)
+	names := withAccounts(t, w)
+	tk := issueTokens(t, w)
+	s := newAPI(t, withLogin, func(o *api.Options) { o.MaxJSONBody = 1 << 10 })
+	multipart := "multipart/form-data; boundary=x"
+	attempts := `SELECT count(*) FROM login_attempts WHERE username = $1`
+
+	before := auth.Computations()
+	login := s.browser(t).login(names["memberA"], strings.Repeat("x", 4096), withHeader("Content-Type", multipart))
+	assertProblem(t, login, http.StatusUnsupportedMediaType, "unsupported_media_type")
+	assert.Zero(t, auth.Computations()-before, "no hash computed")
+	assert.Zero(t, scalar[int64](t, attempts, names["memberA"]), "no attempt counted")
+
+	projects := "/api/v1/tenants/" + w.SlugA + "/projects"
+	for name, body := range map[string]any{
+		"a valid body":    map[string]any{"key": "MULTI", "name": "Multi"},
+		"an invalid body": map[string]any{"key": "not a key", "name": strings.Repeat("x", 4096)},
+	} {
+		res := s.do(t, caller{Token: tk.AdminA}, http.MethodPost, projects, body, "Content-Type", multipart)
+		assertProblem(t, res, http.StatusUnsupportedMediaType, "unsupported_media_type")
+		assert.Zero(t, scalar[int64](t, `SELECT count(*) FROM projects WHERE tenant_id = $1 AND key = 'MULTI'`, w.A), name)
+	}
+	res := s.do(t, caller{Token: tk.AdminA}, http.MethodPost, projects, map[string]any{"key": "PLAIN", "name": "Plain"},
+		"Content-Type", "application/json; charset=utf-8")
+	require.Equal(t, http.StatusCreated, res.StatusCode, "the declared type with a parameter")
 }
 
 // docs/adr/0035 D6, docs/adr/0043 D3: revocation is immediate and recorded; a

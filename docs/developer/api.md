@@ -175,11 +175,18 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
 7. **Timeout:** the context gets `COWORK_REQUEST_TIMEOUT` (0 disables), and `bodyDeadline`
    holds reading the body to the same deadline — a read deadline on the connection, lifted once
    the body is read, so a body that trickles in fails instead of holding the request.
-8. **Body limit** (`limitBody` in [`validate.go`](../../backend/internal/api/validate.go)): a
-   JSON body `COWORK_MAX_JSON_BODY` (0 disables), a multipart upload
+8. **Body type and limit** (`limitBody` in [`validate.go`](../../backend/internal/api/validate.go)):
+   a body whose `Content-Type` the operation does not declare — a JSON body sent as
+   `multipart/form-data`, an upload sent as JSON, a body without a type — is
+   `415 unsupported_media_type` before a byte is read (`acceptedBody`, matching as the validator
+   does: parameters ignored); a request without a body and an operation that takes none are not
+   looked at. Then the limit **of the operation**, as the document declares its body
+   (`declaresMultipart`), never of the request's `Content-Type`: a JSON body
+   `COWORK_MAX_JSON_BODY` (0 disables), a multipart upload
    `COWORK_ATTACHMENT_MAX_BYTES` plus 64 KiB of multipart overhead — an import's upload
    (`createImport`) `COWORK_MAX_IMPORT_BYTES` plus the same — (0 disables). A declared length above it is
-   `413 payload_too_large` before anything is read; a longer body fails while it is read.
+   `413 payload_too_large` before anything is read; a longer body fails while it is read
+   (`TestABodyIsTheTypeTheOperationDeclares`, `TestABodyOfATypeTheRouteDoesNotTakeIsRefusedBeforeItIsRead`).
 9. **Request validation** against the document (kin-openapi `openapi3filter`): every error is an
    `errors[]` entry of `400 validation_failed` — a body's failure at its field, a parameter at
    `query:<name>` or `header:<name>`, one entry whose message holds the failures of a repeated
@@ -192,9 +199,10 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    `x-cowork-open-query`, the identity provider's callback, to which an issuer may add its own; a
    path parameter that breaks its schema is
    `404`, because it names nothing that can exist; `format: uuid` accepts any UUID version (the
-   ids are UUIDv7); defaults are not written into the request — the handlers apply them; a
-   multipart body is left to the handler, and so is a signed one, whose handler reads it unparsed
-   until its signature holds. The validator sees the route without its security
+   ids are UUIDv7); defaults are not written into the request — the handlers apply them; the body
+   of an operation that declares a multipart one is left to the handler, and so is a signed one,
+   whose handler reads it unparsed until its signature holds — the operation's declaration decides,
+   never the request's `Content-Type`. The validator sees the route without its security
    requirement (`unsecured`): step 4 has authenticated the caller, and the validator's own
    security check would read the whole body into memory before the handler checks anything.
 10. The generated mux dispatches to the strict handler — or, with `Options.ValidateResponses`,

@@ -554,7 +554,7 @@ refuses the start, naming itself. Chart values are `auth.oidc.*` in
 
 | Variable | Default | Values | Meaning |
 |---|---|---|---|
-| `COWORK_MAX_JSON_BODY` | `1MiB` `# default` | a size; `0` disables | A larger JSON body is `413 payload_too_large` |
+| `COWORK_MAX_JSON_BODY` | `1MiB` `# default` | a size; `0` disables | A larger JSON body is `413 payload_too_large`. It holds every operation whose body the API document does not declare as an upload, whatever `Content-Type` the request names; a body of a type the operation does not take is `415 unsupported_media_type` before it is read |
 | `COWORK_REQUEST_TIMEOUT` | `30s` `# default` | a duration, not negative; `0` disables | A request still running is cancelled and answered `504 timeout`; the event stream is exempt |
 | `COWORK_MAX_PAGE_SIZE` | `200` `# default` | a count; `0` disables | The largest page a list returns; a larger `limit` is clamped, not refused |
 | `COWORK_MAX_QUERY_LENGTH` | `256` `# default` | a count of characters; `0` disables | A longer full-text query `q` — the ticket lists' filter and the search — is `400 validation_failed` |

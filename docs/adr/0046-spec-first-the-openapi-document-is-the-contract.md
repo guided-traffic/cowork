@@ -28,7 +28,9 @@ signed public write, `x-cowork-signed`, without the origin check; built the same
 [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D4 (D6, D8: nineteen session-only operations, by the rule of ADR 0035 D5), and on 2026-10-07 by
 the owner's answer recorded in [ADR 0035](0035-personal-access-tokens.md) D5 (D6, D8: twenty
-session-only operations, unlocking a local account the twentieth; built 2026-10-09). `oapi-codegen`
+session-only operations, unlocking a local account the twentieth; built 2026-10-09), and on
+2026-10-09 (D4: the body left to its handler is the operation's declaration, never the request's
+`Content-Type`, and a body of an undeclared type is `415`). `oapi-codegen`
 does not resolve references into other files, so the split document is bundled first; a stream
 is not a response a strict handler returns; and the rule D8 wants checked is three assertions
 over the loaded document, which a unit test makes without a Node toolchain in the backend's
@@ -111,7 +113,12 @@ and answers a schema violation with the API's error shape; responses are validat
 test and development builds, so a handler that drifts from the document fails a test, not a
 client. *(Amended 2026-10-02: the validator does not check the security requirements — the
 pipeline has authenticated the caller before it validates — because its own check reads every
-body into memory first; a multipart body is left to the handler.)*
+body into memory first; a multipart body is left to the handler.)* *(Amended 2026-10-09, made
+concrete by the fix of the security review of 2026-10-07: which body is left to its handler is the
+operation's declaration in the document, an upload's or a signed delivery's, never the request's
+`Content-Type`; and a body of a type the operation does not declare is `415 unsupported_media_type`
+before it is read ([`api/validate.go`](../../backend/internal/api/validate.go) `acceptedBody`,
+`declaresMultipart`), so no request escapes the validation by naming another type.)*
 
 **D5 — The document is served by the API** at `GET /api/v1/openapi.json`, unauthenticated,
 with `info.version` equal to the backend version; the MCP server compares the major version

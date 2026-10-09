@@ -74,7 +74,11 @@ body is read only by its handler, after those checks and inside the
 upload budget ([attachments.md](attachments.md) H-12): the validator neither reads a multipart
 body nor runs its own security check, which would read every body first
 ([`api/validate.go`](../../backend/internal/api/validate.go) `unsecured`;
-`TestAnUploadIsRefusedBeforeItsBodyIsRead`). How many requests a token sends at once is not
+`TestAnUploadIsRefusedBeforeItsBodyIsRead`). Which body is an upload is the operation's, as the
+document declares it, never the request's `Content-Type`: a body of a type the operation does not
+declare is `415` before it is read, so no request — the login and GitHub's webhook, which take no
+credential, included — escapes the JSON limit or the validation by calling itself multipart
+(`acceptedBody`, `declaresMultipart`; `TestABodyIsTheTypeTheOperationDeclares`). How many requests a token sends at once is not
 bounded ([ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
 D1).
 
