@@ -19,7 +19,12 @@ the same day). Amended 2026-10-06 (the Context and D2: there is no development `
 the tiers run their containers from the Makefile, as ADR 0038 has it since 2026-10-04). Amended
 again 2026-10-06 (D1–D4 built; the details the record left open are made concrete 2026-10-06 by
 the implementer, open to the owner's objection, each marked where it applies; the Consequences'
-Renovate comments live in the Makefile).
+Renovate comments live in the Makefile). Amended 2026-10-07 by the owner (D3: the ConfigMaps the
+chart reads are trusted like the Secrets beside them — documented, not checked), and again
+2026-10-07 by the owner (D3: the database takes a private authority as the storage does, built as a
+change of its own with a PostgreSQL that serves TLS in the integration tier; until then the gap is
+[trust-boundaries.md](../security/trust-boundaries.md) H-78). Amended 2026-10-09 by the owner (D1,
+D2: PGSTY Silo replaces MinIO in the example and in the test tiers; not built yet).
 
 **Built** (2026-10-06): every rule. D3 and D5 since phase 2 in part — the database and owner Secrets
 by URL key, the session key Secret, the storage credentials Secret with literal endpoint values and
@@ -79,10 +84,19 @@ dedicated access key and its bucket-scoped policy are the `mc` commands for both
 store's administrator. The repositories of the MinIO Operator, the MinIO server and `mc` are
 archived on GitHub, and the server image the operator defaults to, `minio/minio`, can no longer be
 pulled (both checked 2026-10-06); the Tenant names Chainguard's build, which the integration tier
-runs, and says so.
+runs, and says so. *(Amended 2026-10-09 by the owner, not built yet:)* the object storage example
+is [PGSTY Silo](https://github.com/pgsty/silo), the maintained MinIO fork (AGPL-3.0, like MinIO; a
+store beside cowork, never linked into it), in place of the MinIO Operator `Tenant` and the `mc`
+commands: a values file for Silo's own Helm chart, which Silo publishes in its repository and in no
+Helm repository, so the example installs it from a pinned release tag; and the bucket, the
+dedicated access key and its bucket-scoped policy as `mcli` commands, the client Silo ships in its
+image. The S3 client library of the backend, `minio-go`, stays: it speaks the protocol, is not
+archived, and Silo keeps the protocol.
 
 **D2 — The tests are what is verified; the examples are syntax-checked.** The integration
-and end-to-end tiers run against `postgres:18` and MinIO service containers ~~with the
+and end-to-end tiers run against `postgres:18` and MinIO service containers *(amended 2026-10-09,
+not built yet: Silo's image `pgsty/silo` in place of Chainguard's MinIO build, so that the tests run
+the store the example names)* ~~with the
 development `compose.yaml`~~ *(amended 2026-10-06:)* the Makefile starts — `make postgres-up
 minio-up` for the integration tier, the stack of [`hack/e2e.sh`](../../hack/e2e.sh) under `make e2e` for the
 end-to-end tier ([ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
@@ -106,7 +120,7 @@ pattern for each of them:
 
 | Value | Reference | Keys (each configurable, with a default) |
 |---|---|---|
-| database | `database.existingSecret` | either `keys.url` (default `databaseUrl`) **or** the component keys `keys.host`, `keys.port`, `keys.name`, `keys.user`, `keys.password`, `keys.sslmode`; `database.existingConfigMap` may supply the non-secret components |
+| database | `database.existingSecret` | either `keys.url` (default `databaseUrl`) **or** the component keys `keys.host`, `keys.port`, `keys.name`, `keys.user`, `keys.password`, `keys.sslmode`; `database.existingConfigMap` may supply the non-secret components; *(added 2026-10-07 by the owner, not built yet)* `database.tls.caConfigMap` + `keys.ca` for a private authority, which the backend applies to both roles' connections and the migration run, so that `sslmode` can be `verify-full` against it |
 | database owner *(added 2026-10-02, [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D2)* | `database.owner.existingSecret` | the same key set as the database row; read only by the migration run (the init container or the Job of [ADR 0057](0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)), never by the serving container |
 | object storage credentials | `storage.existingSecret` | `keys.accessKeyId`, `keys.secretAccessKey` |
 | object storage endpoint | `storage.existingConfigMap` or literal values | `keys.endpoint`, `keys.bucket`, `keys.region`, `keys.pathStyle`; `storage.tls.caConfigMap` + `keys.ca` for a private authority |
@@ -136,6 +150,12 @@ endpoint combines with a bucket of the installation's own; the region and the pa
 missing from the ConfigMap, and the backend's defaults apply. The defaults of every new key are
 also read when the values tree lacks the key, as it does after `helm upgrade --reuse-values` from
 an earlier release.
+
+*(Amended 2026-10-07 by the owner:)* the ConfigMaps the chart reads — `database.existingConfigMap`,
+`database.owner.existingConfigMap`, `storage.existingConfigMap` and `storage.tls.caConfigMap` — are
+part of the trust boundary as the Secrets beside them are: an installation lets write one only
+whom it lets read those Secrets. The rule is documented on the trust-boundaries page and beside
+each reference in the README; the chart and the backend check nothing of it.
 
 **D4 — The backend accepts the database as a URL or as components.** `COWORK_DATABASE_URL`
 stays; alternatively `COWORK_DATABASE_HOST`, `_PORT`, `_NAME`, `_USER`, `_PASSWORD`,

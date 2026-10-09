@@ -166,7 +166,12 @@ backend.
 Each Secret value reaches its container through `secretKeyRef`
 ([`backend-deployment.yaml`](../../deploy/helm/cowork/templates/backend-deployment.yaml),
 [`migrate-job.yaml`](../../deploy/helm/cowork/templates/migrate-job.yaml)); a database role's
-location may come through `configMapKeyRef` instead, its user and password never do. The frontend
+location may come through `configMapKeyRef` instead, its user and password never do. The
+ConfigMaps the chart reads — `database.existingConfigMap`, `database.owner.existingConfigMap`,
+`storage.existingConfigMap` and `storage.tls.caConfigMap` — are part of this boundary as the
+Secrets beside them are: whoever may write one is trusted like whoever may read those Secrets
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
+D3). The frontend
 container holds none of them. With an `existingSecret` the chart never sees the
 value. The inline `database.url`, `database.owner.url` and `localAdmin.username` with
 `localAdmin.password` put the credential in plain text into `helm get values`, and into a release
@@ -388,7 +393,10 @@ public authority and `verify-full`. A URL may add `require_auth=scram-sha-256`, 
 driver refuses a server that asks for the password in clear text or as MD5, and `channel_binding=require`,
 which the driver holds only inside a SCRAM exchange; components carry neither, and `PGREQUIREAUTH` and
 `PGCHANNELBINDING` through `backend.extraEnv` reach the serving container and not the migration run —
-not tried here.
+not tried here. The owner decided on 2026-10-07 that the chart takes the database's authority as it
+takes the storage's, `database.tls.caConfigMap`
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
+D3); not built yet, so the gap stands until it is.
 
 <a id="h-88"></a>
 ### H-88 — An inline credential beside its reference stays in the release's values, unwarned

@@ -24,6 +24,17 @@ GitHub section and the ticket page's card and hint in the UI; the operator's pag
 [docs/security/github-webhook.md](../security/github-webhook.md). Whether the feature earns its place
 is the owner's trial on a real repository, outstanding.
 
+**Dropped 2026-10-09 by the owner, before its trial:** cowork tracks no pull requests, no branches
+and no pushes — "das Tool braucht keine MR oder Branches tracken"; the owner starts using cowork
+with the tickets as they are, and the webhook did not earn its place. D1–D8 no longer hold as rules
+for cowork. **The code built on 2026-10-06 is still in the tree and in the releases up to 0.12.0**,
+off in every tenant that has no secret; its removal is a change of its own, which takes out the
+routes, the UI's GitHub section and ticket card, the parser, the delivery-expiry job and the pages
+above, amends in place the records that name the webhook (ADR 0020 D2, ADR 0031 D6, ADR 0035 D5,
+ADR 0037 D5, ADR 0043 D2 and D3), and leaves migration 41's tables to a later contract migration
+(ADR 0028). The questions the trial left open — what a push adds, whether a removal stays, whether a
+key that leaves a pull request unlinks it, which keys a body and a title give — lapse with it.
+
 *(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)*
 
 - **D1 — the secret.** The server draws 256 random bits and answers them once as 64 hexadecimal
@@ -94,8 +105,9 @@ is the owner's trial on a real repository, outstanding.
   URL with what to set at GitHub; [docs/operations/github.md](../operations/github.md) is the
   operator's page.
 
-*(Made concrete 2026-10-07 by the implementer and built the same day, open to the owner's
-objection:)* **D4 — whose pull requests are linked.** A pull request is read only when its author is
+*(Made concrete 2026-10-07 by the implementer and built the same day; confirmed by the owner the
+same day, over linking an outside author's pull request without its title and over linking every
+author:)* **D4 — whose pull requests are linked.** A pull request is read only when its author is
 the repository's owner, a member of the organisation that owns it or a collaborator of it, as
 GitHub's `author_association` names them — `OWNER`, `MEMBER`, `COLLABORATOR`
 ([`internal/github`](../../backend/internal/github/payload.go) `linkedAuthors`); the pull request of

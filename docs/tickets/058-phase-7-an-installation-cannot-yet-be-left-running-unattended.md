@@ -72,7 +72,7 @@ handled as its own tickets.
 Children:
 
 - T59 — metrics ([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md))
-- T60 — the inbound GitHub webhook, on trial ([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md))
+- T86 — the removal of the inbound GitHub webhook, which the owner dropped before its trial ([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md))
 - T61 — the chart's remaining references, the example manifests and the migration hook Job
   ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
   D1–D4, [ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)
@@ -119,7 +119,7 @@ of the owner's installation, which only he can read.
 Recommended: **(a)**, unless the owner's audit record shows a token that a limit would have
 stopped before an administrator could: a limit built without such a case guesses its numbers.
 
-**Answer:** _open_
+**Answer:** (a) — the owner, 2026-10-08. No per-token limits; ADR 0039 records the confirmation.
 
 ## Related
 

@@ -1,17 +1,17 @@
 ---
 id: T60
 title: pull requests do not reach their tickets
-state: in-progress
+state: dropped
 severity: low
 security: none
 threat:
-urgency: later        # rule 4: built; what is left is the owner's trial and look
+urgency: icebox       # dropped by the owner on 2026-10-09
 effort: L
-blocked-by: human
+blocked-by:
 filed-from: ADR 0071 (phase 7)
 opened: 2026-10-06
 decided: 2026-10-01
-done:
+done: 2026-10-09
 ---
 
 ## Current state
@@ -52,15 +52,9 @@ among them, over payloads rendered from GitHub's documented shapes.
 
 ## Required changes
 
-1. **The owner's trial on a real repository** (D1: the feature earns its place or goes): set the
-   webhook up for one repository of a tenant as
-   [docs/operations/github.md](../operations/github.md) says, work with it for a while, and decide —
-   kept, ADR 0071's Status says so; dropped, the record is amended and the tables leave in a later
-   release's migration ([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)).
-2. **The owner looks at the UI** under `make dev`, in both schemes: the GitHub section of the
-   tenant's settings with its secret dialog, the *Pull requests* card and the merge hint on a ticket,
-   the activity's lines and the inbox's `merged` entry.
-3. **The answers to the questions below**, each built or amended in ADR 0071 in the same change.
+None. **Dropped by the owner on 2026-10-09, before the trial:** cowork tracks no pull requests, no
+branches and no pushes ([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+Status). The removal of the code built on 2026-10-06 is T86.
 
 ## Open questions
 
@@ -79,7 +73,7 @@ only in the push that brings them to the default branch. What that push adds is 
   hint.
 - (c) Nothing: pull requests only. A direct push never reaches the ticket.
 
-**Answer:** _open_
+**Answer:** lapsed — the owner dropped the webhook on 2026-10-09.
 
 ### Q2: Does a person's removal of a wrong link stay, and may an agent remove one?
 
@@ -96,7 +90,7 @@ undone by the next delivery that names the ticket — every `synchronize` of an 
 - (c) A plain delete: the next delivery that names the ticket links it again. A removal of an open
   pull request's link lasts until its next push.
 
-**Answer:** _open_
+**Answer:** lapsed — the owner dropped the webhook on 2026-10-09.
 
 ### Q3: Does a key that leaves a pull request's title or body unlink the ticket?
 
@@ -110,7 +104,7 @@ wrong ticket named —, the link made before is not said to go.
   that ticket, recorded as the webhook's act. The author's correction is enough; a ticket can lose a
   link a person wanted, and a commit's link would follow other rules than a pull request's.
 
-**Answer:** _open_
+**Answer:** lapsed — the owner dropped the webhook on 2026-10-09.
 
 ### Q4: When a pull request's body names full keys, are the short keys of its title read as well?
 
@@ -124,7 +118,7 @@ key on the body's first line and the short key in the title, so both usually nam
   over; a title's short key that meant another tenant's project of the same key cannot be told
   apart.
 
-**Answer:** _open_
+**Answer:** lapsed — the owner dropped the webhook on 2026-10-09.
 
 ### Q5: Are the pull requests of authors outside the repository linked?
 
@@ -143,7 +137,7 @@ the ticket's context document, which Claude Code sessions and the chat read (ADR
 Recommended: **(a)** — no text a stranger wrote reaches a model; (b) keeps the link at the cost of a
 second rule in every surface that shows a pull request.
 
-**Answer:** _open_
+**Answer:** (a) — the owner, 2026-10-07. Only owners, members and collaborators; ADR 0071 D4 records it as confirmed.
 
 ## Not verified
 

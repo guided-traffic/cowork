@@ -169,7 +169,7 @@ that starts answers them at once. A tenant without a result has no series.
 **D5 — Cardinality discipline.** No label carries a person, a ticket key, a token or a
 request id; route labels are the pattern (`/tenants/{slug}/projects/{KEY}/tickets/{number}`),
 never the instance; the `tenant` label appears on the `consistency` family only. *(Made concrete
-2026-10-06 by the implementer, open to the owner's objection:)* its value is the tenant's id, never
+2026-10-06 by the implementer; confirmed by the owner 2026-10-09, over the slug:)* its value is the tenant's id, never
 its slug: the listener has no authentication, a slug names a client, and the list of the clients is
 a session's view even for a global administrator
 ([ADR 0035](0035-personal-access-tokens.md) D5). The scrape then tells how many tenants have a result

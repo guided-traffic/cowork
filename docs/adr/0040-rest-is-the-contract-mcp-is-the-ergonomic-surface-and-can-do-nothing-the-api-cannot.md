@@ -6,7 +6,8 @@ Accepted. Date: 2026-10-01. Decided by the owner as the answer to the catalog qu
 only, MCP only, or both?": both, with REST as the single interface to the data and an MCP
 server as a thin client of it, over REST alone, over MCP alone, and over an additional
 GraphQL surface. The rules of D4–D7 were put to the owner with the question and not objected
-to.
+to. Amended 2026-10-07 by the owner (D4: the plain-`http` loopback URL stays accepted without an
+opt-in).
 
 **Built** (phase 2, 2026-10-02; D2–D5 since 2026-10-04): D1, D6 and D7 — the REST API with its
 document, served at `/api/v1/openapi.json`. D2–D5 — `backend/cmd/cowork-mcp` over
@@ -61,7 +62,11 @@ no stored credential. It keeps a session id and an in-memory cache and writes no
 disk *(amended 2026-10-04: but the file of session-start times of
 [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) D5, which that record names
 the only file the server writes; the two records disagreed, and the later, more specific one
-holds)*.
+holds)*. *(Amended 2026-10-07 by the owner: `COWORK_URL` is `https`, or plain `http` to this
+machine — `localhost` or a loopback address, for a port-forward — without an opt-in; a plain-`http`
+URL to any other host is refused. What the loopback exception leaves open is
+[agent-client.md](../security/agent-client.md#h-108) H-108, accepted within "the client trusts its
+machine".)*
 
 **D5 — The MCP server checks compatibility at start** against `GET /api/v1/version` and the
 OpenAPI document's version, and refuses to serve tools against an API it does not know.

@@ -89,9 +89,14 @@ projects; it was not run here.
    let the session end (or remove the `__Host-cowork-session` cookie), come back to a page, move the
    pointer — signed in again without a click while the issuer's session lives; with the issuer's
    session ended as well, the login page with the calm note. In Safari, a tab left alone on the login
-   page must not sign itself in (the presence rule, H-62's not verified part). A tab left open with
-   nobody at it signs out at the idle limit, while one worked in keeps its session past it.
-3. The answers to Q1 and Q2 below, each an amendment of the record it changes in the same session.
+   page must not sign itself in (the presence rule, H-62's not verified part).
+3. **Q2 answered (b), to build:** every request of a session moves its idle clock again — reads, the
+   event stream's connections and reconnects and the polling fallback's reloads included —, as before
+   0.8.0; a write the CSRF check refuses still does not (made concrete when the answer was recorded:
+   a forged request from another site extends no session). The `X-Cowork-Activity` header and the
+   keep-alive service are removed with their tests. ADR 0031 D3 is amended back in the same change,
+   and docs/security/sessions.md names what it leaves open: a tab open with nobody at it keeps its
+   session up to the absolute limit.
 
 ## Open questions
 
@@ -114,7 +119,7 @@ and again, until they sign out of cowork or clear the site's data.
 - **Mark the login page's own history entry instead** (`history.replaceState` before it leaves):
   the back button stops the trap, a typed address or a bookmark does not.
 
-**Answer:** _open_
+**Answer:** (a) — the owner, 2026-10-07. Once per tab between two sessions; ADR 0029 D6 records it as confirmed.
 
 ### Q2: Which requests of a session keep it alive?
 
@@ -138,7 +143,9 @@ amended that day.
 
 (a) is built and stays unless the owner answers otherwise.
 
-**Answer:** _open_
+**Answer:** (b) — the owner, 2026-10-07. Every request of a session keeps it alive, as before
+0.8.0; the cost — an unattended open tab stays signed in up to the absolute limit — was put to him
+with the question and is his accepted risk.
 
 ## Not verified
 

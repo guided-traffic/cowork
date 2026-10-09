@@ -1477,7 +1477,9 @@ The modes that change what is exposed:
   `existingConfigMap` when one is named — and the backend composes the URL; a named key a Secret or
   ConfigMap lacks stops the pod rather than falling back. The chart mounts no authority for the
   database's certificate, so `sslmode` can be `require` but not `verify-full` against a private
-  authority ([the Secrets](docs/operations/installation.md#the-secrets)).
+  authority ([the Secrets](docs/operations/installation.md#the-secrets)). Whoever may write the
+  `existingConfigMap` is trusted like whoever may read the Secret beside it
+  ([trust boundaries](docs/security/trust-boundaries.md)).
 - **The server key has no inline path.** One Secret gives every replica the same key;
   rotating it invalidates the cursors clients hold and ends each session of the identity provider
   that holds a refresh token at its next refresh.
@@ -1510,7 +1512,9 @@ The modes that change what is exposed:
   and prints the figures in its notes ([expose it](docs/operations/installation.md#expose-it)).
 - **The storage key comes from a Secret only**; endpoint, bucket, region and path style are plain
   values or, with `storage.existingConfigMap`, a ConfigMap's. Without `storage.endpoint` and
-  without the ConfigMap the backend runs without object storage and refuses uploads.
+  without the ConfigMap the backend runs without object storage and refuses uploads. Whoever may
+  write that ConfigMap or `storage.tls.caConfigMap` is trusted like whoever may read the storage
+  key's Secret.
 - **`metrics.enabled` opens a port without authentication.** On by default: the backend pods answer
   `/metrics` on `metrics.port` to every pod that reaches them — counts of the installation's activity,
   never a person, a ticket or a token, and a tenant only by its id on the consistency check's counts

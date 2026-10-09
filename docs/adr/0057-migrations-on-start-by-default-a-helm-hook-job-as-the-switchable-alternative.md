@@ -13,6 +13,8 @@ serving container never holds the owner credential.
 
 Amended 2026-10-06 (D1, D2, D4, D5: built; the details the record left open are made concrete
 2026-10-06 by the implementer, open to the owner's objection, each marked where it applies).
+Amended 2026-10-07 (D4: the owner confirmed that `cowork serve` keeps its own bootstrap in `job`
+mode).
 
 **Built** (2026-10-06): every rule. Since phase 2 (2026-10-02) D1 as amended — the chart's
 `migrate` init container with the owner credential and the serving container with
@@ -101,7 +103,9 @@ group, the identity provider's issuer and that group — never its client secret
 alone now requires (`OIDC.RequireClient`). `cowork serve` keeps its own bootstrap in `job` mode as
 well: a start that finds everything in step changes nothing, and a local administrator's Secret
 rotated between two upgrades reaches the account at the restart of the pods, as the operations page
-tells the operator to do.
+tells the operator to do. *(Confirmed by the owner 2026-10-07, over the Job alone: taking the
+administrator's password out of the serving container would leave the rotate-and-restart recovery
+doing nothing in `job` mode.)*
 
 **D5 — Both modes are rendered and tested.** `deploy/helm/cowork/ci/` carries a values file
 per mode; `make helm-lint` and `make helm-template` cover both; the end-to-end tier

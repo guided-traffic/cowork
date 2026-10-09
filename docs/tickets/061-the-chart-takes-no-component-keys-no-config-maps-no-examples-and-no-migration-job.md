@@ -66,6 +66,24 @@ Depends on the answers:
   mounted read-only into the init container, the Job and the serving container; the backend reads it
   for both pools; a test against a PostgreSQL that serves TLS.
 
+3. **The database's authority** (Q3, answered b): `database.tls.caConfigMap` and `keys.ca`, mounted
+   as the storage's authority is, and one variable the backend applies to the runtime pool, the
+   owner pool and the migration run; the integration tier gains a PostgreSQL that serves TLS and a
+   test that `verify-full` holds against the private authority and refuses a server outside it;
+   README reference, trust-boundaries.md (H-78 closed) and ADR 0058 D3's row marked built, in the
+   same change.
+
+4. **PGSTY Silo in place of MinIO** (Q2, answered c): `deploy/examples/minio-tenant.yaml` and
+   `minio-bucket.sh` give way to a values file for Silo's Helm chart (`helm/silo` of
+   [pgsty/silo](https://github.com/pgsty/silo) at a pinned release tag; Silo publishes no Helm
+   repository) and an `mcli` script for the bucket, the access key and the bucket-scoped policy, run
+   once against the store of `make minio-up`; `make examples-lint` renders the chart at that tag with
+   the example's values and checks the output with kubeconform, `MINIO_OPERATOR_VERSION` and the
+   Tenant CRD schema leave the Makefile; `MINIO_IMAGE` becomes `pgsty/silo` at a pinned release,
+   with its Renovate comment, and the integration and end-to-end tiers pass against it; the
+   operations page, the developer pages and the README name Silo. Whether the targets keep the name
+   `minio-up` is decided with the build.
+
 ## Open questions
 
 ### Q1: Does `cowork serve` keep its own bootstrap in job mode?
@@ -89,7 +107,7 @@ holds already — the runtime role, which reads and writes every tenant's rows, 
 while (b) turns the recovery of a leaked administrator password into a step that does nothing in one
 of two modes.
 
-**Answer:** _open_
+**Answer:** (a) — the owner, 2026-10-07. Both run it; ADR 0057 D4 records it as confirmed.
 
 ### Q2: Do the MinIO examples stay, now that MinIO's projects are archived?
 
@@ -111,7 +129,10 @@ not tried with the operator.
 **Recommended: (a)** until the owner names the store to replace MinIO with: nothing an installation
 may copy disappears unasked, and every place that names the examples says that MinIO gets no fix.
 
-**Answer:** _open_
+**Answer:** (c), with the store named — the owner, 2026-10-09: "Wir wechseln auf
+https://github.com/pgsty/silo". Read as the switch of every MinIO server cowork names, the example
+and the test tiers' container alike — made concrete when the answer was recorded, open to the
+owner's objection; ADR 0058 D1 and D2 as amended; the build is required change 4.
 
 ### Q3: Should the chart take an authority for the database's certificate?
 
@@ -134,7 +155,8 @@ CloudNativePG's own. That holds for the URL as for the components; ADR 0058's re
 and only a test against a server that serves TLS proves it; it is worth deciding first, not building
 unasked.
 
-**Answer:** _open_
+**Answer:** (b) — the owner, 2026-10-07. ADR 0058 D3 carries the database's authority row, marked
+not built; the build is required change 3.
 
 ## Not verified
 

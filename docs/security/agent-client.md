@@ -202,6 +202,19 @@ rule of no user, query or fragment ([`mcpcli/config.go`](../../backend/internal/
 it whatever reads the client's output — a hook's included. The token itself is never in a message.
 Mitigation: keep credentials out of `COWORK_URL`; the client refuses such a URL once a token is set.
 
+<a id="h-108"></a>
+### H-108 — A plain-http loopback URL sends the token to whoever listens on the port
+
+Live where `COWORK_URL` is plain `http` to this machine and the machine has other accounts. The client
+accepts `http://localhost:<port>` and a loopback address without an opt-in, for a port-forward to the
+backend Service ([`mcpcli/config.go`](../../backend/internal/mcpcli/config.go) `loadConfig`), and
+nothing checks who listens on the port: while the person's port-forward is down, another account of
+the same machine that binds the port receives the bearer token with the first request. The owner
+accepted it on 2026-10-07 as within "the client trusts its machine"
+([ADR 0040](../adr/0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)
+D4). Mitigation: `https` to the installation's own URL wherever it is reachable, and a plain-`http`
+port-forward only on a machine the person does not share.
+
 ### What the person's machine does
 
 The client trusts its machine: whoever runs code as the person can read the token while a

@@ -102,7 +102,8 @@ the purge job only after an administrator confirms the list. *(Made concrete 202
 implementer, open to the owner's objection:)* the job is `consistency-check`, under the job lock
 ~~`(cowk, 7)`~~ `(cowk, 8)`, in one transaction: for every tenant it lists the objects under
 `<tenant-id>/` — which takes `s3:ListBucket` on the bucket beside reading, writing and deleting
-objects — then reads the tenant's attachments, asks the bucket for each attachment the listing
+objects (confirmed by the owner 2026-10-09, over a check without the listing that sees only the
+missing files, and over a second key for the listing) — then reads the tenant's attachments, asks the bucket for each attachment the listing
 missed, and judges an object no metadata names an orphan unless the time in its key's UUIDv7, or
 the last change of a key the backend does not write, lies within the last hour: an upload puts its
 object before its row commits. *(Amended 2026-10-07:)* The listing and the attachments are
@@ -121,7 +122,9 @@ confirming transaction whether metadata names it now, the act `purged` is record
 counts, and the objects are removed after its commit, as an administrator's purge of a ticket
 removes its objects; a removal that fails is logged and listed again by the next check. It takes a
 browser session and no agent, by the rule of
-[ADR 0035](0035-personal-access-tokens.md) D5 for an act nothing undoes. The objects under the
+[ADR 0035](0035-personal-access-tokens.md) D5 for an act nothing undoes *(confirmed by the owner
+2026-10-07, over a session or an `admin`-scope token: the orphans after a restore are often the only
+copy of what the backup missed)*. The objects under the
 prefix of a tenant the database does not know are not listed.
 
 **D5 — The restore procedure is a step list in `docs/operations/`,** honest about the
@@ -129,13 +132,16 @@ non-transactional gap: restore the database to its point in time first, then the
 the nearest point at or after it; run the consistency check; read its summary; accept the
 dangling metadata or re-upload. The page says plainly that an attachment uploaded between the
 two snapshots is the one that will be missing. *(Made concrete 2026-10-06 by the implementer,
-open to the owner's objection:)* the check runs at once with `cowork check-consistency` in a
-backend container, which prints every tenant's counts; a restart does not run it when the restored
+open to the owner's objection; the trigger confirmed by the owner 2026-10-09, over a route for
+global administrators and over a tenant administrator's "check now":)* the check runs at once with
+`cowork check-consistency` in a backend container, which prints every tenant's counts; a restart does not run it when the restored
 database records a run after the last 03:00 UTC. Accepting the dangling metadata is a tenant
 administrator's recorded act, `accepted`, with `admin` scope and never an agent's: the listed
 files count as accepted instead of dangling and hold no alert, nothing is removed, and their
 download keeps answering that the bytes are missing; a file whose bytes come back is whole again,
-and the check forgets its acceptance, so that a later loss counts once more.
+and the check forgets its acceptance, so that a later loss counts once more. *(Confirmed by the
+owner 2026-10-07, over leaving the count to Alertmanager's silences and over removing the dangling
+metadata.)*
 
 **D6 — Export and consistency check need no new configuration.** The export is an API route;
 the check uses the storage configuration that exists; its schedule is a constant (daily, at a

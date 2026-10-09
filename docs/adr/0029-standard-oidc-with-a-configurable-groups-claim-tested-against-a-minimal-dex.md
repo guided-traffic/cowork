@@ -181,7 +181,8 @@ itself, at their first input, through the standard's own means: `prompt=none` (O
   starts nothing, so there is no loop; the remembered method is `oidc`; and **this tab has not tried
   since its last session** — `cowork.sign-in.attempt` in `sessionStorage`, noted when the page leaves
   for an attempt of its own and cleared once the tab has a session again. The last condition was not
-  in the design and **awaits the owner's answer**; it is built on the recommendation because an
+  in the design; the owner confirmed it on 2026-10-07, over trying at every visit of the login page
+  and over marking the page's history entry; it was built on the recommendation because an
   issuer that ignores `prompt=none` — Dex does, measured below — shows its own form instead of an
   error, and a person who came back from that form to the login page, for the local form, say, would
   be sent there again at every input.

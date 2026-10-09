@@ -73,6 +73,19 @@ What has not happened:
    page or by the steps of the operations page, and writes ADR 0064 D4's note into
    `docs/tickets/README.md` the same day.
 3. **The checks at scale** (below).
+4. **The import is the agent's tool, and nothing in it refuses** (the owner, 2026-10-09: "Das LLM hat
+   freie Hand … Ich will mit LLMs auf einem Ticket System arbeiten"): the dry run, the execution and
+   the report are a writer's acts of the project, as creating a ticket is, an agent's included (ADR
+   0051 D6, ADR 0043's baseline amended); `cowork-mcp import <tenant>/<KEY> <path>` packs a directory
+   or takes an archive or Markdown files, runs the dry run and the execution through `/api/v1` and
+   prints the report, so Claude Code imports from a repository with one command (`--dry-run` stops
+   after the report); the execution imports every file it can and leaves out each with an error or
+   a conflict, the report naming each and why (Q3); a `/context` document is skipped with its reason
+   (Q2); a number a purged ticket held is imported (Q4, ADR 0007 D4 amended: an import may give a
+   purged number back); the agent sets the parents after the import (Q5). The import page follows:
+   offered to every writer of the project, the execution no longer blocked by an error. ADR 0051 D2
+   and D6, ADR 0063 D5, ADR 0064 D3, ADR 0007 D4 and ADR 0043 amended in the same change, with the
+   operations, developer and security pages and the README.
 
 ## Open questions
 
@@ -91,7 +104,7 @@ every member.
 - (c) A manifest of the confidential keys beside the tickets — the same information in a second
   place, which the import would have to join.
 
-**Answer:** _open_
+**Answer:** (a) — the owner, 2026-10-09. `confidential: true` after `threat`; ADR 0044 D1 records it as confirmed.
 
 ### Q2: Is a `/context` document an error of the report or a skipped file?
 
@@ -102,7 +115,7 @@ lists it among the errors.
   it — recommended and built: a context export is never passed over unseen.
 - (b) Skipped with its reason — nothing is refused, and nobody has to act on it.
 
-**Answer:** _open_
+**Answer:** (b), reversed — the owner, 2026-10-09: "Das LLM hat freie Hand … Hör auf hier alles abzusichern". A `/context` document is skipped with its reason; nothing in an import refuses. To build (required change, below).
 
 ### Q3: Does a file with an error refuse the execution, or does the execution leave it out?
 
@@ -114,7 +127,7 @@ ADR 0064 D3 refuses an execution while a conflict remains; ADR 0051 D2 says noth
 - (b) The execution leaves an erroneous file out and the report says so — one click less; a file
   lost without anybody choosing it.
 
-**Answer:** _open_
+**Answer:** (b), reversed — the owner, 2026-10-09: the execution imports what it can and leaves out each file with an error or a conflict, the report naming each; the agent reads the report and acts. To build.
 
 ### Q4: Is a number that a purged ticket held a conflict?
 
@@ -126,7 +139,7 @@ audit record, and ADR 0007 D4 hands no number out twice.
 - (b) Imported — the purged ticket's number comes back with other text, and every old reference to
   it now points at it.
 
-**Answer:** _open_
+**Answer:** (b), reversed — the owner, 2026-10-09: "es darf Tickets egal welcher Nummer importieren". A number a purged ticket held is imported; a number a live ticket holds stays a conflict, left out by Q3's rule. To build.
 
 ### Q5: How does the importer recognise a family ticket and its children?
 
@@ -141,7 +154,7 @@ names no parent, and `docs/tickets/README.md` has no rule that says which files 
 - (c) A convention in the body — a list of `T<n>` under a heading — read as children: a heuristic
   over prose the rules do not define, which makes wrong parents silently.
 
-**Answer:** _open_
+**Answer:** (a), by the agent — the owner, 2026-10-09: "Das LLM sorgt dafür, dass Family-Tickets zusammenhängen oder eben nicht". The importer guesses no parent; the person's agent sets the parents after the import.
 
 ### Q6: Does the purge of an imported ticket reach the report of its import?
 
@@ -154,7 +167,7 @@ purge of ADR 0024 D2 empties the ticket and its audit rows.
 - (b) The report stays as the upload made it — the purged text readable to the tenant's
   administrators for good.
 
-**Answer:** _open_
+**Answer:** not asked further — the owner ended the round on 2026-10-09; the built recommendation (a) stands, open to his objection.
 
 ### Q7: Does the UI offer the tenant's export to every member, as the API does?
 
@@ -169,7 +182,7 @@ tenant's administrators only; every member exports each project they read from i
 - (b) Every member, in the settings or the navigation — the UI as wide as the API, for an act a
   member rarely needs.
 
-**Answer:** _open_
+**Answer:** not asked further — the owner ended the round on 2026-10-09; the built recommendation (a) stands, open to his objection.
 
 ## Not verified
 

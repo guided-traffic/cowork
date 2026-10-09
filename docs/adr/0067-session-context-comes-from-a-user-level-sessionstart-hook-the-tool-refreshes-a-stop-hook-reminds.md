@@ -29,8 +29,8 @@ compaction), and built the same day — `sessionContext` and `client.header` in
 `TestTheSessionStartHookNamesTheModelOfTheServer` runs the hook on the input Claude Code's hook
 reference shows and the server after it.
 
-Amended again 2026-10-06 by the implementer on the recommendation of an open question, whose
-answer is the owner's and decides whether the amendment stays (D5: a `PostModelSwitch` hook runs
+Amended again 2026-10-06 by the implementer on the recommendation of an open question, which the
+owner answered on 2026-10-07 by keeping it, over leaving the switch unrecorded (D5: a `PostModelSwitch` hook runs
 `cowork-mcp model-switch`, which records the model the session switched to in the same file,
 unless the switch is a subagent's; D6: the block carries the three hooks), and built the same day
 — `modelSwitch` in [`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go), the plugin's

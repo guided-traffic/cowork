@@ -76,7 +76,7 @@ is recorded under a model that did not make it.
   and its residual risk restored. Costs nothing to run; the model in a mark is then "the model the
   session started with", which the docs say again.
 
-**Answer:** _open_
+**Answer:** (a) — the owner, 2026-10-07. The `PostModelSwitch` hook stays; ADR 0067 D5 records it as answered.
 
 The recommended option is built (ADR 0067 D5) and stays unless the owner answers otherwise.
 

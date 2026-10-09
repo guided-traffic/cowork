@@ -72,7 +72,7 @@ orphans, and a leaked administrator's token removes the bytes of files uploaded 
 snapshots, which may be their only copy. **Recommended: (a)**, built: it is the record's own rule
 applied to an irreversible act, and the removal is meant to follow a person's look at the list.
 
-**Answer:** _open_
+**Answer:** (a) — the owner, 2026-10-07. A browser session only; ADR 0059 D4 records it as confirmed.
 
 ### Q2: How does a loss the administrators accept stop counting, and the alert end?
 
@@ -85,7 +85,7 @@ Alertmanager, whose silence expires; (c) removing the dangling metadata, so the 
 tickets — destructive, and against D4's honest `404`. **Recommended: (a)**, built: it makes the
 alert resolvable without hiding the loss from the tenant, and it removes nothing.
 
-**Answer:** _open_
+**Answer:** (a) — the owner, 2026-10-07. An administrator's recorded acceptance; ADR 0059 D5 records it as confirmed.
 
 ### Q3: Is the metrics' tenant label the tenant's id or its slug?
 
@@ -95,7 +95,7 @@ log line or in `cowork check-consistency`; (b) the slug: readable alerts and das
 of the installation's clients readable by every pod that reaches the port, which the API keeps even
 from a global administrator's token (ADR 0035 D5). **Recommended: (a)**, built, for that reason.
 
-**Answer:** _open_
+**Answer:** (a) — the owner, 2026-10-09. The tenant's id; ADR 0060 D5 records it as confirmed.
 
 ### Q4: Does the check need `s3:ListBucket`, or does it work without it?
 
@@ -109,7 +109,7 @@ check — a configuration value against D6. **Recommended: (a)**, built: D4 need
 key's added reach matters only for a key that leaks without the database's credential, which names
 every key as well.
 
-**Answer:** _open_
+**Answer:** (a) — the owner, 2026-10-09. The key needs `s3:ListBucket`; ADR 0059 D4 records it as confirmed.
 
 ### Q5: How does an operator run the check at once after a restore?
 
@@ -122,7 +122,7 @@ installation-wide act to authorize; (c) a tenant administrator's "check now" for
 after bytes are put back, and an S3 listing anybody of the tenant's administrators can start at will.
 **Recommended: (a)**, built.
 
-**Answer:** _open_
+**Answer:** (a) — the owner, 2026-10-09. `cowork check-consistency` through `kubectl exec`; ADR 0059 D5 records it as confirmed.
 
 ## Not verified
 

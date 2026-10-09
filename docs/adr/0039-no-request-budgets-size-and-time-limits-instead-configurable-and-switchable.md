@@ -7,7 +7,9 @@ limits and abuse?": no request budgets beyond the login limits, size and time li
 their place, over budgets per token, per tenant, and over a budget shipped switched off. The
 owner's condition: every limit is configurable and can be switched off. The inbox collapse
 rule of D5 was put to the owner with the question and not objected to; it is configurable
-and switchable like the rest.
+and switchable like the rest. Confirmed by the owner 2026-10-08 for phase 7, whose plan made
+per-token limits conditional on the audit record asking for them: it does not, and no per-token
+limit is built (D1).
 
 Amended 2026-10-02 (D2: the event stream is exempt from the request timeout, and the timeout
 bounds reading the body; D3: how the chart sizes nginx, and that nginx answers its own limits

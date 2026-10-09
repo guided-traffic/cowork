@@ -28,6 +28,10 @@ Trivy steps of the container scan name `aquasecurity/trivy-action@v0.36.0`, the 
 release that day, instead of its branch `master`, and [`renovate.json`](../../renovate.json)
 carries no rule that pins a digest.
 
+Amended 2026-10-07 by the owner (D8): a pull request from an outside contributor runs only after
+the owner's approval, on the same runners as every other pull request; the repository setting that
+asks for the approval was read the same day.
+
 ## Context
 
 The pipeline was copied from the sibling project with its assumptions: `runs-on: self-hosted`,
@@ -94,6 +98,13 @@ The `container-malware-scan` job of `release.yml` logs in to Docker Hub with `DO
 token the release build publishes the images with; there is no read-only token for the scan. The
 `build` job of `build.yml` declares no `permissions:` of its own and runs with the workflow's
 block: `contents`, `pages`, `attestations` and `id-token` write, `actions` read.
+
+**D8 — A pull request from an outside contributor runs after the owner's approval, on the same
+runners** *(added 2026-10-07 by the owner)*. The repository's Actions setting asks for approval
+before every run of a pull request from an outside contributor, not only a first-time one
+(`all_external_contributors`, read through the API on 2026-10-07); the setting is part of this
+pipeline and is not loosened. An approved run runs `release.yml` like any pull request for `main`,
+with `runs-on: self-hosted` — no job chooses its runner by where the pull request comes from.
 
 ## Consequences
 

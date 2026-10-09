@@ -110,7 +110,7 @@ the body, `## Open questions` is always written and is the last heading of that 
 `### Q<n>: …` in number order, the options verbatim, `**Recommendation:** …` when there is
 one, and `**Answer:**` with the answer, `_open_` or `_withdrawn_`. The response is
 `text/markdown; charset=utf-8` with the ticket's `ETag` and is never answered `304`.
-*(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* `confidential: true`
+*(Made concrete 2026-10-06 by the implementer; confirmed by the owner 2026-10-09, over no key and over a manifest of the confidential keys:)* `confidential: true`
 follows `threat` while the ticket's flag is set, and nothing is written while it is not. The flag
 is a column ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
 D1), so a round trip without it would not be lossless: a ticket an administrator flagged whose
