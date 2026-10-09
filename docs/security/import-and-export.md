@@ -136,9 +136,10 @@ D2; `TestThePurgeTakesAnImportedTicketOutOfItsReport`).
   correction removes one before the execution. The execution assigns by a file's identity only the
   member the dry run named, so a person added as a member, or to a restricted project's list, after
   the dry run is assigned nobody, with a warning (`TestTheExecutionAssignsWhomTheDryRunNamed`). An
-  agent's import assigns a confidential ticket to the agent's person or to nobody, as its filing does
-  ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
-  D3).
+  import through a token — an agent's or not — assigns a confidential ticket to the token's own person
+  or to nobody, the report saying why on the file, so an import is no way around the rule that an act
+  which admits anybody else to a confidential ticket takes a browser session; a browser session's
+  import assigns as the file says (`TestATokenImportAssignsAConfidentialTicketToItsPersonOnly`).
 - **The confidential flag by the rule of the source** (ADR 0065 D7, [`columns.go`](../../backend/internal/importer/columns.go)
   `confidential`): a `publication-accepted:` date decides first and leaves it unset; otherwise an
   export's `confidential: true`, the `local_` prefix, or a `live` or `boundary` class without a

@@ -24,9 +24,10 @@ leaves such a file out (ADR 0064 D1, D3).
   restricted project, a place on its list as a member —, through a token the `write` scope; an
   agent's token too ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
   D6). A job — its dry run, its report, its execution — is the person's who made it, and the tenant's
-  administrators'; another person gets `404` for it. An agent assigns a confidential ticket only to
-  its own person, so an agent's import leaves such a ticket unassigned where its file names somebody
-  else.
+  administrators'; another person gets `404` for it. An import through a token — an agent's or
+  not — assigns a confidential ticket only to the token's own person, so it leaves such a ticket
+  unassigned where its file names somebody else, and the report says so; the import page, a browser
+  session, assigns as the file says.
 - **Where.** The project exists, is not archived, and is the one the tickets belong to: an import
   goes into one project, and keeps the numbers of its files — `117-….md` becomes `<tenant>/<PROJECT>-117`.
   A number the project already holds is a conflict, so a repository's tickets go into a project of

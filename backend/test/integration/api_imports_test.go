@@ -499,37 +499,108 @@ func TestImportGivesAPurgedNumberBack(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("ticket %d", gone.Number), again.JSON200.Title)
 }
 
+// confidentialFile is a repository's file of an open live finding, which
+// the import flags confidential, assigned to the person of the username.
+func confidentialFile(n int, username string) namedFile {
+	return namedFile{name: fmt.Sprintf("local_%03d-a-finding.md", n), body: []byte(fmt.Sprintf("---\nid: T%d\n"+
+		"title: a finding\nstate: filed\nseverity: high\nsecurity: live\nthreat: a reader learns too much\neffort: S\n"+
+		"opened: 2026-10-01\nassignee: Somebody <local:%s>\n---\n", n, username))}
+}
+
+// sessionImport makes a dry run and executes it as a person's browser
+// session, and answers the executed job.
+func sessionImport(t *testing.T, e ticketEnv, b *browser, parts ...namedFile) apigen.ImportJob {
+	t.Helper()
+	contentType, body := uploadOf(t, parts...)
+	res := b.request(http.MethodPost, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/imports", e.SlugA), string(body),
+		withHeader("Content-Type", contentType))
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	var job apigen.ImportJob
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&job))
+	res = b.request(http.MethodPost, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/imports/%s/execution", e.SlugA, job.Id),
+		map[string]any{})
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&job))
+	return job
+}
+
 // An execution assigns the member its dry run named and nobody else: a
 // person who became a member between the dry run and the execution is not
 // assigned — not admitted to the confidential ticket the report showed
-// unassigned —, and the report says so.
+// unassigned —, and the report says so. A browser session's, which assigns a
+// confidential ticket to whomever the file names.
 func TestTheExecutionAssignsWhomTheDryRunNamed(t *testing.T) {
 	e := newTicketEnv(t)
 	f := fixtures(t)
-	admin := caller{Token: e.tk.AdminA}
+	s := newAPI(t, withLogin)
+	names := withAccounts(t, e.world)
+	b := s.browser(t)
+	b.mustLogin(names["adminA"], testPassword)
 	late, err := f.Person(e.ctx, uniqueSlug("late"), "Late")
 	require.NoError(t, err)
-	var username string
-	require.NoError(t, f.QueryRow(e.ctx, `SELECT username FROM users WHERE id = $1`, late).Scan(&username))
-	finding := namedFile{name: "local_007-a-finding.md", body: []byte("---\nid: T7\ntitle: a finding\nstate: filed\n" +
-		"severity: high\nsecurity: live\nthreat: a reader learns too much\neffort: S\nopened: 2026-10-01\n" +
-		"assignee: Late <local:" + username + ">\n---\n")}
 
-	created := e.dryRun(t, admin, "ALPHA", finding)
-	require.Equal(t, http.StatusCreated, created.StatusCode(), string(created.Body))
-	assert.True(t, reported(t, created.JSON201, "local_007-a-finding.md").Assignee.MustGet().Person.IsNull(),
+	contentType, body := uploadOf(t, confidentialFile(7, usernameOf(t, late)))
+	res := b.request(http.MethodPost, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/imports", e.SlugA), string(body),
+		withHeader("Content-Type", contentType))
+	require.Equal(t, http.StatusCreated, res.StatusCode)
+	var dry apigen.ImportJob
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&dry))
+	assert.True(t, reported(t, &dry, "local_007-a-finding.md").Assignee.MustGet().Person.IsNull(),
 		"the dry run names nobody: the person is no member")
 	require.NoError(t, f.Member(e.ctx, e.A, late, domain.RoleMember))
 
-	executed := e.execute(t, admin, "ALPHA", created.JSON201.Id)
-	require.Equal(t, http.StatusOK, executed.StatusCode(), string(executed.Body))
-	file := reported(t, executed.JSON200, "local_007-a-finding.md")
+	res = b.request(http.MethodPost, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/imports/%s/execution", e.SlugA, dry.Id),
+		map[string]any{})
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	var done apigen.ImportJob
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&done))
+	file := reported(t, &done, "local_007-a-finding.md")
 	assert.True(t, file.Assignee.MustGet().Person.IsNull())
 	assert.Contains(t, string(mustJSON(t, file.Warnings)), "whom the dry run did not name")
-	seven := e.get(t, admin, "ALPHA", 7)
+	seven := e.get(t, caller{Token: e.tk.AdminA}, "ALPHA", 7)
 	require.Equal(t, http.StatusOK, seven.StatusCode())
 	assert.True(t, seven.JSON200.Confidential)
 	assert.True(t, seven.JSON200.Assignee.IsNull(), "the member added in between is not admitted")
+}
+
+// docs/adr/0065 D9, docs/adr/0043 D3: an import through a token — a plain
+// one, not an agent's — assigns a confidential ticket to the token's own
+// person or to nobody, the report saying why on the file; a ticket that is
+// not confidential is assigned as its file says; a person's browser session
+// assigns a confidential ticket as its file says.
+func TestATokenImportAssignsAConfidentialTicketToItsPersonOnly(t *testing.T) {
+	e := newTicketEnv(t)
+	member := caller{Token: e.tk.MemberA}
+	s := newAPI(t, withLogin)
+	names := withAccounts(t, e.world)
+	other := ticketFile(5, "assignee: Admin <local:"+names["adminA"]+">\n")
+
+	created := e.dryRun(t, member, "ALPHA", confidentialFile(3, names["adminA"]), confidentialFile(4, names["memberA"]), other)
+	require.Equal(t, http.StatusCreated, created.StatusCode(), string(created.Body))
+	executed := e.execute(t, member, "ALPHA", created.JSON201.Id)
+	require.Equal(t, http.StatusOK, executed.StatusCode(), string(executed.Body))
+	three := reported(t, executed.JSON200, "local_003-a-finding.md")
+	assert.True(t, three.Assignee.MustGet().Person.IsNull())
+	assert.Contains(t, string(mustJSON(t, three.Warnings)), "assigns a confidential ticket to the token's own person or to nobody")
+	admin := caller{Token: e.tk.AdminA}
+	for n, want := range map[int]*uuid.UUID{3: nil, 4: &e.MemberA, 5: &e.AdminA} {
+		got := e.get(t, admin, "ALPHA", n)
+		require.Equal(t, http.StatusOK, got.StatusCode())
+		if want == nil {
+			assert.True(t, got.JSON200.Assignee.IsNull(), "ALPHA-%d", n)
+			continue
+		}
+		assert.Equal(t, *want, got.JSON200.Assignee.MustGet().Id, "ALPHA-%d", n)
+	}
+
+	b := s.browser(t)
+	b.mustLogin(names["memberA"], testPassword)
+	job := sessionImport(t, e, b, confidentialFile(6, names["adminA"]))
+	assert.False(t, reported(t, &job, "local_006-a-finding.md").Assignee.MustGet().Person.IsNull())
+	six := e.get(t, admin, "ALPHA", 6)
+	require.Equal(t, http.StatusOK, six.StatusCode())
+	assert.True(t, six.JSON200.Confidential)
+	assert.Equal(t, e.AdminA, six.JSON200.Assignee.MustGet().Id, "a browser session assigns as the file says")
 }
 
 // docs/adr/0051 D7, docs/adr/0039 D2: the upload's bound, a broken upload,

@@ -211,10 +211,11 @@ type Target struct {
 	// person who became a member who can see the project since is assigned
 	// nobody, as the report the person read said.
 	Named map[string]uuid.UUID
-	// Agent is the person of an agent's request, nil for a person's own: an
-	// agent assigns a confidential ticket to its person or to nobody
-	// (docs/adr/0043 D3, docs/adr/0065 D9).
-	Agent *uuid.UUID
+	// TokenPerson is the person of a request through a token or an agent's,
+	// nil for a person's own browser session: such a request assigns a
+	// confidential ticket to that person or to nobody, since its assignee is
+	// admitted to it (docs/adr/0043 D3, docs/adr/0065 D9).
+	TokenPerson *uuid.UUID
 }
 
 // Key is the full key a number gets in the target project.
@@ -302,6 +303,9 @@ type entry struct {
 	waitsOn string
 	// related are the lines the body gains under `## Related`.
 	related []string
+	// unnamed is the member a file's identity resolves to at an execution
+	// whose dry run did not name them, who is assigned nobody.
+	unnamed *Person
 }
 
 func (e *entry) outcome() Outcome {

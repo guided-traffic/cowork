@@ -240,8 +240,9 @@ func importJobView(projectKey string, j readq.GetImportJobRow) (apigen.ImportJob
 // tickets the references name, and the members the assignees name — each
 // one who can see the project, as an assignee must (docs/adr/0065 D9). A
 // corrected assignee who is none is refused at its correction. named are the
-// members the dry run assigned, for an execution; an agent's request names
-// its person, which a confidential ticket may be assigned to alone.
+// members the dry run assigned, for an execution; a request through a token,
+// or an agent's, names its person, which a confidential ticket may be
+// assigned to alone — a person's browser session does not.
 func (s *Server) importTarget(ctx context.Context, r *store.Reader, t tenantScope, p project, u *importer.Upload,
 	corrections []importer.Correction, named map[string]uuid.UUID) (importer.Target, error) {
 	issuer := ""
@@ -251,8 +252,8 @@ func (s *Server) importTarget(ctx context.Context, r *store.Reader, t tenantScop
 	tg := importer.Target{Tenant: t.Slug, Project: p.Key, Issuer: issuer, Taken: map[int32]bool{}, Purged: map[int32]bool{},
 		Existing: map[int32]uuid.UUID{}, Persons: map[string]importer.Person{}, Assignees: map[uuid.UUID]importer.Person{},
 		Named: named}
-	if caller := principal(ctx); caller.IsAgent() {
-		tg.Agent = &caller.PersonID
+	if caller := principal(ctx); !caller.Session || caller.IsAgent() {
+		tg.TokenPerson = &caller.PersonID
 	}
 	needs := u.Needs(issuer)
 	if err := importNumbers(ctx, r, t, p, needs, &tg); err != nil {

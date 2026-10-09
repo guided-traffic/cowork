@@ -32,8 +32,9 @@ imports:
 
       A writer's act of the project, as creating a ticket is: the role `member` in the tenant — a
       restricted project's list may lower it — and a token's `write` scope; an agent's too
-      (docs/adr/0051 D6, docs/adr/0043 D2), which assigns a confidential ticket to its own person or
-      to nobody (docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of multipart
+      (docs/adr/0051 D6, docs/adr/0043 D2). An import through a token, an agent's or not, assigns a
+      confidential ticket to the token's own person or to nobody, the report saying why on the file
+      (docs/adr/0065 D9, docs/adr/0043 D3); a browser session's assigns as the file says. A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of multipart
       overhead is `413 payload_too_large`, and so are files that hold more than
       `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files — a `zip`'s entries counted, its
       directories included, before it is read (docs/adr/0051 D7); an archived project is `409

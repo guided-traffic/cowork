@@ -46,7 +46,7 @@ func (a *analysis) columns(e *entry) {
 	a.state(e)
 	a.assignee(e)
 	a.confidential(e)
-	a.agentAssignee(e)
+	a.admission(e)
 	lengths(e)
 	if n := len(f.Attachments); n > 0 {
 		f.warn(keyAttachments, f.line(keyAttachments), "the source lists %d attachments; an export carries no bytes, and the import brings no file (docs/adr/0051 D4)", n)
@@ -264,27 +264,38 @@ func (a *analysis) assignee(e *entry) {
 			return
 		}
 		if named, ok := a.t.Named[f.Path]; a.t.Named != nil && (!ok || named != person.ID) {
-			f.warn(keyAssignee, line, "the assignee %s is %s now, whom the dry run did not name: nobody is assigned; assign the ticket after the import", id, person.Name)
+			// admission says why nobody is assigned, once the flag is known.
+			e.unnamed = &person
 			return
 		}
 		p.Assignee, rep.Person = &person.ID, &person
 	}
 }
 
-// agentAssignee holds an agent's import to the hard-off rule of
-// docs/adr/0043 D3: a confidential ticket is assigned to the agent's own
-// person or to nobody, since its assignee is admitted to it
-// (docs/adr/0065 D9) — the file's assignee and a correction's alike.
-func (a *analysis) agentAssignee(e *entry) {
-	p := e.plan
-	if a.t.Agent == nil || !p.Confidential || p.Assignee == nil || *p.Assignee == *a.t.Agent {
+// admission holds the assignee to whom the import may admit, and says why it
+// assigns nobody. An import through a token, or an agent's, meets the rule a
+// token's assignment meets: a confidential ticket is assigned to the token's
+// own person or to nobody, since its assignee is admitted to it
+// (docs/adr/0065 D9, docs/adr/0043 D3) — the file's assignee and a
+// correction's alike; a person's browser session assigns as the file says.
+// An execution assigns nobody its dry run did not name (assignee).
+func (a *analysis) admission(e *entry) {
+	p, line := e.plan, e.f.line(keyAssignee)
+	who := p.Assignee
+	if e.unnamed != nil {
+		who = &e.unnamed.ID
+	}
+	if a.t.TokenPerson != nil && p.Confidential && who != nil && *who != *a.t.TokenPerson {
+		p.Assignee = nil
+		if e.rep.Assignee != nil {
+			e.rep.Assignee.Person = nil
+		}
+		e.f.warn(keyAssignee, line, "an import through a token assigns a confidential ticket to the token's own person or to nobody, since its assignee is admitted to it: nobody is assigned; assign it from a browser session after the import")
 		return
 	}
-	p.Assignee = nil
-	if e.rep.Assignee != nil {
-		e.rep.Assignee.Person = nil
+	if u := e.unnamed; u != nil {
+		e.f.warn(keyAssignee, line, "the assignee %s is %s now, whom the dry run did not name: nobody is assigned; assign the ticket after the import", e.f.Assignee, u.Name)
 	}
-	e.f.warn(keyAssignee, e.f.line(keyAssignee), "an agent assigns a confidential ticket to its own person or to nobody (docs/adr/0043 D3): nobody is assigned; a person assigns it after the import")
 }
 
 // lengths holds the texts the plan does not rewrite to the lengths the API

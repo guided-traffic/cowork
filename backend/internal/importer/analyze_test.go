@@ -475,9 +475,9 @@ func TestTheImportHoldsTheTextsToTheLengthsOfTheAPI(t *testing.T) {
 }
 
 // The execution assigns by a file's identity only the member its dry run
-// named, and an agent assigns a confidential ticket to its own person or to
-// nobody (docs/adr/0043 D3, docs/adr/0065 D9) — the file's assignee and a
-// correction's alike; nothing of it refuses a file.
+// named, and an import through a token assigns a confidential ticket to the
+// token's own person or to nobody (docs/adr/0043 D3, docs/adr/0065 D9) — the
+// file's assignee and a correction's alike; nothing of it refuses a file.
 func TestAnalyzeAssignsWhomTheDryRunNamedAndAnAgentMay(t *testing.T) {
 	ada := Person{ID: uuid.Must(uuid.NewV7()), Name: "Ada", Username: ptr("ada")}
 	bob := Person{ID: uuid.Must(uuid.NewV7()), Name: "Bob", Username: ptr("bob")}
@@ -504,14 +504,14 @@ func TestAnalyzeAssignsWhomTheDryRunNamedAndAnAgentMay(t *testing.T) {
 	assert.Nil(t, assigned(r, 4), "a member the dry run did not name")
 	assert.Equal(t, OutcomeCreate, file(t, r, "004-d.md").Outcome)
 
-	tg.Named, tg.Agent = nil, &bob.ID
+	tg.Named, tg.TokenPerson = nil, &bob.ID
 	tg.Assignees[ada.ID] = ada
 	corrections := []Correction{{Path: "docs/tickets/local_003-c.md", AssigneeSet: true, Assignee: &ada.ID}}
 	r = Analyze(Read(u.sources), tg, corrections)
-	assert.Equal(t, &ada.ID, assigned(r, 1), "an agent assigns a ticket that is not confidential to anybody")
-	assert.Nil(t, assigned(r, 2), "an agent assigns a confidential ticket to nobody but its person")
+	assert.Equal(t, &ada.ID, assigned(r, 1), "a token assigns a ticket that is not confidential to anybody")
+	assert.Nil(t, assigned(r, 2), "a token assigns a confidential ticket to nobody but its person")
 	assert.Nil(t, file(t, r, "local_002-b.md").Assignee.Person)
-	assert.True(t, warned(file(t, r, "local_002-b.md"), "an agent assigns a confidential ticket to its own person or to nobody"))
+	assert.True(t, warned(file(t, r, "local_002-b.md"), "assigns a confidential ticket to the token's own person or to nobody"))
 	assert.Nil(t, assigned(r, 3), "a correction as well")
 	r = Analyze(Read(u.sources), tg, nil)
 	assert.Equal(t, &bob.ID, assigned(r, 3), "its own person")

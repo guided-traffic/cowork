@@ -211,7 +211,10 @@ D3) is refused.~~ *(Amended 2026-10-09 by the owner:)* **Import is a writer's ac
 as creating a ticket is, an agent's included:** the role `member` in the tenant — a restricted
 project's list may lower it —, a token's `write` scope, and no capability; the dry run, the
 execution and the read of a job alike; an agent's import assigns a confidential ticket to its own
-person or to nobody, as an agent's filing does (ADR 0043 D3). Export follows the project's read
+person or to nobody, as an agent's filing does (ADR 0043 D3) *(and, made concrete 2026-10-09 with
+the owner's rule of that day that an act which gives sight of a confidential ticket takes a browser
+session: so does every import through a token, an agent's or not, the report saying why on the
+file; a browser session's import assigns as the file says)*. Export follows the project's read
 permission. ~~*(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* a dry
 run and an execution need the role `admin` and a token's `admin` scope and refuse every agent, a
 flagged token and a request with the agent header alike (`403 agent_forbidden`, the hard-off rule
