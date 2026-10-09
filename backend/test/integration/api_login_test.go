@@ -3,7 +3,9 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -267,6 +269,70 @@ func TestAddressThrottle(t *testing.T) {
 	for range 6 {
 		assert.Equal(t, http.StatusOK, open.browser(t).login(names["viewerA"], testPassword).StatusCode)
 	}
+}
+
+// docs/adr/0033 D6: the throttle holds for a burst of parallel attempts of one
+// address — the count and the attempt are one step under the address's lock,
+// before any hash is computed — so the burst makes as many guesses as the
+// limit allows and no more; each attempt is one row, its reservation replaced
+// by its outcome. The current password of a change is held to the same
+// throttle, where the lockout is switched off.
+func TestTheAddressThrottleHoldsForParallelAttemptsAndThePasswordChange(t *testing.T) {
+	w := newWorld(t)
+	names := withAccounts(t, w)
+	const limit = 4
+	throttled := func(key string) apiServer {
+		return newAPI(t, withLogin, func(o *api.Options) {
+			o.SessionKey = []byte(key)
+			o.LoginAddressLimit = limit
+			o.LoginMaxFailures = 0
+		})
+	}
+	s := throttled("parallel-throttle-key-0123456789")
+	body, err := json.Marshal(map[string]string{"username": names["memberA"], "password": "wrong password!"})
+	require.NoError(t, err)
+	login := func() int {
+		req, err := http.NewRequest(http.MethodPost, s.URL+"/auth/local", bytes.NewReader(body))
+		if err != nil {
+			return 0
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", testOrigin)
+		res, err := browserClient.Do(req)
+		if err != nil {
+			return 0
+		}
+		_ = res.Body.Close()
+		return res.StatusCode
+	}
+	guesses := 0
+	for _, code := range simultaneously(times(6*limit, login)...) {
+		switch code {
+		case http.StatusUnauthorized:
+			guesses++
+		case http.StatusTooManyRequests:
+		default:
+			t.Errorf("a parallel login answered %d", code)
+		}
+	}
+	assert.Equal(t, limit, guesses, "the burst made as many guesses as the limit allows")
+	assert.EqualValues(t, limit, scalar[int64](t, `SELECT count(*) FROM login_attempts WHERE username = $1 AND failed`, names["memberA"]))
+	assert.Zero(t, scalar[int64](t, `SELECT count(*) FROM login_attempts WHERE username = $1 AND NOT failed`, names["memberA"]),
+		"every reservation gave way to its outcome")
+
+	change := throttled("password-change-throttle-key-012")
+	session := sessionOf(t, w.ViewerA)
+	wrong := map[string]string{"current_password": "not the password", "new_password": "a new password of length"}
+	before := auth.Computations()
+	for range limit {
+		assertProblem(t, change.do(t, session, http.MethodPut, "/api/v1/me/password", wrong), http.StatusBadRequest, "validation_failed")
+	}
+	assert.EqualValues(t, limit, auth.Computations()-before, "each counted guess computed one hash")
+	res := change.do(t, session, http.MethodPut, "/api/v1/me/password", wrong)
+	assertProblem(t, res, http.StatusTooManyRequests, "too_many_attempts")
+	assert.Equal(t, "60", res.Header.Get("Retry-After"))
+	assert.EqualValues(t, limit, auth.Computations()-before, "a throttled change computes nothing")
+	assert.Zero(t, scalar[int64](t, `SELECT count(*) FROM login_locks WHERE username = $1`, names["viewerA"]), "the lockout is off")
 }
 
 // docs/adr/0035 D2, docs/adr/0033 D6: behind a trusted proxy the throttle counts

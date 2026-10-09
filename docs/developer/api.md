@@ -311,10 +311,14 @@ at `/auth/` as well as `/api/`; the Ingress routes `/auth/` to the backend like 
 dev proxy forwards it the same way. They are browser flows, but they are no secret: the served document lists them, and a
 script that wants a session can read how.
 
-[`login.go`](../../backend/internal/api/login.go): `LoginLocal` runs `throttled` (the limit per
-client address), `NormaliseUsername`, `DB.LookupLogin`, **one** `passwordFits` — against the stored hash or
-the dummy — and `DB.RecordLoginAttempt` (the lock and the counting in one transaction under the
-username's advisory lock), then `DB.CreateSession` for a success; every failure is the same
+[`login.go`](../../backend/internal/api/login.go): `LoginLocal` runs `NormaliseUsername`,
+`reserveAttempt` (`DB.ReserveLoginAttempt`: the limit per client address, the count and the
+attempt's reservation in one transaction under the address's advisory lock, before any hash),
+`DB.LookupLogin`, **one** `passwordFits` — against the stored hash or the dummy — and
+`DB.RecordLoginAttempt` (the lock and the counting in one transaction under the username's advisory
+lock, the reservation replaced by the outcome's row), then `DB.CreateSession` for a success; the
+password change of [`me.go`](../../backend/internal/api/me.go) runs `reserveAttempt` and
+`RecordLoginAttempt` the same way around its `passwordFits`; every failure is the same
 `invalid_credentials`. `Logout` deletes the session's row, and for a session of the identity
 provider whose issuer names an end-session endpoint answers `200` with its URL instead of `204`.
 The store's side is [data-access.md](data-access.md#the-login-and-the-sessions); the security

@@ -277,8 +277,8 @@ administrator unlocks it with `COWORK_LOGIN_LOCKOUT=admin`; the local administra
 recovered by rotating its Secret and restarting
 ([installation.md](installation.md#the-local-administrator)). More than
 `COWORK_LOGIN_ADDRESS_LIMIT` (20) attempts a minute from one client address — an IPv6 client by
-its /64 — are `429` with
-`Retry-After: 60`. The client address is the TCP peer's unless the peer is inside
+its /64 —, logins and the current passwords of a password change together, are `429` with
+`Retry-After: 60`, parallel ones as sequential ones. The client address is the TCP peer's unless the peer is inside
 `COWORK_TRUSTED_PROXIES`, in which case it is the first address of `X-Forwarded-For`, from the
 right, that is not a proxy of ours. **With the list empty — the default — the address behind the
 Ingress is the controller pod's**, so the limit is one for every browser behind it and one client's

@@ -71,8 +71,13 @@ D2).
    request is not from `COWORK_BASE_URL`.
 2. **The address throttle**: `COWORK_LOGIN_ADDRESS_LIMIT` (20) attempts of one client address
    within a minute, whatever their outcome, and the next is `429 too_many_attempts` with
-   `Retry-After: 60` — before any hash is computed, so a flood costs the server a read. A
-   throttled attempt is not counted, so the minute slides. The client address is the one
+   `Retry-After: 60` — before any hash is computed, so a flood costs the server a short
+   transaction. The count and the attempt are **one step under an advisory lock on the
+   address** (`store.ReserveLoginAttempt`, `cowr`): the attempt is written as a reservation
+   before its password is hashed, and its outcome replaces it in step 5, so a burst of parallel
+   requests from one address makes as many guesses as the limit allows and no more
+   (`TestTheAddressThrottleHoldsForParallelAttemptsAndThePasswordChange`; ADR 0033 D6 as amended
+   2026-10-07). A throttled attempt is not counted, so the minute slides. The client address is the one
    found under [the rule below](#the-client-address) — an IPv6 client by its /64, the network
    one subscriber is given, whose addresses would otherwise each be a fresh bucket — keyed-hashed
    with a key derived from the server key; the address itself is stored nowhere
@@ -86,8 +91,9 @@ D2).
    deactivated account, a wrong password and a success: one each
    (`TestEveryLoginFailureIsTheSame`).
 5. **One transaction under the username's advisory lock decides the outcome**
-   (`store.RecordLoginAttempt`): the lock of the username is read, the attempt is counted, and
-   the outcome follows — success, failure, locked, or refused for the init state. Concurrent
+   (`store.RecordLoginAttempt`): the lock of the username is read, the attempt's reservation gives
+   way to the row of its outcome, and the outcome follows — success, failure, locked, or refused
+   for the init state. Concurrent
    attempts at one name are decided one after the other, so a burst of parallel guesses cannot
    make more guesses than the lock allows.
 6. **Every refusal is the same `401 invalid_credentials`** — same status, same body, same
@@ -167,7 +173,11 @@ lock is refused whatever its password and counts as one more failure.
 - The attempts older than the window and the locks of the `window` mode that ended are removed
   by the job `login-expiry`, hourly, which records one `expired` act per run that removed any.
 - A wrong **current password** in `PUT /api/v1/me/password` is a failed attempt of the account
-  as well, so a stolen session cannot guess the password through it.
+  as well, so a stolen session cannot guess the password through it. The change is held to the
+  address throttle before its hash is computed, like a login — `429 too_many_attempts` — so where
+  `COWORK_LOGIN_MAX_FAILURES` is `0` and no lock ever holds, a stolen session still guesses at the
+  throttle's pace from one address, not at the hash's
+  (`TestTheAddressThrottleHoldsForParallelAttemptsAndThePasswordChange`).
 
 ## Temporary passwords, changes and resets
 
@@ -341,7 +351,10 @@ is closed:
 - **One address is one bucket.** An IPv6 client counts by its /64, but a client that holds
   many networks or addresses — a shorter IPv6 prefix, which some providers give out, or a
   botnet — has a bucket for each and is slowed by this limit only that much; the lockout of
-  the username is what bounds the guesses against one account, at the price of H-18.
+  the username is what bounds the guesses against one account, at the price of H-18. That holds
+  for the current password of a change as well: where `COWORK_LOGIN_MAX_FAILURES` is `0`, the
+  holder of a stolen session guesses through `PUT /api/v1/me/password` at the throttle's pace per
+  address they hold.
 
 The keyed address hash every audit row of a request carries is found by the same rule and is as
 good as the list in the same way ([tokens.md](tokens.md#what-is-recorded)). Rate limits at the

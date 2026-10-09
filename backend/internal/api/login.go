@@ -147,10 +147,11 @@ func (s *Server) LoginLocal(ctx context.Context, req apigen.LoginLocalRequestObj
 	c := clientFrom(ctx)
 	now := s.h.opts.Now()
 	address := s.h.addressHash(c.Client)
-	if perr := s.throttled(ctx, address, now); perr != nil {
-		return nil, perr
-	}
 	username := auth.NormaliseUsername(req.Body.Username)
+	reserved, err := s.reserveAttempt(ctx, username, address, now, attemptLogin)
+	if err != nil {
+		return nil, err
+	}
 	acc, err := s.db.LookupLogin(ctx, username)
 	if err != nil {
 		return nil, err
@@ -164,7 +165,8 @@ func (s *Server) LoginLocal(ctx context.Context, req apigen.LoginLocalRequestObj
 	if err != nil {
 		return nil, err
 	}
-	attempt := s.attempt(ctx, username, acc, matched && usable, address, "login")
+	attempt := s.attempt(ctx, username, acc, matched && usable, address, attemptLogin)
+	attempt.Reserved = reserved
 	if matched && usable && !acc.GlobalAdmin && !acc.Initialised {
 		attempt.Refusal = "not_initialised"
 	}
@@ -198,25 +200,35 @@ func localOutcome(o store.LoginOutcome) metrics.LoginOutcome {
 	return metrics.LoginFailure
 }
 
-// throttled answers 429 once the address has made as many attempts within the
-// minute as COWORK_LOGIN_ADDRESS_LIMIT allows, before any hash is computed
-// (docs/adr/0033 D6). A throttled attempt is not counted, so the minute slides.
-func (s *Server) throttled(ctx context.Context, address []byte, now time.Time) error {
-	limit := s.h.opts.LoginAddressLimit
-	if limit <= 0 {
-		return nil
-	}
-	n, err := s.db.AddressAttempts(ctx, address, now.Add(-store.AddressWindow))
+// reserveAttempt counts an attempt to prove a password — a login, or the
+// current password of a change — against its address before any hash is
+// computed, and answers 429 once the address has made as many attempts within
+// the minute as COWORK_LOGIN_ADDRESS_LIMIT allows (docs/adr/0033 D6). The
+// count and the attempt's row are one step under the address's lock, so
+// parallel requests of one address are held to the limit as sequential ones
+// are. A throttled attempt is not counted, so the minute slides; a throttled
+// login is counted in the metrics (docs/adr/0060 D4). The row it answers is
+// replaced by the attempt's outcome (RecordLoginAttempt).
+func (s *Server) reserveAttempt(ctx context.Context, username string, address []byte, now time.Time, what string) (uuid.UUID, error) {
+	id, throttled, err := s.db.ReserveLoginAttempt(ctx, username, address, now, s.h.opts.LoginAddressLimit)
 	if err != nil {
-		return err
+		return uuid.Nil, err
 	}
-	if n < int64(limit) {
-		return nil
+	if !throttled {
+		return id, nil
 	}
-	s.h.opts.Metrics.Login(metrics.LoginLocal, metrics.LoginThrottled)
-	return &problem.Error{Code: problem.TooManyAttempts, Detail: "too many login attempts from this address; wait a minute",
+	if what == attemptLogin {
+		s.h.opts.Metrics.Login(metrics.LoginLocal, metrics.LoginThrottled)
+	}
+	return uuid.Nil, &problem.Error{Code: problem.TooManyAttempts, Detail: "too many attempts to prove a password from this address; wait a minute",
 		Headers: map[string]string{"Retry-After": strconv.Itoa(int(store.AddressWindow.Seconds()))}}
 }
+
+// What an attempt to prove a password is, for the audit record.
+const (
+	attemptLogin          = "login"
+	attemptPasswordChange = "password change"
+)
 
 // passwordFits verifies a presented password against a stored hash. A damaged
 // hash is a password that does not fit, not a 500 that would tell an unknown

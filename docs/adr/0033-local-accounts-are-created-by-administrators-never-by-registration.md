@@ -19,7 +19,9 @@ password end the account's tokens?" — the synchronisation's, over every change
 alone (D4, D6: the start-up synchronisation that stores a changed password of the local
 administrator revokes its tokens; a person's own change keeps theirs; built 2026-10-09), and
 2026-10-07 by the owner's answer recorded in [ADR 0035](0035-personal-access-tokens.md) D5 (D5:
-unlocking an account takes a browser session; built 2026-10-09). Date: 2026-10-01. Decided
+unlocking an account takes a browser session; built 2026-10-09), amended 2026-10-09 (D6: the
+throttle counts an attempt under the address's lock before its hash, and the password change takes
+it too). Date: 2026-10-01. Decided
 by the owner as the answer to the catalog question "local accounts beyond the one administrator?": administrator-managed local accounts, over none,
 over self-registration with e-mail reset, and over global-administrator-only creation. The
 owner set two conditions: the minimum password length is configurable in the chart, and
@@ -163,7 +165,16 @@ installation~~ *(amended 2026-10-04: behind the Ingress the peer is a controller
 throttle is one for every browser behind it)*; a list that is too wide lets a client choose its
 address (open gap H-17 of the security page). The failed and locked attempts, the locks and the unlocks are audit rows of the
 system actor `system:login`, without the attempted password and without a username that names no
-account.)*
+account.)* *(Amended 2026-10-09, made concrete by the fix of the security review of 2026-10-07:
+the throttle's count and the attempt are **one step under an advisory lock on the client
+address** — the attempt is written as a reservation before its password is hashed, and its outcome
+replaces it — so a burst of parallel requests of one address is held to
+`COWORK_LOGIN_ADDRESS_LIMIT` as sequential ones are, where before every request of the burst could
+read the same count before any attempt was written
+([`store/login.go`](../../backend/internal/store/login.go) `ReserveLoginAttempt`). The current
+password of a change, `PUT /api/v1/me/password`, is held to the same throttle before it is hashed,
+so where `COWORK_LOGIN_MAX_FAILURES` is `0` a stolen session still guesses only at the throttle's
+pace per address (`TestTheAddressThrottleHoldsForParallelAttemptsAndThePasswordChange`).)*
 
 **D7 — No second factor for local accounts in the first release, and this is said aloud.**
 The security page carries it as an open gap with an `H-<n>` identifier; the mitigations are

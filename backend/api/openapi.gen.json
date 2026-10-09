@@ -9964,7 +9964,7 @@
     },
     "/api/v1/me/password": {
       "put": {
-        "description": "Needs the current password, which counts like a login attempt towards\nthe lockout of the account (docs/adr/0033 D6). The new one must be as long\nas `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every\nother session of the account ends (D4), and a temporary password is no\nlonger temporary. The local administrator's password is set by the\nconfiguration and cannot be changed here (`403 forbidden`).\n",
+        "description": "Needs the current password, which counts like a login attempt towards\nthe lockout of the account and the throttle of the client's address —\n`429 too_many_attempts` with `Retry-After` before it is hashed\n(docs/adr/0033 D6). The new one must be as long\nas `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every\nother session of the account ends (D4), and a temporary password is no\nlonger temporary. The local administrator's password is set by the\nconfiguration and cannot be changed here (`403 forbidden`).\n",
         "operationId": "changeMyPassword",
         "requestBody": {
           "content": {

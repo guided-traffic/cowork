@@ -103,16 +103,50 @@ func (db *DB) LocalLoginAvailable(ctx context.Context) (bool, error) {
 	return available, err
 }
 
-// AddressAttempts counts the attempts of an address since a time
-// (docs/adr/0033 D6).
-func (db *DB) AddressAttempts(ctx context.Context, address []byte, since time.Time) (int64, error) {
-	var n int64
-	err := db.loginRead(ctx, func(r *Reader) error {
-		var err error
-		n, err = r.CountAddressAttempts(ctx, readq.CountAddressAttemptsParams{Address: address, Since: since})
-		return err
-	})
-	return n, err
+// addressLockNamespace is the first key of the advisory lock that orders the
+// attempts of one client address, "cowr": the count of the address's attempts
+// within the minute and the attempt that joins it are one step, so a burst of
+// parallel requests cannot all read the count before any of them is written.
+const addressLockNamespace int32 = 0x636f7772
+
+// ReserveLoginAttempt counts an attempt of a username from an address before
+// its password is hashed (docs/adr/0033 D6): under the address's advisory
+// lock, in one transaction, it counts the address's attempts since
+// now - AddressWindow and, below limit, writes this one, whose ID
+// RecordLoginAttempt later replaces by its outcome. At the limit it writes
+// nothing and answers throttled. A limit of 0 throttles nothing, and the
+// attempt is counted all the same.
+func (db *DB) ReserveLoginAttempt(ctx context.Context, username string, address []byte, now time.Time, limit int) (id uuid.UUID, throttled bool, err error) {
+	tx, err := db.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	caller := Caller{System: systemLogin}
+	if err := setContext(ctx, tx, uuid.Nil, caller, "login"); err != nil {
+		return uuid.Nil, false, err
+	}
+	if _, err := tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1, hashtext(encode($2::bytea, 'hex')))", addressLockNamespace, address); err != nil {
+		return uuid.Nil, false, fmt.Errorf("take the address lock: %w", err)
+	}
+	r := newReader(tx, uuid.Nil, caller)
+	if limit > 0 {
+		n, err := r.CountAddressAttempts(ctx, readq.CountAddressAttemptsParams{Address: address, Since: now.Add(-AddressWindow)})
+		if err != nil {
+			return uuid.Nil, false, fmt.Errorf("count the address's attempts: %w", err)
+		}
+		if n >= int64(limit) {
+			return uuid.Nil, true, nil
+		}
+	}
+	id, err = writeq.New(tx).ReserveLoginAttempt(ctx, writeq.ReserveLoginAttemptParams{Username: username, Address: address, CreatedAt: now})
+	if err != nil {
+		return uuid.Nil, false, fmt.Errorf("count the attempt: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.Nil, false, fmt.Errorf("commit transaction: %w", err)
+	}
+	return id, false, nil
 }
 
 // LoginAttempt is one processed attempt to prove a password: a login, or the
@@ -131,7 +165,10 @@ type LoginAttempt struct {
 	// Address is the keyed hash of the client address (docs/adr/0035 D2), never
 	// the address.
 	Address []byte
-	Now     time.Time
+	// Reserved is the row ReserveLoginAttempt wrote for this attempt, which its
+	// outcome replaces; uuid.Nil when none was reserved.
+	Reserved uuid.UUID
+	Now      time.Time
 	// MaxFailures failures within Window lock the username; 0 locks never.
 	MaxFailures int
 	Window      time.Duration
@@ -164,7 +201,8 @@ const (
 )
 
 // RecordLoginAttempt decides an attempt under the username's lock and records
-// it (docs/adr/0033 D6): the attempt is counted for the address throttle and,
+// it (docs/adr/0033 D6): the attempt is counted for the address throttle — its
+// reservation, when it has one, gives way to the row of its outcome — and,
 // when it failed or met a lock, for the lockout; the failure that reaches
 // MaxFailures within Window locks the username; the failures, the lock and an
 // attempt against a lock are audit rows without the attempted password and
@@ -213,6 +251,13 @@ func (w *Writer) decideAttempt(ctx context.Context, in LoginAttempt) (LoginOutco
 	locked, lock, err := w.activeLock(ctx, in)
 	if err != nil {
 		return LoginFailed, err
+	}
+	if in.Reserved != uuid.Nil {
+		// The reservation counted the attempt for the throttle; the row of its
+		// outcome counts it from here, so it is counted once.
+		if err := w.DeleteLoginAttempt(ctx, in.Reserved); err != nil {
+			return LoginFailed, fmt.Errorf("replace the reservation: %w", err)
+		}
 	}
 	entity := Event{EntityType: entityUser, EntityID: in.Account.UserID, Note: in.Context}
 	attempt := writeq.InsertLoginAttemptParams{Username: in.Username, Address: in.Address, CreatedAt: in.Now}

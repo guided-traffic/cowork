@@ -413,6 +413,7 @@ outlive its work on an idle pooled connection ([ADR 0027] D5).
 | `0x636f7761` | `cowa` | `Writer.LockAttachments(ticketID)` | uploads to a ticket, before the per-ticket count |
 | `0x636f7775` | `cowu` | `Writer.LockAttachmentQuota()`, where `COWORK_ATTACHMENT_TENANT_QUOTA` is set, before the ticket's attachment lock | the tenant's uploads, before the sum against its quota |
 | `0x636f7769` | `cowi` | the identity provider's transactions, and `RederiveGroup` per person in an administrator's change of a mapping | what the identity provider decides about one person: a login, a refresh's answer, a token's gate check, a mapping's derivation |
+| `0x636f7772` | `cowr` | `DB.ReserveLoginAttempt`, `pg_advisory_xact_lock(ns, hashtext(encode(address, 'hex')))` | the attempts to prove a password of one client address, before the throttle's count ([the login](#the-login-and-the-sessions)) |
 | `0x636f7774` | `cowt` | `Writer.LockTenant()`, first in an administrator's change of a grant (`PUT`, `DELETE …/grant`) or of a mapping (create, change, remove) and in the deactivation of an account (`PUT …/accounts/{username}/deactivation`) | the changes of who administers the tenant, before the `last_admin` check: the second of two concurrent changes sees the first committed |
 
 The writer locks are `pg_advisory_xact_lock(ns, hashtext(id::text))`
@@ -434,17 +435,26 @@ of the project's settings.
 
 ## The login and the sessions
 
-Three groups of store code run outside `Mutate`, by design, and each is small
+Four groups of store code run outside `Mutate`, by design, and each is small
 ([`login.go`](../../backend/internal/store/login.go), [`sessions.go`](../../backend/internal/store/sessions.go)):
 
-- **Reads that name the login as their job** (`loginRead`: `LookupLogin`, `LocalLoginAvailable`,
-  `AddressAttempts`). The login looks an account up by the username it was given, before it
+- **Reads that name the login as their job** (`loginRead`: `LookupLogin`, `LocalLoginAvailable`).
+  The login looks an account up by the username it was given, before it
   knows a person; the transaction sets `app.job = 'login'`, which the policies of `users`,
   `local_accounts`, `tenants` — the init state asks whether any exists — and the two login tables
   admit.
+- **`ReserveLoginAttempt`**, one write transaction under the system actor `system:login` and an
+  advisory lock on the client address (`cowr`, `hashtext` of the address hash in hex), before the
+  password is hashed: it counts the address's attempts within `AddressWindow` and, below
+  `COWORK_LOGIN_ADDRESS_LIMIT`, writes this attempt into `login_attempts` (`failed` false) and
+  answers its id; at the limit it writes nothing. The count and the row are one step, so parallel
+  attempts of one address cannot all pass the count before any of them is written. The runtime
+  role may not update `login_attempts`, so the outcome replaces the reservation: a delete and an
+  insert in the next transaction.
 - **`RecordLoginAttempt`**, one write transaction under the system actor `system:login` and an
-  advisory lock on the username (`cowl`, `hashtext(username)`): it reads the lock, counts the
-  attempt in `login_attempts`, locks the username at the limit, and writes the audit rows of the
+  advisory lock on the username (`cowl`, `hashtext(username)`): it reads the lock, replaces the
+  attempt's reservation by the row of its outcome in `login_attempts`, locks the username at the
+  limit, and writes the audit rows of the
   failures and the lock through `Writer.writeEvents`. It commits **without** an act when it has
   none (a login that goes on, an attempt against a lock noted within the hour), which `Mutate`
   refuses: a counted attempt is bookkeeping, like the token's last-used day. The password has

@@ -5654,7 +5654,9 @@ type ClientInterface interface {
 	// ChangeMyPasswordWithBody Change the password of the person's local account
 	//
 	// Needs the current password, which counts like a login attempt towards
-	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// the lockout of the account and the throttle of the client's address —
+	// `429 too_many_attempts` with `Retry-After` before it is hashed
+	// (docs/adr/0033 D6). The new one must be as long
 	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 	// other session of the account ends (D4), and a temporary password is no
 	// longer temporary. The local administrator's password is set by the
@@ -5668,7 +5670,9 @@ type ClientInterface interface {
 	// ChangeMyPassword Change the password of the person's local account
 	//
 	// Needs the current password, which counts like a login attempt towards
-	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// the lockout of the account and the throttle of the client's address —
+	// `429 too_many_attempts` with `Retry-After` before it is hashed
+	// (docs/adr/0033 D6). The new one must be as long
 	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 	// other session of the account ends (D4), and a temporary password is no
 	// longer temporary. The local administrator's password is set by the
@@ -8137,7 +8141,9 @@ func (c *Client) ListMyNext(ctx context.Context, params *ListMyNextParams, reqEd
 // ChangeMyPasswordWithBody Change the password of the person's local account
 //
 // Needs the current password, which counts like a login attempt towards
-// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// the lockout of the account and the throttle of the client's address —
+// `429 too_many_attempts` with `Retry-After` before it is hashed
+// (docs/adr/0033 D6). The new one must be as long
 // as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 // other session of the account ends (D4), and a temporary password is no
 // longer temporary. The local administrator's password is set by the
@@ -8161,7 +8167,9 @@ func (c *Client) ChangeMyPasswordWithBody(ctx context.Context, contentType strin
 // ChangeMyPassword Change the password of the person's local account
 //
 // Needs the current password, which counts like a login attempt towards
-// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// the lockout of the account and the throttle of the client's address —
+// `429 too_many_attempts` with `Retry-After` before it is hashed
+// (docs/adr/0033 D6). The new one must be as long
 // as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 // other session of the account ends (D4), and a temporary password is no
 // longer temporary. The local administrator's password is set by the
@@ -21312,7 +21320,9 @@ type ClientWithResponsesInterface interface {
 	// ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
 	//
 	// Needs the current password, which counts like a login attempt towards
-	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// the lockout of the account and the throttle of the client's address —
+	// `429 too_many_attempts` with `Retry-After` before it is hashed
+	// (docs/adr/0033 D6). The new one must be as long
 	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 	// other session of the account ends (D4), and a temporary password is no
 	// longer temporary. The local administrator's password is set by the
@@ -21326,7 +21336,9 @@ type ClientWithResponsesInterface interface {
 	// ChangeMyPasswordWithResponse Change the password of the person's local account
 	//
 	// Needs the current password, which counts like a login attempt towards
-	// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+	// the lockout of the account and the throttle of the client's address —
+	// `429 too_many_attempts` with `Retry-After` before it is hashed
+	// (docs/adr/0033 D6). The new one must be as long
 	// as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 	// other session of the account ends (D4), and a temporary password is no
 	// longer temporary. The local administrator's password is set by the
@@ -31710,7 +31722,9 @@ func (c *ClientWithResponses) ListMyNextWithResponse(ctx context.Context, params
 // ChangeMyPasswordWithBodyWithResponse Change the password of the person's local account
 //
 // Needs the current password, which counts like a login attempt towards
-// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// the lockout of the account and the throttle of the client's address —
+// `429 too_many_attempts` with `Retry-After` before it is hashed
+// (docs/adr/0033 D6). The new one must be as long
 // as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 // other session of the account ends (D4), and a temporary password is no
 // longer temporary. The local administrator's password is set by the
@@ -31730,7 +31744,9 @@ func (c *ClientWithResponses) ChangeMyPasswordWithBodyWithResponse(ctx context.C
 // ChangeMyPasswordWithResponse Change the password of the person's local account
 //
 // Needs the current password, which counts like a login attempt towards
-// the lockout of the account (docs/adr/0033 D6). The new one must be as long
+// the lockout of the account and the throttle of the client's address —
+// `429 too_many_attempts` with `Retry-After` before it is hashed
+// (docs/adr/0033 D6). The new one must be as long
 // as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
 // other session of the account ends (D4), and a temporary password is no
 // longer temporary. The local administrator's password is set by the
