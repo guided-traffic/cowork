@@ -27,6 +27,7 @@ import (
 
 	"github.com/guided-traffic/cowork/backend/internal/api"
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
+	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/test/fixture"
 )
 
@@ -162,9 +163,10 @@ func TestImportADryRunAndItsExecution(t *testing.T) {
 	admin := caller{Token: e.tk.AdminA}
 	archive := namedFile{name: "tickets.tar.gz", body: tarGzOf(t, dirFiles(t, importFixtures, "docs/tickets/"))}
 
-	assertProblem(t, rawImport(t, e, caller{Token: e.tk.MemberA}, archive), http.StatusForbidden, "forbidden")
-	assertProblem(t, rawImport(t, e, caller{Token: e.tk.AdminAWrite}, archive), http.StatusForbidden, "insufficient_scope")
-	assertProblem(t, rawImport(t, e, caller{Token: e.tk.AdminA, Agent: "claude-code/opus/s1"}, archive), http.StatusForbidden, "agent_forbidden")
+	assertProblem(t, rawImport(t, e, caller{Token: e.tk.ViewerA}, archive), http.StatusForbidden, "forbidden")
+	reader, _, err := f.Token(e.ctx, fixture.TokenSpec{UserID: e.AdminA, Scope: domain.ScopeRead})
+	require.NoError(t, err)
+	assertProblem(t, rawImport(t, e, caller{Token: reader}, archive), http.StatusForbidden, "insufficient_scope")
 
 	created := e.dryRun(t, admin, "ALPHA", archive)
 	require.Equal(t, http.StatusCreated, created.StatusCode(), string(created.Body))
@@ -193,15 +195,17 @@ func TestImportADryRunAndItsExecution(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, read.StatusCode(), string(read.Body))
 	assert.JSONEq(t, string(mustJSON(t, job)), string(read.Body), "the job reads back as it was answered")
-	forbidden, err := e.s.client(t, caller{Token: e.tk.MemberA}).GetImportWithResponse(e.ctx, e.SlugA, "ALPHA", job.Id)
+	agent, err := e.s.client(t, caller{Token: e.tk.AdminAWrite, Agent: "claude-code/opus/s1"}).GetImportWithResponse(e.ctx, e.SlugA, "ALPHA", job.Id)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusForbidden, forbidden.StatusCode())
+	assert.Equal(t, http.StatusOK, agent.StatusCode(), "its maker's agent reads the job")
+	another, err := e.s.client(t, caller{Token: e.tk.MemberA}).GetImportWithResponse(e.ctx, e.SlugA, "ALPHA", job.Id)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusNotFound, another.StatusCode(), "another writer does not read the job: it holds the embargoed file")
 	other, err := e.s.client(t, caller{Token: e.tk.MemberB}).GetImportWithResponse(e.ctx, e.SlugA, "ALPHA", job.Id)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, other.StatusCode(), "another tenant's member does not reach the tenant")
-	agent, err := e.s.client(t, caller{Token: e.tk.AdminA, Agent: "claude-code/opus/s1"}).GetImportWithResponse(e.ctx, e.SlugA, "ALPHA", job.Id)
-	require.NoError(t, err)
-	assertProblemOf(t, agent.HTTPResponse, agent.Body, http.StatusForbidden, "agent_forbidden")
+	notTheirs := e.execute(t, caller{Token: e.tk.MemberA}, "ALPHA", job.Id)
+	assert.Equal(t, http.StatusNotFound, notTheirs.StatusCode(), "nor executes it")
 
 	stream := e.openStream(t, e.s, admin, e.SlugA, "")
 	executed := e.execute(t, admin, "ALPHA", job.Id,
@@ -271,12 +275,12 @@ func assertImportedTickets(t *testing.T, e ticketEnv, f *fixture.DB, job uuid.UU
 	require.Len(t, questions.JSON200.Items, 6)
 	assert.Equal(t, apigen.QuestionStatusAnswered, questions.JSON200.Items[0].Status)
 
-	doc := markdownOf(t, e, "ALPHA", 4)
+	doc := markdownOf(t, e, 4)
 	assert.Contains(t, doc, "shipped: \"sqlc over pgx (readq, writeq)")
 	assert.Contains(t, doc, "## Related\n\n")
 	assert.Contains(t, doc, "- Filed from: the phase-2 conversion (T2)")
-	assert.Contains(t, markdownOf(t, e, "ALPHA", 7), "The data-access layer of "+e.SlugA+"/ALPHA-4 settles all three.")
-	assert.Contains(t, markdownOf(t, e, "ALPHA", 28), `shipped: "imported from archive; the source carried no verification note"`)
+	assert.Contains(t, markdownOf(t, e, 7), "The data-access layer of "+e.SlugA+"/ALPHA-4 settles all three.")
+	assert.Contains(t, markdownOf(t, e, 28), `shipped: "imported from archive; the source carried no verification note"`)
 
 	next := e.file(t, caller{Token: e.tk.MemberA}, "ALPHA", task("After the import"))
 	assert.EqualValues(t, 100, next.Number, "the sequence advanced past the highest number imported (docs/adr/0007 D6)")
@@ -328,10 +332,11 @@ func mustJSON(t *testing.T, v any) []byte {
 	return b
 }
 
-// markdownOf is a ticket's …/markdown document, as an administrator reads it.
-func markdownOf(t *testing.T, e ticketEnv, project string, n int) string {
+// markdownOf is a ticket of ALPHA as its …/markdown document, as an
+// administrator reads it.
+func markdownOf(t *testing.T, e ticketEnv, n int) string {
 	t.Helper()
-	res := e.s.do(t, caller{Token: e.tk.AdminA}, http.MethodGet, fmt.Sprintf("%s/%d/markdown", e.projectTickets(project), n), nil)
+	res := e.s.do(t, caller{Token: e.tk.AdminA}, http.MethodGet, fmt.Sprintf("%s/%d/markdown", e.projectTickets("ALPHA"), n), nil)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	body, err := io.ReadAll(res.Body)
 	require.NoError(t, err)
@@ -347,58 +352,182 @@ func ticketFile(n int, extra string) namedFile {
 		n, n, extra))}
 }
 
-// docs/adr/0064 D3: a number the project holds is a conflict, which refuses
-// the execution until the file is excluded; the project as it stands at the
-// execution decides, a ticket filed after the dry run included.
-func TestImportRefusesAConflictUntilItIsExcluded(t *testing.T) {
+// docs/adr/0051 D2, docs/adr/0064 D3: the execution imports every file it can
+// and leaves out each with a conflict or an error, the report saying why; an
+// exclusion makes the file's number name the project's ticket; the project as
+// it stands at the execution decides, a ticket filed after the dry run
+// included; a correction that breaks a rule is refused at its pointer.
+func TestImportLeavesOutWhatItCannotImport(t *testing.T) {
 	e := newTicketEnv(t)
 	admin := caller{Token: e.tk.AdminA}
 	member := caller{Token: e.tk.MemberA}
 	e.file(t, member, "ALPHA", task("Already here"))
 
-	created := e.dryRun(t, admin, "ALPHA", ticketFile(1, ""), ticketFile(2, "blocked-by: T1\n"))
+	created := e.dryRun(t, admin, "ALPHA", ticketFile(1, ""), ticketFile(2, "blocked-by: T1\n"),
+		namedFile{name: "004-broken.md", body: []byte("---\nid: T4\ntitle: broken\nstate: filed\nseverity: urgent\nsecurity: none\neffort: S\n---\n")})
 	require.Equal(t, http.StatusCreated, created.StatusCode(), string(created.Body))
 	job := created.JSON201
 	conflict := reported(t, job, "001-ticket-1.md")
 	assert.Equal(t, apigen.ImportOutcomeConflict, conflict.Outcome)
 	assert.Equal(t, e.SlugA+"/ALPHA-1", conflict.Conflict.MustGet())
+	assert.Contains(t, conflict.Reason.MustGet(), "left out of the import")
 
-	refused := e.execute(t, admin, "ALPHA", job.Id)
-	require.Equal(t, http.StatusConflict, refused.StatusCode(), string(refused.Body))
-	assertProblemOf(t, refused.HTTPResponse, refused.Body, http.StatusConflict, "import_conflict")
-	var body apigen.Problem
-	require.NoError(t, json.Unmarshal(refused.Body, &body))
-	require.Len(t, *body.Errors, 1)
-	assert.Equal(t, "file:001-ticket-1.md", (*body.Errors)[0].Pointer)
-	none, err := e.s.client(t, admin).GetTicketWithResponse(e.ctx, e.SlugA, "ALPHA", 2)
+	executed := e.execute(t, admin, "ALPHA", job.Id)
+	require.Equal(t, http.StatusOK, executed.StatusCode(), string(executed.Body))
+	done := executed.JSON200
+	assert.Equal(t, 1, done.Summary.Created)
+	assert.Equal(t, 1, done.Summary.Conflict)
+	assert.Equal(t, 1, done.Summary.Error)
+	assert.Equal(t, "left out of the import: the project holds its number as "+e.SlugA+"/ALPHA-1 (docs/adr/0064 D3)",
+		reported(t, done, "001-ticket-1.md").Reason.MustGet())
+	broken := reported(t, done, "004-broken.md")
+	assert.Equal(t, apigen.ImportOutcomeError, broken.Outcome)
+	assert.Contains(t, broken.Reason.MustGet(), "left out of the import: the file has an error")
+	assert.Equal(t, apigen.ImportOutcomeCreated, reported(t, done, "002-ticket-2.md").Outcome)
+	assert.Contains(t, markdownOf(t, e, 2), "- Blocked by T1, which is not in this import",
+		"a reference to a file left out is no link to the project's ticket of its number, a line instead")
+	none, err := e.s.client(t, admin).GetTicketWithResponse(e.ctx, e.SlugA, "ALPHA", 4)
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusNotFound, none.StatusCode(), "nothing was imported")
+	assert.Equal(t, http.StatusNotFound, none.StatusCode(), "the file with an error is not imported")
+	again := e.execute(t, admin, "ALPHA", job.Id)
+	assertProblemOf(t, again.HTTPResponse, again.Body, http.StatusConflict, "import_executed")
 
-	bad := e.execute(t, admin, "ALPHA", job.Id, apigen.ImportCorrection{Path: "999-none.md", Exclude: ptr(true)})
+	excluded := e.dryRun(t, admin, "ALPHA", ticketFile(1, ""), ticketFile(5, "blocked-by: T1\n"))
+	require.Equal(t, http.StatusCreated, excluded.StatusCode(), string(excluded.Body))
+	bad := e.execute(t, admin, "ALPHA", excluded.JSON201.Id, apigen.ImportCorrection{Path: "999-none.md", Exclude: ptr(true)})
 	assertProblemOf(t, bad.HTTPResponse, bad.Body, http.StatusBadRequest, "validation_failed")
-	assigned := e.execute(t, admin, "ALPHA", job.Id, apigen.ImportCorrection{Path: "002-ticket-2.md",
+	assigned := e.execute(t, admin, "ALPHA", excluded.JSON201.Id, apigen.ImportCorrection{Path: "005-ticket-5.md",
 		Assignee: nullable.NewNullableWithValue(e.MemberB)})
 	assertProblemOf(t, assigned.HTTPResponse, assigned.Body, http.StatusBadRequest, "validation_failed")
-
-	executed := e.execute(t, admin, "ALPHA", job.Id, apigen.ImportCorrection{Path: "001-ticket-1.md", Exclude: ptr(true)},
-		apigen.ImportCorrection{Path: "002-ticket-2.md", Assignee: nullable.NewNullableWithValue(e.MemberA)})
+	executed = e.execute(t, admin, "ALPHA", excluded.JSON201.Id, apigen.ImportCorrection{Path: "001-ticket-1.md", Exclude: ptr(true)},
+		apigen.ImportCorrection{Path: "005-ticket-5.md", Assignee: nullable.NewNullableWithValue(e.MemberA)})
 	require.Equal(t, http.StatusOK, executed.StatusCode(), string(executed.Body))
 	assert.Equal(t, apigen.ImportOutcomeExclude, reported(t, executed.JSON200, "001-ticket-1.md").Outcome)
-	links, err := e.s.client(t, admin).ListTicketLinksWithResponse(e.ctx, e.SlugA, "ALPHA", 2, &apigen.ListTicketLinksParams{})
+	links, err := e.s.client(t, admin).ListTicketLinksWithResponse(e.ctx, e.SlugA, "ALPHA", 5, &apigen.ListTicketLinksParams{})
 	require.NoError(t, err)
 	require.Len(t, links.JSON200.Items, 1, "the excluded file's number names the project's ticket")
 	assert.Equal(t, e.SlugA+"/ALPHA-1", links.JSON200.Items[0].Ticket.Key)
-	two, err := e.s.client(t, admin).GetTicketWithResponse(e.ctx, e.SlugA, "ALPHA", 2)
+	five, err := e.s.client(t, admin).GetTicketWithResponse(e.ctx, e.SlugA, "ALPHA", 5)
 	require.NoError(t, err)
-	assert.Equal(t, e.MemberA, two.JSON200.Assignee.MustGet().Id)
+	assert.Equal(t, e.MemberA, five.JSON200.Assignee.MustGet().Id)
 
-	later := e.dryRun(t, admin, "ALPHA", ticketFile(3, ""))
+	later := e.dryRun(t, admin, "ALPHA", ticketFile(6, ""))
 	require.Equal(t, http.StatusCreated, later.StatusCode(), string(later.Body))
-	assert.Equal(t, apigen.ImportOutcomeCreate, reported(t, later.JSON201, "003-ticket-3.md").Outcome)
+	assert.Equal(t, apigen.ImportOutcomeCreate, reported(t, later.JSON201, "006-ticket-6.md").Outcome)
 	filed := e.file(t, member, "ALPHA", task("Filed meanwhile"))
-	require.EqualValues(t, 3, filed.Number)
+	require.EqualValues(t, 6, filed.Number)
 	meanwhile := e.execute(t, admin, "ALPHA", later.JSON201.Id)
-	assertProblemOf(t, meanwhile.HTTPResponse, meanwhile.Body, http.StatusConflict, "import_conflict")
+	require.Equal(t, http.StatusOK, meanwhile.StatusCode(), string(meanwhile.Body))
+	assert.Equal(t, apigen.ImportOutcomeConflict, reported(t, meanwhile.JSON200, "006-ticket-6.md").Outcome)
+	assert.Zero(t, meanwhile.JSON200.Summary.Created)
+	sixth := e.get(t, admin, "ALPHA", 6)
+	require.Equal(t, http.StatusOK, sixth.StatusCode())
+	assert.Equal(t, "Filed meanwhile", sixth.JSON200.Title, "the ticket filed meanwhile stays as it is")
+}
+
+// docs/adr/0051 D6, docs/adr/0043 D2, D3: a writer of the project imports, as
+// creating a ticket needs, an agent of theirs too — its dry run, its
+// execution, its report —, and the agent sets a parent afterwards as its
+// baseline allows; the agent assigns a confidential ticket to nobody but its
+// person; a viewer does not import.
+func TestAWriterAndTheirAgentImport(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	agent := caller{Token: e.tk.AgentA}
+	var adminName string
+	require.NoError(t, f.QueryRow(e.ctx, `SELECT username FROM users WHERE id = $1`, e.AdminA).Scan(&adminName))
+	parentFile := ticketFile(1, "")
+	child := ticketFile(2, "")
+	embargoed := namedFile{name: "local_003-a-finding.md", body: []byte("---\nid: T3\ntitle: a finding\nstate: filed\n" +
+		"severity: high\nsecurity: boundary\nthreat: a reader learns too much\neffort: S\nopened: 2026-10-01\n" +
+		"assignee: Admin <local:" + adminName + ">\n---\n")}
+
+	assertProblem(t, rawImport(t, e, caller{Token: e.tk.ViewerA}, parentFile), http.StatusForbidden, "forbidden")
+	created := e.dryRun(t, agent, "ALPHA", parentFile, child, embargoed)
+	require.Equal(t, http.StatusCreated, created.StatusCode(), string(created.Body))
+	job := created.JSON201
+	assert.Equal(t, e.MemberA, job.CreatedBy.Id)
+	finding := reported(t, job, "local_003-a-finding.md")
+	assert.True(t, finding.Confidential)
+	assert.True(t, finding.Assignee.MustGet().Person.IsNull(), "an agent admits nobody to a confidential ticket")
+	read, err := e.s.client(t, caller{Token: e.tk.MemberA}).GetImportWithResponse(e.ctx, e.SlugA, "ALPHA", job.Id)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, read.StatusCode(), "the job is its person's")
+	executed := e.execute(t, agent, "ALPHA", job.Id)
+	require.Equal(t, http.StatusOK, executed.StatusCode(), string(executed.Body))
+	assert.Equal(t, 3, executed.JSON200.Summary.Created)
+	three := e.get(t, caller{Token: e.tk.MemberA}, "ALPHA", 3)
+	require.Equal(t, http.StatusOK, three.StatusCode())
+	assert.True(t, three.JSON200.Assignee.IsNull())
+	assert.Equal(t, e.MemberA, three.JSON200.Reporter.Id, "the agent's person is the reporter")
+
+	second := e.get(t, agent, "ALPHA", 2)
+	require.Equal(t, http.StatusOK, second.StatusCode())
+	parented := e.patch(t, agent, *second.JSON200, apigen.TicketPatch{Parent: nullable.NewNullableWithValue(e.SlugA + "/ALPHA-1")})
+	require.Equal(t, http.StatusOK, parented.StatusCode(), string(parented.Body))
+	assert.Equal(t, e.SlugA+"/ALPHA-1", parented.JSON200.Parent.MustGet(), "the agent sets the parent after the import")
+}
+
+// docs/adr/0007 D4 as amended: a number a purged ticket held is imported, and
+// the report says what named it before names the new ticket; a /context
+// document is skipped with its reason.
+func TestImportGivesAPurgedNumberBack(t *testing.T) {
+	e := newTicketEnv(t)
+	admin := caller{Token: e.tk.AdminA}
+	gone := e.file(t, admin, "ALPHA", task("Purged"))
+	e.send(t, admin, http.StatusNoContent, http.MethodDelete, ticketPath(e.SlugA, "ALPHA", gone.Number), nil)
+	require.NoError(t, fixtures(t).Exec(e.ctx, `UPDATE tickets SET deleted_at = now() - interval '31 days' WHERE id = $1`, gone.Id))
+	_, err := openRuntime(t).PurgeDeletedTickets(e.ctx, time.Now())
+	require.NoError(t, err)
+
+	context := namedFile{name: "ALPHA-9.md", body: []byte("<!-- cowork: context of " + e.SlugA + "/ALPHA-9, exported 2026-10-04T09:12:00Z by Ada -->\n" +
+		"---\nkey: " + e.SlugA + "/ALPHA-9\n---\n\n## Links\n\nNone.\n")}
+	created := e.dryRun(t, admin, "ALPHA", ticketFile(gone.Number, ""), context)
+	require.Equal(t, http.StatusCreated, created.StatusCode(), string(created.Body))
+	back := reported(t, created.JSON201, fmt.Sprintf("%03d-ticket-%d.md", gone.Number, gone.Number))
+	assert.Equal(t, apigen.ImportOutcomeCreate, back.Outcome)
+	assert.Contains(t, back.Warnings[0].Message, "was purged; the import gives its number back")
+	skipped := reported(t, created.JSON201, "ALPHA-9.md")
+	assert.Equal(t, apigen.ImportOutcomeSkip, skipped.Outcome)
+	assert.Contains(t, skipped.Reason.MustGet(), "a /context document")
+	executed := e.execute(t, admin, "ALPHA", created.JSON201.Id)
+	require.Equal(t, http.StatusOK, executed.StatusCode(), string(executed.Body))
+	again := e.get(t, admin, "ALPHA", gone.Number)
+	require.Equal(t, http.StatusOK, again.StatusCode())
+	assert.Equal(t, fmt.Sprintf("ticket %d", gone.Number), again.JSON200.Title)
+}
+
+// An execution assigns the member its dry run named and nobody else: a
+// person who became a member between the dry run and the execution is not
+// assigned — not admitted to the confidential ticket the report showed
+// unassigned —, and the report says so.
+func TestTheExecutionAssignsWhomTheDryRunNamed(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	admin := caller{Token: e.tk.AdminA}
+	late, err := f.Person(e.ctx, uniqueSlug("late"), "Late")
+	require.NoError(t, err)
+	var username string
+	require.NoError(t, f.QueryRow(e.ctx, `SELECT username FROM users WHERE id = $1`, late).Scan(&username))
+	finding := namedFile{name: "local_007-a-finding.md", body: []byte("---\nid: T7\ntitle: a finding\nstate: filed\n" +
+		"severity: high\nsecurity: live\nthreat: a reader learns too much\neffort: S\nopened: 2026-10-01\n" +
+		"assignee: Late <local:" + username + ">\n---\n")}
+
+	created := e.dryRun(t, admin, "ALPHA", finding)
+	require.Equal(t, http.StatusCreated, created.StatusCode(), string(created.Body))
+	assert.True(t, reported(t, created.JSON201, "local_007-a-finding.md").Assignee.MustGet().Person.IsNull(),
+		"the dry run names nobody: the person is no member")
+	require.NoError(t, f.Member(e.ctx, e.A, late, domain.RoleMember))
+
+	executed := e.execute(t, admin, "ALPHA", created.JSON201.Id)
+	require.Equal(t, http.StatusOK, executed.StatusCode(), string(executed.Body))
+	file := reported(t, executed.JSON200, "local_007-a-finding.md")
+	assert.True(t, file.Assignee.MustGet().Person.IsNull())
+	assert.Contains(t, string(mustJSON(t, file.Warnings)), "whom the dry run did not name")
+	seven := e.get(t, admin, "ALPHA", 7)
+	require.Equal(t, http.StatusOK, seven.StatusCode())
+	assert.True(t, seven.JSON200.Confidential)
+	assert.True(t, seven.JSON200.Assignee.IsNull(), "the member added in between is not admitted")
 }
 
 // docs/adr/0051 D7, docs/adr/0039 D2: the upload's bound, a broken upload,
@@ -450,28 +579,32 @@ func TestImportBoundsAndExpiry(t *testing.T) {
 	assertProblem(t, rawImport(t, e, admin, ticketFile(3, "")), http.StatusConflict, "project_archived")
 }
 
-// docs/adr/0021 D6, docs/adr/0051 D6, D7: the policies of migration 43 hold an
-// import job to the tenant's administrators — a member of the tenant reads,
-// changes and makes none, even through a query that names no person —, and
-// its deletion to the expiry job, which no administrator is.
-func TestTheImportJobPoliciesAdmitTheTenantsAdministratorsOnly(t *testing.T) {
+// docs/adr/0021 D6, docs/adr/0051 D6, D7: the policies of migration 45 hold an
+// import job to the person who made it and the tenant's administrators —
+// another member reads, changes and makes none, even through a query that
+// names no person —, and its deletion to the expiry job, which no
+// administrator is.
+func TestTheImportJobPoliciesAdmitItsMakerAndTheAdministrators(t *testing.T) {
 	e := newTicketEnv(t)
-	created := e.dryRun(t, caller{Token: e.tk.AdminA}, "ALPHA", ticketFile(1, ""))
+	created := e.dryRun(t, caller{Token: e.tk.MemberA}, "ALPHA", ticketFile(1, ""))
 	require.Equal(t, http.StatusCreated, created.StatusCode(), string(created.Body))
 
-	n, err := e.runAs(t, e.A, e.AdminA, uuid.Nil, `SELECT id FROM import_jobs`)
+	n, err := e.runAs(t, e.A, e.MemberA, uuid.Nil, `SELECT id FROM import_jobs`)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, n, "its maker reads the job")
+	n, err = e.runAs(t, e.A, e.AdminA, uuid.Nil, `SELECT id FROM import_jobs`)
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, n, "the tenant's administrator reads the job")
-	n, err = e.runAs(t, e.A, e.MemberA, uuid.Nil, `SELECT id FROM import_jobs`)
+	n, err = e.runAs(t, e.A, e.ViewerA, uuid.Nil, `SELECT id FROM import_jobs`)
 	require.NoError(t, err)
-	assert.Zero(t, n, "a member of the tenant reads no job")
-	n, err = e.runAs(t, e.A, e.MemberA, uuid.Nil, `UPDATE import_jobs SET report = '{}'`)
+	assert.Zero(t, n, "another member of the tenant reads no job")
+	n, err = e.runAs(t, e.A, e.ViewerA, uuid.Nil, `UPDATE import_jobs SET report = '{}'`)
 	require.NoError(t, err)
-	assert.Zero(t, n, "a member of the tenant changes no job")
-	_, err = e.runAs(t, e.A, e.MemberA, uuid.Nil, fmt.Sprintf(`INSERT INTO import_jobs
+	assert.Zero(t, n, "another member of the tenant changes no job")
+	_, err = e.runAs(t, e.A, e.ViewerA, uuid.Nil, fmt.Sprintf(`INSERT INTO import_jobs
 		(tenant_id, project_id, created_by, expires_at, report, source)
 		VALUES ('%s', '%s', '%s', now() + interval '1 day', '{}', '\x')`, e.A, e.ProjectA, e.MemberA))
-	assert.ErrorContains(t, err, "row-level security", "a member of the tenant makes no job")
+	assert.ErrorContains(t, err, "row-level security", "a member of the tenant makes no job in another's name")
 	n, err = e.runAs(t, e.A, e.AdminA, uuid.Nil, `DELETE FROM import_jobs`)
 	require.NoError(t, err)
 	assert.Zero(t, n, "an administrator deletes no job: the expiry job does")

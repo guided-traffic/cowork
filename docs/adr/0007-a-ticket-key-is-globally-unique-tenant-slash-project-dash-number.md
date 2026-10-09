@@ -15,8 +15,11 @@ reused. ~~D5's imports arrive with the importer.~~ *(2026-10-06.)* D6 is built w
 `NNN`, an export's key —, the project's sequence advances past the highest number an import brings
 (`AdvanceTicketCounter`), and a `T<n>` in a repository's prose is rewritten to the full key of the
 ticket the import creates ([ADR 0063](0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md) D3). A number a ticket of the
-project holds — a deleted one included — or a purged ticket held is a conflict of the dry run, so
-D4 holds through an import.
+project holds — a deleted one included — ~~or a purged ticket held~~ is a conflict of the dry run, so
+D4 holds through an import. *(Amended 2026-10-09 by the owner, D4:)* a number a purged ticket held is
+no conflict any more: an import gives it back, and the report warns that what named its key before
+names the new ticket ([ADR 0064](0064-one-direction-import-and-export-no-synchronisation.md) D3);
+built the same day.
 
 ## Context
 
@@ -55,7 +58,12 @@ never emitted.
 not after an archive, not after an import. The project key is unique within the tenant, the
 tenant slug is unique within the installation, and the pair `(project, number)` is unique;
 together the full key is unique within the installation and stable for the life of the
-ticket.
+ticket. *(Amended 2026-10-09 by the owner — "es darf Tickets egal welcher Nummer importieren":)*
+an import may give a purged ticket's number back: a file that brings the number of a ticket that
+was purged is imported under it, and the report warns that what named that key before — the audit
+record, an old reference — names the new ticket now. The sequence itself still hands no number out
+twice, and a number a ticket of the project holds, a deleted one in the bin included, stays a
+conflict ([ADR 0064](0064-one-direction-import-and-export-no-synchronisation.md) D3).
 
 **D5 — The key is the human identity; UUIDv7 remains the primary key.** The key is an
 indexed, unique triple `(tenant_id, project_id, number)` on the ticket row; foreign keys use
@@ -80,6 +88,9 @@ correct with a mechanical rewrite.
   from issue references.
 - The importer needs the project key of the target project before it can compute a single
   key; the import record has to ask for it up front.
+- *(2026-10-09, D4 as amended.)* A key may name two tickets over time: a purged one, in the audit
+  record and in old references, and the one an import gave its number to since. The purge leaves
+  the key in its act, and the import's report says which key it gives back.
 
 ## Alternatives Considered
 

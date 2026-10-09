@@ -4240,7 +4240,7 @@
             ]
           },
           "conflict": {
-            "description": "The key of the project's ticket that holds the number — a deleted one included — or held it until it was purged",
+            "description": "The key of the project's ticket that holds the number, a deleted one included",
             "type": [
               "string",
               "null"
@@ -4322,7 +4322,7 @@
             "type": "array"
           },
           "reason": {
-            "description": "Why the file is skipped or excluded",
+            "description": "Why the file is skipped or excluded, or why the import leaves it out — its conflict, or its error",
             "type": [
               "string",
               "null"
@@ -4479,7 +4479,7 @@
               "parent": null,
               "path": "docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md",
               "questions": [],
-              "reason": null,
+              "reason": "left out of the import: the project holds its number as acme/WEB-41 (docs/adr/0064 D3)",
               "state": "decided",
               "title": "pick the SameSite mode of the session cookie",
               "type": "task",
@@ -4570,7 +4570,7 @@
               "parent": null,
               "path": "docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md",
               "questions": [],
-              "reason": null,
+              "reason": "left out of the import: the file has an error; the other files are imported (docs/adr/0051 D2)",
               "state": "analysed",
               "title": "the price table is unreadable on a phone",
               "type": "task",
@@ -4811,7 +4811,7 @@
         "type": "object"
       },
       "ImportOutcome": {
-        "description": "What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its\nnumber is a ticket of the project already, deleted ones in the bin included, or was one that was\npurged — a repeated import is a duplicate, not an update, and a number is never handed out twice\n(docs/adr/0064 D3, docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors` says\nwhy (docs/adr/0051 D2). `skip`: it is no ticket file, or it is a manifest of an export the import\nreads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it out\n(docs/adr/0063 D1). `created`: the execution created its ticket. A dry run is not executed while\na file it would import is `conflict` or `error`: exclude the file, or correct the source and make\na new dry run\n",
+        "description": "What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its\nnumber is a ticket of the project already, deleted ones in the bin included — a repeated import\nis a duplicate, not an update (docs/adr/0064 D3); a number a purged ticket held is no conflict, an\nimport gives it back (docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors`\nsays why (docs/adr/0051 D2). `skip`: it is no ticket file, a `/context` document, or a manifest of\nan export the import reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it\nout (docs/adr/0063 D1). `created`: the execution created its ticket. The execution leaves out\nevery file that is `conflict` or `error` and imports the rest; the executed report keeps their\noutcome, and `reason` says why each was left out\n",
         "enum": [
           "create",
           "conflict",
@@ -6320,7 +6320,6 @@
           "link_cycle",
           "open_prerequisites",
           "import_executed",
-          "import_conflict",
           "period_locked",
           "attachment_limit",
           "attachment_quota",
@@ -12641,7 +12640,7 @@
         }
       ],
       "post": {
-        "description": "The first phase of an import (docs/adr/0051 D1, D2): every file of the upload is read, and the\nanswer is the new job, a dry run whose report says per file what the execution would do.\nNothing is imported yet. The upload is `multipart/form-data` with one or more parts named\n`file`: one archive — a `tar.gz` or a `zip`, known by its bytes, not its name — or Markdown\nfiles, one per part, named by the part's file name.\n\nA file is read as a ticket file of a repository (`NNN-\u003cslug\u003e.md`, `local_NNN-\u003cslug\u003e.md`,\ndocs/adr/0063 D3), as cowork's own export (`\u003cPROJECT\u003e-\u003cn\u003e.md`, grammar v1), or, without\nfrontmatter, as an archived record that becomes one done task (D4); everything else is listed\nas skipped (D5), the manifests of an export — `manifest.json`, `links.json`,\n`attachments.json` — as read beside the tickets. A `/context` document is an error\n(docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of\nthe project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is\ndetected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred\n(docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);\nthe confidential flag follows the rule of the source (docs/adr/0065 D7).\n\nAn administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never\nan agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`\n(docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of\nmultipart overhead is `413 payload_too_large`, and so are files that hold more than\n`COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived\nproject is `409 project_archived`. Recorded as the act `created` on the `import_job`; the\ndry run is kept for twenty-four hours, after which its read and its execution answer `404`.\n",
+        "description": "The first phase of an import (docs/adr/0051 D1, D2): every file of the upload is read, and the\nanswer is the new job, a dry run whose report says per file what the execution would do.\nNothing is imported yet. The upload is `multipart/form-data` with one or more parts named\n`file`: one archive — a `tar.gz` or a `zip`, known by its bytes, not its name — or Markdown\nfiles, one per part, named by the part's file name.\n\nA file is read as a ticket file of a repository (`NNN-\u003cslug\u003e.md`, `local_NNN-\u003cslug\u003e.md`,\ndocs/adr/0063 D3), as cowork's own export (`\u003cPROJECT\u003e-\u003cn\u003e.md`, grammar v1), or, without\nfrontmatter, as an archived record that becomes one done task (D4); everything else is listed\nas skipped (D5), and so is a `/context` document, with its reason (docs/adr/0044 D3); the\nmanifests of an export — `manifest.json`, `links.json`, `attachments.json` — are read beside\nthe tickets. The numbers are kept (docs/adr/0007 D6): a number that is a ticket of the project\nalready, a deleted one included, is a conflict (docs/adr/0064 D3), and one a purged ticket held\nis given back, with a warning (docs/adr/0007 D4); the type is detected by content and open to\ncorrection (docs/adr/0008 D5); `blocked` is never inferred (docs/adr/0009); a value outside its\nvocabulary is an error, never a guess (docs/adr/0010 D5); the confidential flag follows the\nrule of the source (docs/adr/0065 D7); no parent is guessed — a file names its own, or the\nperson or their agent sets it after the import (docs/adr/0051 D2).\n\nA writer's act of the project, as creating a ticket is: the role `member` in the tenant — a\nrestricted project's list may lower it — and a token's `write` scope; an agent's too\n(docs/adr/0051 D6, docs/adr/0043 D2), which assigns a confidential ticket to its own person or\nto nobody (docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of multipart\noverhead is `413 payload_too_large`, and so are files that hold more than\n`COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files — a `zip`'s entries counted, its\ndirectories included, before it is read (docs/adr/0051 D7); an archived project is `409\nproject_archived`. Recorded as the act `created` on the `import_job`; the dry run is kept for\ntwenty-four hours, after which its read and its execution answer `404`.\n",
         "operationId": "createImport",
         "requestBody": {
           "content": {
@@ -12695,7 +12694,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/imports/{import}": {
       "get": {
-        "description": "A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For\nthe tenant's administrators, a token's `read` scope, never an agent — a flagged token and a\nrequest with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a\ndry run older than twenty-four hours, is `404`.\n",
+        "description": "A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For a\nwriter of the project, an agent's token included, and of a job they made, and for the tenant's\nadministrators (D6): another person's job is `404`, as are a job of another project and a dry\nrun older than twenty-four hours.\n",
         "operationId": "getImport",
         "responses": {
           "200": {
@@ -12742,7 +12741,7 @@
         }
       ],
       "post": {
-        "description": "The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the\ncorrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008\nD5) — against the project as it stands now, and every ticket, question and link is created in\none transaction, the project's sequence advanced past the highest number, or nothing is. The\ntickets keep their numbers and take their places at the bottom of the project's rank in number\norder; the importer is their reporter; the dates, the stages, the horizon and the block are the\nsource's, and a ticket imported as done or dropped carries its note or reason on its act\n(docs/adr/0063 D2). Every ticket records the file it came from and the job.\n\nEach created row is an act of the importer naming the job: `created` on each ticket, with\n`confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`\non each question, `linked` on both ends of each link; and `imported` on the job. The event\nstreams hear one `project.changed` with the kind `imported`, not an event per ticket, and\nnobody's inbox is told.\n\nA dry run is executed at most once: a second execution is `409 import_executed`. A file the\nexecution would import that has an error, or whose number is a ticket of the project by now,\nrefuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as\n`file:\u003cpath\u003e` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A\ncorrection naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at\nits pointer. The same administrators, never an agent; an archived project is `409\nproject_archived`; a dry run older than twenty-four hours is `404`.\n",
+        "description": "The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the\ncorrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008\nD5) — against the project as it stands now, and every ticket, question and link is created in\none transaction, the project's sequence advanced past the highest number, or nothing is. The\ntickets keep their numbers and take their places at the bottom of the project's rank in number\norder; the importer is their reporter; the dates, the stages, the horizon and the block are the\nsource's, and a ticket imported as done or dropped carries its note or reason on its act\n(docs/adr/0063 D2). Every ticket records the file it came from and the job.\n\nEach created row is an act of the importer naming the job: `created` on each ticket, with\n`confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`\non each question, `linked` on both ends of each link; and `imported` on the job. The event\nstreams hear one `project.changed` with the kind `imported`, not an event per ticket, and\nnobody's inbox is told.\n\nThe execution imports every file it can and leaves out each file with an error or a conflict —\none whose number a ticket filed since the dry run holds included —, its `reason` saying why\n(docs/adr/0051 D2, docs/adr/0064 D3); nothing refuses it but a second execution. An assignee is\nthe member the dry run named: a file's identity that resolves to anybody else by now assigns\nnobody, with a warning. A dry run is executed at most once: a second execution is `409\nimport_executed`. A correction naming no file of the job, or breaking the rules of\n`ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry\nruns, and the tenant's administrators: another person's dry run is `404`; an archived project\nis `409 project_archived`; a dry run older than twenty-four hours is `404`.\n",
         "operationId": "executeImport",
         "requestBody": {
           "content": {

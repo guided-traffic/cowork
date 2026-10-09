@@ -246,8 +246,9 @@ writes to that job and its reads and deletes past the tenant to its expiry job, 
 ([migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql));
 `consistency_checks` and `consistency_acceptances` to the tenant's administrators and the check's job
 ([migration 42](../../backend/internal/store/migrations/000042_attachment_consistency.up.sql));
-`import_jobs` to the tenant's administrators, its expiry job and the purge
-([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql)); and
+`import_jobs` to a job's maker, the tenant's administrators, its expiry job and the purge
+([migrations 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql) and
+[45](../../backend/internal/store/migrations/000045_import_jobs_of_their_writer.up.sql)); and
 `group_mappings` and `project_access`. `group_mappings` is read across
 tenants by the identity provider, which derives a person's memberships in every tenant at once, and
 the bootstrap tenant's mapping is inserted by the synchronisation

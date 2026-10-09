@@ -116,7 +116,8 @@ comment or a question on every page of them —, so what the renderer reads of a
   a body; a comment, the options and an answer take 100,000. The database holds the same lengths, a
   comment's since migration 11, a body's and a question's options and answer since
   [migration 44](../../backend/internal/store/migrations/000044_text_length_checks.up.sql), and the
-  import refuses a longer text as an error of its file ([import-and-export.md](import-and-export.md)).
+  import makes a longer text an error of its file, which its execution leaves out
+  ([import-and-export.md](import-and-export.md)).
   A longer text, which none of them lets in, is not parsed: it is shown as written, escaped, in one
   preformatted block.
 - **Its nesting.** Block quotes and lists nest at most 32 blocks deep, a list counted with its item;

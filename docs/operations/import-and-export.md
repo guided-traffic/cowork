@@ -1,7 +1,7 @@
 # Importing tickets and exporting them
 
-How a tenant's administrator brings a repository's Markdown tickets — or an earlier export — into a
-project, and how anyone who reads a project takes it out again as files: for a move, and as the
+How anyone who writes in a project — or their agent — brings a repository's Markdown tickets, or an
+earlier export, into it, and how anyone who reads a project takes it out again as files: for a move, and as the
 second line of a backup. The routes, their fields and the variable are in the
 [README's reference](../../README.md#api-backend); what an import lets in and an export lets out is
 [docs/security/import-and-export.md](../security/import-and-export.md); why it works this way is
@@ -14,13 +14,18 @@ the API, with a token.
 
 **After the import, cowork is the source.** The files in the repository are history or are
 removed — the repository decides. cowork reads them once, never watches them, and never writes
-to a repository; importing the same files again is a conflict, never an update (ADR 0064 D1, D3).
+to a repository; importing the same files again is a conflict, never an update — the execution
+leaves such a file out (ADR 0064 D1, D3).
 
 ## Before you import
 
-- **Who.** The role `admin` in the tenant. Through a token, an `admin`-scoped personal access token
-  of yours that is not an agent's, sent without `X-Cowork-Agent`: an agent never imports
-  ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D6).
+- **Who.** Whoever may create a ticket in the project: the role `member` in the tenant — on a
+  restricted project, a place on its list as a member —, through a token the `write` scope; an
+  agent's token too ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
+  D6). A job — its dry run, its report, its execution — is the person's who made it, and the tenant's
+  administrators'; another person gets `404` for it. An agent assigns a confidential ticket only to
+  its own person, so an agent's import leaves such a ticket unassigned where its file names somebody
+  else.
 - **Where.** The project exists, is not archived, and is the one the tickets belong to: an import
   goes into one project, and keeps the numbers of its files — `117-….md` becomes `<tenant>/<PROJECT>-117`.
   A number the project already holds is a conflict, so a repository's tickets go into a project of
@@ -63,6 +68,26 @@ under the name the server gives it, for anybody who reads the project; a tenant'
 holds and how many confidential tickets it leaves out because its reader cannot read them. The
 archive is the one the API answers ([Exporting](#exporting)).
 
+## With Claude Code
+
+`cowork-mcp import` ([claude-code.md](claude-code.md#importing-a-repositorys-tickets)) runs the
+steps below in one command, as the agent of the person whose token `COWORK_TOKEN` holds: it packs a
+directory's Markdown files and an export's `manifest.json` and `links.json` — a link is not
+followed, and nothing else of the directory is sent —, or sends an archive or one Markdown file as
+it is, makes the dry run, prints its report and, without `--dry-run`, executes it without
+corrections and prints the executed report:
+
+```bash
+cowork-mcp import acme/VKO docs/tickets --dry-run                       # example: read the report first
+cowork-mcp import acme/VKO docs/tickets                                 # example: import what can be imported
+```
+
+Each file is a paragraph: its outcome and key, `why:` it was skipped, excluded or left out, its
+links, and a line per error and warning with its field and line. A file left out is fixed and
+imported in a new run; a family's children get their parent afterwards
+(`PATCH …/tickets/<n>` with `{"parent": "<key>"}`). The full report stays readable as the job, for
+its maker, at the address the dry run names.
+
 ## The steps
 
 The same through the API, with a token.
@@ -96,9 +121,15 @@ confidential tickets the execution would create and the highest number it brings
 | `outcome` | Means | What to do |
 |---|---|---|
 | `create` | the execution creates it as the entry shows | read it: `type` with `type_reason`, `state`, `columns`, `assignee`, `parent`, `note`, `questions`, `links`, `confidential` with `confidential_reason`, `warnings` |
-| `conflict` | the project holds its number already, as `conflict` names, or a purged ticket held it | exclude it; the project's ticket stays as it is |
-| `error` | it cannot be imported as it stands; `errors` name the field and the line — a body longer than 200,000 characters, or a question's options or answer longer than 100,000, as the import would write them, is one | exclude it, or fix the file and make a new dry run |
-| `skip` | it is no ticket file; `reason` says why | nothing: a skipped file never imports |
+| `conflict` | the project holds its number already, a deleted ticket's included, as `conflict` names; the execution leaves it out, `reason` says so | nothing, or exclude it; the project's ticket stays as it is |
+| `error` | it cannot be imported as it stands; `errors` name the field and the line — a text longer than the API takes, as the import would write it, is one: a body of 200,000 characters, a question of 2,000, its options or answer of 100,000, a recommendation of 10,000, a threat, a block's reason or a dropped ticket's reason of 2,000, a done ticket's note of 10,000; the execution leaves it out | fix the file and import it in a new dry run, or let it be |
+| `skip` | it is no ticket file, or a `/context` document; `reason` says why | nothing: a skipped file never imports |
+
+A number a ticket held that was purged is no conflict: the file is imported under it, with a
+warning that whatever named that key before — the purge's act, an old reference — names the new
+ticket now. An assignee is the member the dry run named: one who became a member, or got onto a
+restricted project's list, between the dry run and the execution is assigned nobody, with a warning
+in the executed report.
 
 The report says what it decided, never silently: a type detected from the title and the rule
 that matched; a record without frontmatter imported as one done task, severity `low`, security
@@ -129,12 +160,13 @@ curl -sS -X POST -H "Authorization: Bearer $COWORK_TOKEN" -H "Content-Type: appl
   https://cowork.example.com/api/v1/tenants/acme/projects/VKO/imports/0199a3c2-…/execution   # example
 ```
 
-The execution analyses the files again with the corrections and writes everything in one
-transaction, or nothing: `409 import_conflict` names, as `file:<path>`, every file it would
-import that still has an error or a conflict — one a ticket filed since the dry run took
-included —; exclude it and execute again. A correction that breaks a rule is `400` at its
-`/corrections/<i>/…`. The answer is the executed job, every `create` now `created`; a second
-execution is `409 import_executed`. The streams hear of it once, and the project's lists load
+The execution analyses the files again with the corrections and writes, in one transaction, every
+file it can import; it leaves out each file that still has an error or a conflict — one a ticket
+filed since the dry run took included —, and the executed report keeps its outcome and its
+`reason`. Nothing in the files refuses the execution. A correction that breaks a rule is `400` at
+its `/corrections/<i>/…`. The answer is the executed job, every `create` now `created`; a second
+execution is `409 import_executed`. What was left out is imported by a new dry run of the fixed
+files. The streams hear of it once, and the project's lists load
 again in every browser that shows them.
 
 **5. Check the count.** `summary.created` is what was created and `summary.open` how many of those
@@ -271,8 +303,9 @@ exported again is the same archive up to the keys and the times.
 
 ## When something is refused
 
-The import page shows each of these where it belongs: an upload's refusal under the files, an
-execution's on the files it names, a `404` as a dry run that is gone.
+The import page shows each of these where it belongs: an upload's refusal under the files, a
+correction's on the file it names, a `404` as a dry run that is gone. A file with an error or a
+conflict is no refusal: the execution leaves it out, and the report says why.
 
 | Answer | Cause | What to do |
 |---|---|---|
@@ -281,7 +314,7 @@ execution's on the files it names, a `404` as a dry run that is gone.
 | `504 timeout` | the dry run, the execution or the export took longer than `COWORK_REQUEST_TIMEOUT`, or waited that long for another import or export on the replica; nothing was written | split the import, or raise the timeout and the controller's read timeout with it |
 | `400 validation_failed` at `/file` | the upload is no readable archive, names a path twice or a path above 1,024 bytes, or has a part not named `file` | repack it |
 | `409 project_archived` | the project is archived | import into another project |
-| `409 import_conflict` | a file the execution would import has an error or a conflict | exclude it, or fix the source and make a new dry run |
 | `409 import_executed` | the dry run was executed already | read the job: its report is what was created |
-| `404` for a job | it is another project's, or a dry run past its twenty-four hours | make a new dry run |
-| `403 agent_forbidden` | an agent's token, or the `X-Cowork-Agent` header | import with a person's own token, without the header |
+| `404` for a job | it is another person's, another project's, or a dry run past its twenty-four hours | make a new dry run of your own |
+| `403 forbidden` | the role is below `member` in the tenant, or the project's list makes it so | ask a tenant administrator for the role |
+| `403 insufficient_scope` | the token's scope is `read` | import with a `write` token |

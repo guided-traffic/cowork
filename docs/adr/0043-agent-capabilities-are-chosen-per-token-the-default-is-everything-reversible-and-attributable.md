@@ -48,6 +48,11 @@ amended 2026-10-06 an eighth time (the note on what is built of D3: the removal 
 check's orphaned objects and the acceptance of its missing files,
 [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D4, D5, are hard-off by D3 as it stands; no rule changes),
+amended 2026-10-09 by the owner — "Das LLM hat freie Hand […] Ich will mit LLMs auf einem Ticket
+System arbeiten. ARBEITEN!!! Nicht behindert werden." — (D2: the import of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) joins the
+baseline, into every project its person may write, as creating a ticket does; D3's rule on a
+confidential ticket's assignee holds for the tickets it imports; built the same day, ADR 0051 D6),
 amended 2026-10-03 (D4: `close` covers both ways to `done`
 of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D5 — the write
 that fills the last progress stage and done by hand — an agent's only from `in-progress` or
@@ -203,6 +208,14 @@ webhook of [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-
 whose Residual risks say a wrong link is removed like any link, open to the owner's objection:)*
 removing the link of a pull request or a commit the webhook made is a link's removal and the
 baseline's; unlike a ticket's link, a removed one stays removed, and nothing brings it back.
+*(Amended 2026-10-09 by the owner:)* the baseline holds the import of
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) — its dry run,
+its execution and the read of its own job — into every project its person may write, as creating
+a ticket needs, and no capability: the tickets it creates keep the states, horizons, notes and
+answers their files carry, which D4's capabilities hold no transition to, and a confidential one is
+assigned to its person or to nobody (D3); `cowork-mcp import`
+([ADR 0070](0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md) D2) runs it from a
+repository. The owner accepted that reach; it is named in the Residual risks.
 
 **D3 — The hard-off list: acts no agent token can be given.** ~~Answering a question~~
 *(amended 2026-10-01: recording a person's answer is the `record-answer` capability, ADR
@@ -317,6 +330,13 @@ scope alone.
   Lost.
 
 ## Residual risks
+
+- *(2026-10-09, D2's import.)* An agent imports into every project its person may write: tickets
+  done, dropped, decided, in a horizon other than `later` and with answered questions, which its
+  capabilities would not let it reach act by act, each the import's act naming the job and
+  carrying the agent mark; a file whose number the project holds is left out, never overwritten
+  ([ADR 0064](0064-one-direction-import-and-export-no-synchronisation.md) D3). The owner's accepted
+  tradeoff of 2026-10-09.
 
 - A "full" token does close tickets on its own verification note; the audit shows it as the
   agent's act, and the owner accepted that the second pair of eyes is optional.

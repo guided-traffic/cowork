@@ -1,13 +1,13 @@
 # What the agent's client holds, sends and leaves open
 
 `cowork-mcp` runs on a person's machine as the MCP server of Claude Code, as its three hooks, and as
-the command line of `cowork-mcp token check`, `lookup` and `export`
+the command line of `cowork-mcp token check`, `lookup`, `export` and `import`
 ([ADR 0070](../adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md),
 [ADR 0040](../adr/0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md),
 [ADR 0041](../adr/0041-the-mcp-server-speaks-stdio-and-ships-as-a-release-binary-per-platform.md),
 [ADR 0067](../adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)).
 This page is what it holds, where its token goes, what of the repository leaves the machine,
-and what the text it hands a model can do, as built on 2026-10-07. What the token itself may do
+and what the text it hands a model can do, as built on 2026-10-07 — the import on 2026-10-09. What the token itself may do
 on the server — scope, restriction, capabilities, the hard-off list — is [tokens.md](tokens.md);
 setting the client up is [docs/operations/claude-code.md](../operations/claude-code.md).
 
@@ -30,7 +30,7 @@ machine.
 <client>/<model>/<session>` on every request
 ([`tools.Editor`](../../backend/internal/tools/session.go)): the name is the one the MCP client
 reports — `claude-code` for Claude Code, and the hooks' — and `cowork-mcp` before the client has named
-itself and in the subcommands, whose session part names them (`token-check`, `lookup`, `export`); the model the one Claude Code names to the `SessionStart` hook, or after a
+itself and in the subcommands, whose session part names them (`token-check`, `lookup`, `export`, `import`); the model the one Claude Code names to the `SessionStart` hook, or after a
 switch to the `PostModelSwitch` hook — in the server too, which the MCP protocol does not tell
 it, through the file the hooks write for the project directory ([ADR 0067](../adr/0067-session-context-comes-from-a-user-level-sessionstart-hook-the-tool-refreshes-a-stop-hook-reminds.md)
 D5), and `unknown` while none is recorded —, the session a short random id or the hook's
@@ -55,7 +55,7 @@ status, is never retried; a refusal reaches the model as the API's code and mess
 | The plugin's option `cowork_token` | Marked `sensitive` in the plugin's manifest ([`plugin.json`](../../claude/cowork/.claude-plugin/plugin.json)), which Claude Code keeps in the system's credential store rather than a settings file — Claude Code's behaviour, not verifiable from this tree; it hands it to the MCP server in `COWORK_TOKEN` and to the hooks in `CLAUDE_PLUGIN_OPTION_COWORK_TOKEN`, which the hook command copies into `COWORK_TOKEN` ([`claude/cowork/`](../../claude/cowork/)) |
 | Configured by hand | In the environment Claude Code starts with, or written into `~/.claude.json`, or a repository's `.mcp.json` — the last two are files ([docs/operations/claude-code.md](../operations/claude-code.md)) |
 | The process | `COWORK_TOKEN` is read once, held in memory, and set as `Authorization: Bearer` on each request. No log line, error or tool answer carries it: a configuration error names the variable and the token page ([`mcpcli/config.go`](../../backend/internal/mcpcli/config.go), `TestConfiguration`) |
-| On disk | Nothing of the token. The client writes two kinds of file under the user's cache directory, on POSIX systems `0600` in a `0700` directory ([`tools.FileMemory`](../../backend/internal/tools/memory.go)); Windows applies no such mode, and they take the access list of the cache directory, `%LocalAppData%` under the person's profile: per installation and binding, the installation's URL, the binding and the time of its last session, and, from the `SessionStart` and `PostModelSwitch` hooks, the model of the last session started or switched per project directory, with that directory's path. `cowork-mcp export` writes a project's export where the person says — every ticket the token's person reads, confidential ones included ([import-and-export.md](import-and-export.md#cowork-mcp-export-on-a-persons-machine), [H-77](import-and-export.md#h-77)) |
+| On disk | Nothing of the token. The client writes two kinds of file under the user's cache directory, on POSIX systems `0600` in a `0700` directory ([`tools.FileMemory`](../../backend/internal/tools/memory.go)); Windows applies no such mode, and they take the access list of the cache directory, `%LocalAppData%` under the person's profile: per installation and binding, the installation's URL, the binding and the time of its last session, and, from the `SessionStart` and `PostModelSwitch` hooks, the model of the last session started or switched per project directory, with that directory's path. `cowork-mcp export` writes a project's export where the person says — every ticket the token's person reads, confidential ones included ([import-and-export.md](import-and-export.md#cowork-mcp-export-on-a-persons-machine), [H-77](import-and-export.md#h-77)). `cowork-mcp import` writes nothing; it sends the Markdown files of the directory it is given, and an export's two manifests, to the installation ([import-and-export.md](import-and-export.md#cowork-mcp-import-on-a-persons-machine)) |
 
 **The token goes to `COWORK_URL` and nowhere else.** Every tool calls the generated client,
 which addresses the installation's `/api/v1/` routes; the `api` escape hatch takes a path, not a

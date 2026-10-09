@@ -153,8 +153,6 @@ func TestParseNamesEveryErrorOfAFile(t *testing.T) {
 		{"a key twice", head + "title: Again\n---\n", fieldFile, "names title twice, also on line 3", 9},
 		{"no closing line", head, fieldFile, "has no closing --- line", 1},
 		{"no mapping", "---\n- one\n- two\n---\n", fieldFile, "is not a list of key: value lines", 2},
-		{"a /context document", "<!-- cowork: context of acme/VKO-5, exported 2026-10-04T09:12:00Z by Ada — not an import format -->\n---\nkey: acme/VKO-5\n---\n\n## Open questions\n\n## Links\n\nNone.\n",
-			fieldFile, "a /context document is no import format", 8},
 		{"urgency and horizon disagree", head + "urgency: now\nhorizon: later\n---\n", keyUrgency, "urgency now and horizon later disagree", 9},
 		{"no title", strings.Replace(head, "title: Five\n", "", 1) + "---\n", keyTitle, "names no title", 0},
 		{"an empty state", strings.Replace(head, "state: filed", "state:", 1) + "---\n", keyState, "names no state", 4},
@@ -185,12 +183,16 @@ func TestParseNamesEveryErrorOfAFile(t *testing.T) {
 }
 
 // docs/adr/0044 D3, docs/adr/0063 D5: a name that is no ticket file's is
-// skipped; an export's name reads its number, and an unknown key is a
-// warning, its value not read.
+// skipped, and so is a /context document, whatever its name; an export's
+// name reads its number, and an unknown key is a warning, its value not read.
 func TestParseNamesAndUnknownKeys(t *testing.T) {
 	for _, name := range []string{"README.md", "notes.md", "docs/tickets/12-short.md", "acme/vko-12.md", "._001-apple.md"} {
 		assert.Equal(t, skipNotTicketName, Parse(name, []byte("---\n---\n")).Skip, name)
 	}
+	context := Parse("acme/VKO-5.md", []byte("\xef\xbb\xbf<!-- cowork: context of acme/VKO-5, exported 2026-10-04T09:12:00Z by Ada — not an import format -->\n"+
+		"---\nkey: acme/VKO-5\n---\n\n## Links\n\nNone.\n"))
+	assert.Equal(t, skipContext, context.Skip)
+	assert.Empty(t, context.Errors)
 	f := Parse("acme/VKO-12.md", []byte("---\nkey: acme/VKO-12\ntitle: T\ntype: bug\nstate: filed\nseverity: low\n"+
 		"security: none\nhorizon: now\neffort: S\nopened: 2026-10-01\nsprint: 7\n---\n"))
 	assert.Empty(t, f.Errors)

@@ -1,4 +1,4 @@
-# ADR 0070: No General CLI — the MCP Binary Grows Workflow Subcommands (`export`, `token check`, `lookup`) and Nothing Generic
+# ADR 0070: No General CLI — the MCP Binary Grows Workflow Subcommands (`export`, `token check`, `lookup`, `import`) and Nothing Generic
 
 ## Status
 
@@ -30,6 +30,28 @@ confidential tickets left out, and has no `--json`: its result is the directory,
 `cowork-mcp/unknown/export`, like every request of the binary, so the export's act names it. The
 integration tier runs it by its command line and as the built binary (D6).
 
+Amended 2026-10-09 by the owner (D2: `cowork-mcp import`, and the title names it): the import is
+the agent's tool — "Ich will mit LLMs auf einem Ticket System arbeiten" —, and a Claude Code session
+imports a repository's tickets with one command, which the `api` tool cannot carry: it sends a JSON
+body, not a directory packed as an archive. Built the same day:
+`cowork-mcp import <tenant>/<PROJECT> <path> [--dry-run]`
+([`mcpcli/import.go`](../../backend/internal/mcpcli/import.go)). *(Made concrete 2026-10-09 by the
+implementer, open to the owner's objection:)* a directory is packed as a `tar.gz` of the files the
+import reads — the Markdown files and an export's `manifest.json` and `links.json`, no link
+followed —, each named by its path under the directory as it was given, or under its base name when
+the path is absolute or leaves the working directory; a file goes as it is, an archive the server
+knows by its bytes or one Markdown file; one path per call. Its requests carry the agent mark
+`cowork-mcp/unknown/import`, so the import is its person's agent's
+([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D6). It
+prints the dry run's report and, unless `--dry-run`, executes the dry run and prints the executed
+report, as plain text: the summary, then per file its outcome, key, title, type, state, why it was
+skipped, excluded or left out, its parent and links, its errors and warnings with their fields and
+lines; then that the importer sets no parent a file does not name. It has no `--json`: the job is
+the structured form, `GET …/imports/{import}`. Exit `0` once the dry run, or its execution, is
+answered — a file left out is in the report, not an error —, `1` on a path it cannot read, a missing
+configuration or the installation's refusal, `2` on a malformed argument. The integration tier runs
+it by its command line and as the built binary (D6).
+
 ## Context
 
 The MCP binary already has one-shot modes for the hooks and its version
@@ -58,6 +80,7 @@ hook modes:
 | `cowork-mcp export <tenant>/<KEY> <dir>` | fetches the project export ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4) and unpacks it into an empty or non-existent directory — for backups and moves without `curl` and `tar` |
 | `cowork-mcp token check` | reports whether `COWORK_TOKEN` is valid against `COWORK_URL`, whose it is, its scope, tenant and project restriction, capabilities and expiry — the first step of every troubleshooting |
 | `cowork-mcp lookup` | prints the binding of the working directory's remotes ([ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md) D2) or the proposal, without starting a session |
+| `cowork-mcp import <tenant>/<KEY> <path> [--dry-run]` *(added 2026-10-09 by the owner)* | imports a directory of ticket files, an archive or a Markdown file into the project ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)): the dry run's report, then — without `--dry-run` — its execution's, as plain text an agent reads; the step of a session that brings a repository's tickets into cowork |
 
 **D3 — The rule for a new subcommand:** it exists only if a session or an operator needs it
 without a model, it is named in an amendment of this record, and it is implemented on the

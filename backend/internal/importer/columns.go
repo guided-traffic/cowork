@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
@@ -45,6 +46,8 @@ func (a *analysis) columns(e *entry) {
 	a.state(e)
 	a.assignee(e)
 	a.confidential(e)
+	a.agentAssignee(e)
+	lengths(e)
 	if n := len(f.Attachments); n > 0 {
 		f.warn(keyAttachments, f.line(keyAttachments), "the source lists %d attachments; an export carries no bytes, and the import brings no file (docs/adr/0051 D4)", n)
 	}
@@ -260,7 +263,48 @@ func (a *analysis) assignee(e *entry) {
 			f.warn(keyAssignee, line, "the assignee %s is no member of the tenant who can see the project: nobody is assigned", id)
 			return
 		}
+		if named, ok := a.t.Named[f.Path]; a.t.Named != nil && (!ok || named != person.ID) {
+			f.warn(keyAssignee, line, "the assignee %s is %s now, whom the dry run did not name: nobody is assigned; assign the ticket after the import", id, person.Name)
+			return
+		}
 		p.Assignee, rep.Person = &person.ID, &person
+	}
+}
+
+// agentAssignee holds an agent's import to the hard-off rule of
+// docs/adr/0043 D3: a confidential ticket is assigned to the agent's own
+// person or to nobody, since its assignee is admitted to it
+// (docs/adr/0065 D9) — the file's assignee and a correction's alike.
+func (a *analysis) agentAssignee(e *entry) {
+	p := e.plan
+	if a.t.Agent == nil || !p.Confidential || p.Assignee == nil || *p.Assignee == *a.t.Agent {
+		return
+	}
+	p.Assignee = nil
+	if e.rep.Assignee != nil {
+		e.rep.Assignee.Person = nil
+	}
+	e.f.warn(keyAssignee, e.f.line(keyAssignee), "an agent assigns a confidential ticket to its own person or to nobody (docs/adr/0043 D3): nobody is assigned; a person assigns it after the import")
+}
+
+// lengths holds the texts the plan does not rewrite to the lengths the API
+// holds every write of them to (docs/adr/0051 D7): the threat, the block's
+// reason, a done ticket's note and a dropped ticket's reason.
+func lengths(e *entry) {
+	f, p := e.f, e.plan
+	if n := utf8.RuneCountInString(p.Threat); n > maxThreat {
+		f.fail(keyThreat, f.line(keyThreat), "the threat has %d characters, more than the %d a threat holds", n, maxThreat)
+	}
+	if b := p.Block; b != nil {
+		if n := utf8.RuneCountInString(b.Reason); n > maxReason {
+			f.fail(keyBlockedReason, f.line(keyBlockedReason), "the block's reason has %d characters, more than the %d a reason holds", n, maxReason)
+		}
+	}
+	switch n := utf8.RuneCountInString(p.Note); {
+	case p.State == domain.StateDone && n > maxNote:
+		f.fail(keyShipped, f.line(keyShipped), "the shipped line has %d characters, more than the %d a verification note holds", n, maxNote)
+	case p.State == domain.StateDropped && n > maxReason:
+		f.fail(keyDroppedReason, f.line(keyDroppedReason), "the dropped-reason has %d characters, more than the %d a reason holds", n, maxReason)
 	}
 }
 

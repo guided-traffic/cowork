@@ -201,16 +201,18 @@ parameters, which a policy cannot see; the queries `UnshareSavedFilter` and `Del
 name `shared` as the policies do, and the unshare runs only through `Writer.UnshareAnothersFilter`
 ([`store/filters.go`](../../backend/internal/store/filters.go)), which names the filter
 (`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`). `import_jobs` carries `tenant_id`
-and the canonical policy, restrictive ones that admit reading to an administrator of the current
-tenant (`app_is_tenant_admin()`), the job `import-expiry` and the purge (`ticket-purge`), inserting to
-the administrator, and changing to the administrator and the purge — which takes a purged ticket's
-file out of its job's report —, and a restrictive delete that admits only the expiry job and only a
-dry run; the expiry job's own permissive read and delete reach the dry runs of every tenant with no
-tenant set
-([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql);
-`TestTheImportJobPoliciesAdmitTheTenantsAdministratorsOnly`). A dry run holds the content of the files
-it read, an embargoed finding's among them, so a query that forgot its caller's role must show a
-member nothing ([import-and-export.md](import-and-export.md)).
+and the canonical policy, restrictive ones that admit reading to the job's maker
+(`created_by = app_user_id()`), an administrator of the current tenant (`app_is_tenant_admin()`),
+the job `import-expiry` and the purge (`ticket-purge`), inserting to the maker in their own name and
+the administrator, and changing to the maker, the administrator and the purge — which takes a purged
+ticket's file out of its job's report —, and a restrictive delete that admits only the expiry job and
+only a dry run; the expiry job's own permissive read and delete reach the dry runs of every tenant
+with no tenant set
+([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql), the maker since
+[migration 45](../../backend/internal/store/migrations/000045_import_jobs_of_their_writer.up.sql);
+`TestTheImportJobPoliciesAdmitItsMakerAndTheAdministrators`). A dry run holds the content of the
+files it read, an embargoed finding's among them, so a query that forgot its caller must show
+another member nothing ([import-and-export.md](import-and-export.md)).
 
 GitHub's webhook ([migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql),
 [ADR 0071]) adds three tables, each with `tenant_id` and the canonical policy. `github_webhook_secrets`

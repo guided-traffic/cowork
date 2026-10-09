@@ -21,7 +21,10 @@ D5 (D6: `chat_capabilities`, a named table that only its person reads and writes
 and on 2026-10-06 for the owner's answer recorded in
 [ADR 0018](0018-the-views-of-the-first-release.md) D5 that a tenant administrator unshares or
 deletes another person's shared saved filter (D3: an eighth setting, `app.saved_filter_id`; built
-the same day, migration 39).
+the same day, migration 39), and on 2026-10-09 for the owner's answer recorded in
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D6 that every
+writer of a project imports into it (D6: the restrictive policies of `import_jobs` admit a job's
+maker beside the tenant's administrators; built the same day, migration 45).
 Date: 2026-09-30.
 Decided by the owner as the answer to the catalog question "how
 is tenant isolation enforced?": application filtering **and** PostgreSQL row-level security,
@@ -83,12 +86,14 @@ refuses any other change of a filter that is not the caller's own — its name, 
 `projects_restriction_guard` holds a project's restriction, because a policy sees the row and not
 the columns (`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`). Migration 43
 (2026-10-06) adds `import_jobs` with the canonical policy and restrictive ones that hold every row to
-the tenant's administrators — inserting one to them alone, changing one to them and to the purge of a
-ticket, which takes the ticket's file out of its job's report — and its deletion to the job
-`import-expiry`, a name `app.job` gains, which a permissive policy admits past the tenant to the dry
-runs of every tenant and to nothing else
+the tenant's administrators ~~— inserting one to them alone, changing one to them and to the purge of a
+ticket, which takes the ticket's file out of its job's report —~~ *(widened 2026-10-09 by migration
+45: and to the person who made the job — reading it, inserting one in their own name, changing it,
+and the purge of a ticket, which takes the ticket's file out of its job's report, as before)* and its
+deletion to the job `import-expiry`, a name `app.job` gains, which a permissive policy admits past
+the tenant to the dry runs of every tenant and to nothing else
 ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D6, D7;
-`TestTheImportJobPoliciesAdmitTheTenantsAdministratorsOnly`).
+`TestTheImportJobPoliciesAdmitItsMakerAndTheAdministrators`).
 
 ## Context
 

@@ -3,13 +3,15 @@
 How tickets come into a project from files and leave it as files: the import job in two phases —
 a dry run whose report a person corrects, then its execution in one transaction — and the export,
 its mirror, an archive of grammar v1 with three manifests. The decisions are [ADR 0051] (the job,
-the phases, the export, the round trip, who, the sizes), [ADR 0063] (what the importer reads and
-how it maps it), [ADR 0064] D3 (a repeated import is a conflict), [ADR 0065] D5 and D7 (what the
-export leaves out, the confidential flag on import) and [ADR 0044] D1 and D3 (the grammar it reads
-back); what an administrator does with it is [docs/operations/import-and-export.md](../operations/import-and-export.md),
+the phases, the export, the round trip, who, the sizes — as amended 2026-10-09: a writer's act, an
+agent's included, and nothing in it refuses), [ADR 0063] (what the importer reads and how it maps
+it), [ADR 0064] D3 (a repeated import is a conflict, left out), [ADR 0007] D4 (a purged ticket's
+number given back), [ADR 0065] D5 and D7 (what the export leaves out, the confidential flag on
+import) and [ADR 0044] D1 and D3 (the grammar it reads back); what an administrator does with it is [docs/operations/import-and-export.md](../operations/import-and-export.md),
 what it lets in and out [docs/security/import-and-export.md](../security/import-and-export.md);
 the browser's import page and export buttons are [frontend.md](frontend.md#the-import-and-the-export).
-Read against the tree on 2026-10-06, the browser's part on 2026-10-07.
+Read against the tree on 2026-10-06, the browser's part on 2026-10-07, the import as the agent's
+tool on 2026-10-09.
 
 ## Where it lives
 
@@ -18,17 +20,18 @@ Read against the tree on 2026-10-06, the browser's part on 2026-10-07.
 | The routes | [`backend/api/imports.yaml`](../../backend/api/imports.yaml); the report, the corrections and the manifests are `Import*` and `Export*` in [`components/schemas.yaml`](../../backend/api/components/schemas.yaml) |
 | The reading and the analysis | [`internal/importer`](../../backend/internal/importer/), a package of its own: pure, no database — what it needs of the project comes in as a `Target` |
 | The handlers | [`api/imports.go`](../../backend/internal/api/imports.go) (the dry run, the read, the execution's checks), [`api/importwrite.go`](../../backend/internal/api/importwrite.go) (the execution's writes), [`api/exports.go`](../../backend/internal/api/exports.go) (the project and the tenant export) |
-| The data | [migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql) (`import_jobs`, `tickets.imported_from_file` and `imported_from_job`, the action `imported`); [`queries/read/imports.sql`](../../backend/internal/store/queries/read/imports.sql), [`queries/write/imports.sql`](../../backend/internal/store/queries/write/imports.sql), the export's reads in [`queries/read/export.sql`](../../backend/internal/store/queries/read/export.sql); the expiry job in [`store/imports.go`](../../backend/internal/store/imports.go) |
-| The command line | `cowork-mcp export` in [`mcpcli/export.go`](../../backend/internal/mcpcli/export.go) |
+| The data | [migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql) (`import_jobs`, `tickets.imported_from_file` and `imported_from_job`, the action `imported`), [migration 45](../../backend/internal/store/migrations/000045_import_jobs_of_their_writer.up.sql) (the policies that admit a job's maker); [`queries/read/imports.sql`](../../backend/internal/store/queries/read/imports.sql), [`queries/write/imports.sql`](../../backend/internal/store/queries/write/imports.sql), the export's reads in [`queries/read/export.sql`](../../backend/internal/store/queries/read/export.sql); the expiry job in [`store/imports.go`](../../backend/internal/store/imports.go) |
+| The command line | `cowork-mcp export` in [`mcpcli/export.go`](../../backend/internal/mcpcli/export.go), `cowork-mcp import` in [`mcpcli/import.go`](../../backend/internal/mcpcli/import.go) |
 | The browser | the import page, [`features/project/project-import.ts`](../../frontend/src/app/features/project/project-import.ts) with [`import-model.ts`](../../frontend/src/app/features/project/import-model.ts); the requests and the archive in [`core/imports.service.ts`](../../frontend/src/app/core/imports.service.ts) and [`core/export-archive.ts`](../../frontend/src/app/core/export-archive.ts) ([frontend.md](frontend.md#the-import-and-the-export)) |
 
 ## The dry run
 
 `CreateImport` ([`imports.go`](../../backend/internal/api/imports.go)), `POST …/projects/{project}/imports`:
 
-1. **Who.** `administer`: the role `admin`, a token's `admin` scope, and the hard-off rule
-   `administration` for an agent — a flagged token or a request with `X-Cowork-Agent`
-   ([ADR 0051] D6).
+1. **Who.** A writer of the project, as creating a ticket needs ([ADR 0051] D6): `work` — the
+   role `member`, a token's `write` scope, no capability, an agent too — against the tenant's role
+   before the upload is read, and against the project's in the transaction (`importWriter`:
+   `visibleProject`, `projectRole`, which a restricted project's list lowers).
 2. **One at a time.** `importSlot` holds the replica to one import, a dry run or an execution:
    the upload is held in memory, unpacked, and kept once more compressed. A second one waits for
    the slot within its request's deadline.
@@ -63,26 +66,31 @@ Read against the tree on 2026-10-06, the browser's part on 2026-10-07.
 | Query | Reads | Why |
 |---|---|---|
 | `ImportNumbersTaken` | the numbers among the upload's a ticket of the project holds, a deleted one included | a conflict ([ADR 0064] D3); exempt from the predicate and the deletion filter — a number's existence in the project, as the unique key holds it |
-| `ImportPurgedKeys` | the keys among the upload's whose ticket was purged, from the purge's act | a number is never handed out twice ([ADR 0007] D4), a conflict too |
+| `ImportPurgedKeys` | the keys among the upload's whose ticket was purged, from the purge's act | an import gives the number back, with a warning that what named the key names the new ticket ([ADR 0007] D4 as amended 2026-10-09) |
 | `ImportReferencedTickets` | the project's live tickets the references name by number, through the predicate | a reference to a ticket the upload does not bring ([ADR 0051] D9) |
 | `ImportPersons` | the members a `local:<username>` or an `oidc:<issuer>#<subject>` of the configured issuer names; then `CanSeeProject` for each | an assignee by identity, never by name ([ADR 0044] D1) |
 | `GetMember`, `CanSeeProject` | a person a correction names | a corrected assignee: a member who can see the project, else `400` at `/corrections/<i>/assignee` |
+
+Beside what it reads, `importTarget` hands the analysis `Agent`, the person of an agent's request,
+and, for an execution, `Named`: the members the dry run's report assigned, by the file's path,
+which `lockedDryRun` reads from the job's `report` (`LockImportJob`).
 
 ## The execution
 
 `ExecuteImport`, `POST …/imports/{import}/execution`, the same who and slot; in one `Mutate`:
 
-1. `importProject`; `lockedDryRun` reads the job `FOR UPDATE` (`LockImportJob`): none, or a dry
-   run past `expires_at`, is `404`; an executed one `409 import_executed` — a second execution
-   waits for the first's lock and then finds it executed ([ADR 0051] D3).
+1. `importProject`; `lockedDryRun` reads the job `FOR UPDATE` (`LockImportJob`): none — another
+   person's, which the policies hide —, or a dry run past `expires_at`, is `404`; an executed one
+   `409 import_executed` — a second execution waits for the first's lock and then finds it executed
+   ([ADR 0051] D3).
 2. `Upload.Check` holds the corrections to the rules of `ImportCorrection`, each refusal `400` at
    its pointer, `/corrections/<i>/path`, `…/exclude`, `…/block`, `…/block/kind`, `…/block/from`.
 3. `lockRank` takes the project's counter row: a filing waits, and no number the analysis checks
    can be taken meanwhile.
-4. The analysis again, with the corrections, against the project as it stands now. A file it would
-   import that has an error or a conflict refuses the whole execution, `409 import_conflict`, each
-   such file in `errors[]` as `file:<path>` (`blockingProblem`) — a ticket filed after the dry run
-   with one of its numbers included.
+4. The analysis again, with the corrections, against the project as it stands now and with the
+   dry run's assignees. A file that has an error or a conflict — a ticket filed after the dry run
+   with one of its numbers included — is left out of the plan, its `reason` saying why; nothing
+   refuses the execution ([ADR 0051] D2 as amended 2026-10-09).
 5. `execute` ([`importwrite.go`](../../backend/internal/api/importwrite.go)) writes the plan:
    - the tickets in the plan's order — a parent, and the ticket a block waits on, before the ticket
      that names it — each `InsertImportedTicket` with its number, the source's state, dates,
@@ -116,10 +124,10 @@ creates are many, and the job's one act announces them as `project.changed` with
 with them ([events.md](events.md), [frontend.md](frontend.md#how-a-change-reaches-the-screen)). No act of an
 import tells anybody's inbox: none carries a notice.
 
-**The read.** `GetImport`, `importRead` — the tenant's administrators, a token's `read` scope,
-never an agent (the hard-off rule `administration`) — reads the job through `GetImportJob` with the
-handler's clock: a dry run past its day answers `404`
-before the job deletes it. `importJobView` decodes the stored report into the generated types.
+**The read.** `GetImport`, the same writers (`importWriter`), reads the job through `GetImportJob`
+with the handler's clock: another person's job, which the policies hide, and a dry run past its day
+answer `404`, the latter before the job deletes it. `importJobView` decodes the stored report into
+the generated types.
 
 **The expiry.** `DB.ExpireImportJobs` ([`store/imports.go`](../../backend/internal/store/imports.go)),
 the job `import-expiry`, lock key `9`, deletes the dry runs past `expires_at` in every tenant with
@@ -127,10 +135,13 @@ their files and records one `expired` act on `import_jobs` per run that removed 
 [`main.go`](../../backend/cmd/cowork/main.go) runs it hourly with the others. An executed job stays:
 its tickets name it.
 
-**The policies** of `import_jobs` ([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql)):
-the canonical `tenant_isolation`; restrictive policies that admit reading to a tenant's
-administrator (`app_is_tenant_admin()`), the job `import-expiry` and the purge (`ticket-purge`),
-inserting to the administrator, and changing to the administrator and the purge; the expiry job's own
+**The policies** of `import_jobs` ([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql),
+[migration 45](../../backend/internal/store/migrations/000045_import_jobs_of_their_writer.up.sql)):
+the canonical `tenant_isolation`; restrictive policies that admit reading to the job's maker
+(`created_by = app_user_id()`), a tenant's administrator (`app_is_tenant_admin()`), the job
+`import-expiry` and the purge (`ticket-purge`), inserting to the maker in their own name and the
+administrator, and changing to the maker, the administrator and the purge — a report holds what
+its upload's files say, an embargoed finding's among them, which no other writer reads; the expiry job's own
 permissive read and delete of the dry runs with no tenant set; and a restrictive delete that admits
 only the expiry job and only a dry run. The runtime role may update `status`, `expires_at`,
 `executed_by`, `executed_at`, `report` and `source`.
@@ -148,7 +159,8 @@ D2). The summary still counts the file, and the purge's act counts `import_repor
 export's, and anything else is skipped ([ADR 0063] D5). Then the content:
 
 - not UTF-8 → an error; a byte order mark is dropped, `CRLF` read as `LF`;
-- a first line `<!-- cowork: context of` → an error at the line of `## Links` ([ADR 0044] D3);
+- a first line `<!-- cowork: context of` → skipped, `skipContext` its reason ([ADR 0044] D3 as
+  amended 2026-10-09);
 - no frontmatter → `plain`, an archived record: the number of its name, its first `# ` heading or
   its name as the title ([ADR 0063] D4);
 - a frontmatter with the key `key` → `export`, grammar v1; any other → `repository`.
@@ -186,14 +198,16 @@ in this order:
 1. **Classify**: every file of the upload a report entry in its order; a skipped file and a manifest
    with the reason.
 2. **Numbers**: a number two files bring is an error of both; one the project holds is a conflict
-   naming the key, as is one a purged ticket held, with a warning.
+   naming the key; one a purged ticket held is imported, with a warning.
 3. **Columns** of every file not excluded and readable: a record without frontmatter is a done task
    of severity `low`, security `none`, effort `S`, with a warning; the type is the correction's, the
    file's, or detected (below); the state is the correction's or the file's, `blocked` only as one
    of them says, with its block; a done ticket's note is `shipped` or the import note `imported from
    archive; the source carried no verification note`, a dropped one's reason `dropped-reason` or
    `imported from archive; the source carried no reason` ([ADR 0063] D2); the assignee by identity;
-   the confidential flag by the rule of the source (below).
+   the confidential flag by the rule of the source (below); the texts the plan does not rewrite held
+   to the API's lengths (`lengths`): a threat, a block's reason and a dropped ticket's reason of
+   2,000 characters, a done ticket's note of 10,000.
 4. **Settle**: a block of kind `ticket` whose ticket resolves to nothing, and a chain of parents or
    of waited-on tickets that loops back, are errors — repeated until no file changes, since an
    error takes a file out of what the others resolve to.
@@ -211,10 +225,17 @@ in this order:
    number — the related lines, and `T<n>` outside code rewritten to the full key of a ticket the
    import creates, in the body and the questions of a repository's and a plain file. Last, the texts
    as the execution writes them are held to the lengths the API takes (`bounded`): a body of more
-   than 200,000 characters, or a question's options or answer of more than 100,000, is an error of
-   the file, so it refuses the execution — the lines and the keys the import adds count
-   ([ADR 0051] D7).
-6. **Finish**: each report entry from what the analysis made of its file.
+   than 200,000 characters, a question of more than 2,000, a question's options or answer of more
+   than 100,000, or a recommendation of more than 10,000, is an error of the file — the lines and the
+   keys the import adds count ([ADR 0051] D7). Such an error is known only once the plan stands, and
+   a file left out changes what the others' texts become — a blocks link to it turns into a line
+   under `## Related` —, so `Analyze` runs again from the files as they were parsed (`File.clone`),
+   the files found too long errors from the start (`long`), until a run finds none.
+6. **Finish**: each report entry from what the analysis made of its file; a conflict's and an
+   error's `reason` says the import leaves it out.
+
+A file with an error or a conflict is never in the plan: what names it resolves to nothing, as for
+any file the import does not create, and the execution writes the rest.
 
 A ticket the plan creates as done is done by hand unless all three of its stages are full and it
 has no children ([ADR 0009] D5).
@@ -227,6 +248,14 @@ defect's (`fail`, `fails`, `failed`, `failing`, `broken`, `breaks`, `crash`, `cr
 (`there is no`, `there are no`, `has no`, `have no`, `cannot`, `can not`, `is missing`, `are
 missing`, `does not exist`, `do not exist`, `not yet`) a `feature`; else a `task`. Words are matched
 whole. A correction overrides it.
+
+**The assignee** (`assignee`): a correction's member, or the member a `local:<username>` or an
+`oidc:<issuer>#<subject>` of the configured issuer names, who can see the project. At an execution
+the identity must resolve to the member the dry run's report named for the file (`Target.Named`);
+anybody else — a person added as a member since — is assigned nobody, with a warning, so the
+execution admits nobody to a ticket the report showed without them. For an agent's request
+(`Target.Agent`), a confidential ticket is assigned to the agent's person or to nobody, with a
+warning, whoever the file or a correction names (`agentAssignee`, [ADR 0043] D3).
 
 **The confidential flag** (`confidential`; [ADR 0065] D7), first match wins: a `publication-accepted`
 date leaves it unset; an export's `confidential: true` sets it; the `local_` prefix sets it; a
@@ -300,18 +329,37 @@ the count of documents and, when there are any, of the confidential tickets left
 carry the agent mark `cowork-mcp/unknown/export`, as every request of the binary carries one, so the
 export's act names the binary ([mcp.md](mcp.md)).
 
+## `cowork-mcp import`
+
+`importProject` in [`mcpcli/import.go`](../../backend/internal/mcpcli/import.go) takes
+`<tenant>/<PROJECT>`, a path and `--dry-run` anywhere among them ([ADR 0070] D2). `uploadOf` reads
+the path before anything is asked: a directory is packed by `packDir` as a `tar.gz` of the regular
+files the import reads (`importRead`: `.md`, `manifest.json`, `links.json`), named by their path
+under the directory as it was given — `docs/tickets/001-….md` — or under its base name when the path
+is absolute or leaves the working directory; a file goes as it is, one part named `file`. It makes
+the dry run with the generated client's `CreateImportWithBodyWithResponse`, prints its report
+(`writeImport`: the summary, then per file the outcome, key, title, type, state and confidential
+flag, `why:` its reason, its parent and links, `error` and `warning` lines with field and line), and
+unless `--dry-run` executes it without corrections and prints the executed report and a line that
+the importer sets no parent a file does not name. Its requests carry `cowork-mcp/unknown/import`, so
+the import is an agent's — [ADR 0051] D6 admits it, and a confidential ticket it imports is assigned
+to its person or to nobody. A unit test holds the packing, the output and the refusals
+([`mcpcli/import_test.go`](../../backend/internal/mcpcli/import_test.go)); `TestTheImportSubcommand`
+runs it against the server, `TestTheBinaryRunsItsSubcommands` as the built binary.
+
 ## Tests
 
 | Tier | Test | Proves |
 |---|---|---|
 | unit | [`parse_test.go`](../../backend/internal/importer/parse_test.go) | the four shapes of [ADR 0063]'s Consequences over copies of this repository's ticket files, the questions of a repository, every error class with its line, the names that are skipped, the questions outside fenced code |
-| unit | [`roundtrip_test.go`](../../backend/internal/importer/roundtrip_test.go) | every golden file of `/markdown` in [`internal/markdown/testdata`](../../backend/internal/markdown/testdata/) parses without an error — `questions.md` with the one warning of its body's heading — and renders again to its bytes, and every one of `/context` is refused; render, parse, render is the same document for values with quotes, colons, fences and every answer form |
-| unit | [`analyze_test.go`](../../backend/internal/importer/analyze_test.go) | a dry run of the fixtures, the conflicts and the purged numbers, the corrections and their rules, an export read back with its links, a block on a ticket, parents and a loop; the texts at the lengths the API takes and one character beyond, a body grown beyond by the keys the import puts in (`TestTheImportHoldsTheTextsToTheLengthsOfTheAPI`) |
+| unit | [`roundtrip_test.go`](../../backend/internal/importer/roundtrip_test.go) | every golden file of `/markdown` in [`internal/markdown/testdata`](../../backend/internal/markdown/testdata/) parses without an error — `questions.md` with the one warning of its body's heading — and renders again to its bytes, and every one of `/context` is skipped; render, parse, render is the same document for values with quotes, colons, fences and every answer form |
+| unit | [`analyze_test.go`](../../backend/internal/importer/analyze_test.go) | a dry run of the fixtures, the conflicts left out with their reasons and a purged number given back, the corrections and their rules, an export read back with its links, a block on a ticket, parents and a loop; every text at the lengths the API takes and one character beyond, a body grown beyond by the keys the import puts in, and one grown beyond because a file it names was left out (`TestTheImportHoldsTheTextsToTheLengthsOfTheAPI`); the assignee the dry run named and an agent's confidential ticket (`TestAnalyzeAssignsWhomTheDryRunNamedAndAnAgentMay`) |
 | unit | [`upload_test.go`](../../backend/internal/importer/upload_test.go) | the three forms of an upload, the bounds, the stored form; a zip of 196,708 empty entries whose end declares 100 refused before it is parsed, its memory a fraction of what a parse takes (`TestReadUploadCountsAZipsEntriesBeforeItParsesThem`); a hand-written frontmatter read line by line |
 | unit | [`mcpcli/export_test.go`](../../backend/internal/mcpcli/export_test.go) | the unpacking stays inside its directory and never overwrites; it writes the names an export holds and no other — backslashes, steps, volumes, other tenants and projects, numbers not written as keys —, and a directory link planted in the target leads nowhere outside it |
-| integration | [`api_imports_test.go`](../../backend/test/integration/api_imports_test.go) | the dry run and its execution end to end, who may — an agent neither imports nor reads a job —, the acts, one event, the sequence, `409 import_executed`; a conflict until it is excluded, also one filed after the dry run; the bounds and the expiry; the policies of `import_jobs` as the runtime role meets them; the purge of an imported ticket taking its file out of the report, by the job; this repository's whole `docs/tickets/` read without an error, the open tickets after the execution as many as the source's open `state:` lines |
+| integration | [`api_imports_test.go`](../../backend/test/integration/api_imports_test.go) | the dry run and its execution end to end, who may — a viewer and a `read` token do not, another writer neither reads nor executes a job —, the acts, one event, the sequence, `409 import_executed`; a conflict and an error left out and the rest imported, also a conflict filed after the dry run, an exclusion naming the project's ticket (`TestImportLeavesOutWhatItCannotImport`); a member's agent importing and setting a parent afterwards, a confidential ticket assigned to nobody (`TestAWriterAndTheirAgentImport`); a purged number given back and a `/context` document skipped (`TestImportGivesAPurgedNumberBack`); a member added between the dry run and the execution not assigned (`TestTheExecutionAssignsWhomTheDryRunNamed`); the bounds and the expiry; the policies of `import_jobs` as the runtime role meets them; the purge of an imported ticket taking its file out of the report, by the job; this repository's whole `docs/tickets/` read without an error, the open tickets after the execution as many as the source's open `state:` lines |
 | integration | [`api_exports_test.go`](../../backend/test/integration/api_exports_test.go) | the round trip of [ADR 0051] D5; the export as each reader sees it; a project of 115 MB of bodies streamed with the heap growing by a fraction of it (`TestTheExportStreamsALargeProjectWithinAMemoryBound`) |
-| integration | [`mcp_test.go`](../../backend/test/integration/mcp_test.go) `TestTheExportSubcommand`, `TestTheBinaryRunsItsSubcommands` | the subcommand by its command line and by the built binary |
+| unit | [`mcpcli/import_test.go`](../../backend/internal/mcpcli/import_test.go) | the import's arguments and refusals; a directory packed with the files the import reads under the path as given, a link and the rest left out; both reports printed; `--dry-run` executing nothing; a file sent as it is and the installation's refusal |
+| integration | [`mcp_test.go`](../../backend/test/integration/mcp_test.go) `TestTheExportSubcommand`, `TestTheImportSubcommand`, `TestTheBinaryRunsItsSubcommands` | the subcommands by their command line and by the built binary: the export; the import's dry run, its execution as an agent's acts, the same files again left out as conflicts, a viewer refused |
 
 **The fixtures** under [`internal/importer/testdata/tickets/`](../../backend/internal/importer/testdata/tickets/)
 are copies of this repository's ticket files as of 2026-10-06 and three files made for the shapes
@@ -333,6 +381,7 @@ so a ticket file the importer cannot read fails the tier.
   integration tier validates every answer against the document.
 
 [ADR 0007]: ../adr/0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md
+[ADR 0043]: ../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md
 [ADR 0008]: ../adr/0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md
 [ADR 0009]: ../adr/0009-ticket-states-are-the-frontmatter-states-plus-blocked.md
 [ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md
@@ -342,3 +391,4 @@ so a ticket file the importer cannot read fails the tier.
 [ADR 0063]: ../adr/0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md
 [ADR 0064]: ../adr/0064-one-direction-import-and-export-no-synchronisation.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md
+[ADR 0070]: ../adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md

@@ -68,7 +68,7 @@ a bearer credential too ([sessions.md](sessions.md) H-15).
 What a token buys before the handler checks the role, the scope and the agent rules: the
 tenant boundary, and the request's validation against the API document, which reads a JSON
 body — at most `COWORK_MAX_JSON_BODY`, 1 MiB by default — into memory, within the request
-timeout. An import's body is read only by its handler, after the administrator's check and one
+timeout. An import's body is read only by its handler, after the writer's check and one
 import at a time per replica ([import-and-export.md](import-and-export.md#h-76) H-76). An upload's
 body is read only by its handler, after those checks and inside the
 upload budget ([attachments.md](attachments.md) H-12): the validator neither reads a multipart

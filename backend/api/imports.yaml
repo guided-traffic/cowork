@@ -20,21 +20,25 @@ imports:
       A file is read as a ticket file of a repository (`NNN-<slug>.md`, `local_NNN-<slug>.md`,
       docs/adr/0063 D3), as cowork's own export (`<PROJECT>-<n>.md`, grammar v1), or, without
       frontmatter, as an archived record that becomes one done task (D4); everything else is listed
-      as skipped (D5), the manifests of an export — `manifest.json`, `links.json`,
-      `attachments.json` — as read beside the tickets. A `/context` document is an error
-      (docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of
-      the project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is
-      detected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred
-      (docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);
-      the confidential flag follows the rule of the source (docs/adr/0065 D7).
+      as skipped (D5), and so is a `/context` document, with its reason (docs/adr/0044 D3); the
+      manifests of an export — `manifest.json`, `links.json`, `attachments.json` — are read beside
+      the tickets. The numbers are kept (docs/adr/0007 D6): a number that is a ticket of the project
+      already, a deleted one included, is a conflict (docs/adr/0064 D3), and one a purged ticket held
+      is given back, with a warning (docs/adr/0007 D4); the type is detected by content and open to
+      correction (docs/adr/0008 D5); `blocked` is never inferred (docs/adr/0009); a value outside its
+      vocabulary is an error, never a guess (docs/adr/0010 D5); the confidential flag follows the
+      rule of the source (docs/adr/0065 D7); no parent is guessed — a file names its own, or the
+      person or their agent sets it after the import (docs/adr/0051 D2).
 
-      An administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never
-      an agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`
-      (docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of
-      multipart overhead is `413 payload_too_large`, and so are files that hold more than
-      `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived
-      project is `409 project_archived`. Recorded as the act `created` on the `import_job`; the
-      dry run is kept for twenty-four hours, after which its read and its execution answer `404`.
+      A writer's act of the project, as creating a ticket is: the role `member` in the tenant — a
+      restricted project's list may lower it — and a token's `write` scope; an agent's too
+      (docs/adr/0051 D6, docs/adr/0043 D2), which assigns a confidential ticket to its own person or
+      to nobody (docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of multipart
+      overhead is `413 payload_too_large`, and so are files that hold more than
+      `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files — a `zip`'s entries counted, its
+      directories included, before it is read (docs/adr/0051 D7); an archived project is `409
+      project_archived`. Recorded as the act `created` on the `import_job`; the dry run is kept for
+      twenty-four hours, after which its read and its execution answer `404`.
     requestBody:
       required: true
       description: |
@@ -73,10 +77,10 @@ import:
     tags: [imports]
     summary: An import job with its report
     description: |
-      A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
-      the tenant's administrators, a token's `read` scope, never an agent — a flagged token and a
-      request with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a
-      dry run older than twenty-four hours, is `404`.
+      A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For a
+      writer of the project, an agent's token included, and of a job they made, and for the tenant's
+      administrators (D6): another person's job is `404`, as are a job of another project and a dry
+      run older than twenty-four hours.
     responses:
       '200':
         description: The job
@@ -111,13 +115,15 @@ importExecution:
       streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
       nobody's inbox is told.
 
-      A dry run is executed at most once: a second execution is `409 import_executed`. A file the
-      execution would import that has an error, or whose number is a ticket of the project by now,
-      refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
-      `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
-      correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
-      its pointer. The same administrators, never an agent; an archived project is `409
-      project_archived`; a dry run older than twenty-four hours is `404`.
+      The execution imports every file it can and leaves out each file with an error or a conflict —
+      one whose number a ticket filed since the dry run holds included —, its `reason` saying why
+      (docs/adr/0051 D2, docs/adr/0064 D3); nothing refuses it but a second execution. An assignee is
+      the member the dry run named: a file's identity that resolves to anybody else by now assigns
+      nobody, with a warning. A dry run is executed at most once: a second execution is `409
+      import_executed`. A correction naming no file of the job, or breaking the rules of
+      `ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry
+      runs, and the tenant's administrators: another person's dry run is `404`; an archived project
+      is `409 project_archived`; a dry run older than twenty-four hours is `404`.
     requestBody:
       required: true
       content:
