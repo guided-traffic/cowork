@@ -1,7 +1,7 @@
 ---
 id: T53
 title: there is no tenant-wide ticket list in the browser
-state: in-progress
+state: done
 severity: medium
 security: none
 threat:
@@ -11,7 +11,8 @@ blocked-by:
 filed-from: T38
 opened: 2026-10-05
 decided: 2026-10-05
-done:
+done: 2026-10-09
+shipped: built and released in phase 3, before 0.8.0
 ---
 
 ## Current state
@@ -59,5 +60,5 @@ both schemes, and a select's open overlay while its choice goes through the addr
 
 ## Required changes
 
-1. The owner looks at the page in both schemes under `make dev` and reviews it: the link's place
-   after *Board*, the bar, the columns and the page size of fifty to begin with.
+None. The owner reviews it in use ("Lass mich doch erstmal anfangen das Tool zu verwenden", 2026-10-09): T55 holds the review of the built pages as one item, and what he wants changed becomes a ticket of its own.
+

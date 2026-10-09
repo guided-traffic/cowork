@@ -1,7 +1,7 @@
 ---
 id: T84
 title: the importer takes a threat, a recommendation, a block's reason and a state's note beyond the lengths the API holds them to
-state: filed
+state: done
 severity: low
 security: hardening
 threat: would additionally cover imported texts longer than any route accepts, and a question that the importer's own key rewriting carries past 2,000 characters, which the database check then refuses as a 500 at the execution instead of an error in the report
@@ -10,8 +10,8 @@ effort: XS
 filed-from: the hardening of the import's lengths, 2026-10-07
 opened: 2026-10-07
 decided:
-done:
-shipped:
+done: 2026-10-09
+shipped: 0.13.0
 ---
 
 ## Current state
@@ -26,5 +26,5 @@ run).
 
 ## Required changes
 
-1. The importer checks the four texts, and a question after its rewriting, against the API's lengths, as
-   errors of the file in the report; table tests in `internal/importer`.
+None. Built.
+

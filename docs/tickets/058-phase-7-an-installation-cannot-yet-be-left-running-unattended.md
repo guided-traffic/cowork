@@ -94,8 +94,15 @@ The tenant Markdown export the plan named here is built with phase 6's export (T
    a kind cluster with PostgreSQL and MinIO, the previous release's chart installed and upgraded to
    the new one, in both migration modes — 0.8.0 to 0.9.0 ([Current state](#current-state)). Left:
    every `H-<n>` in `docs/security/` closed or explicitly accepted by the owner — the owner's act,
-   which only he can perform. Not run: an upgrade from 0.9.0 to the releases after it, 0.10.0 to 0.12.0
-   (migrations 42 to 44).
+   which only he can perform. Not run: an upgrade from 0.9.0 to the releases after it, 0.10.0 to 0.13.0
+   (migrations 42 to 45); job mode in a cluster with every credential from an `existingSecret` — a
+   `helm install` where the Job migrates an empty database and makes the local administrator and the
+   bootstrap tenant before a pod starts, an upgrade where the Job runs before the new pods and is
+   deleted once it succeeded, a failing migration that fails the release and keeps the Job for its
+   log, and an upgrade of an earlier installation with `--reuse-values` and with
+   `--reset-then-reuse-values` — recorded in ADR 0057's Status; and the walk-through of phase 3 by
+   hand: an administrator files a ticket assigned to a local account, which sees it in "assigned to
+   me" and in its inbox, moves it and closes it, two identities, through the UI alone.
 3. **1.0**, once every question of every open ticket is answered.
 
 ## Open questions
@@ -124,4 +131,4 @@ stopped before an administrator could: a limit built without such a case guesses
 ## Related
 
 - T55 — phase 6, which started the same night
-- T26 — phase 3, still open for the owner's reviews
+- T26 — phase 3, closed; its walk-through by hand is item 2 here

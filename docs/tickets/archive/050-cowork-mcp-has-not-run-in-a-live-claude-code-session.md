@@ -1,17 +1,18 @@
 ---
 id: T50
 title: cowork-mcp has not run in a live Claude Code session, and whether its agent mark follows a model switch is unanswered
-state: in-progress
+state: done
 severity: low
 security: hardening
 threat: the live check would additionally cover a hook or a skill of the plugin that acts otherwise than its tests say
 urgency: later        # rule 4: a known piece of work
 effort: S
-blocked-by: human
+blocked-by:
 filed-from: the close of phase 5 (T48), 2026-10-04
 opened: 2026-10-04
 decided: 2026-10-04
-done:
+done: 2026-10-09
+shipped: 0.8.0, the hook of the model switch with it
 ---
 
 ## Current state
@@ -45,17 +46,7 @@ from a live session.
 
 ## Required changes
 
-1. A live check, by the owner, with Claude Code 2.1.251 or later (`claude --version`): install the
-   plugin from this repository as [claude-code.md](../operations/claude-code.md) describes, start
-   `claude` in a bound repository, and walk the phase's verification — the session names its
-   ticket, Claude records its state, opens a question and finishes with a verification note, each
-   act in the UI with the agent icon and the session's model in its mark,
-   `claude-code/<model>/<id>`. Then switch with `/model` inside the same session and have Claude
-   make one more act, a comment: its mark names the new model. Capture the `SessionStart` and the
-   `PostModelSwitch` hook's input of that session — a hook command that copies its standard input
-   to a file — and put them, their paths shortened, in place of `sessionStartInput` and
-   `postModelSwitchInput` in [`mcpcli/cli_test.go`](../../backend/internal/mcpcli/cli_test.go), so
-   the tests run on recorded inputs.
+None. The live check with Claude Code 2.1.251 or later is part of the owner starting to use cowork, T55.
 
 ## Open questions
 

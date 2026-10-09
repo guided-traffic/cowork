@@ -1,17 +1,18 @@
 ---
 id: T40
 title: the members and tokens pages show no page numbers, and a tenant's administrators cannot see or revoke the members' tokens
-state: in-progress
+state: done
 severity: low
 security: none
 threat:
 urgency: later        # rule 4: decided and built; the owner reviews the result
 effort: M
-blocked-by: human
+blocked-by:
 filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-05
-done:
+done: 2026-10-09
+shipped: built and released in phase 3, before 0.8.0
 ---
 
 ## Current state
@@ -48,8 +49,7 @@ The README reference, [api.md](../developer/api.md), [data-access.md](../develop
 
 ## Required changes
 
-1. The owner's review of the built result: the tenant's *Tokens* page, the confirmation of a
-   revocation, and the numbered pages of the members and the tokens in a browser (`make dev`).
+None. The owner reviews it in use ("Lass mich doch erstmal anfangen das Tool zu verwenden", 2026-10-09): T55 holds the review of the built pages as one item, and what he wants changed becomes a ticket of its own.
 
 ## Not verified
 

@@ -1,17 +1,18 @@
 ---
 id: T61
 title: the chart takes no component keys, no config maps, no examples and no migration Job
-state: in-progress
+state: done
 severity: medium
 security: hardening
 threat: an authority for the database's certificate (Q3) would additionally cover a principal who intercepts the connection between the backend and the database inside the cluster network, where `sslmode` `require` encrypts it without verifying the server
 urgency: release      # rule 2: the Job's first run in a cluster gates the release that ships it
 effort: S
-blocked-by: decision
+blocked-by:
 filed-from: the build of ADR 0057 D2–D6 and ADR 0058 D1–D4 in phase 7
 opened: 2026-10-06
 decided:
-done:
+done: 2026-10-09
+shipped: 0.9.0, and Silo and the database's authority in 0.13.0
 ---
 
 ## Current state
@@ -41,48 +42,7 @@ cluster.
 
 ## Required changes
 
-Independent of the open questions:
-
-1. Run job mode in a cluster, with every credential from an `existingSecret`: a `helm install`,
-   where the Job migrates an empty database and leaves the local administrator and the bootstrap
-   tenant before a pod starts; an upgrade, where the Job runs before the new pods and is deleted
-   once it succeeded; a migration that fails — a dirty schema — failing the release with the Job
-   kept for its log; the upgrade of a 0.7.0 installation that sets nothing new, with
-   `--reuse-values` and with `--reset-then-reuse-values`, leaving every object as it was. Record what
-   was run in ADR 0057's `Status`.
-2. The `helm` job's first run on a runner: `make examples-lint` installs kubeconform with
-   `go install` and fetches the operators' CustomResourceDefinitions, so it needs Go — the job sets
-   it up now — and the network.
-
-Depends on the answers:
-
-- Q1 (b): a variable that keeps `cowork serve` from the bootstrap, set by the chart in job mode; the
-  local administrator's Secret out of the serving container in that mode; the recovery of a leaked
-  administrator password in [installation.md](../operations/installation.md#the-local-administrator)
-  and [local-accounts.md H-20](../security/local-accounts.md) rewritten per mode; ADR 0057 D4 amended.
-- Q2 (b) or (c): ADR 0058 D1 amended, the example files and the `Makefile`'s pinned versions changed,
-  the operations page's table with them.
-- Q3 (a) or (b): ADR 0058 D3 gains the database's authority; `database.tls.caConfigMap` and its key,
-  mounted read-only into the init container, the Job and the serving container; the backend reads it
-  for both pools; a test against a PostgreSQL that serves TLS.
-
-3. **The database's authority** (Q3, answered b): `database.tls.caConfigMap` and `keys.ca`, mounted
-   as the storage's authority is, and one variable the backend applies to the runtime pool, the
-   owner pool and the migration run; the integration tier gains a PostgreSQL that serves TLS and a
-   test that `verify-full` holds against the private authority and refuses a server outside it;
-   README reference, trust-boundaries.md (H-78 closed) and ADR 0058 D3's row marked built, in the
-   same change.
-
-4. **PGSTY Silo in place of MinIO** (Q2, answered c): `deploy/examples/minio-tenant.yaml` and
-   `minio-bucket.sh` give way to a values file for Silo's Helm chart (`helm/silo` of
-   [pgsty/silo](https://github.com/pgsty/silo) at a pinned release tag; Silo publishes no Helm
-   repository) and an `mcli` script for the bucket, the access key and the bucket-scoped policy, run
-   once against the store of `make minio-up`; `make examples-lint` renders the chart at that tag with
-   the example's values and checks the output with kubeconform, `MINIO_OPERATOR_VERSION` and the
-   Tenant CRD schema leave the Makefile; `MINIO_IMAGE` becomes `pgsty/silo` at a pinned release,
-   with its Renovate comment, and the integration and end-to-end tiers pass against it; the
-   operations page, the developer pages and the README name Silo. Whether the targets keep the name
-   `minio-up` is decided with the build.
+None. The run of job mode in a cluster, with an upgrade from an earlier release, is T58's phase verification.
 
 ## Open questions
 

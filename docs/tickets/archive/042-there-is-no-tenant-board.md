@@ -1,7 +1,7 @@
 ---
 id: T42
 title: there is no tenant board with one swimlane per project
-state: in-progress
+state: done
 severity: medium
 security: none
 threat:
@@ -11,7 +11,8 @@ blocked-by:
 filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-05
-done:
+done: 2026-10-09
+shipped: built and released in phase 3, before 0.8.0
 ---
 
 ## Current state
@@ -57,14 +58,7 @@ a filter's projects go into the address, every other condition to each swimlane'
 
 ## Required changes
 
-1. The owner looks at the board in both schemes under `make dev`. The end-to-end tier ran
-   `tenant-board.spec.ts` in Chromium and WebKit and both schemes on a runner on 2026-10-05 (run
-   37269590545) and passed.
-   The look takes in the board's saved-filter bar, built on the recommendation, and its choices:
-   only the projects go into the address (a reload keeps them, drops the rest); a column's WIP
-   count under a filter counts the cards shown, so its over-limit mark can go; a closed state or
-   `done_after` in a filter loads tickets no column shows; the line "Also filtered by …" is the
-   board's alone; "Show every project" clears excluded projects too.
+None. The owner reviews it in use ("Lass mich doch erstmal anfangen das Tool zu verwenden", 2026-10-09): T55 holds the review of the built pages as one item, and what he wants changed becomes a ticket of its own.
 
 ## Open questions
 

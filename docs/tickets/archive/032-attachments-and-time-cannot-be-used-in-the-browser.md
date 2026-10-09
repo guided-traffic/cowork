@@ -1,17 +1,18 @@
 ---
 id: T32
 title: the tenant has no attachment quota
-state: in-progress
+state: done
 severity: medium
 security: none
 threat:
 urgency: later        # rule 4: decided and built; the owner reviews the result
 effort: M
-blocked-by: human
+blocked-by:
 filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-05
-done:
+done: 2026-10-09
+shipped: built and released in phase 3, before 0.8.0
 ---
 
 ## Current state
@@ -55,8 +56,7 @@ The README reference (variable, chart value, route, code), [storage.md](../devel
 
 ## Required changes
 
-1. The owner's review of the built result — the default of none above all, and the settings page's
-   usage in a browser (`make dev`).
+None. The owner reviews it in use ("Lass mich doch erstmal anfangen das Tool zu verwenden", 2026-10-09): T55 holds the review of the built pages as one item, and what he wants changed becomes a ticket of its own.
 
 ## Not verified
 

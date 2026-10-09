@@ -6,12 +6,12 @@ backend (`backend/`, the API, PostgreSQL 18 migrated on start) and an nginx fron
 (`frontend/`, the Angular bundle and nothing else); one Helm chart, whose Ingress routes `/api/`
 and `/auth/` to the backend and the rest to the frontend; and a third binary, `cowork-mcp`, on a
 person's machine for Claude Code.
-**Status: phases 6 (import and cut-over) and 7 (hardening and 1.0), the plan's last, started on
-2026-10-06 and are worked as tickets; phase 3 (UI v1) awaits the owner's reviews; the sign-in
-without a click is released as `0.8.0`, metrics, the chart's references with the migration Job and
-the GitHub webhook as `0.9.0`, the consistency check as `0.10.0`, the import and the export as
-`0.11.0`, the hardening that the review of the security pages found as `0.12.0`; 1.0 waits until every open question is answered, by the owner's rule of 2026-10-06
-(ADR 0003 D9)** — the work lists, each open phase a family ticket with its children, are in
+**Status: released as `0.13.0`; the owner starts using cowork, and what is left is his — the
+cut-over of his repositories and his reviews in use (the phase 6 ticket), the checks before 1.0
+(the phase 7 ticket). `0.13.0` made the import the agent's tool (`cowork-mcp import`, nothing in an
+import refuses), removed the GitHub webhook, put PGSTY Silo in place of MinIO, gave the database a
+private authority, and kept a session alive on every request again; 1.0 waits until every open
+question is answered, by the owner's rule of 2026-10-06 (ADR 0003 D9)** — the work lists, each open phase a family ticket with its children, are in
 [docs/tickets/](docs/tickets/README.md). Every founding decision is an ADR, and the project plan
 was consumed into the phase tickets (ADR 0074).
 

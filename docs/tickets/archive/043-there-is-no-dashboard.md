@@ -1,7 +1,7 @@
 ---
 id: T43
 title: the dashboard is built, but no end-to-end path walks it and the owner has not reviewed it
-state: in-progress
+state: done
 severity: low
 security: none
 threat:
@@ -11,7 +11,8 @@ blocked-by:
 filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-03
-done:
+done: 2026-10-09
+shipped: built and released in phase 3, before 0.8.0
 ---
 
 ## Current state
@@ -51,8 +52,7 @@ dark one at 1000 px; not on a phone's width.
 
 ## Required changes
 
-1. The owner reviews the page under `make dev` in both schemes; what the review changes goes into
-   the page and its unit tests.
+None. The owner reviews it in use ("Lass mich doch erstmal anfangen das Tool zu verwenden", 2026-10-09): T55 holds the review of the built pages as one item, and what he wants changed becomes a ticket of its own.
 
 ## Open questions
 

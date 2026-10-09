@@ -1,17 +1,18 @@
 ---
 id: T57
 title: there is no import and no export
-state: in-progress
+state: done
 severity: high
 security: none
 threat:
 urgency: release      # rule 2: phase 6 is released with it
 effort: L
-blocked-by: human     # the owner's look at the pages and the owner's imports
+blocked-by:
 filed-from: the start of phase 6, 2026-10-06
 opened: 2026-10-06
 decided: 2026-10-06
-done:
+done: 2026-10-09
+shipped: 0.11.0, and the import as the agent's tool in 0.13.0
 ---
 
 ## Current state
@@ -55,37 +56,7 @@ What has not happened:
 
 ## Required changes
 
-1. **The owner looks at the import page and the exports** under `make dev`, in both schemes, and
-   says what changes:
-   - the entry: an upload icon, *Import tickets*, in the project's header beside the download icon
-     of the export and the settings' cog — rather than a card in the project's settings;
-   - the report as one table with the corrections in place — type, state and assignee as selects in
-     every row of a file to create or with an error, the block in the file's lines once the state is
-     `blocked` —, a select button narrowing it to one outcome, and the execution's bar sticky at the
-     bottom of the page;
-   - *Leave them out*, which leaves out every file that blocks at one click, beside each row's
-     *Leave out*;
-   - every warning, error, link, note and reason of a file as a line under it;
-   - the corrections live in the page until the execution: a reload keeps the job's address and its
-     report, not the corrections;
-   - the export's toast in the project's header, and the line beside the tenant's export card.
-2. **The owner imports the sibling project's tickets**, then **this repository's**, on the import
-   page or by the steps of the operations page, and writes ADR 0064 D4's note into
-   `docs/tickets/README.md` the same day.
-3. **The checks at scale** (below).
-4. **The import is the agent's tool, and nothing in it refuses** (the owner, 2026-10-09: "Das LLM hat
-   freie Hand … Ich will mit LLMs auf einem Ticket System arbeiten"): the dry run, the execution and
-   the report are a writer's acts of the project, as creating a ticket is, an agent's included (ADR
-   0051 D6, ADR 0043's baseline amended); `cowork-mcp import <tenant>/<KEY> <path>` packs a directory
-   or takes an archive or Markdown files, runs the dry run and the execution through `/api/v1` and
-   prints the report, so Claude Code imports from a repository with one command (`--dry-run` stops
-   after the report); the execution imports every file it can and leaves out each with an error or
-   a conflict, the report naming each and why (Q3); a `/context` document is skipped with its reason
-   (Q2); a number a purged ticket held is imported (Q4, ADR 0007 D4 amended: an import may give a
-   purged number back); the agent sets the parents after the import (Q5). The import page follows:
-   offered to every writer of the project, the execution no longer blocked by an error. ADR 0051 D2
-   and D6, ADR 0063 D5, ADR 0064 D3, ADR 0007 D4 and ADR 0043 amended in the same change, with the
-   operations, developer and security pages and the README.
+None. The owner's look at the import page and his imports are T55; the checks at scale stay under Not verified.
 
 ## Open questions
 

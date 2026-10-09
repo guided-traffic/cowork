@@ -46,8 +46,20 @@ Children:
 
 ## Required changes
 
-1. **T57.**
-2. **The owner's cut-over**, which only the owner can run, against his installation, in the order
+1. **The owner starts using cowork** (the owner, 2026-10-09: "Lass mich doch erstmal anfangen das Tool
+   zu verwenden"), and the reviews of what is built happen in that use — what he wants changed becomes
+   a ticket of its own:
+   - the pages of phase 3: the dashboard, the tenant board with its saved filters, the tenant's ticket
+     list, the inbox with mentions, the backlog's rank and score, attachments and time with the
+     quota, the tenant's tokens page; and the import page and the exports;
+   - the sign-in without a click against his own identity provider, Safari included: a session that
+     ended comes back at the first input while the issuer's session lives, and a tab alone on the
+     login page does not sign itself in;
+   - `cowork-mcp` in a live Claude Code session, 2.1.251 or later, as
+     [docs/operations/claude-code.md](../operations/claude-code.md) describes it — the session start,
+     the tools, the hooks with the model switch, the agent mark in the UI.
+2. **The owner's cut-over**, against his installation — by his hand or by his agent with
+   `cowork-mcp import`, which imports what it can and reports what it left out — in the order
    the plan had it — none of it is code of this repository, and nothing here touches another
    repository:
    - the sibling project's open tickets imported into its project: a dry run, the report read and
@@ -68,11 +80,10 @@ Children:
    D3, and the count of open tickets in the UI equals the `grep -rH '^state:'` count of the source
    repository at import time. The integration tier proves both on this repository's own
    `docs/tickets/` (T57); the owner's import proves them on his installation.
-4. **Phase close:** T57 extracted and archived; the README reference covers every variable, value,
+4. **Phase close:** the README reference covers every variable, value,
    route and problem code the phase added; the Status of every record the phase built says what is
    built.
 
 ## Related
 
-- T26 — phase 3, still open for the owner's reviews
 - T58 — phase 7, which started the same night

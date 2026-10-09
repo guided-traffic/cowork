@@ -1,7 +1,7 @@
 ---
 id: T26
 title: phase 3 (UI v1) — the owner and a second person cannot yet run the daily work in the browser
-state: in-progress
+state: done
 severity: high
 security: none
 threat:
@@ -11,7 +11,8 @@ blocked-by:
 filed-from: phase 3 of the project plan, converted by ADR 0074 D2
 opened: 2026-10-03
 decided: 2026-10-03
-done:
+done: 2026-10-09
+shipped: phase 3, built and released before 0.8.0
 ---
 
 ## Current state
@@ -75,23 +76,5 @@ D2). **Goal:** the owner and a second person run the daily work in the browser.
 
 ## Required changes
 
-1. **What is left of the children.** Each lands with its tests, the pages that describe what it
-   built, and the Status of every ADR it builds:
-   - T32 — the owner's review of the attachment quota
-   - T34 — the owner's look at the score's marker and the sort by score
-   - T36 — the owner's review of the mention
-   - T40 — the owner's review of the tenant's tokens page
-   - T42 — the owner's look at the tenant board and its saved-filter bar
-   - T43 — the owner's review of the dashboard
-   - T53 — the owner's look at the tenant's ticket list
-2. **The phase verification.** The Playwright path of T29,
-   [`assigned.spec.ts`](../../frontend/e2e/assigned.spec.ts), passes with both identities in both
-   schemes, Chromium and WebKit, on a runner (run 37285901009 of commit `65337eb`, 2026-10-05) and in
-   three local runs with two workers: the administrator files a ticket in the backlog's dialog,
-   assigned to a local account, which sees it in "assigned to me" and in its inbox without a reload,
-   moves it and closes it with a verification note, while the administrator's page shows it done.
-   Left: the owner walks the same path by hand through the UI, two identities, without touching the
-   API, and records the result here.
-3. **Phase close:** every child extracted and archived; the README reference covers every
-   variable, value, route and problem code the phase added; the Status of every ADR the phase
-   built says what is built.
+None. The owner reviews the pages in use, T55; the walk-through by hand with two identities is T58's, with the other checks before 1.0.
+

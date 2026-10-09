@@ -1,7 +1,7 @@
 ---
 id: T34
 title: the score's marker and the sort by score in the backlog have no end-to-end path and no look by the owner
-state: in-progress
+state: done
 severity: low
 security: none
 threat:
@@ -11,7 +11,8 @@ blocked-by:
 filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-03
-done:
+done: 2026-10-09
+shipped: built and released in phase 3, before 0.8.0
 ---
 
 ## Current state
@@ -46,8 +47,7 @@ dashed, the figure in its tooltip) and the toolbar button are this change's prop
 
 ## Required changes
 
-1. The owner's look at the marker and the sort in `make dev`, and what follows from it for their
-   form.
+None. The owner reviews it in use ("Lass mich doch erstmal anfangen das Tool zu verwenden", 2026-10-09): T55 holds the review of the built pages as one item, and what he wants changed becomes a ticket of its own.
 
 ## Related
 

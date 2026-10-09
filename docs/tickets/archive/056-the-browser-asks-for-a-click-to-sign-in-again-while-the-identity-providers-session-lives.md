@@ -1,17 +1,18 @@
 ---
 id: T56
 title: the browser asks for a click to sign in again while the identity provider's session lives
-state: in-progress
+state: done
 severity: medium
 security: hardening
 threat: the owner's check would additionally cover an issuer that answers prompt=none from a session of its own, which no test has
 urgency: next         # rule 3: severity medium, and the owner meets the click every day
 effort: S
-blocked-by: human
+blocked-by:
 filed-from: the owner's report of 2026-10-06
 opened: 2026-10-06
 decided: 2026-10-06
-done:
+done: 2026-10-09
+shipped: 0.8.0, and the idle rule of the owner's answer in 0.13.0
 ---
 
 ## Current state
@@ -84,19 +85,7 @@ projects; it was not run here.
 
 ## Required changes
 
-1. The end-to-end tier runs the new test in Chromium and WebKit (`make docker-build e2e`).
-2. The owner checks it on his own installation, whose issuer is not Dex: sign in with the button,
-   let the session end (or remove the `__Host-cowork-session` cookie), come back to a page, move the
-   pointer — signed in again without a click while the issuer's session lives; with the issuer's
-   session ended as well, the login page with the calm note. In Safari, a tab left alone on the login
-   page must not sign itself in (the presence rule, H-62's not verified part).
-3. **Q2 answered (b), to build:** every request of a session moves its idle clock again — reads, the
-   event stream's connections and reconnects and the polling fallback's reloads included —, as before
-   0.8.0; a write the CSRF check refuses still does not (made concrete when the answer was recorded:
-   a forged request from another site extends no session). The `X-Cowork-Activity` header and the
-   keep-alive service are removed with their tests. ADR 0031 D3 is amended back in the same change,
-   and docs/security/sessions.md names what it leaves open: a tab open with nobody at it keeps its
-   session up to the absolute limit.
+None. The check against the owner's identity provider is part of the owner starting to use cowork, T55.
 
 ## Open questions
 

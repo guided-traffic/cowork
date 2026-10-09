@@ -1,17 +1,18 @@
 ---
 id: T36
 title: a mention in a comment tells nobody, and the inbox has no end-to-end path
-state: in-progress
+state: done
 severity: medium
 security: none
 threat:
 urgency: later        # rule 4: decided and built; the e2e path waits for its first run, the owner reviews the result
 effort: M
-blocked-by: human
+blocked-by:
 filed-from: T26
 opened: 2026-10-03
 decided: 2026-10-05
-done:
+done: 2026-10-09
+shipped: built and released in phase 3, before 0.8.0
 ---
 
 ## Current state
@@ -68,8 +69,7 @@ showing it within the stream's latency — is part of T29's `assigned.spec.ts`, 
 
 ## Required changes
 
-1. The owner's review of the built result: the watcher reading above, and the picker in a browser
-   (`make dev`).
+None. The owner reviews it in use ("Lass mich doch erstmal anfangen das Tool zu verwenden", 2026-10-09): T55 holds the review of the built pages as one item, and what he wants changed becomes a ticket of its own.
 
 ## Not verified
 

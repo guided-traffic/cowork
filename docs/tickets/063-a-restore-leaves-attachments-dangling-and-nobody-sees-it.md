@@ -7,7 +7,7 @@ security: none
 threat:
 urgency: release      # gated on the export of T57, which brings the last instrument and alert of this list
 effort: S
-blocked-by: T57
+blocked-by:
 filed-from: phase 7, ADR 0059 D4-D6 and the consistency family of ADR 0060 D4-D6
 opened: 2026-10-06
 decided:
