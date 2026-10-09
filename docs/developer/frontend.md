@@ -1250,7 +1250,7 @@ event refetches nothing, because the write put that version into the cache alrea
 
 ## The development loop
 
-`make dev` ([`hack/dev.sh`](../../hack/dev.sh)) runs everything in one terminal: PostgreSQL, MinIO
+`make dev` ([`hack/dev.sh`](../../hack/dev.sh)) runs everything in one terminal: PostgreSQL, Silo
 and Dex containers (`make dev-up`), the migration, the backend built from source on `:8080` (log in
 `.dev/backend.log`) with the local administrator `dev` and Dex as its identity provider, the group
 mapping `team-red` → `member` in the tenant `dev`, the person `dev` with the tenant `dev`

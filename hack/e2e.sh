@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The end-to-end tier (docs/adr/0056): both built images behind the Ingress stand-in of
 # hack/ingress/default.conf, terminating TLS with a certificate made for this run, against a
-# PostgreSQL, a MinIO and a Dex of its own, and the Playwright suite of frontend/e2e/ in a browser on
+# PostgreSQL, a Silo and a Dex of its own, and the Playwright suite of frontend/e2e/ in a browser on
 # this machine. `make e2e` runs `up`, the suite and `down`; `make e2e-up` and `make e2e-down` keep the
 # stack between runs of the suite while it is written.
 #
@@ -9,7 +9,9 @@
 # touches the containers of make dev-up, and `down` removes what `up` made. Nothing is kept: the
 # database, the bucket and Dex's state go with their containers.
 # Only two ports are published, on the loopback address: the stand-in's HTTPS port (E2E_PORT) and
-# Dex's (E2E_DEX_PORT). PostgreSQL and MinIO are reachable on the run's network only.
+# Dex's (E2E_DEX_PORT). PostgreSQL and Silo are reachable on the run's network only. Silo, the
+# maintained MinIO fork, keeps MinIO's interface, so its container and network alias keep the name
+# minio.
 #
 # The identity provider must be one URL for the browser and for the backend, and the backend takes
 # plain http only on a loopback host (internal/config/oidc.go). So Dex's container holds the network
@@ -28,7 +30,7 @@ BACKEND_IMG=${BACKEND_IMG:-guidedtraffic/cowork-backend:latest}
 FRONTEND_IMG=${FRONTEND_IMG:-guidedtraffic/cowork-frontend:latest}
 INGRESS_IMAGE=${INGRESS_IMAGE:-nginxinc/nginx-unprivileged:1.31-alpine}
 POSTGRES_IMAGE=${POSTGRES_IMAGE:-postgres:18}
-MINIO_IMAGE=${MINIO_IMAGE:-cgr.dev/chainguard/minio:latest}
+MINIO_IMAGE=${MINIO_IMAGE:-docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46}
 DEX_IMAGE=${DEX_IMAGE:-ghcr.io/dexidp/dex:v2.45.1}
 BIND=${CONTAINER_BIND:-127.0.0.1}
 ADMIN_USER=${COWORK_E2E_ADMIN:-e2e-admin}
@@ -97,14 +99,14 @@ up() {
 		-c "CREATE ROLE cowork_app LOGIN PASSWORD 'cowork_app'" \
 		-c "CREATE DATABASE $DB OWNER cowork_owner"
 
-	step "MinIO: the bucket $BUCKET"
+	step "Silo: the bucket $BUCKET"
 	# Published on a port Docker chooses, for the one request that makes the bucket; the backend
 	# reaches it on the run's network. The server never makes its bucket (docs/adr/0058 D5).
 	docker run -d --name "$NAME-minio" --network "$NAME" --network-alias minio -p "$BIND::9000" \
 		-e MINIO_ROOT_USER="$MINIO_KEY" -e MINIO_ROOT_PASSWORD="$MINIO_SECRET" "$MINIO_IMAGE" server /data >/dev/null
 	local s3
 	s3=$(docker port "$NAME-minio" 9000/tcp | head -1)
-	wait_for MinIO "$NAME-minio" curl -sf "http://$s3/minio/health/live"
+	wait_for Silo "$NAME-minio" curl -sf "http://$s3/minio/health/live"
 	local code
 	code=$(curl -s -o /dev/null -w '%{http_code}' --aws-sigv4 "aws:amz:us-east-1:s3" \
 		--user "$MINIO_KEY:$MINIO_SECRET" -X PUT "http://$s3/$BUCKET")

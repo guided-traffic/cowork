@@ -1,0 +1,74 @@
+# AN EXAMPLE TO COPY AND ADAPT, NOT A SUPPORTED DEPLOYMENT (docs/adr/0058 D1, D2).
+# Values for the Helm chart of PGSTY Silo RELEASE.2026-09-16T00-00-00Z: helm/silo
+# of github.com/pgsty/silo at that tag, the chart's version 7.0.3. Silo publishes
+# its chart in its repository and in no Helm repository, so it is installed from
+# the repository at the tag:
+#
+#   curl -fsSL https://codeload.github.com/pgsty/silo/tar.gz/refs/tags/RELEASE.2026-09-16T00-00-00Z | tar -xz
+#   helm install silo ./silo-RELEASE.2026-09-16T00-00-00Z/helm/silo \
+#     -n silo --create-namespace -f silo-values.yaml
+#
+# `make examples-lint` renders the chart at that tag with this file and checks
+# the manifests with kubeconform, which proves no more than that they parse:
+# they have not been applied to a cluster in this repository.
+#
+# Silo is the maintained fork of MinIO, licensed AGPL-3.0 as MinIO was: a store
+# beside cowork, never linked into it. It keeps MinIO's S3 API, its MINIO_*
+# variables and its /minio/ routes, and the backend's S3 library, minio-go,
+# talks to it as it talked to MinIO; this repository's integration and
+# end-to-end tiers run the same image (MINIO_IMAGE in the Makefile).
+#
+# What it makes, in the namespace silo: one Silo server in standalone mode —
+# one pod, one volume, no erasure coding: a store that must survive the loss of
+# a disk or a node runs mode: distributed with four servers or more, the
+# chart's default being 16 — behind the Service silo on port 9000, served over
+# TLS with the certificate of the Secret silo-tls, which the installation
+# brings (keys public.crt and private.key; a cert-manager Certificate, say). The
+# root credentials come from the Secret silo-root (keys rootUser and
+# rootPassword), for the store's administrator only. It makes no bucket and no
+# user: the dedicated access key and its bucket-scoped policy are the mcli
+# commands of silo-bucket.sh, which the administrator runs with those root
+# credentials (docs/adr/0058 D5); cowork never sees them.
+#
+# The chart's values for cowork, in its own namespace:
+#
+#   storage:
+#     existingSecret: cowork-storage            # what silo-bucket.sh makes
+#     endpoint: https://silo.silo.svc.cluster.local:9000
+#     bucket: cowork
+#     pathStyle: true
+#     tls:
+#       caConfigMap: silo-ca                    # the authority of silo-tls's certificate, key ca.crt
+#
+# Every name, size and password is an example.
+mode: standalone
+replicas: 1
+
+# The server's image pinned by tag and digest, as MINIO_IMAGE in the Makefile:
+# multi-arch, linux/amd64 and linux/arm64. It holds the client mcli as well.
+image:
+  repository: docker.io/pgsty/silo
+  tag: RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
+
+existingSecret: silo-root
+
+persistence:
+  enabled: true
+  size: 50Gi
+
+# The chart asks for 16Gi by default, a distributed server's figure.
+resources:
+  requests:
+    memory: 1Gi
+
+tls:
+  enabled: true
+  certSecret: silo-tls
+  publicCrt: public.crt
+  privateKey: private.key
+
+# The chart's default lets anybody who reaches the port read the store's
+# metrics; with false a scrape needs a token.
+metrics:
+  serviceMonitor:
+    public: false

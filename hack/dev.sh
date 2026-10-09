@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # make dev: the whole development stack in one terminal, to watch the UI while it is built.
 #
-# PostgreSQL (make postgres-up), MinIO (make minio-up) and Dex (make dex-up) in containers, the
+# PostgreSQL (make postgres-up), Silo (make minio-up) and Dex (make dex-up) in containers, the
 # backend built from source on :8080 with the local administrator `dev` (docs/adr/0032) and Dex as
 # its identity provider (docs/adr/0029 D3), the group mapping team-red -> member and, on the first
 # run, demo data in the tenant `dev`, and ng serve on https://localhost:4200 (a self-signed
@@ -45,7 +45,7 @@ done
 mkdir -p "$STATE"
 chmod 700 "$STATE"
 
-step "PostgreSQL, MinIO and Dex"
+step "PostgreSQL, Silo and Dex"
 make -s dev-up POSTGRES_PORT="$POSTGRES_PORT" MINIO_PORT="$MINIO_PORT" DEX_PORT="$DEX_PORT"
 code=$(curl -s -o /dev/null -w '%{http_code}' --aws-sigv4 "aws:amz:us-east-1:s3" \
 	--user "$MINIO_ACCESS_KEY:$MINIO_SECRET_KEY" -X PUT "http://localhost:$MINIO_PORT/$BUCKET")

@@ -20,7 +20,7 @@ is accountable.
 > `0.11.0`. 1.0 comes once every open question is answered.** Tenants,
 > projects and tickets — with links, state transitions, open questions, comments, interest,
 > progress, time entries and attachments — the audit record and the event stream exist behind a
-> JSON API, tested against PostgreSQL 18, MinIO and Dex. A person logs in through any OpenID Connect
+> JSON API, tested against PostgreSQL 18, PGSTY Silo — the maintained MinIO fork — and Dex. A person logs in through any OpenID Connect
 > provider, whose groups decide who gets in and — mapped per tenant — in which role, or with a local
 > account: the local administrator the installation's Secret names, or the provider's administrator
 > group, creates the first tenant, its administrators add its people, and each person makes their
@@ -77,7 +77,7 @@ flowchart LR
 - 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
 - 🐘 **PostgreSQL 18 and S3** — `uuidv7()` keys and full-text search in PostgreSQL; attachments in any S3-compatible bucket, served only through the backend.
 - ⎈ **One Helm chart** — two hardened Deployments, an Ingress that routes the API to the backend, every credential from an existing Secret, no RBAC because neither container talks to the Kubernetes API, and no NetworkPolicy, because network policies are the cluster's.
-- 🧪 **Tested in every layer** — Go unit tests; integration and API tests against PostgreSQL 18, MinIO and Dex — and an issuer in the test's own process for what Dex cannot be made to do — with every response checked against the API document; Angular unit tests, chart lint and render, one container scan per image, release tooling check; all as `make` targets CI runs unchanged.
+- 🧪 **Tested in every layer** — Go unit tests; integration and API tests against PostgreSQL 18 — one of them serving TLS under a private authority —, Silo and Dex — and an issuer in the test's own process for what Dex cannot be made to do — with every response checked against the API document; Angular unit tests, chart lint and render, one container scan per image, release tooling check; all as `make` targets CI runs unchanged.
 - 🆕 **Newest toolchains** — Go 1.27 and Angular 22, moved by Renovate as grouped updates.
 - 🗂️ **Documentation with five homes** — decisions in ADRs, work lists in tickets that get archived, one security page per perspective.
 - 🧭 **Decided, then built** — every founding question was put to the owner one at a time and became an ADR before the code that depends on it.
@@ -174,11 +174,11 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | PostgreSQL container | `cowork-postgres`, `postgres:18` on `localhost:5432` | `make postgres-up`; `POSTGRES_CONTAINER=` and `POSTGRES_PORT=` move it |
 | Development database | `cowork`, owned by `cowork_owner`, served as `cowork_app` | created by `make postgres-up`; each password is the role's name |
 | PostgreSQL that serves TLS | `cowork-postgres-tls`, `postgres:18` on `localhost:5433`, a private authority and a server certificate for `localhost` and `127.0.0.1` made in the container at its first start; the authority's certificate copied to `bin/cowork-postgres-tls-ca.crt` | `make postgres-tls-up`, for the integration test of `COWORK_DATABASE_CA`; superuser `postgres` / `postgres`, every key a development value; `POSTGRES_TLS_CONTAINER=` and `POSTGRES_TLS_PORT=` move it, `make postgres-tls-down` removes it with the copy |
-| MinIO container | `cowork-minio`, `cgr.dev/chainguard/minio` pinned by digest, on `localhost:9000` | `make minio-up`; root keys `cowork` / `cowork-secret`, development values; `MINIO_CONTAINER=` and `MINIO_PORT=` move it |
+| S3 container | `cowork-minio`, PGSTY Silo — `docker.io/pgsty/silo`, the maintained MinIO fork — pinned by release tag and digest (`MINIO_IMAGE`), on `localhost:9000`; it holds the client `mcli` | `make minio-up`; root keys `cowork` / `cowork-secret`, development values; `MINIO_CONTAINER=` and `MINIO_PORT=` move it. The names stay MinIO's because Silo keeps MinIO's interface; a `cowork-minio` made before keeps its MinIO image until `make minio-down minio-up` |
 | Dex container | `cowork-dex`, `ghcr.io/dexidp/dex` pinned by tag and digest (`DEX_IMAGE`), on `localhost:5556`; the issuer `http://localhost:5556/dex`, the client `cowork` with the secret `cowork-dev-dex-secret` | `make dex-up`, configured from [`hack/dex/config.yaml`](hack/dex/config.yaml), copied in; `DEX_CONTAINER=` and `DEX_PORT=` move it; keeps nothing, so `make dex-down` loses nothing |
 | Dex users | `ada@example.com` (`cowork-admins`, `cowork-users`), `bob@example.com` (`cowork-users`, `team-red`), `cyd@example.com` (`cowork-users`), `dan@example.com` (`team-red`), each with the password `dev-only-dex` | every credential of Dex is development-only and public in this repository |
 | Container binding | `CONTAINER_BIND=127.0.0.1` `# default` | `make postgres-up`, `postgres-tls-up`, `minio-up` and `dex-up` publish their ports on the loopback address only; a container made before keeps its binding until it is removed |
-| All three at once | `make dev-up` | PostgreSQL, MinIO and Dex, what `make dev` needs; the integration tier needs `make postgres-tls-up` besides |
+| All three at once | `make dev-up` | PostgreSQL, Silo and Dex, what `make dev` needs; the integration tier needs `make postgres-tls-up` besides |
 | Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>`; on the PostgreSQL that serves TLS the same roles and a database `cowork_it_tls_<unix-nanoseconds>` | one database and one bucket per run, and one database per run of the authority's test; at the end the databases are dropped and the bucket emptied and removed |
 | End-to-end stack | the network `cowork-e2e` and the containers `cowork-e2e-postgres`, `-minio`, `-dex`, `-backend`, `-frontend`, `-ingress` (`E2E_NAME=` renames them); the UI on `https://localhost:18443` (`E2E_PORT`), Dex on `http://localhost:5557/dex` (`E2E_DEX_PORT`); the database `cowork_e2e`, the bucket `cowork-e2e` | `make e2e` makes and removes it, `make e2e-up` and `make e2e-down` keep it between runs; the local administrator `e2e-admin` with the password `e2e-only-cowork`, development values |
 | End-to-end data | the tenants `e2e` (a project per test, key `E` and seven random characters; the mapping `team-red` → `member`), `e2e-other` (the administrator's second tenant, a project per test that needs one there), `e2e-visual` (the project `VIEW` of the screenshots) and `e2e-d<random>` (one per run of the dashboard's path, its projects `OPEN` and `HIDDEN`), the token `e2e-seed`, local accounts `e2e-<random>` | made by the suite through the API ([testing.md](docs/developer/testing.md#end-to-end-tests)) |
@@ -239,7 +239,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
 | [docs/developer/development-credentials.md](docs/developer/development-credentials.md) | Every development-only username, password, key and token of `make dev`, its containers and the test tiers, with the file that sets it |
 | [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; [upgrading](docs/operations/upgrade.md); [backups, the consistency check and a restore](docs/operations/backups.md); runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation; [importing tickets and the export as a backup](docs/operations/import-and-export.md) |
-| [deploy/examples/](deploy/examples/) | A CloudNativePG cluster and a MinIO bucket to copy and adapt — examples checked for syntax against the operators' CRD schemas, not supported deployments |
+| [deploy/examples/](deploy/examples/) | A CloudNativePG cluster, the values of PGSTY Silo's Helm chart and the `mcli` commands of a bucket-scoped key to copy and adapt — examples checked for syntax against the CRD schemas and the chart of the releases they name, not supported deployments |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
 | [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [Dex](https://dexidp.io/docs/) | The standard the login through an identity provider follows, and the issuer it is developed and tested against |
@@ -250,7 +250,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 
 ### Prerequisites
 
-Go 1.27, Node.js 26 with npm, Docker (for the local PostgreSQL and MinIO and the images),
+Go 1.27, Node.js 26 with npm, Docker (for the local PostgreSQL and Silo and the images),
 Helm 3 or 4, `openssl`. `make help` lists every target.
 
 ### Run it locally
@@ -258,7 +258,7 @@ Helm 3 or 4, `openssl`. `make help` lists every target.
 The quickest way to see cowork, with demo data and the UI reloading as you edit:
 
 ```bash
-make dev                # PostgreSQL, MinIO, Dex, the backend, demo data and the UI on https://localhost:4200 — Ctrl-C stops it
+make dev                # PostgreSQL, Silo, Dex, the backend, demo data and the UI on https://localhost:4200 — Ctrl-C stops it
 ```
 
 Sign in as `dev` with the development-only password `dev-only-cowork`, or with *Sign in with Dex*
@@ -269,7 +269,7 @@ self-signed certificate — HTTPS, because Safari stores no `Secure` session coo
 `http://localhost` — so the browser asks about it once. The parts by hand:
 
 ```bash
-make postgres-up        # postgres:18 on :5432 — database cowork, roles cowork_owner (migrates) and cowork_app (serves); make dev-up adds MinIO and Dex
+make postgres-up        # postgres:18 on :5432 — database cowork, roles cowork_owner (migrates) and cowork_app (serves); make dev-up adds Silo and Dex
 make dev-seed           # migrates; then a person, the tenant "dev", an admin membership and a token, printed once
 make run                # the backend on :8080: migrates as cowork_owner, serves as cowork_app (text logs)
 make frontend-serve     # the Angular dev server on :4200, /api and /auth proxied to :8080 — the stand-in for the Ingress
@@ -322,12 +322,13 @@ from `make frontend-serve NG_SERVE_FLAGS=--ssl` ([`hack/dev.sh`](hack/dev.sh),
 [`hack/dex/config.yaml`](hack/dex/config.yaml)).
 
 Without object storage the backend refuses uploads (`501 uploads_disabled`). To try
-attachments, start MinIO, create a bucket with any S3 client — no target creates one — and
-hand the backend its keys:
+attachments, start Silo, create a bucket with any S3 client — no target creates one; the
+container's own `mcli` will do — and hand the backend its keys:
 
 ```bash
-make minio-up           # MinIO on :9000, root keys cowork / cowork-secret
-mc alias set local http://localhost:9000 cowork cowork-secret && mc mb local/cowork
+make minio-up           # Silo on :9000, root keys cowork / cowork-secret
+docker exec cowork-minio mcli alias set local http://localhost:9000 cowork cowork-secret
+docker exec cowork-minio mcli mb local/cowork
 COWORK_S3_ENDPOINT=http://localhost:9000 COWORK_S3_BUCKET=cowork \
   COWORK_S3_ACCESS_KEY_ID=cowork COWORK_S3_SECRET_ACCESS_KEY=cowork-secret make run
 ```
@@ -336,7 +337,7 @@ COWORK_S3_ENDPOINT=http://localhost:9000 COWORK_S3_BUCKET=cowork \
 
 ```bash
 make test                       # backend unit + frontend unit
-make dev-up postgres-tls-up     # the integration tier needs PostgreSQL, one that serves TLS, MinIO and Dex
+make dev-up postgres-tls-up     # the integration tier needs PostgreSQL, one that serves TLS, Silo and Dex
 make test-integration           # a database and a bucket of its own per run
 make e2e-browsers               # once: Playwright's Chromium and WebKit
 make docker-build e2e           # the end-to-end tier: both images behind the Ingress stand-in, a stack of its own
@@ -356,8 +357,8 @@ runtime role that owns nothing — both created by you, as
 [installation.md](docs/operations/installation.md#the-database-and-its-two-roles) shows; a Secret
 without a URL key, as an operator writes one, is read by its component keys instead
 ([the Secrets](docs/operations/installation.md#the-secrets)), and
-[`deploy/examples/`](deploy/examples/) has a CloudNativePG cluster and a MinIO bucket to copy —
-checked for syntax only.
+[`deploy/examples/`](deploy/examples/) has a CloudNativePG cluster and a Silo with its bucket to
+copy — checked for syntax only.
 
 ```bash
 kubectl create namespace cowork
@@ -576,7 +577,7 @@ the endpoint, the bucket and both keys together, or none of them. Without them u
 | `COWORK_S3_ACCESS_KEY_ID` | empty `# default` | `cowork-app` `# example` | The access key's id |
 | `COWORK_S3_SECRET_ACCESS_KEY` | empty `# default` | — | **Security:** a secret, never echoed; the key of a policy that reaches this bucket only, never root credentials |
 | `COWORK_S3_REGION` | empty `# default` | `eu-central-1` `# example` | Empty lets the client ask the server |
-| `COWORK_S3_USE_PATH_STYLE` | `true` `# default` | `true`, `false` | Path-style addressing, as MinIO expects; `false` for virtual-host style |
+| `COWORK_S3_USE_PATH_STYLE` | `true` `# default` | `true`, `false` | Path-style addressing, as MinIO and Silo expect; `false` for virtual-host style |
 | `COWORK_S3_CA` | empty `# default` | `/etc/cowork/s3-ca/ca.crt` `# example` | A PEM file of a private authority, trusted in addition to the system's |
 
 **Event stream** ([ADR 0054](docs/adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md))
@@ -1525,10 +1526,10 @@ make dev                  # the whole stack with demo data; the UI on :4200 with
 make generate             # after a change to backend/api/, the SQL queries, the problem catalogue or the dashboard; CI fails on drift
 make frontend-generate    # after make generate changed the API document: the Angular client; CI fails on drift
 make lint cyclo gosec vuln
-make dev-up               # what the integration tier needs: PostgreSQL, MinIO and Dex (dex-up and dex-down alone)
+make dev-up postgres-tls-up  # what the integration tier needs: PostgreSQL, one that serves TLS, Silo and Dex (dex-up and dex-down alone)
 make test test-integration
 make frontend-lint frontend-test-coverage frontend-build
-make helm-lint helm-template examples-lint   # the chart with every ci/ values file; deploy/examples/ against the operators' CRD schemas
+make helm-lint helm-template examples-lint   # the chart with every ci/ values file; deploy/examples/ against CloudNativePG's CRD schema and Silo's chart
 make docker-build e2e     # the end-to-end suite in Chromium and WebKit against both images (make e2e-browsers once)
 make build                # bin/cowork and frontend/dist/frontend/browser
 make build-mcp            # bin/cowork-mcp; GOOS= GOARCH= cross-compile

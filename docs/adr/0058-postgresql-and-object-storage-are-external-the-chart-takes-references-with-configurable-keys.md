@@ -24,7 +24,24 @@ chart reads are trusted like the Secrets beside them — documented, not checked
 2026-10-07 by the owner (D3: the database takes a private authority as the storage does, built as a
 change of its own with a PostgreSQL that serves TLS in the integration tier; ~~until then the gap is
 trust-boundaries.md H-78~~ *built 2026-10-09, below, and the gap closed*). Amended 2026-10-09 by the owner (D1,
-D2: PGSTY Silo replaces MinIO in the example and in the test tiers; not built yet).
+D2: PGSTY Silo replaces MinIO in the example and in the test tiers; ~~not built yet~~ *built the same
+day, below*).
+
+**Built** (2026-10-09): D1's and D2's Silo — [`silo-values.yaml`](../../deploy/examples/silo-values.yaml),
+the values of Silo's chart at RELEASE.2026-09-16T00-00-00Z, and
+[`silo-bucket.sh`](../../deploy/examples/silo-bucket.sh), the `mcli` commands, in place of
+`minio-tenant.yaml` and `minio-bucket.sh`, which are gone; `make examples-lint` renders the chart —
+taken out of Silo's repository archive at `SILO_VERSION`, since Silo publishes no Helm repository —
+with the example's values and checks the output with kubeconform, and `MINIO_OPERATOR_VERSION` and
+the Tenant's CustomResourceDefinition are gone from the `Makefile`; `MINIO_IMAGE` is
+`docker.io/pgsty/silo` at that release, pinned by digest, which `make minio-up`, the integration tier
+and `hack/e2e.sh` run — the integration tier passed against it on 2026-10-09, the end-to-end tier is
+CI's to run. `silo-bucket.sh` was run once against the Silo of `make minio-up`. *(Made concrete
+2026-10-09 by the implementer, open to the owner's objection:)* the targets and variables keep MinIO's
+names — `make minio-up`, `MINIO_IMAGE`, `MINIO_PORT`, the container `cowork-minio` —, because Silo
+keeps MinIO's interface (`MINIO_ROOT_USER`, `/minio/health/live`) and a rename would touch every
+script and page for no change of behaviour; the example's Silo runs in standalone mode, over TLS with
+a certificate the installation brings, with its metrics behind a token.
 
 **Built** (2026-10-09): D3's database authority — `database.tls.caConfigMap` with `keys.ca`
 (default `ca.crt`), mounted read-only at `/etc/cowork/database-ca` into the `migrate` init container,
@@ -36,7 +53,7 @@ that serves TLS under a private authority, `make postgres-tls-up`
 `TestTheDatabaseAuthorityHoldsVerifyFull`, which runs the binary's migration run and opens the
 runtime pool with `verify-full` against it and has both refuse the same server through another
 authority and through the system pool; the manifests of every earlier `ci/` values file render
-unchanged, byte for byte (Helm 3.21.3).
+unchanged, byte for byte (Helm 3.21.3 and 4.3.0).
 
 **Built** (2026-10-06): every rule. D3 and D5 since phase 2 in part — the database and owner Secrets
 by URL key, the session key Secret, the storage credentials Secret with literal endpoint values and
@@ -81,22 +98,21 @@ bucket requirements below. *(Amended:)* **Example manifests live in `deploy/exam
 CloudNativePG `Cluster` with `bootstrap.initdb` creating the `cowork` role with the
 attributes of D5 and the extensions, and a MinIO bucket with a dedicated access key and a
 bucket-scoped policy (as a MinIO Operator `Tenant` resource and, separately, as `mc`
-commands for an existing MinIO). Each file says in its first lines that it is an example to
+commands for an existing MinIO) *(amended 2026-10-09: Silo's, below)*. Each file says in its first lines that it is an example to
 copy and adapt, not a supported deployment, and the operations page links to them.
 *(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* the files are
 [`cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml) — the owner role as
 the `initdb` owner, whose password CloudNativePG generates into its `-app` Secret, the runtime role
 created in `postInitSQL` and kept by `managed.roles` from a `kubernetes.io/basic-auth` Secret, the
 three extensions and `CONNECT` for the two roles only in `postInitApplicationSQL`, a ConfigMap with
-the location —, [`minio-tenant.yaml`](../../deploy/examples/minio-tenant.yaml) and
-[`minio-bucket.sh`](../../deploy/examples/minio-bucket.sh). The Tenant makes the store and the
+the location —, `minio-tenant.yaml` and `minio-bucket.sh` *(both removed 2026-10-09)*. The Tenant makes the store and the
 bucket and no user: the operator gives every user of the Tenant's `users` field the policy
 `consoleAdmin`, which administers the whole store (verified in its v7.1.1 source), so the
 dedicated access key and its bucket-scoped policy are the `mc` commands for both, run by the
 store's administrator. The repositories of the MinIO Operator, the MinIO server and `mc` are
 archived on GitHub, and the server image the operator defaults to, `minio/minio`, can no longer be
 pulled (both checked 2026-10-06); the Tenant names Chainguard's build, which the integration tier
-runs, and says so. *(Amended 2026-10-09 by the owner, not built yet:)* the object storage example
+runs, and says so. *(Amended 2026-10-09 by the owner, ~~not built yet~~ built the same day:)* the object storage example
 is [PGSTY Silo](https://github.com/pgsty/silo), the maintained MinIO fork (AGPL-3.0, like MinIO; a
 store beside cowork, never linked into it), in place of the MinIO Operator `Tenant` and the `mc`
 commands: a values file for Silo's own Helm chart, which Silo publishes in its repository and in no
@@ -107,19 +123,20 @@ archived, and Silo keeps the protocol.
 
 **D2 — The tests are what is verified; the examples are syntax-checked.** The integration
 and end-to-end tiers run against `postgres:18` and MinIO service containers *(amended 2026-10-09,
-not built yet: Silo's image `pgsty/silo` in place of Chainguard's MinIO build, so that the tests run
-the store the example names)* ~~with the
+~~not built yet~~ built the same day: Silo's image `pgsty/silo` in place of Chainguard's MinIO build,
+so that the tests run the store the example names)* ~~with the
 development `compose.yaml`~~ *(amended 2026-10-06:)* the Makefile starts — `make postgres-up
 minio-up` for the integration tier, the stack of [`hack/e2e.sh`](../../hack/e2e.sh) under `make e2e` for the
 end-to-end tier ([ADR 0038](0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
 D5) —, and what ~~those files~~ they configure is verified on every push. *(Amended:)* The example
 manifests are validated in CI with `kubeconform` against the operators' CRD schemas (a
-`make examples-lint` target in the `helm` job), which proves they parse against the versions
-pinned there and nothing more; the operations page says so, and names the operator versions
+`make examples-lint` target in the `helm` job) *(amended 2026-10-09: Silo's chart, rendered at its
+pinned release with the example's values, in place of the Tenant's schema)*, which proves they parse
+against the versions pinned there and nothing more; the operations page says so, and names the operator versions
 the examples were written against. *(Made concrete 2026-10-06 by the implementer, open to the
 owner's objection:)* the schemas are made at every run from the CustomResourceDefinitions of the
-pinned releases — `CNPG_VERSION` and `MINIO_OPERATOR_VERSION` in the `Makefile`, fetched at their
-tags — by [`backend/tools/crdschema`](../../backend/tools/crdschema/main.go), which closes every
+pinned releases — `CNPG_VERSION` and ~~`MINIO_OPERATOR_VERSION`~~ in the `Makefile`, fetched at their
+tags; *(2026-10-09)* `SILO_VERSION` names the release whose chart is rendered — by [`backend/tools/crdschema`](../../backend/tools/crdschema/main.go), which closes every
 nested object that lists its properties, so a misspelt field fails; not from the datreeio
 CRDs-catalog, which keeps one schema per kind and no release, and held CloudNativePG 1.29.0's
 when 1.30.1 was current. `kubeconform` (v0.8.0, installed like the other Go tools) runs with
@@ -223,13 +240,15 @@ reaches that bucket only, never root credentials.
   URL Secret, a component Secret with a ConfigMap, and the throw-away paths.
 - A fresh cluster becomes: apply the two examples (adapted), then `helm install`. The
   ~~examples carry~~ *(amended 2026-10-06: the `Makefile` carries, beside `CNPG_VERSION` and
-  `MINIO_OPERATOR_VERSION`, and `make examples-lint` fails while an example names another
-  release)* Renovate comments for the operator versions so `kubeconform`'s schemas and
+  ~~`MINIO_OPERATOR_VERSION`~~ *(2026-10-09:)* `SILO_VERSION`, and `make examples-lint` fails while
+  an example names another release)* Renovate comments for the operator versions so `kubeconform`'s schemas and
   the pinned versions move together.
 - The examples are a maintenance surface of their own: an operator's CRD change breaks
   `make examples-lint`, which is intended — it is the moment to update the example or to say
   it is stale. *(Added 2026-10-06:)* so does Renovate's move of a pinned operator version, the
-  example still naming the one before; the MinIO Operator, archived, will not move.
+  example still naming the one before; ~~the MinIO Operator, archived, will not move~~ *(2026-10-09:)*
+  Silo's tags, `RELEASE.<date>T<time>Z`, are read by a regex versioning in `renovate.json`, not
+  confirmed by a Renovate run.
 
 ## Alternatives Considered
 
@@ -257,10 +276,14 @@ reaches that bucket only, never root credentials.
   installation that copies them, where the start-up checks of ADR 0021 D2 and ADR 0025
   (extensions) refuse to run and name the cause. D5 is the checklist behind the examples.
   *(2026-10-06:)* `minio-bucket.sh` was run once, against the MinIO of `make minio-up` with other
-  names; the CloudNativePG and Tenant manifests were never applied.
-- *(2026-10-06:)* The MinIO examples serve projects that are archived upstream and whose images
+  names; the CloudNativePG and Tenant manifests were never applied. *(2026-10-09:)* `silo-bucket.sh`
+  was run once against the Silo of `make minio-up`; `silo-values.yaml` was rendered — with Helm
+  3.21.3 and 4.3.0, the chart being a `v1` chart — and never applied.
+- ~~*(2026-10-06:)* The MinIO examples serve projects that are archived upstream and whose images
   are withdrawn: an installation that copies them inherits software that gets no fix. The chart
-  needs none of it; any S3-compatible store with a bucket-scoped key will do.
+  needs none of it; any S3-compatible store with a bucket-scoped key will do.~~ *(2026-10-09:)* the
+  examples name Silo, which is maintained; its release notes call compatibility with upstream MinIO
+  and `mc` best effort, so an installation that keeps a MinIO keeps it as it was, without fixes.
 - ~~*(2026-10-06:)* The chart mounts no authority for the database's certificate, so a role's
   `sslmode` can be `require` — encrypted, the server not verified — but not `verify-ca` or
   `verify-full` against a private authority such as CloudNativePG's own.~~ *(2026-10-09:)*

@@ -22,7 +22,7 @@ the bytes leave only through the backend, so nothing signs a URL (D4).
 
 | Function | Does |
 |---|---|
-| `New(config.Storage)` | builds the client from `COWORK_S3_*`: TLS when the endpoint is `https://`; path-style bucket addressing (`COWORK_S3_USE_PATH_STYLE`, default true, as MinIO expects) or DNS-style; the region, or none to let the client ask; a PEM authority from `COWORK_S3_CA` added to the system pool, and then TLS 1.2 at least. It does not reach the server |
+| `New(config.Storage)` | builds the client from `COWORK_S3_*`: TLS when the endpoint is `https://`; path-style bucket addressing (`COWORK_S3_USE_PATH_STYLE`, default true, as MinIO and Silo expect) or DNS-style; the region, or none to let the client ask; a PEM authority from `COWORK_S3_CA` added to the system pool, and then TLS 1.2 at least. It does not reach the server |
 | `Put(ctx, key, r, size, contentType)` | stores the bytes |
 | `Get(ctx, key)` | opens the object for streaming with its size; `ErrMissing` when the bucket does not hold it |
 | `Delete(ctx, key)` | removes the object; a missing one is no error |
@@ -193,8 +193,9 @@ The download of a dangling attachment answers its `404` before any of this
 
 ## The test server
 
-The integration tier needs an S3-compatible server: `make minio-up` starts the Chainguard MinIO
-image the [`Makefile`](../../Makefile) pins by digest, with `server /data` as its command, on
+The integration tier needs an S3-compatible server: `make minio-up` starts PGSTY Silo, the
+maintained MinIO fork, the image the [`Makefile`](../../Makefile) pins by release tag and digest
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D2), with `server /data` as its command, on
 `localhost:9000` with the development keys `cowork` / `cowork-secret` (`# default`);
 `make minio-down` removes it. `make test-integration` passes `COWORK_TEST_S3_ENDPOINT`,
 `COWORK_TEST_S3_ACCESS_KEY_ID` and `COWORK_TEST_S3_SECRET_ACCESS_KEY`; `TestMain` fails without

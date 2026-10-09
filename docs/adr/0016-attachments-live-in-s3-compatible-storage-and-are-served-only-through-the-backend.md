@@ -165,8 +165,11 @@ amendment when an installation needs it.
   all, and without them uploads answer `501 uploads_disabled` while lists and metadata work.
 - *(Added 2026-10-02:)* the client is `minio-go` v7 over `aws-sdk-go-v2`: a put with a known
   size, a streamed get, delete, path-style addressing and a custom authority are each one
-  option, at a fraction of the dependency tree. The test server is the MinIO build Chainguard
-  publishes (`cgr.dev/chainguard/minio`, pinned by digest), started with `server /data`.
+  option, at a fraction of the dependency tree. The test server is ~~the MinIO build Chainguard
+  publishes (`cgr.dev/chainguard/minio`, pinned by digest)~~ *(amended 2026-10-09 by
+  [ADR 0058](0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D2:)* PGSTY Silo, the maintained MinIO
+  fork (`docker.io/pgsty/silo`, pinned by release tag and digest), started with `server /data`; the
+  client stays `minio-go`.
 - A security page of its own under `docs/security/` ("what an upload can and cannot do"),
   written in the change that builds the feature, with D8 as its first open gap.
 - The backend streams every download; large files and many readers cost backend bandwidth.

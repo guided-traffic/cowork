@@ -31,7 +31,7 @@ works the same way with `deploy/helm/cowork` and the image values set. The value
 | A local administrator, an identity provider, or both, and the public URL | yes, to log in at all — without one of the two nobody can | the administrator's username and password from a Secret ([below](#the-local-administrator)); the provider's issuer and client id as values, its client secret from a Secret ([below](#the-identity-provider)); `backend.config.baseURL` for either |
 | An S3-compatible bucket with an access key scoped to it | no — without it uploads are refused | endpoint and bucket as values or from a ConfigMap, the key from a Secret, a private authority from a ConfigMap |
 
-[Example manifests](#example-manifests) for CloudNativePG and for MinIO show one way to provide the
+[Example manifests](#example-manifests) for CloudNativePG and for PGSTY Silo show one way to provide the
 database and the bucket; they are checked for syntax only.
 | A model the chat in the UI talks to | no — without it there is no chat | the provider, its URL and the model as values, its API key from a Secret ([below](#the-chat)) |
 | A Prometheus — with the Prometheus Operator's CRDs for the monitors and the alerts — and a Grafana with the dashboard sidecar | no — the metrics port is on either way, until `metrics.enabled: false` | `metrics.*` switches each resource on; nothing of it is a credential ([metrics.md](metrics.md)) |
@@ -556,8 +556,9 @@ never the store's root credentials
 The backend writes, reads and deletes objects under `<tenant-id>/<attachment-id>`, and lists the
 objects under each tenant's prefix once a day for the consistency check
 ([backups.md](backups.md#the-consistency-check)); it never creates or deletes a bucket, so the
-bucket exists before the first upload. This policy was enough against the MinIO of
-`make minio-up`, with the region left empty:
+bucket exists before the first upload. This policy was enough against the store of
+`make minio-up` — MinIO on 2026-10-07, PGSTY Silo, its maintained fork, on 2026-10-09 —, with the
+region left empty:
 
 ```json
 {
@@ -582,34 +583,35 @@ check fails at its listing — the log says `job failed` with `consistency-check
 and [`CoworkJobFailing`](metrics.md#coworkjobfailing) fires. With it the key can list every
 tenant's object keys, which it could not before: a key that leaks alone then reads every object, not
 only those whose keys the database names
-([attachments.md H-68](../security/attachments.md#h-68)). Checked on 2026-10-07 against that MinIO
-with a key of this policy and with one without its second statement: the listing was refused
-without it and answered with it, another bucket's listing was refused either way, and a missing
-object's `HEAD` and `GET` answered `404` either way. AWS S3 documents a `403` instead of the `404`
+([attachments.md H-68](../security/attachments.md#h-68)). Checked against that store — MinIO on
+2026-10-07, Silo on 2026-10-09 — with a key of this policy and with one without its second
+statement: the listing was refused without it and answered with it, another bucket's listing was
+refused either way, and a missing object's `HEAD` and `GET` answered `404` either way. AWS S3 documents a `403` instead of the `404`
 for a missing object to a key without `s3:ListBucket`, which a download of a lost file would then
 answer as `500 internal` instead of the `404` that names the cause — not verified here.
 
-With the MinIO client, against an existing MinIO, by its administrator — cowork never sees the
-administrator's keys (names and secrets are examples):
+With `mcli`, the client PGSTY Silo carries in its image — it reads MinIO's `mc` commands —, against
+a Silo by its administrator; cowork never sees the administrator's keys (names and
+secrets are examples):
 
 ```bash
-mc alias set minio https://minio.example.com <admin-access-key> <admin-secret-key>
-mc mb minio/cowork
-mc admin policy create minio cowork-attachments cowork-policy.json   # the policy above
-mc admin user add minio cowork-app 'CHANGE-ME'
-mc admin policy attach minio cowork-attachments --user cowork-app
+mcli alias set silo https://silo.example.com <admin-access-key> <admin-secret-key>
+mcli mb silo/cowork
+mcli admin policy create silo cowork-attachments cowork-policy.json   # the policy above
+mcli admin user add silo cowork-app 'CHANGE-ME'
+mcli admin policy attach silo cowork-attachments --user cowork-app
 kubectl -n cowork create secret generic cowork-storage \
   --from-literal=accessKeyId=cowork-app --from-literal=secretAccessKey='CHANGE-ME'
 ```
 
-[`deploy/examples/minio-bucket.sh`](../../deploy/examples/minio-bucket.sh) is these commands as a
-script, with a generated key; it was run once against the MinIO of `make minio-up`
+[`deploy/examples/silo-bucket.sh`](../../deploy/examples/silo-bucket.sh) is these commands as a
+script, with a generated key; it was run once against the Silo of `make minio-up`
 ([example manifests](#example-manifests)).
 
 The values: `storage.existingSecret=cowork-storage`, `storage.endpoint` (`http://` or
 `https://`, host and port; setting it turns the storage on), `storage.bucket`,
 `storage.region` (empty lets the client ask the server) and `storage.pathStyle` (`true`, as
-MinIO expects; `false` for virtual-host addressing).
+MinIO and Silo expect; `false` for virtual-host addressing).
 
 **From a ConfigMap.** Where the store's location is handed out in a ConfigMap — one the platform
 team keeps for every application, say — name it in `storage.existingConfigMap`: each of the four
@@ -651,24 +653,25 @@ not check it: a wrong endpoint, key or bucket shows on the first upload, as
 [`deploy/examples/`](../../deploy/examples/) shows one way to provide what the chart takes
 references to ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
 D1, D2). **They are examples to copy and adapt, not supported deployments, and they are checked for
-syntax only**: `make examples-lint`, in CI's `helm` job, validates them against the
-CustomResourceDefinitions of the operator releases they name, which proves that they parse against
-those releases and nothing more. Each file names, in its first lines, what it was written against
-and what it makes, and the chart's values for it.
+syntax only**: `make examples-lint`, in CI's `helm` job, validates the CloudNativePG manifest
+against the CustomResourceDefinitions of the release it names, and renders Silo's Helm chart at the
+release its values name and checks what it renders, which proves that they parse against those
+releases and nothing more. Each file names, in its first lines, what it was written against and
+what it makes, and cowork's values for it.
 
 | File | Written against | What it makes |
 |---|---|---|
 | [`cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml) | CloudNativePG 1.30.1, PostgreSQL 18.6 | a `Cluster` whose `initdb` bootstrap makes the database, the owner role, the runtime role with the attributes [above](#the-database-and-its-two-roles), the three extensions and `CONNECT` for the two roles only; the runtime role's `basic-auth` Secret; a ConfigMap with the location. Applied on 2026-10-07 to a kind cluster with CloudNativePG 1.30.1, with only the password changed, for the upgrade from 0.8.0 to 0.9.0; the runtime role's Secret carries `cnpg.io/reload`, so a changed password reaches the role at once — without the label CloudNativePG applies it only at a later reconciliation and the old password stays valid meanwhile |
-| [`minio-tenant.yaml`](../../deploy/examples/minio-tenant.yaml) | the MinIO Operator v7.1.1 | a `Tenant` with one pool and the bucket — and no user: the operator gives every user of its `users` field the policy `consoleAdmin`, an administrator of the whole store. Never applied to a cluster here |
-| [`minio-bucket.sh`](../../deploy/examples/minio-bucket.sh) | `mc` RELEASE.2025-08-13T08-35-41Z | the bucket, the bucket-scoped policy, the access key with that policy alone and the Secret `cowork-storage`, for an existing MinIO or the Tenant above. Run on 2026-10-07 against the MinIO of `make minio-up`: the key put, read, listed and deleted objects in its bucket and was refused listing another bucket and the administration |
+| [`silo-values.yaml`](../../deploy/examples/silo-values.yaml) | PGSTY Silo RELEASE.2026-09-16T00-00-00Z, the chart `helm/silo` of its repository at that tag | one Silo server in standalone mode with a volume of its own, served over TLS with the certificate of a Secret the installation brings, its root credentials from another; no bucket and no user. Silo publishes its chart in no Helm repository, so the file says how to install it from the repository's archive at the tag. Rendered and checked by `make examples-lint`, never applied to a cluster here |
+| [`silo-bucket.sh`](../../deploy/examples/silo-bucket.sh) | `mcli` RELEASE.2026-09-16T00-00-00Z, the client in Silo's image | the bucket, the bucket-scoped policy, the access key with that policy alone and the Secret `cowork-storage`, for the Silo above or another one — `mcli` reads MinIO's commands, but against a MinIO it was not tried. Run on 2026-10-09, with a stand-in for kubectl, against the Silo of `make minio-up`: the key put, read, listed and deleted objects in its bucket and was refused listing and writing another bucket, making a bucket and the administration |
 
-**MinIO is archived.** The repositories of the MinIO Operator, the MinIO server and `mc` are
-archived on GitHub, and the server image the operator defaults to, `minio/minio`, can no longer
-be pulled (checked 2026-10-06): no fix follows for any of them. Do not install the operator or
-MinIO for a new installation; the two MinIO files are for a cluster that runs them already, and
-the Tenant names Chainguard's build of the server, which this repository's tests run and which
-was not tried with the operator. cowork needs no MinIO: any S3-compatible store with a bucket and
-a key scoped to it will do ([object storage](#object-storage)).
+**Silo in place of MinIO.** The repositories of the MinIO server, its client and its operator are
+archived, and the server image `minio/minio` can no longer be pulled (checked 2026-10-06); the owner
+chose PGSTY Silo, the maintained MinIO fork, on 2026-10-09
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D1). Silo keeps MinIO's S3
+API, its `MINIO_*` variables and its `/minio/` routes; a MinIO an installation runs already works
+with cowork as before, through the same S3 library. cowork needs neither: any
+S3-compatible store with a bucket and a key scoped to it will do ([object storage](#object-storage)).
 
 ## The chat
 

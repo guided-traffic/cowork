@@ -60,11 +60,14 @@ POSTGRES_TLS_CA ?= $(BIN_DIR)/$(POSTGRES_TLS_CONTAINER)-ca.crt
 TEST_DATABASE_TLS_URL ?= postgres://postgres:postgres@localhost:$(POSTGRES_TLS_PORT)/postgres
 
 # Local S3-compatible storage (make minio-up / minio-down) for the attachment
-# tests: the MinIO build Chainguard publishes, pinned by digest. Its
-# entrypoint is the minio binary without arguments, so `server /data` is its
-# command. The keys are development values.
-# renovate: datasource=docker depName=cgr.dev/chainguard/minio
-MINIO_IMAGE ?= cgr.dev/chainguard/minio:latest@sha256:4cf4831a2bbcf13ddca09c1cbcc9faff716dd3c4247e0babc32864b8ee8e0034
+# tests and make dev: PGSTY Silo, the maintained MinIO fork (docs/adr/0058 D1,
+# D2), pinned by release tag and digest, multi-arch. It keeps MinIO's
+# interface — MINIO_ROOT_USER and MINIO_ROOT_PASSWORD, the /minio/health/live
+# route —, so the targets and variables keep MinIO's names; its entrypoint
+# runs `silo server /data` for the command `server /data`. The keys are
+# development values.
+# renovate: datasource=docker depName=docker.io/pgsty/silo
+MINIO_IMAGE ?= docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
 MINIO_CONTAINER ?= cowork-minio
 MINIO_PORT ?= 9000
 MINIO_ACCESS_KEY ?= cowork
@@ -122,18 +125,20 @@ OAPI_CODEGEN_VERSION ?= v2.8.0
 # renovate: datasource=go depName=github.com/yannh/kubeconform/cmd/kubeconform
 KUBECONFORM_VERSION ?= v0.8.0
 
-# The operator releases the example manifests of deploy/examples/ are written
-# against (docs/adr/0058 D1, D2): make examples-lint validates them against the
-# CustomResourceDefinitions of exactly these releases, and fails while an
-# example names another one, so a version Renovate moves is the moment to
-# update the example or to say it is stale. The MinIO Operator is archived;
-# v7.1.1 is its last release.
+# The releases the examples of deploy/examples/ are written against
+# (docs/adr/0058 D1, D2): make examples-lint validates the CloudNativePG
+# example against the CustomResourceDefinitions of CNPG_VERSION, and renders
+# Silo's Helm chart — helm/silo of its repository at SILO_VERSION, since Silo
+# publishes no Helm repository — with the example's values. It fails while an
+# example names another release, so a version Renovate moves is the moment to
+# update the example or to say it is stale.
 # renovate: datasource=github-releases depName=cloudnative-pg/cloudnative-pg
 CNPG_VERSION ?= v1.30.1
-# renovate: datasource=github-releases depName=minio/operator
-MINIO_OPERATOR_VERSION ?= v7.1.1
+# renovate: datasource=github-releases depName=pgsty/silo
+SILO_VERSION ?= RELEASE.2026-09-16T00-00-00Z
 EXAMPLES_DIR = deploy/examples
 EXAMPLES_SCHEMAS = $(LOCALBIN)/examples-schemas
+SILO_CHART = $(LOCALBIN)/silo-chart-$(SILO_VERSION)
 
 # gosec bounds: the self-hosted runners share one machine across jobs.
 GOSEC_CONCURRENCY ?= 4
@@ -275,7 +280,7 @@ dev-seed: migrate ## Create a development person, tenant, admin membership and t
 	cd $(BACKEND_DIR) && COWORK_DEV_SEED_DATABASE_URL="$${COWORK_DEV_SEED_DATABASE_URL:-$(DEV_ADMIN_URL)}" $(GOCMD) run ./test/devseed
 
 .PHONY: dev
-dev: ## Run the whole development stack in this terminal to watch the UI: PostgreSQL, MinIO, Dex, the backend, demo data and the Angular dev server on https://localhost:4200 (hack/dev.sh).
+dev: ## Run the whole development stack in this terminal to watch the UI: PostgreSQL, Silo, Dex, the backend, demo data and the Angular dev server on https://localhost:4200 (hack/dev.sh).
 	./hack/dev.sh
 
 .PHONY: dev-reset
@@ -341,7 +346,7 @@ test-release-tooling: ## Verify the semantic-release dependency set renders rele
 	node hack/verify-release-tooling.mjs
 
 # The end-to-end tier (docs/adr/0056, hack/e2e.sh): BACKEND_IMG and FRONTEND_IMG of one commit
-# behind the Ingress stand-in with TLS on E2E_PORT, with a PostgreSQL, a MinIO and a Dex of its
+# behind the Ingress stand-in with TLS on E2E_PORT, with a PostgreSQL, a Silo and a Dex of its
 # own (Dex on E2E_DEX_PORT), and the Playwright suite of frontend/e2e/ in Chromium and WebKit.
 # E2E_ARGS reaches `playwright test`, e.g. E2E_ARGS="--project=chromium-dark board.spec.ts".
 E2E_PORT ?= 18443
@@ -404,15 +409,15 @@ verify-phase-2: ## Verify phase 2 by hand: both built images behind the Ingress 
 	BACKEND_IMG=$(BACKEND_IMG) FRONTEND_IMG=$(FRONTEND_IMG) INGRESS_IMAGE=$(INGRESS_IMAGE) hack/verify-phase-2.sh
 
 .PHONY: minio-up
-minio-up: ## Start a local S3-compatible server (MinIO) for the attachment tests.
+minio-up: ## Start a local S3-compatible server (PGSTY Silo, the maintained MinIO fork) for the attachment tests.
 	@if docker inspect $(MINIO_CONTAINER) >/dev/null 2>&1; then echo "$(MINIO_CONTAINER) already exists" && docker start $(MINIO_CONTAINER) >/dev/null; else \
 	    docker run -d --name $(MINIO_CONTAINER) -p $(CONTAINER_BIND):$(MINIO_PORT):9000 -e MINIO_ROOT_USER=$(MINIO_ACCESS_KEY) -e MINIO_ROOT_PASSWORD=$(MINIO_SECRET_KEY) $(MINIO_IMAGE) server /data; fi
-	@echo "Waiting for MinIO..."
-	@for i in $$(seq 1 30); do curl -sf http://localhost:$(MINIO_PORT)/minio/health/live >/dev/null && break; sleep 1; [ $$i -lt 30 ] || { echo "MinIO did not become ready"; exit 1; }; done
-	@echo "MinIO is ready on port $(MINIO_PORT): access key $(MINIO_ACCESS_KEY); the tests create their own bucket"
+	@echo "Waiting for Silo..."
+	@for i in $$(seq 1 30); do curl -sf http://localhost:$(MINIO_PORT)/minio/health/live >/dev/null && break; sleep 1; [ $$i -lt 30 ] || { echo "Silo did not become ready"; exit 1; }; done
+	@echo "Silo is ready on port $(MINIO_PORT): access key $(MINIO_ACCESS_KEY); the tests create their own bucket"
 
 .PHONY: minio-down
-minio-down: ## Remove the local MinIO container and its data.
+minio-down: ## Remove the local S3 container (Silo) and its data.
 	docker rm -f $(MINIO_CONTAINER) >/dev/null 2>&1 || true
 
 # The configuration goes in between docker create and docker start, through a
@@ -434,7 +439,7 @@ dex-down: ## Remove the local Dex container; it keeps nothing, so the next one s
 	docker rm -f $(DEX_CONTAINER) >/dev/null 2>&1 || true
 
 .PHONY: dev-up
-dev-up: postgres-up minio-up dex-up ## Start the containers make dev and the integration tests need: PostgreSQL, MinIO and Dex.
+dev-up: postgres-up minio-up dex-up ## Start the containers make dev needs: PostgreSQL, Silo and Dex; the integration tests need postgres-tls-up besides.
 
 .PHONY: coverage-merge
 coverage-merge: ## Merge coverage/unit.out and coverage/integration.out into coverage/combined.out.
@@ -485,19 +490,27 @@ helm-lint: ## Lint the chart with every values file under deploy/helm/cowork/ci/
 helm-template: ## Render the chart with every values file under deploy/helm/cowork/ci/ and print nothing unless it fails.
 	@for f in $(HELM_CHART)/ci/*-values.yaml; do echo "helm template with $$f"; helm template cowork $(HELM_CHART) -f $$f > /dev/null; done
 
-# The CustomResourceDefinitions of the two releases are fetched at their tags
-# and turned into the JSON schemas kubeconform reads (backend/tools/crdschema);
-# the built-in kinds are checked against kubeconform's default schemas. Both
-# need the network. It proves the examples parse, nothing more (docs/adr/0058 D2).
+# CloudNativePG's Cluster CustomResourceDefinition is fetched at its tag and
+# turned into the JSON schema kubeconform reads (backend/tools/crdschema). Silo's
+# chart is taken out of its repository's archive at SILO_VERSION and rendered
+# with the example's values; the built-in kinds — the example's and the
+# chart's — are checked against kubeconform's default schemas. All of it needs
+# the network, and the chart Helm. It proves the examples parse, nothing more
+# (docs/adr/0058 D2).
 .PHONY: examples-lint
-examples-lint: $(KUBECONFORM) ## Validate deploy/examples/ against the CRD schemas of the operator releases they name (syntax only).
+examples-lint: $(KUBECONFORM) ## Validate deploy/examples/: the manifests against the CRD schemas of the releases they name, Silo's chart rendered with the example values (syntax only).
 	@grep -q "CloudNativePG $(CNPG_VERSION:v%=%)" $(EXAMPLES_DIR)/cloudnative-pg-cluster.yaml || { echo "$(EXAMPLES_DIR)/cloudnative-pg-cluster.yaml does not name CloudNativePG $(CNPG_VERSION:v%=%): update the example to that release"; exit 1; }
-	@grep -q "MinIO Operator $(MINIO_OPERATOR_VERSION)" $(EXAMPLES_DIR)/minio-tenant.yaml || { echo "$(EXAMPLES_DIR)/minio-tenant.yaml does not name the MinIO Operator $(MINIO_OPERATOR_VERSION): update the example to that release"; exit 1; }
+	@grep -q "PGSTY Silo $(SILO_VERSION)" $(EXAMPLES_DIR)/silo-values.yaml || { echo "$(EXAMPLES_DIR)/silo-values.yaml does not name PGSTY Silo $(SILO_VERSION): update the example to that release"; exit 1; }
+	@grep -q "mcli $(SILO_VERSION)" $(EXAMPLES_DIR)/silo-bucket.sh || { echo "$(EXAMPLES_DIR)/silo-bucket.sh does not name mcli $(SILO_VERSION): update the example to that release"; exit 1; }
 	@rm -rf $(EXAMPLES_SCHEMAS) && mkdir -p $(EXAMPLES_SCHEMAS)/crds
 	curl -fsSL -o $(EXAMPLES_SCHEMAS)/crds/clusters.yaml https://raw.githubusercontent.com/cloudnative-pg/cloudnative-pg/$(CNPG_VERSION)/config/crd/bases/postgresql.cnpg.io_clusters.yaml
-	curl -fsSL -o $(EXAMPLES_SCHEMAS)/crds/tenants.yaml https://raw.githubusercontent.com/minio/operator/$(MINIO_OPERATOR_VERSION)/resources/base/crds/minio.min.io_tenants.yaml
-	cd $(BACKEND_DIR) && $(GOCMD) run ./tools/crdschema -out $(EXAMPLES_SCHEMAS) $(EXAMPLES_SCHEMAS)/crds/clusters.yaml $(EXAMPLES_SCHEMAS)/crds/tenants.yaml
-	$(KUBECONFORM) -strict -summary -schema-location default -schema-location '$(EXAMPLES_SCHEMAS)/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' $(EXAMPLES_DIR)/*.yaml
+	cd $(BACKEND_DIR) && $(GOCMD) run ./tools/crdschema -out $(EXAMPLES_SCHEMAS) $(EXAMPLES_SCHEMAS)/crds/clusters.yaml
+	@[ -f $(SILO_CHART)/Chart.yaml ] || { rm -rf $(SILO_CHART) && mkdir -p $(SILO_CHART) && \
+	    curl -fsSL https://codeload.github.com/pgsty/silo/tar.gz/refs/tags/$(SILO_VERSION) | \
+	    tar -xz -C $(SILO_CHART) --strip-components=3 silo-$(SILO_VERSION)/helm/silo; }
+	helm template silo $(SILO_CHART) --namespace silo -f $(EXAMPLES_DIR)/silo-values.yaml >$(EXAMPLES_SCHEMAS)/silo.yaml
+	$(KUBECONFORM) -strict -summary -schema-location default -schema-location '$(EXAMPLES_SCHEMAS)/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+	    $(filter-out $(EXAMPLES_DIR)/silo-values.yaml,$(wildcard $(EXAMPLES_DIR)/*.yaml)) $(EXAMPLES_SCHEMAS)/silo.yaml
 	@for f in $(EXAMPLES_DIR)/*.sh; do echo "sh -n $$f"; sh -n $$f; done
 
 ##@ Dependencies

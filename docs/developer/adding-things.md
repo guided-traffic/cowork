@@ -93,7 +93,7 @@ the mechanics are [api.md](api.md)).
    `TestUnfilteredQueryUnderTenantSeesNothingOfAnother` fails for the new table.
 6. A database enum the Go code reads gets its `domain` type in
    [`sqlc.yaml`](../../backend/sqlc.yaml); `make generate`, `make test-unit`,
-   `make postgres-up minio-up test-integration`.
+   `make postgres-up postgres-tls-up minio-up dex-up test-integration`.
 
 ## A migration
 
@@ -110,7 +110,7 @@ the mechanics are [api.md](api.md)).
    refuses a new enum value in the transaction that adds it: `ALTER TYPE … ADD VALUE` goes into a
    file of its own, and what uses the value into the next, as `000018_ticket_state_review` and
    `000019` do.
-2. Run `make postgres-up minio-up test-integration`; add an assertion there for what only the
+2. Run `make postgres-up postgres-tls-up minio-up dex-up test-integration`; add an assertion there for what only the
    database proves. A rewrite of existing rows is tested from the version before it:
    `migrateTo(t, ownerURL, n-1)` in [`migrate_test.go`](../../backend/test/integration/migrate_test.go)
    on a database of its own, the rows written with the fixture, then `store.Migrate`.

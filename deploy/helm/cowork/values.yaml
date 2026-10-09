@@ -260,7 +260,7 @@ storage:
   bucket: ""
   # Empty asks the server.
   region: ""
-  # Path-style addressing, as MinIO expects.
+  # Path-style addressing, as MinIO and Silo expect.
   pathStyle: true
   tls:
     # ConfigMap with the PEM of a private authority the endpoint's

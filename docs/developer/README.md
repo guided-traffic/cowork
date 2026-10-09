@@ -78,8 +78,8 @@ change.
   you ([ADR 0003](../adr/0003-test-and-ci-policy.md) D1). Go targets `cd backend`, npm
   targets `cd frontend`. `make help` lists them.
 - **Nothing is skipped.** No `-short`, no `testing.Short()`, no "skip when the database is
-  missing". The integration tier fails and tells you how to start PostgreSQL, MinIO and Dex
-  (`make dev-up`).
+  missing". The integration tier fails and tells you how to start PostgreSQL, the one that serves TLS, Silo
+  and Dex (`make dev-up postgres-tls-up`).
 - **Newest toolchains.** Go 1.27 and Angular 22 today, moved by Renovate; a lagging version
   is a defect (ADR 0001 D9).
 - **A statement has one home.** Decision → ADR; work → ticket; how → `docs/developer/`; run →

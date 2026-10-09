@@ -33,16 +33,17 @@ Four jobs need more explanation than their targets:
   the README table — must be what `make generate` writes from the sources
   ([build-test-lint.md](build-test-lint.md#generated-code)).
 - **`helm`** (Helm Chart) runs `make helm-lint`, `make helm-template` and `make examples-lint`
-  with Helm 4.3.0. It sets up Go for the last: kubeconform installs with `go install`, and
-  `backend/tools/crdschema` turns the CustomResourceDefinitions the target fetches — at the tags of
-  `CNPG_VERSION` and `MINIO_OPERATOR_VERSION` — into the schemas the example manifests are checked
-  against, so the job needs the network ([build-test-lint.md](build-test-lint.md#targets),
+  with Helm 4.3.0. It sets up Go for the last: kubeconform installs with `go install`,
+  `backend/tools/crdschema` turns the CustomResourceDefinition the target fetches at the tag of
+  `CNPG_VERSION` into the schema the CloudNativePG example is checked against, and Silo's chart is
+  taken out of its repository's archive at `SILO_VERSION` and rendered with the example's values,
+  so the job needs the network ([build-test-lint.md](build-test-lint.md#targets),
   [ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D2).
   **Not run on a runner yet**: the step's first run is its first proof.
 - **`integration-tests`** has a `postgres:18` service container, whose `cowork` superuser is the
   administrative URL in `COWORK_TEST_DATABASE_URL`. The S3 server is started by `make minio-up`
-  on the job's Docker daemon, because a service container takes no command and the Chainguard
-  MinIO image needs `server /data`; the identity provider by `make dex-up`, because Dex needs
+  on the job's Docker daemon, because a service container takes no command and the Silo image
+  needs `server /data`; the identity provider by `make dex-up`, because Dex needs
   [`hack/dex/config.yaml`](../../hack/dex/config.yaml), which the target copies into the container
   and a service container cannot take; the PostgreSQL that serves TLS under a private authority by
   `make postgres-tls-up`, because its entrypoint is copied in and its authority's certificate copied
@@ -57,7 +58,7 @@ Four jobs need more explanation than their targets:
   ([testing.md](testing.md#end-to-end-tests)). It installs `make`, `libatomic1`, `curl` and
   `openssl` with `sudo apt-get` and the browsers with `make e2e-browsers
   PLAYWRIGHT_INSTALL_FLAGS=--with-deps`; the stack runs on the job's Docker daemon with its two
-  ports on `127.0.0.1`, which the runner reaches as the integration job reaches MinIO and Dex. Ten
+  ports on `127.0.0.1`, which the runner reaches as the integration job reaches Silo and Dex. Ten
   minutes are its budget (`timeout-minutes`, ADR 0056 D4). A failed or cancelled run uploads
   `e2e-results` — traces, videos, screenshots, the containers' logs and the HTML report, kept a
   week — and `make e2e-down` runs `if: always()` for a run the budget cut short. **Not run on a
