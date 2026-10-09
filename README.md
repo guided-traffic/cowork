@@ -119,7 +119,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Local administrator Secret rendered by the chart | `<fullname>-local-admin`, keys `username` and `password` | only with the inline `localAdmin.username` and `localAdmin.password` |
 | Identity provider's client Secret | not rendered: `auth.oidc.existingSecret` names one of yours, key `auth.oidc.keys.clientSecret` (`clientSecret`) and, when set, `auth.oidc.keys.clientId` | only with `auth.oidc.issuer`; the client secret has no inline value |
 | A chat provider's key Secret | not rendered: each entry of `chat.providers` names one of yours in `existingSecret`, key `keys.apiKey` (`apiKey`) | one per provider; required for kind `anthropic`; there is no inline value |
-| Pod annotations of the backend | `checksum/database-secret`, `checksum/database-owner-secret`, `checksum/local-admin-secret` | only with the inline values (the owner's while the init container migrates); a changed value rolls the pods |
+| Pod annotation of the backend | `cowork/inline-credentials-revision`, the release's revision | only while an inline credential is set — `database.url`, `database.owner.url` while the init container migrates, or `localAdmin.username` with `.password`; every upgrade rolls the pods, so a changed value reaches them, and no hash of a credential is in the pod template. Under `helm template` and Argo CD the revision stays `1` and a changed value takes a `rollout restart` |
 | CA volume of the backend | `s3-ca`, mounted at `/etc/cowork/s3-ca` | only with the storage on (`storage.endpoint` or `storage.existingConfigMap`) and `storage.tls.caConfigMap` |
 | Headless metrics Service | `<fullname>-backend-metrics`, port `metrics`, component label `metrics` | only with `metrics.serviceMonitor.enabled`; the metrics port alone, so the backend Service never carries it |
 | `PodMonitor`, `ServiceMonitor`, `PrometheusRule` | `<fullname>` | each only with its switch under `metrics.*`; they need the Prometheus Operator's CRDs |
@@ -1504,9 +1504,10 @@ The modes that change what is exposed:
   sees the password. `localAdmin.username` and `.password` render `<fullname>-local-admin` for
   a throw-away installation: plain text in the release Secret and in `helm get values`, like
   `database.url`, with a warning in the notes. The account follows the Secret at every start —
-  a changed value reaches the pods when they restart; rotate the Secret **and** restart to end a
-  leaked password with the sessions and tokens made with it, then review the grants it made
-  ([operations](docs/operations/installation.md#the-local-administrator)).
+  a changed value reaches the pods when they restart, which every `helm upgrade` does while an
+  inline credential is set (the pod annotation `cowork/inline-credentials-revision`); rotate the
+  Secret **and** restart to end a leaked password with the sessions and tokens made with it, then
+  review the grants it made ([operations](docs/operations/installation.md#the-local-administrator)).
 - **`backend.config.trustedProxies` and network policies.** Empty, the login throttle counts the
   Ingress controller pod as the one client of every browser behind it; set to the controller's
   networks it counts the browser. Too wide a list lets a client choose its address, and a network

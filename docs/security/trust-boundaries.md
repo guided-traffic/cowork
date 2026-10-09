@@ -177,7 +177,12 @@ value. The inline `database.url`, `database.owner.url` and `localAdmin.username`
 `localAdmin.password` put the credential in plain text into `helm get values`, and into a release
 Secret while the chart uses it — `database.owner.url` only while the init container migrates; the
 chart notes warn while an inline value is in use, and not for one set beside its `existingSecret`
-([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt), [H-88](#h-88)). The identity provider's client
+([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt), [H-88](#h-88)). Nothing derived from an
+inline credential reaches the pod template, which a namespace viewer without access to Secrets reads:
+while one is set, the backend pods carry the release's revision, `cowork/inline-credentials-revision`,
+so an upgrade rolls them, and no hash of the value
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
+D3; `make helm-template` holds it). The identity provider's client
 secret and the chat providers' API keys have no inline path at all.
 
 The server key is one secret with seven uses, each under a key derived from it by HKDF-SHA256 with a

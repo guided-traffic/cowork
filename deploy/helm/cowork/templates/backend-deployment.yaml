@@ -14,14 +14,17 @@ spec:
   template:
     metadata:
       annotations:
-        {{- if and .Values.database.url (not .Values.database.existingSecret) }}
-        checksum/database-secret: {{ .Values.database.url | sha256sum }}
-        {{- end }}
-        {{- if and (include "cowork.initContainerMigrates" .) .Values.database.owner.url (not .Values.database.owner.existingSecret) }}
-        checksum/database-owner-secret: {{ .Values.database.owner.url | sha256sum }}
-        {{- end }}
-        {{- if and (not .Values.localAdmin.existingSecret) .Values.localAdmin.username .Values.localAdmin.password }}
-        checksum/local-admin-secret: {{ printf "%s:%s" .Values.localAdmin.username .Values.localAdmin.password | sha256sum }}
+        {{- /*
+        While an inline credential renders a Secret of the release, every upgrade
+        restarts the pods, so a changed value reaches them: the release's
+        revision, never a hash of the credential, which every namespace viewer
+        reads in the pod template (docs/adr/0058 D3).
+        */}}
+        {{- $inlineDatabase := and .Values.database.url (not .Values.database.existingSecret) }}
+        {{- $inlineOwner := and (include "cowork.initContainerMigrates" .) .Values.database.owner.url (not .Values.database.owner.existingSecret) }}
+        {{- $inlineAdmin := and (not .Values.localAdmin.existingSecret) .Values.localAdmin.username .Values.localAdmin.password }}
+        {{- if or $inlineDatabase $inlineOwner $inlineAdmin }}
+        cowork/inline-credentials-revision: {{ .Release.Revision | quote }}
         {{- end }}
         {{- with .Values.backend.podAnnotations }}
         {{- toYaml . | nindent 8 }}

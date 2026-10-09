@@ -250,8 +250,11 @@ prints a warning in its notes for each. When a Secret reference and its inline v
 set, the reference wins and the value is ignored. [Job mode](#job-mode) takes none of them.
 
 **A changed Secret reaches the pods when they start again.** The chart restarts them by
-itself only for the inline values (a checksum annotation on the pod); after rotating a Secret
-you created, run `kubectl -n cowork rollout restart deploy/cowork-backend`.
+itself only while an inline value is set, and then at every `helm upgrade`: the backend pod carries
+the annotation `cowork/inline-credentials-revision` with the release's revision — never a hash of
+the credential, which anyone who may view the namespace's pods could read. Under `helm template` and
+Argo CD the revision stays `1`, so nothing rolls. After rotating a Secret you created, or an inline
+value rendered that way, run `kubectl -n cowork rollout restart deploy/cowork-backend`.
 
 ## The local administrator
 
