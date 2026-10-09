@@ -105,7 +105,14 @@ D2).
    fitted is `403 not_initialised` and gets no session. Only after the password fitted: a wrong
    password stays `401`, so the `403` tells nothing to anyone who does not know the password.
 8. **A session** is made in a transaction of its own, as the person
-   ([sessions.md](sessions.md)); the answer says whether the password is temporary.
+   ([sessions.md](sessions.md)); the answer says whether the password is temporary. The
+   transaction first reads the account's password hash again under a share lock
+   (`store.CreateSession`, `LockLoginPassword`) and makes no session when it is no longer the hash
+   the login verified — the same `401 invalid_credentials`. A change of the password — the
+   person's own, an administrator's reset, the start-up synchronisation — writes the row and so
+   waits for that lock: it either committed before and is seen, or comes after and ends the new
+   session with the others. A login in flight therefore never keeps a session the change was to
+   end (`TestALoginInFlightMakesNoSessionAfterThePasswordChanged`).
 
 ## The client address
 

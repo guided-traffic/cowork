@@ -466,7 +466,10 @@ Four groups of store code run outside `Mutate`, by design, and each is small
   request of the session but a write the CSRF check refuses (`movesIdleClock` in
   [`api/session.go`](../../backend/internal/api/session.go)).
 
-Everything else of the login is `Mutate`: `CreateSession` ends the session the login presented,
+Everything else of the login is `Mutate`: `CreateSession` reads the account's password hash again
+`FOR SHARE` (`LockLoginPassword`) and answers `ErrPasswordChanged` when it is not the hash the login
+verified — a change of the password updates that row, so it waits for the share lock or is seen by
+it —, ends the session the login presented,
 inserts the new one and records `logged_in` as the person, whose `Caller` carries the replaced
 cookie's hash; logout, the password change, the account routes and the creation of a token and a
 tenant are handlers' `Mutate` calls like any other. The session's timestamps and the login's

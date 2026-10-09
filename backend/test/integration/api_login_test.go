@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -647,6 +649,75 @@ func TestSessionSurvivesARestartAndTheExpiryJobKeepsTheLiving(t *testing.T) {
 	assertProblem(t, dead.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
 	assert.GreaterOrEqual(t, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE action = 'expired' AND entity_type = 'sessions'
 		AND actor_system = 'system:session-expiry'`), int64(1))
+}
+
+// loginLockNamespace is the first key of the lock an attempt takes on its
+// username, "cowl" (store.RecordLoginAttempt).
+const loginLockNamespace int32 = 0x636f776c
+
+// holdLoginLock takes a username's login lock in a transaction of the test's
+// own over the administrative connection; release ends the transaction.
+func holdLoginLock(t *testing.T, username string) (release func()) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, env.AdminURL)
+	require.NoError(t, err)
+	tx, err := conn.Begin(ctx)
+	require.NoError(t, err)
+	_, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1, hashtext($2))", loginLockNamespace, username)
+	require.NoError(t, err)
+	var once sync.Once
+	release = func() {
+		once.Do(func() {
+			_ = tx.Rollback(ctx)
+			_ = conn.Close(ctx)
+		})
+	}
+	t.Cleanup(release)
+	return release
+}
+
+// waitForLoginLock returns once a transaction waits for the username's login
+// lock, and fails when the request answered without waiting for it.
+func waitForLoginLock(t *testing.T, username string, answered <-chan *http.Response) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		select {
+		case res := <-answered:
+			require.Failf(t, "the login did not wait for its username's lock", "it answered %d", res.StatusCode)
+		default:
+		}
+		if scalar[int64](t, `SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted
+			AND classid = $1::int4::oid AND objid = hashtext($2)::oid AND objsubid = 2`, loginLockNamespace, username) > 0 {
+			return
+		}
+	}
+	require.Fail(t, "no login waited for its username's lock")
+}
+
+// docs/adr/0033 D4, docs/adr/0031 D4: a login that verified the old password
+// makes no session once the password changed before its session was made. The
+// login waits for its username's lock — after it verified the password —
+// while an administrator resets the password and commits; it then answers
+// like a wrong password, and the reset's end of every session holds.
+func TestALoginInFlightMakesNoSessionAfterThePasswordChanged(t *testing.T) {
+	w := newWorld(t)
+	names := withAccounts(t, w)
+	s := newAPI(t, withLogin)
+	admin := s.browser(t)
+	admin.mustLogin(names["adminA"], testPassword)
+	target := names["memberA"]
+
+	release := holdLoginLock(t, target)
+	answered := make(chan *http.Response, 1)
+	go func() { answered <- s.browser(t).login(target, testPassword) }()
+	waitForLoginLock(t, target, answered)
+	reset := admin.request(http.MethodPut, accountsPath(w.SlugA, "/", target, "/password"), map[string]string{"temporary_password": "a reset temporary one"})
+	require.Equal(t, http.StatusNoContent, reset.StatusCode)
+	release()
+	assertProblem(t, <-answered, http.StatusUnauthorized, "invalid_credentials")
+	assert.Zero(t, scalar[int64](t, `SELECT count(*) FROM sessions WHERE user_id = $1`, w.MemberA), "the old password made no session")
+	assert.Equal(t, http.StatusOK, s.browser(t).login(target, "a reset temporary one").StatusCode, "the new password signs in")
 }
 
 // docs/adr/0031 D4, docs/adr/0037 D5: logout deletes the row and clears the

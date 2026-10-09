@@ -176,6 +176,12 @@ func (s *Server) LoginLocal(ctx context.Context, req apigen.LoginLocalRequestObj
 	}
 	if outcome == store.LoginSucceeded {
 		res, err := s.startSession(ctx, acc, c, now)
+		if errors.Is(err, store.ErrPasswordChanged) {
+			// The password changed after it was verified: the change ends the
+			// sessions the old one made, so this login makes none.
+			s.h.opts.Metrics.Login(metrics.LoginLocal, metrics.LoginFailure)
+			return nil, invalidCredentials()
+		}
 		if err == nil {
 			s.h.opts.Metrics.Login(metrics.LoginLocal, metrics.LoginSuccess)
 		}
@@ -265,7 +271,8 @@ func (s *Server) attempt(ctx context.Context, username string, acc store.LoginAc
 
 // startSession makes the session of a verified login: a new cookie value,
 // never one seen before, replacing the session the request presented
-// (docs/adr/0031 D5).
+// (docs/adr/0031 D5) — unless the password changed after it was verified,
+// which store.ErrPasswordChanged says (docs/adr/0033 D4).
 func (s *Server) startSession(ctx context.Context, acc store.LoginAccount, c clientFacts, now time.Time) (apigen.LoginLocalResponseObject, error) {
 	value, hash, err := auth.GenerateSession()
 	if err != nil {
@@ -273,7 +280,7 @@ func (s *Server) startSession(ctx context.Context, acc store.LoginAccount, c cli
 	}
 	expires := now.Add(s.h.opts.SessionLifetime)
 	session := store.NewSession{PersonID: acc.UserID, Hash: hash, Now: now, Expires: expires, RequestID: requestid.UUID(ctx),
-		SourceHash: s.h.sourceHash(c.Client)}
+		SourceHash: s.h.sourceHash(c.Client), PasswordHash: acc.Hash}
 	if c.UserAgent != "" {
 		ua := sha256.Sum256([]byte(c.UserAgent))
 		session.UserAgentHash = ua[:]

@@ -198,7 +198,7 @@ takes away is not one of them: the page goes to the login page by a route change
 |---|---|---|
 | `POST /auth/logout` — for a session of the identity provider, with the issuer's logout handed to the browser where the issuer names one ([identity-provider.md](identity-provider.md#logout)) | the request's own | [`api/login.go`](../../backend/internal/api/login.go) `Logout` |
 | a login that presents a cookie | that cookie's | `store.CreateSession`, `store.CompleteOIDCLogin` |
-| `PUT /api/v1/me/password` | every other session of the person | `ChangeMyPassword` |
+| `PUT /api/v1/me/password` | every other session of the person — and a login that verified the old password and has not made its session yet makes none, as for every change below ([local-accounts.md](local-accounts.md#what-the-login-answers)) | `ChangeMyPassword`; `store.CreateSession` |
 | an administrator's reset of a managed account's password, `DELETE …/accounts/{username}/sessions`, `PUT …/deactivation` | every session of the account | [`api/accounts.go`](../../backend/internal/api/accounts.go) |
 | the start-up synchronisation, when the configured password changed or the account is deactivated | every session of the local administrator | [`bootstrap/bootstrap.go`](../../backend/internal/bootstrap/bootstrap.go) |
 | a groups refresh, or a login refused at the gate, that finds the person outside the identity provider's gate | every session of the person | [`store/identity.go`](../../backend/internal/store/identity.go) `ApplySessionRefresh`, `CompleteOIDCLogin` |

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -106,14 +107,34 @@ type NewSession struct {
 	// SourceHash is the keyed hash of the login's client address, which its
 	// audit row carries (docs/adr/0035 D2).
 	SourceHash []byte
+	// PasswordHash is the stored hash the login verified the password against.
+	PasswordHash string
 }
 
+// ErrPasswordChanged is returned by CreateSession when the account's password
+// changed after the login verified it: the change was to end every session
+// the old password made, this one too (docs/adr/0033 D4).
+var ErrPasswordChanged = errors.New("the password changed while the login was verified")
+
 // CreateSession ends the session the login presented, if any, stores the new
-// one and records the login as an act of its person — in one transaction. The
-// session's id and cookie appear in no audit row (docs/adr/0031 D7).
+// one and records the login as an act of its person — in one transaction,
+// which first reads the account's password hash again under a share lock and
+// refuses with ErrPasswordChanged when it is no longer the one the login
+// verified. A change of the password, the person's own, an administrator's
+// reset or the start-up synchronisation's, waits for that lock, so it either
+// commits first and is seen here, or comes after and ends this session with
+// the others. The session's id and cookie appear in no audit row
+// (docs/adr/0031 D7).
 func (db *DB) CreateSession(ctx context.Context, in NewSession) error {
 	ctx = WithCaller(ctx, Caller{UserID: in.PersonID, SessionHash: in.Replaces, RequestID: in.RequestID, SourceHash: in.SourceHash})
 	_, err := db.Mutate(ctx, uuid.Nil, func(w *Writer) error {
+		current, err := w.LockLoginPassword(ctx, in.PersonID)
+		if err != nil {
+			return fmt.Errorf("read the password again: %w", err)
+		}
+		if current != in.PasswordHash {
+			return ErrPasswordChanged
+		}
 		if len(in.Replaces) > 0 {
 			if _, err := w.DeleteSessionByHash(ctx, in.Replaces); err != nil {
 				return fmt.Errorf("end the replaced session: %w", err)

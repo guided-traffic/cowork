@@ -21,7 +21,7 @@ administrator revokes its tokens; a person's own change keeps theirs; built 2026
 2026-10-07 by the owner's answer recorded in [ADR 0035](0035-personal-access-tokens.md) D5 (D5:
 unlocking an account takes a browser session; built 2026-10-09), amended 2026-10-09 (D6: the
 throttle counts an attempt under the address's lock before its hash, and the password change takes
-it too). Date: 2026-10-01. Decided
+it too; D4: a login in flight makes no session after the password changed). Date: 2026-10-01. Decided
 by the owner as the answer to the catalog question "local accounts beyond the one administrator?": administrator-managed local accounts, over none,
 over self-registration with e-mail reset, and over global-administrator-only creation. The
 owner set two conditions: the minimum password length is configurable in the chart, and
@@ -110,6 +110,14 @@ rotation is the recovery of a leaked password, and a token made with it must not
 grants that password made stay, and the recovery reviews them
 ([installation.md](../operations/installation.md#the-local-administrator)). A person's own change
 of password keeps their tokens: they made them, and the change ends only their other sessions.)*
+*(Amended 2026-10-09, made concrete by the fix of the security review of 2026-10-07: a change
+ends **every** session the old password made, a login still in flight included. The transaction
+that makes a login's session reads the account's password hash again under a share lock and makes
+no session — `401 invalid_credentials` — when it is not the hash the login verified; every change of
+the password — the person's own, an administrator's reset, the start-up synchronisation — updates
+that row, so it either commits before and is seen, or waits for the lock and ends the new session
+with the others ([`store/sessions.go`](../../backend/internal/store/sessions.go) `CreateSession`;
+`TestALoginInFlightMakesNoSessionAfterThePasswordChanged`).)*
 
 **D5 — Reset is an administrator's act.** A tenant administrator (for accounts of their
 tenant) or a global administrator sets a new temporary password; there is no e-mail flow
