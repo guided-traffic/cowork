@@ -46,7 +46,6 @@ import { ago, Clock, count, dateTime, size } from '../../shared/time';
 import { meanings } from '../../shared/vocabulary';
 import {
   assigneeOf,
-  blocking,
   blockLacks,
   blockReasonLimit,
   blockableStates,
@@ -57,6 +56,7 @@ import {
   defaultBlockFrom,
   Draft,
   importing,
+  leftOut,
   linkText,
   outcomeMeanings,
   placeOf,
@@ -86,6 +86,8 @@ interface Row {
   candidate: BlockKind | null;
   /** What the block of the file still lacks. */
   lacks: string | null;
+  /** The execution leaves the file out: a conflict, or an error the person did not correct. */
+  leftOut: boolean;
 }
 
 /** An execution's refusal, as the page shows it above the report. */
@@ -129,7 +131,7 @@ export function notesOf(file: ImportFile, refused: readonly string[] = []): Note
     notes.push({
       tone: 'error',
       place: 'number',
-      text: `${shortKey(file.conflict)} holds this number in the project, or held it until it was purged`,
+      text: `${shortKey(file.conflict)} holds this number in the project`,
     });
   }
   for (const warning of file.warnings) {
@@ -170,14 +172,15 @@ export function notesOf(file: ImportFile, refused: readonly string[] = []): Note
 }
 
 /**
- * The import into a project (docs/adr/0051, docs/adr/0063), a tenant administrator's act: at
+ * The import into a project (docs/adr/0051, docs/adr/0063), a writer's act of the project: at
  * `…/imports` the files are chosen and the dry run is made; at `…/imports/<id>` — the job's own
  * address, which a reload keeps for as long as the dry run lives — its report is read: the summary,
- * what blocks the execution, and every file with its outcome, its title, type and state, its
+ * what the execution will leave out, and every file with its outcome, its title, type and state, its
  * confidential flag, its links, questions, warnings and errors. Each ticket file takes a correction
  * — left out, or another type, state, block or assignee (docs/adr/0063 D1) —, and the execution,
- * after a question that says it cannot be undone as a whole, sends them; its refusals land on the
- * files they name. An executed job shows what it created and leads to the backlog.
+ * after a question that says it cannot be undone as a whole, sends them and imports every file it
+ * can; a refused correction lands on the file it names. An executed job shows what it created and
+ * leads to the backlog.
  */
 @Component({
   selector: 'app-project-import',
@@ -244,11 +247,11 @@ export class ProjectImport {
   );
 
   // The job.
-  /** `<tenant>/<project>/<id>` while an administrator's page shows a job: a primitive, see frontend.md. */
+  /** `<tenant>/<project>/<id>` while a writer's page shows a job: a primitive, see frontend.md. */
   private readonly address = computed(() => {
     const tenant = this.session.tenant();
     const id = this.job();
-    return tenant && id && this.tenantInfo.isAdmin()
+    return tenant && id && this.tenantInfo.canWrite()
       ? `${tenant}/${this.project()}/${id}`
       : undefined;
   });
@@ -314,8 +317,8 @@ export class ProjectImport {
       .list()
       .map((member) => ({ id: member.person.id, name: member.person.display_name })),
   );
-  protected readonly blockingFiles = computed(() =>
-    this.dryRun() ? blocking(this.files(), this.drafts()) : [],
+  protected readonly leftOutFiles = computed(() =>
+    this.dryRun() ? leftOut(this.files(), this.drafts()) : [],
   );
   protected readonly importingFiles = computed(() =>
     this.dryRun() ? importing(this.files(), this.drafts()) : [],
@@ -332,16 +335,11 @@ export class ProjectImport {
       this.dryRun() &&
       !this.lapsed() &&
       !this.executing() &&
-      this.blockingFiles().length === 0 &&
       this.unfinished() === undefined &&
       this.importingFiles().length > 0,
   );
   /** What the execution would do, or why it cannot, beside its button. */
   protected readonly executeText = computed(() => {
-    const blocked = this.blockingFiles().length;
-    if (blocked > 0) {
-      return `${count(blocked, 'file')} ${blocked === 1 ? 'blocks' : 'block'} the execution.`;
-    }
     const unfinished = this.unfinished();
     if (unfinished) {
       return `${unfinished.path}: ${blockLacks(unfinished, this.drafts().get(unfinished.path))}`;
@@ -350,10 +348,10 @@ export class ProjectImport {
     if (files === 0) {
       return 'Nothing to import: every ticket file is left out.';
     }
-    const excluded = this.excludedCount();
+    const left = this.excludedCount() + this.leftOutFiles().length;
     return (
       `${files} of ${count(this.files().length, 'file')} to import` +
-      (excluded > 0 ? `, ${excluded} left out.` : '.')
+      (left > 0 ? `, ${left} left out.` : '.')
     );
   });
 
@@ -393,6 +391,7 @@ export class ProjectImport {
             editable && state === 'blocked' && (file.state !== 'blocked' || file.block === null),
           candidate: editable && state !== 'blocked' ? candidate : null,
           lacks: dryRun ? blockLacks(file, draft) : null,
+          leftOut: dryRun && leftOut([file], drafts).length > 0,
         };
       });
   });
@@ -654,7 +653,7 @@ export class ProjectImport {
       return;
     }
     const files = refusedFiles(this.problems.entries(error), sent);
-    if (problem.code === 'import_conflict' || (problem.status === 400 && files.size > 0)) {
+    if (problem.status === 400 && files.size > 0) {
       this.refusal.set({ title: problem.title, detail: problem.detail, files });
       refocus(this.host.nativeElement, this.injector, '#import-refusal-heading');
       return;

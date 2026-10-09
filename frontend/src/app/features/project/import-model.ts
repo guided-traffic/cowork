@@ -55,9 +55,9 @@ export const blockReasonLimit = 2000;
 export const outcomeMeanings: Record<ImportOutcome, string> = {
   create: 'The execution creates its ticket',
   conflict:
-    'Its number is a ticket of the project already, or was one: a repeated import is a duplicate, not an update',
-  error: 'It cannot be imported as it stands',
-  skip: 'No ticket file, or a manifest the import reads beside the tickets',
+    'Its number is a ticket of the project already: a repeated import is a duplicate, not an update, and the execution leaves it out',
+  error: 'It cannot be imported as it stands: the execution leaves it out',
+  skip: 'No ticket file, a /context document, or a manifest the import reads beside the tickets',
   exclude: 'Left out by a correction',
   created: 'The execution created its ticket',
 };
@@ -184,12 +184,13 @@ export function corrected(file: ImportFile, draft: Draft | undefined): boolean {
 }
 
 /**
- * The files that block the execution as the page reads them: a conflict not left out — its number
- * stays taken —, and a file with an error neither left out nor corrected. A correction may answer an
- * error — a state that needed a block, say —, and only the execution, which reads every file again
- * with the corrections, tells (docs/adr/0051 D2).
+ * The files the execution leaves out as the page reads them, besides those the person leaves out: a
+ * conflict — its number stays taken —, and a file with an error the person did not correct. A
+ * correction may answer an error — a state that needed a block, say —, and only the execution, which
+ * reads every file again with the corrections, tells (docs/adr/0051 D2): it imports every file it
+ * can and leaves out the rest, the report saying why.
  */
-export function blocking(
+export function leftOut(
   files: readonly ImportFile[],
   drafts: ReadonlyMap<string, Draft>,
 ): ImportFile[] {
@@ -236,8 +237,8 @@ export function linkText(link: ImportLink): string {
 }
 
 /**
- * The files an execution's refusal names, by their path: `409 import_conflict` names each as
- * `file:<path>`, and a `400` points at `/corrections/<i>/…`, the correction's index in the request.
+ * The files an execution's refusal names, by their path: a `400` points at `/corrections/<i>/…`, the
+ * correction's index in the request.
  */
 export function refusedFiles(
   entries: readonly { pointer: string; message: string }[],
@@ -247,10 +248,6 @@ export function refusedFiles(
   const add = (path: string, message: string) =>
     files.set(path, [...(files.get(path) ?? []), message]);
   for (const { pointer, message } of entries) {
-    if (pointer.startsWith('file:')) {
-      add(pointer.slice('file:'.length), message);
-      continue;
-    }
     const at = /^\/corrections\/(\d+)(?:\/|$)/.exec(pointer);
     const correction = at ? sent[Number(at[1])] : undefined;
     if (correction) {

@@ -46,7 +46,7 @@ export interface ImportFile {
   confidential_reason: (string | null);
 
   /**
-   * The key of the project's ticket that holds the number — a deleted one included — or held it until it was purged
+   * The key of the project's ticket that holds the number, a deleted one included
    */
   conflict: (string | null);
 
@@ -92,7 +92,7 @@ export interface ImportFile {
   questions: Array<ImportQuestion>;
 
   /**
-   * Why the file is skipped or excluded
+   * Why the file is skipped or excluded, or why the import leaves it out — its conflict, or its error
    */
   reason: (string | null);
   state: (TicketState | null);

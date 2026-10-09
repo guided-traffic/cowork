@@ -50,10 +50,13 @@ export class ProjectHeader {
   private readonly document = inject(DOCUMENT);
 
   protected readonly details = computed(() => this.projects.byKey(this.project()));
-  /** An import is an administrator's act, into a project the list holds — not an archived one. */
+  /**
+   * An import is a writer's act, as filing a ticket is (docs/adr/0051 D6), into a project the list
+   * holds — not an archived one. A restricted project's list may lower the role; the API is the check.
+   */
   protected readonly mayImport = computed(() => {
     const project = this.details();
-    return this.tenantInfo.isAdmin() && !!project && !project.archived_at;
+    return this.tenantInfo.canWrite() && !!project && !project.archived_at;
   });
   protected readonly creating = signal(false);
   protected readonly exporting = signal(false);

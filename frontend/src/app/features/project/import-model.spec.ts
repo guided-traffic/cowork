@@ -1,7 +1,6 @@
 import { ImportFile } from '../../api/models';
 import {
   assigneeOf,
-  blocking,
   blockLacks,
   changeable,
   correctable,
@@ -10,6 +9,7 @@ import {
   defaultBlockFrom,
   Draft,
   importing,
+  leftOut,
   linkText,
   placeOf,
   refusedFiles,
@@ -267,7 +267,7 @@ describe('the import model', () => {
     });
   });
 
-  describe('what blocks the execution, and what it imports', () => {
+  describe('what the execution leaves out, and what it imports', () => {
     const create = reported();
     const conflict = reported({
       path: 'docs/tickets/002-b.md',
@@ -286,17 +286,18 @@ describe('the import model', () => {
     });
     const files = [create, conflict, error, skip];
 
-    it('blocks on a conflict and on an error the person neither left out nor corrected', () => {
-      expect(blocking(files, new Map())).toEqual([conflict, error]);
+    it('leaves out a conflict and an error the person did not correct, and imports the rest', () => {
+      expect(leftOut(files, new Map())).toEqual([conflict, error]);
+      expect(importing(files, new Map())).toEqual([create]);
     });
 
-    it('lets a conflict and an error pass once they are left out', () => {
+    it('counts a conflict and an error the person left out as excluded, not left out by it', () => {
       const drafts = new Map<string, Draft>([
         [conflict.path, { exclude: true }],
         [error.path, { exclude: true }],
       ]);
 
-      expect(blocking(files, drafts)).toEqual([]);
+      expect(leftOut(files, drafts)).toEqual([]);
       expect(importing(files, drafts)).toEqual([create]);
     });
 
@@ -306,7 +307,7 @@ describe('the import model', () => {
         [error.path, { state: 'analysed' }],
       ]);
 
-      expect(blocking(files, drafts)).toEqual([]);
+      expect(leftOut(files, drafts)).toEqual([]);
       expect(importing(files, drafts)).toEqual([create, error]);
     });
 
@@ -336,7 +337,7 @@ describe('the import model', () => {
     ).toBe('VKO-9 found-in this one');
   });
 
-  it('finds the files an execution refusal names, by file:<path> and by the index of a correction', () => {
+  it('finds the files an execution refusal names, by the index of a correction', () => {
     const sent = [
       { path: 'docs/tickets/001-a.md', type: 'bug' as const },
       { path: 'docs/tickets/002-b.md', exclude: true },
@@ -344,9 +345,9 @@ describe('the import model', () => {
 
     const files = refusedFiles(
       [
-        { pointer: 'file:docs/tickets/003-c.md', message: 'conflict: VKO-3' },
-        { pointer: 'file:docs/tickets/003-c.md', message: 'error: line 4' },
+        { pointer: '/corrections/0/type', message: 'is no type' },
         { pointer: '/corrections/1/exclude', message: 'no other correction' },
+        { pointer: '/corrections/1/path', message: 'names no file' },
         { pointer: '/corrections/7/path', message: 'out of range' },
         { pointer: '/corrections', message: 'too many' },
       ],
@@ -354,8 +355,8 @@ describe('the import model', () => {
     );
 
     expect([...files]).toEqual([
-      ['docs/tickets/003-c.md', ['conflict: VKO-3', 'error: line 4']],
-      ['docs/tickets/002-b.md', ['no other correction']],
+      ['docs/tickets/001-a.md', ['is no type']],
+      ['docs/tickets/002-b.md', ['no other correction', 'names no file']],
     ]);
   });
 });

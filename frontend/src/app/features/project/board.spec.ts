@@ -178,7 +178,7 @@ describe('Board', () => {
         { provide: MembersService, useValue: { list: signal([]) } },
         // The header's export and its way to the import (docs/adr/0051).
         { provide: ImportsService, useValue: {} },
-        { provide: TenantService, useValue: { isAdmin: signal(false) } },
+        { provide: TenantService, useValue: { isAdmin: signal(false), canWrite: signal(false) } },
         { provide: SessionService, useValue: { tenant } },
         {
           provide: ProjectsService,

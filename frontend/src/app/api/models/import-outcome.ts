@@ -4,14 +4,14 @@
 
 /**
  * What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its
- * number is a ticket of the project already, deleted ones in the bin included, or was one that was
- * purged — a repeated import is a duplicate, not an update, and a number is never handed out twice
- * (docs/adr/0064 D3, docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors` says
- * why (docs/adr/0051 D2). `skip`: it is no ticket file, or it is a manifest of an export the import
- * reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it out
- * (docs/adr/0063 D1). `created`: the execution created its ticket. A dry run is not executed while
- * a file it would import is `conflict` or `error`: exclude the file, or correct the source and make
- * a new dry run
+ * number is a ticket of the project already, deleted ones in the bin included — a repeated import
+ * is a duplicate, not an update (docs/adr/0064 D3); a number a purged ticket held is no conflict, an
+ * import gives it back (docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors`
+ * says why (docs/adr/0051 D2). `skip`: it is no ticket file, a `/context` document, or a manifest of
+ * an export the import reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it
+ * out (docs/adr/0063 D1). `created`: the execution created its ticket. The execution leaves out
+ * every file that is `conflict` or `error` and imports the rest; the executed report keeps their
+ * outcome, and `reason` says why each was left out
  */
 export type ImportOutcome = 'create' | 'conflict' | 'error' | 'skip' | 'exclude' | 'created';
 

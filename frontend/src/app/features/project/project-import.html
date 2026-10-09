@@ -5,7 +5,7 @@
     <span class="key" data-testid="import-project">{{ project() }}</span>
     <h1 id="import-heading" tabindex="-1">Import tickets</h1>
     <span class="spacer"></span>
-    @if (job() !== undefined && tenantInfo.isAdmin() && session.tenant(); as tenant) {
+    @if (job() !== undefined && tenantInfo.canWrite() && session.tenant(); as tenant) {
       <a
         pButton
         [text]="true"
@@ -18,13 +18,14 @@
     }
   </header>
 
-  @if (tenantInfo.isAdmin()) {
+  @if (tenantInfo.canWrite()) {
     @if (job() === undefined) {
       <p class="muted lead">
         Bring a repository's Markdown tickets, or an earlier export of cowork, into {{ project() }}.
         A dry run reads every file and imports nothing: you read its report, leave files out or
-        correct them, and then execute it, which creates every ticket at once. The tickets keep
-        their numbers, so a number {{ project() }} holds already is a conflict.
+        correct them, and then execute it, which creates every ticket it can at once and leaves out
+        each file with an error or a conflict. The tickets keep their numbers, so a number
+        {{ project() }} holds already is a conflict.
       </p>
 
       <section class="card upload" aria-labelledby="upload-heading">
@@ -253,24 +254,20 @@
         </section>
       }
 
-      @if (blockingFiles().length > 0) {
+      @if (leftOutFiles().length > 0) {
         <section
-          class="card danger"
-          data-testid="import-blocking"
-          aria-labelledby="blocking-heading"
+          class="card notice"
+          data-testid="import-left-out"
+          aria-labelledby="left-out-heading"
         >
-          <h2 id="blocking-heading">
-            {{ count(blockingFiles().length, 'file') }}
-            {{ blockingFiles().length === 1 ? 'blocks' : 'block' }} the execution
-          </h2>
+          <h2 id="left-out-heading">{{ count(leftOutFiles().length, 'file') }} will be left out</h2>
           <p>
-            A conflict's number is a ticket of {{ project() }} already, or was one: leave the file
-            out, and the project's ticket stays as it is. A file with an error cannot be imported as
-            it stands: leave it out, correct it where a correction answers its error, or fix its
-            source and make a new dry run.
+            The execution imports the other files. A conflict's number is a ticket of
+            {{ project() }} already, which stays as it is. A file with an error is imported once its
+            source is fixed, in a new dry run — or here, where a correction answers its error.
           </p>
           <ul>
-            @for (file of blockingFiles(); track file.path) {
+            @for (file of leftOutFiles(); track file.path) {
               <li>
                 <code>{{ file.path }}</code> — {{ file.outcome }}:
                 {{
@@ -280,17 +277,6 @@
               </li>
             }
           </ul>
-          <button
-            pButton
-            type="button"
-            size="small"
-            severity="danger"
-            [outlined]="true"
-            (click)="excludeAll(blockingFiles().map((file) => file.path))"
-            data-testid="exclude-blocking"
-          >
-            Leave {{ blockingFiles().length === 1 ? 'it' : 'them' }} out
-          </button>
         </section>
       }
 
@@ -378,6 +364,11 @@
                     [attr.data-testid]="'outcome-' + row.file.path"
                     >{{ row.draft?.exclude ? 'exclude' : row.file.outcome }}</span
                   >
+                  @if (row.leftOut) {
+                    <small class="why muted" [attr.data-testid]="'left-out-' + row.file.path"
+                      >will be left out</small
+                    >
+                  }
                 </td>
                 <td class="col-type">
                   @if (row.changeable) {
@@ -557,9 +548,9 @@
   } @else if (session.me.isLoading()) {
     <p-skeleton width="24rem" height="2rem" />
   } @else {
-    <p class="muted" data-testid="import-not-admin">
-      An import is the tenant's administrators' act: ask one of them to import tickets into
-      {{ project() }}.
+    <p class="muted" data-testid="import-not-writer">
+      An import is the act of a member who writes in {{ project() }}: a viewer imports nothing. Ask
+      a tenant administrator for the role.
     </p>
   }
 </section>

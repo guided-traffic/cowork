@@ -176,7 +176,7 @@ describe('Shell', () => {
           })(),
         },
         { provide: ProjectsService, useValue: projects },
-        { provide: TenantService, useValue: { canCreateProjects, isAdmin } },
+        { provide: TenantService, useValue: { canCreateProjects, isAdmin, canWrite: isAdmin } },
         { provide: AuthService, useValue: { logout } },
         { provide: HARD_NAVIGATION, useValue: hardNavigate },
         { provide: EventStreamService, useValue: { status, personal } },
@@ -1203,7 +1203,10 @@ describe('Shell, creating a project', () => {
           provide: ProjectsService,
           useValue: { list: signal<Project[]>([]), projects: { isLoading: signal(false) } },
         },
-        { provide: TenantService, useValue: { canCreateProjects, isAdmin: signal(false) } },
+        {
+          provide: TenantService,
+          useValue: { canCreateProjects, isAdmin: signal(false), canWrite: signal(false) },
+        },
         {
           provide: EventStreamService,
           useValue: { status: signal<StreamStatus>('idle'), personal: vi.fn() },

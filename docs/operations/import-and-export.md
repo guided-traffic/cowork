@@ -8,9 +8,10 @@ second line of a backup. The routes, their fields and the variable are in the
 [ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md),
 [ADR 0063](../adr/0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md)
 and [ADR 0064](../adr/0064-one-direction-import-and-export-no-synchronisation.md). In the browser, a
-tenant's administrator imports on the project's import page and anyone who reads a project exports
-it from the project's header ([below](#in-the-browser)); the steps after that are the same through
-the API, with a token.
+member who writes in the project imports on its import page and anyone who reads a project exports
+it from the project's header ([below](#in-the-browser)); with Claude Code, `cowork-mcp import` does
+it in one command ([below](#with-claude-code)); the steps after that are the same through the API,
+with a token.
 
 **After the import, cowork is the source.** The files in the repository are history or are
 removed — the repository decides. cowork reads them once, never watches them, and never writes
@@ -41,25 +42,25 @@ leaves such a file out (ADR 0064 D1, D3).
 ## In the browser
 
 **Import.** On the project's board or backlog, the upload icon of its header, *Import tickets*, opens
-`/t/<tenant>/p/<KEY>/imports` — a tenant's administrator sees it, for a project that is not
-archived. Drop the files onto the page or choose them — a `tar.gz` or a `zip` of the directory, or
+`/t/<tenant>/p/<KEY>/imports` — a member or an administrator of the tenant sees it, for a project
+that is not archived. Drop the files onto the page or choose them — a `tar.gz` or a `zip` of the directory, or
 the Markdown files themselves —, and *Start the dry run*. Its report opens at an address of its own,
 `/t/<tenant>/p/<KEY>/imports/<id>`, which a reload or a bookmark keeps for the dry run's twenty-four
 hours:
 
 - the summary counts the files by outcome, and says how many tickets would be open and confidential
   and the highest number;
-- a panel names every file that blocks the execution — a conflict, or a file with an error — with
-  what blocks it, and *Leave them out*;
+- a panel names every file the execution will leave out — a conflict, or a file with an error — with
+  why; the execution imports the rest;
 - the table lists every file with its outcome, title, detected type and why, state, assignee,
-  confidential flag, questions, and a line for each warning, error with its line, link, note or
-  reason; *Leave out* takes a file out, and on a file to create, or one with an error, the type,
-  the state — `blocked` with its kind, reason and origin — and the assignee are corrected in
-  place.
+  confidential flag, questions, *will be left out* where the execution leaves it out, and a line for
+  each warning, error with its line, link, note or reason; *Leave out* takes a file out, and on a
+  file to create, or one with an error, the type, the state — `blocked` with its kind, reason and
+  origin — and the assignee are corrected in place.
 
-*Import N tickets* asks first, then executes with the corrections. What the execution refuses shows
-on the files it names, and the report stays as it was, so a file is left out and the execution
-started again. Done, the page counts what it created and leads to the backlog and the board. A dry
+*Import N tickets* asks first, then executes with the corrections. A correction the execution
+refuses shows on the file it names, and the report stays as it was, so the file is left out and the
+execution started again. Done, the page counts what it created and leads to the backlog and the board. A dry
 run past its day says so and offers a new one.
 
 **Export.** The download icon of a project's header, *Export the tickets*, saves the project's archive

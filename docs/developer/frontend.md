@@ -81,7 +81,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `ThemeService` | The colour scheme |
 | `MembersService` | The current tenant's members, every page of them — for the pickers; the member list reads numbered pages through `page`, with a `ConditionalPages` of their own — each with the effective role, its origins, whether the person has a local account (a username and a password of their own) and the e-mail address, which the backend gives the tenant's administrators only (`null` for anybody else, and for a person without one), for pickers and the member list; the grants — `add` by e-mail address or username with the form's `Idempotency-Key`, `setGrant`, `removeGrant`; loads again on a `membership.changed` of the current tenant, a `resync` and a `poll` |
 | `GroupMappingsService` | The current tenant's group mappings, loaded only while the person is its administrator or a global administrator without a role there; `create` with the form's key, `changeRole` with `If-Match`, `remove`; each act loads the members again, and `me` where the mapping is the person's own (`includes_caller`) |
-| `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
+| `TenantService` | The current tenant's settings (`canCreateProjects`, `isAdmin`, `canWrite`), written with `If-Match`; an answer that arrives after a tenant switch is not shown |
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`, to the ticket or to one of its comments) and time entries: booking, the correction with the entry's version as `If-Match`, voiding, an entry's earlier values |
 | `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (`setHorizon`, `PUT …/horizon` — `later` included, which clears the horizon set), the confidential flag, the sort of a project's rank by the score (`sortByScore`), after which the open lists load again, and a tenant administrator's deletion (`delete`, which drops the ticket from the cache) with the open tickets that wait on it first (`dependents`, the first step of `direction=up`). A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
 | `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links, a person's removal of a link GitHub's webhook made (`removePullRequest`), the person's stake |
@@ -1110,17 +1110,18 @@ version.
 ## The import and the export
 
 The import of a project ([ADR 0051], [ADR 0063]) is two routes that mirror the API ([ADR 0023]
-D4): `/t/:tenant/p/:project/imports`, where a tenant administrator chooses the files and makes the
+D4): `/t/:tenant/p/:project/imports`, where a writer of the project chooses the files and makes the
 dry run, and `/t/:tenant/p/:project/imports/:job`, the job's own address, which a reload keeps for
 as long as the dry run lives — one component,
 [`ProjectImport`](../../frontend/src/app/features/project/project-import.ts), whose input `job` is
 the address's last segment, its pure decisions in
 [`import-model.ts`](../../frontend/src/app/features/project/import-model.ts). The project's header
-leads to it with an upload icon, *Import tickets*, offered to a tenant administrator
-(`TenantService.isAdmin`) for a project the list holds — never an archived one, whose import the
-API refuses —; anybody else who opens the address reads that the import is the administrators', and
-the page asks nothing. The API is the check ([ADR 0051] D6); the page only does not offer what it
-would refuse.
+leads to it with an upload icon, *Import tickets*, offered to a member and an administrator of the
+tenant (`TenantService.canWrite`) for a project the list holds — never an archived one, whose import
+the API refuses —; a viewer who opens the address reads that the import is a writer's, and the page
+asks nothing. A restricted project's list may lower a member's role there, which the page does not
+know: the API is the check ([ADR 0051] D6 as amended 2026-10-09); the page only does not offer what
+it would refuse.
 
 **The files.** A drop zone and *Choose files*, a hidden `<input type="file" multiple>`: a `tar.gz`
 or a `zip`, or Markdown files. A file of a name already chosen takes the place of the earlier one,
@@ -1137,18 +1138,20 @@ not read twice in a row; a reload, or coming back to the address, reads it again
 it —, then the summary as tiles: `files` and each outcome the status knows, `create`, `conflict`,
 `error` and `skip` of a dry run, `created`, `exclude` and `skip` of an executed job, spelled as the
 API spells them with their meaning as the tooltip, and a sentence of the open and the confidential
-tickets and the highest number. Then what blocks the execution (`blocking`): every conflict not left
-out, and every file with an error neither left out nor corrected — a correction may answer an error,
-a state that needed a block, say, and only the execution, which reads every file again, tells
-([ADR 0051] D2) —, each with its first error or the key that holds its number, and *Leave them out*.
+tickets and the highest number. Then what the execution will leave out (`leftOut`): every conflict
+not left out by hand, and every file with an error neither left out nor corrected — a correction may
+answer an error, a state that needed a block, say, and only the execution, which reads every file
+again, tells ([ADR 0051] D2) —, each with its first error or the key that holds its number; the
+execution imports the rest, so nothing here holds it back.
 Then the files, in the upload's order, a select button narrowing them to one outcome: per file the
 key, the title, the confidential mark, the path and the grammar it was read in; the outcome; the
 type with why it was chosen (`type_reason`); the state; the assignee, with the identity the file
-names where it resolved to nobody; the number of questions; and under it a line for each thing the
+names where it resolved to nobody; the number of questions; *will be left out* under the outcome of
+a file the execution leaves out; and under it a line for each thing the
 import read or refuses there (`notesOf`): the execution's refusal, the errors with their line and
 field, the conflict, the warnings, the block, why the confidential flag is set — or why it is not —,
 the note of a done ticket or the reason of a dropped one, the parent, the links as the file's
-ticket takes part in them (`linkText`), and why a file is skipped. Every text of the report is the
+ticket takes part in them (`linkText`), and why a file is skipped, excluded or left out. Every text of the report is the
 upload's and is shown by interpolation.
 
 **The corrections** ([ADR 0063] D1) are the page's until the execution, by path (`Draft`, in a
@@ -1164,16 +1167,16 @@ the state with that kind. `correctionsOf` makes the request: a file left out nam
 any other only what the person changed from the report, in the report's order.
 
 **The execution.** A bar at the bottom of the page, sticky while the table scrolls, says how many
-files the execution imports and how many are left out, or why it cannot run — a blocking file, a
-block not complete, nothing left to import, the dry run's day over by the browser's clock —, and
+files the execution imports and how many are left out — by hand and by the execution —, or why it
+cannot run — a block not complete, nothing left to import, the dry run's day over by the browser's
+clock —, and
 holds *Import N tickets*. It asks first through
 [`ConfirmDialog`](../../frontend/src/app/shared/confirm-dialog.ts), the focus on *Not yet*: how many
 tickets, how many of them open and confidential, created at once with their questions and the links
 among them, the person their reporter, and that an import is undone only ticket by ticket, each
-deleted on its own page. A refusal lands where it belongs (`refusedFiles`): `409 import_conflict`
-names each file as `file:<path>` and a `400` points at `/corrections/<i>/…`, the index of the
-correction sent — both above the report and on the files they name, with *Leave these files out*,
-the pointers read through `ProblemService.entries` —; `409 import_executed` reads the job again and
+deleted on its own page. A refusal lands where it belongs (`refusedFiles`): a `400` points at
+`/corrections/<i>/…`, the index of the correction sent — above the report and on the file it names,
+with *Leave these files out*, the pointers read through `ProblemService.entries` —; `409 import_executed` reads the job again and
 says it was executed elsewhere; a `404` says the dry run is gone; anything else is a toast. Done,
 the page shows the executed job: how many tickets it created, links to the backlog and the board,
 and each created ticket's key as a link to it. A dry run is kept for twenty-four hours: a read or an
