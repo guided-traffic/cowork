@@ -1107,18 +1107,28 @@ func horizonInputs(p auth.Principal, role domain.Role, hw horizonWrite) *problem
 	return nil
 }
 
-// SetConfidential sets or lifts the confidential flag: a tenant
-// administrator's act, never an agent's; lifting needs a reason
-// (docs/adr/0065 D2, D3, D6) and a browser session — it shows the ticket to
-// every member, which would outlive a leaked token's revocation, while setting
-// the flag only takes sight away and stays open to a token (docs/adr/0035 D5).
-func (s *Server) SetConfidential(ctx context.Context, req apigen.SetConfidentialRequestObject) (apigen.SetConfidentialResponseObject, error) {
-	t, p := tenantFrom(ctx), principal(ctx)
-	if perr := auth.Authorize(p, t.Role, auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeAdmin, HardOff: auth.HardOffConfidential}); perr != nil {
-		return nil, perr
+// confidentialInputs holds a change of the confidential flag to who may make
+// it: a tenant administrator with admin scope, never an agent (docs/adr/0065
+// D6); and a lift to a browser session — it shows the ticket to every member,
+// which would outlive a leaked token's revocation, while setting the flag only
+// takes sight away and stays open to a token (docs/adr/0035 D5).
+func confidentialInputs(p auth.Principal, role domain.Role, body apigen.ConfidentialSet) *problem.Error {
+	if perr := auth.Authorize(p, role, auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeAdmin, HardOff: auth.HardOffConfidential}); perr != nil {
+		return perr
 	}
-	if !req.Body.Confidential && !p.Session {
-		return nil, problem.New(problem.SessionRequired, "lifting the confidential flag takes a browser session; a token may only set it")
+	if !body.Confidential && !p.Session {
+		return problem.New(problem.SessionRequired, "lifting the confidential flag takes a browser session; a token may only set it")
+	}
+	return nil
+}
+
+// SetConfidential sets or lifts the confidential flag: a tenant
+// administrator's act, never an agent's, a lift in a browser session alone
+// (confidentialInputs); lifting needs a reason (docs/adr/0065 D2, D3, D6).
+func (s *Server) SetConfidential(ctx context.Context, req apigen.SetConfidentialRequestObject) (apigen.SetConfidentialResponseObject, error) {
+	t := tenantFrom(ctx)
+	if perr := confidentialInputs(principal(ctx), t.Role, *req.Body); perr != nil {
+		return nil, perr
 	}
 	version, perr := ifMatch(req.Params.IfMatch)
 	if perr != nil {

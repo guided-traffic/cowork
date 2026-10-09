@@ -174,11 +174,18 @@ func (s *Server) LoginLocal(ctx context.Context, req apigen.LoginLocalRequestObj
 	if err != nil {
 		return nil, err
 	}
+	return s.answerLogin(ctx, outcome, acc, c, now)
+}
+
+// answerLogin answers a decided login and counts it in the metrics
+// (docs/adr/0060 D4): a session for a success — unless the password changed
+// after it was verified, when the change ends the sessions the old one made
+// and this login makes none —, the init state's 403, and for everything else
+// the same 401.
+func (s *Server) answerLogin(ctx context.Context, outcome store.LoginOutcome, acc store.LoginAccount, c clientFacts, now time.Time) (apigen.LoginLocalResponseObject, error) {
 	if outcome == store.LoginSucceeded {
 		res, err := s.startSession(ctx, acc, c, now)
 		if errors.Is(err, store.ErrPasswordChanged) {
-			// The password changed after it was verified: the change ends the
-			// sessions the old one made, so this login makes none.
 			s.h.opts.Metrics.Login(metrics.LoginLocal, metrics.LoginFailure)
 			return nil, invalidCredentials()
 		}
