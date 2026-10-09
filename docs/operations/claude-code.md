@@ -191,6 +191,23 @@ never an older session's model
 D5). With a Claude Code before 2.1.251 a switch is not seen, and the mark keeps the model the
 session started with.
 
+## Importing a repository's tickets
+
+A session brings a repository's Markdown tickets into cowork with one command, as the token's
+person's agent ([docs/operations/import-and-export.md](import-and-export.md#with-claude-code)):
+
+```bash
+cowork-mcp import acme/APP docs/tickets --dry-run     # example: the report only
+cowork-mcp import acme/APP docs/tickets               # example: the dry run, then its execution
+```
+
+It packs the directory's Markdown files — nothing else of the working copy leaves the machine —,
+prints the dry run's report and, without `--dry-run`, imports every file it can, leaving out each
+file with an error or a conflict and saying why. The importer sets no parent a file does not name:
+the session joins a family's children to it afterwards, through the API, where they belong
+together. The token must be able to write in the project; an agent token assigns a confidential
+ticket only to its own person.
+
 ## Each repository
 
 **Nothing, as a rule.** A repository is found by its remote, whatever form the clone uses —

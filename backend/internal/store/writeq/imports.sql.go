@@ -96,8 +96,8 @@ type InsertImportJobParams struct {
 }
 
 // The writes of an import job (docs/adr/0051 D1–D3, D7). The policies of
-// migration 43 hold every row of import_jobs to a tenant's administrators,
-// and its deletion to the expiry job.
+// migration 45 hold every row of import_jobs to the person who made it and
+// the tenant's administrators, and its deletion to the expiry job.
 // A dry run: its report and the files it read, valid until expires_at.
 func (q *Queries) InsertImportJob(ctx context.Context, arg InsertImportJobParams) error {
 	_, err := q.db.Exec(ctx, insertImportJob,
@@ -269,7 +269,7 @@ func (q *Queries) InsertImportedTicket(ctx context.Context, arg InsertImportedTi
 }
 
 const lockImportJob = `-- name: LockImportJob :one
-SELECT status, expires_at, source
+SELECT status, expires_at, source, report
 FROM import_jobs
 WHERE tenant_id = $1 AND project_id = $2 AND id = $3
 FOR UPDATE
@@ -285,13 +285,21 @@ type LockImportJobRow struct {
 	Status    string
 	ExpiresAt *time.Time
 	Source    []byte
+	Report    []byte
 }
 
 // The job an execution writes, locked until the transaction ends: a second
 // execution waits for the first and then finds it executed (docs/adr/0051 D3).
+// Its report names the assignees the dry run resolved, which the execution
+// holds the files to.
 func (q *Queries) LockImportJob(ctx context.Context, arg LockImportJobParams) (LockImportJobRow, error) {
 	row := q.db.QueryRow(ctx, lockImportJob, arg.TenantID, arg.ProjectID, arg.ID)
 	var i LockImportJobRow
-	err := row.Scan(&i.Status, &i.ExpiresAt, &i.Source)
+	err := row.Scan(
+		&i.Status,
+		&i.ExpiresAt,
+		&i.Source,
+		&i.Report,
+	)
 	return i, err
 }

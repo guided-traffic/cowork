@@ -664,7 +664,6 @@ const (
 	ProblemCodeGrantExists            ProblemCode = "grant_exists"
 	ProblemCodeIdempotencyKeyRequired ProblemCode = "idempotency_key_required"
 	ProblemCodeIdempotencyMismatch    ProblemCode = "idempotency_mismatch"
-	ProblemCodeImportConflict         ProblemCode = "import_conflict"
 	ProblemCodeImportExecuted         ProblemCode = "import_executed"
 	ProblemCodeInsufficientScope      ProblemCode = "insufficient_scope"
 	ProblemCodeInternal               ProblemCode = "internal"
@@ -731,8 +730,6 @@ func (e ProblemCode) Valid() bool {
 	case ProblemCodeIdempotencyKeyRequired:
 		return true
 	case ProblemCodeIdempotencyMismatch:
-		return true
-	case ProblemCodeImportConflict:
 		return true
 	case ProblemCodeImportExecuted:
 		return true
@@ -2567,7 +2564,7 @@ type ImportFile struct {
 	// `publication-accepted` date, a `shipped` line that names the fix
 	ConfidentialReason nullable.Nullable[string] `json:"confidential_reason"`
 
-	// Conflict The key of the project's ticket that holds the number — a deleted one included — or held it until it was purged
+	// Conflict The key of the project's ticket that holds the number, a deleted one included
 	Conflict nullable.Nullable[string] `json:"conflict"`
 
 	// Correction The correction the execution applied to the file; null in a dry run and where none was sent
@@ -2590,14 +2587,14 @@ type ImportFile struct {
 	Number nullable.Nullable[int] `json:"number"`
 
 	// Outcome What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its
-	// number is a ticket of the project already, deleted ones in the bin included, or was one that was
-	// purged — a repeated import is a duplicate, not an update, and a number is never handed out twice
-	// (docs/adr/0064 D3, docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors` says
-	// why (docs/adr/0051 D2). `skip`: it is no ticket file, or it is a manifest of an export the import
-	// reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it out
-	// (docs/adr/0063 D1). `created`: the execution created its ticket. A dry run is not executed while
-	// a file it would import is `conflict` or `error`: exclude the file, or correct the source and make
-	// a new dry run
+	// number is a ticket of the project already, deleted ones in the bin included — a repeated import
+	// is a duplicate, not an update (docs/adr/0064 D3); a number a purged ticket held is no conflict, an
+	// import gives it back (docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors`
+	// says why (docs/adr/0051 D2). `skip`: it is no ticket file, a `/context` document, or a manifest of
+	// an export the import reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it
+	// out (docs/adr/0063 D1). `created`: the execution created its ticket. The execution leaves out
+	// every file that is `conflict` or `error` and imports the rest; the executed report keeps their
+	// outcome, and `reason` says why each was left out
 	Outcome ImportOutcome `json:"outcome"`
 
 	// Parent The key of the parent in the project
@@ -2607,7 +2604,7 @@ type ImportFile struct {
 	Path      string           `json:"path"`
 	Questions []ImportQuestion `json:"questions"`
 
-	// Reason Why the file is skipped or excluded
+	// Reason Why the file is skipped or excluded, or why the import leaves it out — its conflict, or its error
 	Reason nullable.Nullable[string]      `json:"reason"`
 	State  nullable.Nullable[TicketState] `json:"state"`
 	Title  nullable.Nullable[string]      `json:"title"`
@@ -2686,14 +2683,14 @@ type ImportMessage struct {
 }
 
 // ImportOutcome What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its
-// number is a ticket of the project already, deleted ones in the bin included, or was one that was
-// purged — a repeated import is a duplicate, not an update, and a number is never handed out twice
-// (docs/adr/0064 D3, docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors` says
-// why (docs/adr/0051 D2). `skip`: it is no ticket file, or it is a manifest of an export the import
-// reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it out
-// (docs/adr/0063 D1). `created`: the execution created its ticket. A dry run is not executed while
-// a file it would import is `conflict` or `error`: exclude the file, or correct the source and make
-// a new dry run
+// number is a ticket of the project already, deleted ones in the bin included — a repeated import
+// is a duplicate, not an update (docs/adr/0064 D3); a number a purged ticket held is no conflict, an
+// import gives it back (docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors`
+// says why (docs/adr/0051 D2). `skip`: it is no ticket file, a `/context` document, or a manifest of
+// an export the import reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it
+// out (docs/adr/0063 D1). `created`: the execution created its ticket. The execution leaves out
+// every file that is `conflict` or `error` and imports the rest; the executed report keeps their
+// outcome, and `reason` says why each was left out
 type ImportOutcome string
 
 // ImportQuestion An open question the import creates as an entity of the ticket (docs/adr/0011 D2, D4)
@@ -6488,21 +6485,26 @@ type ClientInterface interface {
 	// A file is read as a ticket file of a repository (`NNN-<slug>.md`, `local_NNN-<slug>.md`,
 	// docs/adr/0063 D3), as cowork's own export (`<PROJECT>-<n>.md`, grammar v1), or, without
 	// frontmatter, as an archived record that becomes one done task (D4); everything else is listed
-	// as skipped (D5), the manifests of an export — `manifest.json`, `links.json`,
-	// `attachments.json` — as read beside the tickets. A `/context` document is an error
-	// (docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of
-	// the project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is
-	// detected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred
-	// (docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);
-	// the confidential flag follows the rule of the source (docs/adr/0065 D7).
+	// as skipped (D5), and so is a `/context` document, with its reason (docs/adr/0044 D3); the
+	// manifests of an export — `manifest.json`, `links.json`, `attachments.json` — are read beside
+	// the tickets. The numbers are kept (docs/adr/0007 D6): a number that is a ticket of the project
+	// already, a deleted one included, is a conflict (docs/adr/0064 D3), and one a purged ticket held
+	// is given back, with a warning (docs/adr/0007 D4); the type is detected by content and open to
+	// correction (docs/adr/0008 D5); `blocked` is never inferred (docs/adr/0009); a value outside its
+	// vocabulary is an error, never a guess (docs/adr/0010 D5); the confidential flag follows the
+	// rule of the source (docs/adr/0065 D7); no parent is guessed — a file names its own, or the
+	// person or their agent sets it after the import (docs/adr/0051 D2).
 	//
-	// An administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never
-	// an agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`
-	// (docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of
-	// multipart overhead is `413 payload_too_large`, and so are files that hold more than
-	// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived
-	// project is `409 project_archived`. Recorded as the act `created` on the `import_job`; the
-	// dry run is kept for twenty-four hours, after which its read and its execution answer `404`.
+	// A writer's act of the project, as creating a ticket is: the role `member` in the tenant — a
+	// restricted project's list may lower it — and a token's `write` scope; an agent's too
+	// (docs/adr/0051 D6, docs/adr/0043 D2). An import through a token, an agent's or not, assigns a
+	// confidential ticket to the token's own person or to nobody, the report saying why on the file
+	// (docs/adr/0065 D9, docs/adr/0043 D3); a browser session's assigns as the file says. A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of multipart
+	// overhead is `413 payload_too_large`, and so are files that hold more than
+	// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files — a `zip`'s entries counted, its
+	// directories included, before it is read (docs/adr/0051 D7); an archived project is `409
+	// project_archived`. Recorded as the act `created` on the `import_job`; the dry run is kept for
+	// twenty-four hours, after which its read and its execution answer `404`.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -6511,10 +6513,10 @@ type ClientInterface interface {
 
 	// GetImport An import job with its report
 	//
-	// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
-	// the tenant's administrators, a token's `read` scope, never an agent — a flagged token and a
-	// request with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a
-	// dry run older than twenty-four hours, is `404`.
+	// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For a
+	// writer of the project, an agent's token included, and of a job they made, and for the tenant's
+	// administrators (D6): another person's job is `404`, as are a job of another project and a dry
+	// run older than twenty-four hours.
 	//
 	// Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/imports/{import} (the `GetImport` operationId).
 	GetImport(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6536,13 +6538,15 @@ type ClientInterface interface {
 	// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
 	// nobody's inbox is told.
 	//
-	// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
-	// execution would import that has an error, or whose number is a ticket of the project by now,
-	// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
-	// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
-	// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
-	// its pointer. The same administrators, never an agent; an archived project is `409
-	// project_archived`; a dry run older than twenty-four hours is `404`.
+	// The execution imports every file it can and leaves out each file with an error or a conflict —
+	// one whose number a ticket filed since the dry run holds included —, its `reason` saying why
+	// (docs/adr/0051 D2, docs/adr/0064 D3); nothing refuses it but a second execution. An assignee is
+	// the member the dry run named: a file's identity that resolves to anybody else by now assigns
+	// nobody, with a warning. A dry run is executed at most once: a second execution is `409
+	// import_executed`. A correction naming no file of the job, or breaking the rules of
+	// `ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry
+	// runs, and the tenant's administrators: another person's dry run is `404`; an archived project
+	// is `409 project_archived`; a dry run older than twenty-four hours is `404`.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -6566,13 +6570,15 @@ type ClientInterface interface {
 	// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
 	// nobody's inbox is told.
 	//
-	// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
-	// execution would import that has an error, or whose number is a ticket of the project by now,
-	// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
-	// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
-	// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
-	// its pointer. The same administrators, never an agent; an archived project is `409
-	// project_archived`; a dry run older than twenty-four hours is `404`.
+	// The execution imports every file it can and leaves out each file with an error or a conflict —
+	// one whose number a ticket filed since the dry run holds included —, its `reason` saying why
+	// (docs/adr/0051 D2, docs/adr/0064 D3); nothing refuses it but a second execution. An assignee is
+	// the member the dry run named: a file's identity that resolves to anybody else by now assigns
+	// nobody, with a warning. A dry run is executed at most once: a second execution is `409
+	// import_executed`. A correction naming no file of the job, or breaking the rules of
+	// `ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry
+	// runs, and the tenant's administrators: another person's dry run is `404`; an archived project
+	// is `409 project_archived`; a dry run older than twenty-four hours is `404`.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -9613,21 +9619,26 @@ func (c *Client) ExportProject(ctx context.Context, tenant TenantSlug, project P
 // A file is read as a ticket file of a repository (`NNN-<slug>.md`, `local_NNN-<slug>.md`,
 // docs/adr/0063 D3), as cowork's own export (`<PROJECT>-<n>.md`, grammar v1), or, without
 // frontmatter, as an archived record that becomes one done task (D4); everything else is listed
-// as skipped (D5), the manifests of an export — `manifest.json`, `links.json`,
-// `attachments.json` — as read beside the tickets. A `/context` document is an error
-// (docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of
-// the project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is
-// detected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred
-// (docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);
-// the confidential flag follows the rule of the source (docs/adr/0065 D7).
+// as skipped (D5), and so is a `/context` document, with its reason (docs/adr/0044 D3); the
+// manifests of an export — `manifest.json`, `links.json`, `attachments.json` — are read beside
+// the tickets. The numbers are kept (docs/adr/0007 D6): a number that is a ticket of the project
+// already, a deleted one included, is a conflict (docs/adr/0064 D3), and one a purged ticket held
+// is given back, with a warning (docs/adr/0007 D4); the type is detected by content and open to
+// correction (docs/adr/0008 D5); `blocked` is never inferred (docs/adr/0009); a value outside its
+// vocabulary is an error, never a guess (docs/adr/0010 D5); the confidential flag follows the
+// rule of the source (docs/adr/0065 D7); no parent is guessed — a file names its own, or the
+// person or their agent sets it after the import (docs/adr/0051 D2).
 //
-// An administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never
-// an agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`
-// (docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of
-// multipart overhead is `413 payload_too_large`, and so are files that hold more than
-// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived
-// project is `409 project_archived`. Recorded as the act `created` on the `import_job`; the
-// dry run is kept for twenty-four hours, after which its read and its execution answer `404`.
+// A writer's act of the project, as creating a ticket is: the role `member` in the tenant — a
+// restricted project's list may lower it — and a token's `write` scope; an agent's too
+// (docs/adr/0051 D6, docs/adr/0043 D2). An import through a token, an agent's or not, assigns a
+// confidential ticket to the token's own person or to nobody, the report saying why on the file
+// (docs/adr/0065 D9, docs/adr/0043 D3); a browser session's assigns as the file says. A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of multipart
+// overhead is `413 payload_too_large`, and so are files that hold more than
+// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files — a `zip`'s entries counted, its
+// directories included, before it is read (docs/adr/0051 D7); an archived project is `409
+// project_archived`. Recorded as the act `created` on the `import_job`; the dry run is kept for
+// twenty-four hours, after which its read and its execution answer `404`.
 //
 // Takes any type of body and a specified content type.
 //
@@ -9646,10 +9657,10 @@ func (c *Client) CreateImportWithBody(ctx context.Context, tenant TenantSlug, pr
 
 // GetImport An import job with its report
 //
-// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
-// the tenant's administrators, a token's `read` scope, never an agent — a flagged token and a
-// request with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a
-// dry run older than twenty-four hours, is `404`.
+// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For a
+// writer of the project, an agent's token included, and of a job they made, and for the tenant's
+// administrators (D6): another person's job is `404`, as are a job of another project and a dry
+// run older than twenty-four hours.
 //
 // Corresponds with GET /api/v1/tenants/{tenant}/projects/{project}/imports/{import} (the `GetImport` operationId).
 func (c *Client) GetImport(ctx context.Context, tenant TenantSlug, project ProjectKey, pImport ImportID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -9681,13 +9692,15 @@ func (c *Client) GetImport(ctx context.Context, tenant TenantSlug, project Proje
 // streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
 // nobody's inbox is told.
 //
-// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
-// execution would import that has an error, or whose number is a ticket of the project by now,
-// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
-// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
-// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
-// its pointer. The same administrators, never an agent; an archived project is `409
-// project_archived`; a dry run older than twenty-four hours is `404`.
+// The execution imports every file it can and leaves out each file with an error or a conflict —
+// one whose number a ticket filed since the dry run holds included —, its `reason` saying why
+// (docs/adr/0051 D2, docs/adr/0064 D3); nothing refuses it but a second execution. An assignee is
+// the member the dry run named: a file's identity that resolves to anybody else by now assigns
+// nobody, with a warning. A dry run is executed at most once: a second execution is `409
+// import_executed`. A correction naming no file of the job, or breaking the rules of
+// `ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry
+// runs, and the tenant's administrators: another person's dry run is `404`; an archived project
+// is `409 project_archived`; a dry run older than twenty-four hours is `404`.
 //
 // Takes any type of body and a specified content type.
 //
@@ -9721,13 +9734,15 @@ func (c *Client) ExecuteImportWithBody(ctx context.Context, tenant TenantSlug, p
 // streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
 // nobody's inbox is told.
 //
-// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
-// execution would import that has an error, or whose number is a ticket of the project by now,
-// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
-// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
-// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
-// its pointer. The same administrators, never an agent; an archived project is `409
-// project_archived`; a dry run older than twenty-four hours is `404`.
+// The execution imports every file it can and leaves out each file with an error or a conflict —
+// one whose number a ticket filed since the dry run holds included —, its `reason` saying why
+// (docs/adr/0051 D2, docs/adr/0064 D3); nothing refuses it but a second execution. An assignee is
+// the member the dry run named: a file's identity that resolves to anybody else by now assigns
+// nobody, with a warning. A dry run is executed at most once: a second execution is `409
+// import_executed`. A correction naming no file of the job, or breaking the rules of
+// `ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry
+// runs, and the tenant's administrators: another person's dry run is `404`; an archived project
+// is `409 project_archived`; a dry run older than twenty-four hours is `404`.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -21793,21 +21808,26 @@ type ClientWithResponsesInterface interface {
 	// A file is read as a ticket file of a repository (`NNN-<slug>.md`, `local_NNN-<slug>.md`,
 	// docs/adr/0063 D3), as cowork's own export (`<PROJECT>-<n>.md`, grammar v1), or, without
 	// frontmatter, as an archived record that becomes one done task (D4); everything else is listed
-	// as skipped (D5), the manifests of an export — `manifest.json`, `links.json`,
-	// `attachments.json` — as read beside the tickets. A `/context` document is an error
-	// (docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of
-	// the project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is
-	// detected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred
-	// (docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);
-	// the confidential flag follows the rule of the source (docs/adr/0065 D7).
+	// as skipped (D5), and so is a `/context` document, with its reason (docs/adr/0044 D3); the
+	// manifests of an export — `manifest.json`, `links.json`, `attachments.json` — are read beside
+	// the tickets. The numbers are kept (docs/adr/0007 D6): a number that is a ticket of the project
+	// already, a deleted one included, is a conflict (docs/adr/0064 D3), and one a purged ticket held
+	// is given back, with a warning (docs/adr/0007 D4); the type is detected by content and open to
+	// correction (docs/adr/0008 D5); `blocked` is never inferred (docs/adr/0009); a value outside its
+	// vocabulary is an error, never a guess (docs/adr/0010 D5); the confidential flag follows the
+	// rule of the source (docs/adr/0065 D7); no parent is guessed — a file names its own, or the
+	// person or their agent sets it after the import (docs/adr/0051 D2).
 	//
-	// An administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never
-	// an agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`
-	// (docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of
-	// multipart overhead is `413 payload_too_large`, and so are files that hold more than
-	// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived
-	// project is `409 project_archived`. Recorded as the act `created` on the `import_job`; the
-	// dry run is kept for twenty-four hours, after which its read and its execution answer `404`.
+	// A writer's act of the project, as creating a ticket is: the role `member` in the tenant — a
+	// restricted project's list may lower it — and a token's `write` scope; an agent's too
+	// (docs/adr/0051 D6, docs/adr/0043 D2). An import through a token, an agent's or not, assigns a
+	// confidential ticket to the token's own person or to nobody, the report saying why on the file
+	// (docs/adr/0065 D9, docs/adr/0043 D3); a browser session's assigns as the file says. A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of multipart
+	// overhead is `413 payload_too_large`, and so are files that hold more than
+	// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files — a `zip`'s entries counted, its
+	// directories included, before it is read (docs/adr/0051 D7); an archived project is `409
+	// project_archived`. Recorded as the act `created` on the `import_job`; the dry run is kept for
+	// twenty-four hours, after which its read and its execution answer `404`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -21816,10 +21836,10 @@ type ClientWithResponsesInterface interface {
 
 	// GetImportWithResponse An import job with its report
 	//
-	// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
-	// the tenant's administrators, a token's `read` scope, never an agent — a flagged token and a
-	// request with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a
-	// dry run older than twenty-four hours, is `404`.
+	// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For a
+	// writer of the project, an agent's token included, and of a job they made, and for the tenant's
+	// administrators (D6): another person's job is `404`, as are a job of another project and a dry
+	// run older than twenty-four hours.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -21843,13 +21863,15 @@ type ClientWithResponsesInterface interface {
 	// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
 	// nobody's inbox is told.
 	//
-	// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
-	// execution would import that has an error, or whose number is a ticket of the project by now,
-	// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
-	// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
-	// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
-	// its pointer. The same administrators, never an agent; an archived project is `409
-	// project_archived`; a dry run older than twenty-four hours is `404`.
+	// The execution imports every file it can and leaves out each file with an error or a conflict —
+	// one whose number a ticket filed since the dry run holds included —, its `reason` saying why
+	// (docs/adr/0051 D2, docs/adr/0064 D3); nothing refuses it but a second execution. An assignee is
+	// the member the dry run named: a file's identity that resolves to anybody else by now assigns
+	// nobody, with a warning. A dry run is executed at most once: a second execution is `409
+	// import_executed`. A correction naming no file of the job, or breaking the rules of
+	// `ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry
+	// runs, and the tenant's administrators: another person's dry run is `404`; an archived project
+	// is `409 project_archived`; a dry run older than twenty-four hours is `404`.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -21873,13 +21895,15 @@ type ClientWithResponsesInterface interface {
 	// streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
 	// nobody's inbox is told.
 	//
-	// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
-	// execution would import that has an error, or whose number is a ticket of the project by now,
-	// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
-	// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
-	// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
-	// its pointer. The same administrators, never an agent; an archived project is `409
-	// project_archived`; a dry run older than twenty-four hours is `404`.
+	// The execution imports every file it can and leaves out each file with an error or a conflict —
+	// one whose number a ticket filed since the dry run holds included —, its `reason` saying why
+	// (docs/adr/0051 D2, docs/adr/0064 D3); nothing refuses it but a second execution. An assignee is
+	// the member the dry run named: a file's identity that resolves to anybody else by now assigns
+	// nobody, with a warning. A dry run is executed at most once: a second execution is `409
+	// import_executed`. A correction naming no file of the job, or breaking the rules of
+	// `ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry
+	// runs, and the tenant's administrators: another person's dry run is `404`; an archived project
+	// is `409 project_archived`; a dry run older than twenty-four hours is `404`.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -32268,21 +32292,26 @@ func (c *ClientWithResponses) ExportProjectWithResponse(ctx context.Context, ten
 // A file is read as a ticket file of a repository (`NNN-<slug>.md`, `local_NNN-<slug>.md`,
 // docs/adr/0063 D3), as cowork's own export (`<PROJECT>-<n>.md`, grammar v1), or, without
 // frontmatter, as an archived record that becomes one done task (D4); everything else is listed
-// as skipped (D5), the manifests of an export — `manifest.json`, `links.json`,
-// `attachments.json` — as read beside the tickets. A `/context` document is an error
-// (docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of
-// the project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is
-// detected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred
-// (docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);
-// the confidential flag follows the rule of the source (docs/adr/0065 D7).
+// as skipped (D5), and so is a `/context` document, with its reason (docs/adr/0044 D3); the
+// manifests of an export — `manifest.json`, `links.json`, `attachments.json` — are read beside
+// the tickets. The numbers are kept (docs/adr/0007 D6): a number that is a ticket of the project
+// already, a deleted one included, is a conflict (docs/adr/0064 D3), and one a purged ticket held
+// is given back, with a warning (docs/adr/0007 D4); the type is detected by content and open to
+// correction (docs/adr/0008 D5); `blocked` is never inferred (docs/adr/0009); a value outside its
+// vocabulary is an error, never a guess (docs/adr/0010 D5); the confidential flag follows the
+// rule of the source (docs/adr/0065 D7); no parent is guessed — a file names its own, or the
+// person or their agent sets it after the import (docs/adr/0051 D2).
 //
-// An administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never
-// an agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`
-// (docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of
-// multipart overhead is `413 payload_too_large`, and so are files that hold more than
-// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived
-// project is `409 project_archived`. Recorded as the act `created` on the `import_job`; the
-// dry run is kept for twenty-four hours, after which its read and its execution answer `404`.
+// A writer's act of the project, as creating a ticket is: the role `member` in the tenant — a
+// restricted project's list may lower it — and a token's `write` scope; an agent's too
+// (docs/adr/0051 D6, docs/adr/0043 D2). An import through a token, an agent's or not, assigns a
+// confidential ticket to the token's own person or to nobody, the report saying why on the file
+// (docs/adr/0065 D9, docs/adr/0043 D3); a browser session's assigns as the file says. A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of multipart
+// overhead is `413 payload_too_large`, and so are files that hold more than
+// `COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files — a `zip`'s entries counted, its
+// directories included, before it is read (docs/adr/0051 D7); an archived project is `409
+// project_archived`. Recorded as the act `created` on the `import_job`; the dry run is kept for
+// twenty-four hours, after which its read and its execution answer `404`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -32297,10 +32326,10 @@ func (c *ClientWithResponses) CreateImportWithBodyWithResponse(ctx context.Conte
 
 // GetImportWithResponse An import job with its report
 //
-// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For
-// the tenant's administrators, a token's `read` scope, never an agent — a flagged token and a
-// request with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a
-// dry run older than twenty-four hours, is `404`.
+// A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For a
+// writer of the project, an agent's token included, and of a job they made, and for the tenant's
+// administrators (D6): another person's job is `404`, as are a job of another project and a dry
+// run older than twenty-four hours.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -32330,13 +32359,15 @@ func (c *ClientWithResponses) GetImportWithResponse(ctx context.Context, tenant 
 // streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
 // nobody's inbox is told.
 //
-// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
-// execution would import that has an error, or whose number is a ticket of the project by now,
-// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
-// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
-// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
-// its pointer. The same administrators, never an agent; an archived project is `409
-// project_archived`; a dry run older than twenty-four hours is `404`.
+// The execution imports every file it can and leaves out each file with an error or a conflict —
+// one whose number a ticket filed since the dry run holds included —, its `reason` saying why
+// (docs/adr/0051 D2, docs/adr/0064 D3); nothing refuses it but a second execution. An assignee is
+// the member the dry run named: a file's identity that resolves to anybody else by now assigns
+// nobody, with a warning. A dry run is executed at most once: a second execution is `409
+// import_executed`. A correction naming no file of the job, or breaking the rules of
+// `ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry
+// runs, and the tenant's administrators: another person's dry run is `404`; an archived project
+// is `409 project_archived`; a dry run older than twenty-four hours is `404`.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -32366,13 +32397,15 @@ func (c *ClientWithResponses) ExecuteImportWithBodyWithResponse(ctx context.Cont
 // streams hear one `project.changed` with the kind `imported`, not an event per ticket, and
 // nobody's inbox is told.
 //
-// A dry run is executed at most once: a second execution is `409 import_executed`. A file the
-// execution would import that has an error, or whose number is a ticket of the project by now,
-// refuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as
-// `file:<path>` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A
-// correction naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at
-// its pointer. The same administrators, never an agent; an archived project is `409
-// project_archived`; a dry run older than twenty-four hours is `404`.
+// The execution imports every file it can and leaves out each file with an error or a conflict —
+// one whose number a ticket filed since the dry run holds included —, its `reason` saying why
+// (docs/adr/0051 D2, docs/adr/0064 D3); nothing refuses it but a second execution. An assignee is
+// the member the dry run named: a file's identity that resolves to anybody else by now assigns
+// nobody, with a warning. A dry run is executed at most once: a second execution is `409
+// import_executed`. A correction naming no file of the job, or breaking the rules of
+// `ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry
+// runs, and the tenant's administrators: another person's dry run is `404`; an archived project
+// is `409 project_archived`; a dry run older than twenty-four hours is `404`.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

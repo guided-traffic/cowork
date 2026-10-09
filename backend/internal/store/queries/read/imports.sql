@@ -1,6 +1,7 @@
 -- The import job and what its analysis reads of the project (docs/adr/0051,
--- docs/adr/0063, docs/adr/0064 D3). Only a tenant's administrators reach an
--- import job: the policies of migration 43 hold every row to them.
+-- docs/adr/0063, docs/adr/0064 D3). Only the person who made a job and the
+-- tenant's administrators reach it: the policies of migration 45 hold every
+-- row to them.
 
 -- name: GetImportJob :one
 -- A job of the project with its report; a dry run past its day is gone
@@ -29,8 +30,9 @@ WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.project_id = sqlc.arg(project_id)
 ORDER BY t.number;
 
 -- name: ImportPurgedKeys :many
--- The keys among those an import brings whose ticket was purged: its number
--- is not handed out again (docs/adr/0007 D4). The purge's act keeps the key
+-- The keys among those an import brings whose ticket was purged: an import
+-- gives its number back, and the report warns that what named the key names
+-- the new ticket (docs/adr/0007 D4). The purge's act keeps the key
 -- (docs/adr/0024 D2).
 SELECT DISTINCT ticket_key::text AS ticket_key
 FROM audit_events

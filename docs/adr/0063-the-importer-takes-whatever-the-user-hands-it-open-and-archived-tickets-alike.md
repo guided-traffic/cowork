@@ -16,6 +16,12 @@ and the forms of the questions and the mentions (D3); the columns of a record wi
 (D4); and that a `/context` document is an error, not a skipped file, as the records it cites have
 it (D5).
 
+Amended 2026-10-09 by the owner (D5): a `/context` document is skipped with its reason — "Hör auf
+hier alles abzusichern": nothing in an import refuses
+([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D2 amended the
+same day), and the made-concrete rule of 2026-10-06 that made it an error is struck in place; built
+the same day (`skipContext` in [`parse.go`](../../backend/internal/importer/parse.go)).
+
 ~~**Not built.** No importer.~~ **Built** (phase 6, 2026-10-06, in the API; ~~the UI's import page
 outstanding~~ *(built 2026-10-07: the project's import page, where the person excludes or corrects
 each file before the execution as D1 says — [frontend.md](../developer/frontend.md#the-import-and-the-export))*): D1–D5 — [`internal/importer`](../../backend/internal/importer/) reads a repository's
@@ -106,11 +112,12 @@ name without the number.
 **D5 — Files that are not tickets are skipped and listed.** `README.md`, notes, anything
 not matching `NNN-<slug>.md` or `local_NNN-<slug>.md`, ~~and any `/context` document
 ([ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
-D3)~~ appear in the report as skipped with the reason. *(Made concrete 2026-10-06 by the
+D3)~~ *(amended 2026-10-09 by the owner: and any `/context` document, ADR 0044 D3, whatever its
+name)* appear in the report as skipped with the reason. ~~*(Made concrete 2026-10-06 by the
 implementer, open to the owner's objection:)* a `/context` document is not skipped but reported
 as an error with the line where its first read-only section starts, as ADR 0044 D3 ("refused")
 and ADR 0051 D2 (an error) have it: the execution waits until the person excludes it, so a
-context export is never passed over unseen. An export's document, `<PROJECT>-<n>.md`, is a
+context export is never passed over unseen.~~ An export's document, `<PROJECT>-<n>.md`, is a
 ticket file too (ADR 0051 D4); a file that is no Markdown, and the export's `attachments.json`, are
 skipped with their reason, and its `manifest.json` and `links.json` are read beside the tickets.
 

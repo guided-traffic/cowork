@@ -3,7 +3,7 @@
 Who may bring tickets into a project from files and take them out as files, what an import reads,
 keeps and creates, what an export carries out of the installation and what it leaves behind, how
 both are bounded, and what the command line does with an export on a person's machine — and what
-that leaves open, as built on 2026-10-07
+that leaves open, as built on 2026-10-07 and, for who imports, on 2026-10-09
 ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md),
 [ADR 0063](../adr/0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md),
 [ADR 0065](../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
@@ -15,9 +15,9 @@ is [docs/developer/import-and-export.md](../developer/import-and-export.md).
 
 | Act | Route | Needs | An agent |
 |---|---|---|---|
-| a dry run | `POST …/projects/{project}/imports` | the role `admin` in the tenant and, through a token, the `admin` scope | refused, `403 agent_forbidden` — a flagged token and a request with `X-Cowork-Agent` alike (the hard-off rule "administration") |
-| its execution | `POST …/imports/{import}/execution` | the same | refused the same way |
-| reading a job | `GET …/imports/{import}` | the role `admin`, the `read` scope | refused the same way: a report holds what the upload's files say, of those the import left out too |
+| a dry run | `POST …/projects/{project}/imports` | what creating a ticket needs: the role `member` in the tenant — a restricted project's list may lower it — and, through a token, the `write` scope | admitted, as its person; a confidential ticket it assigns to its person or to nobody |
+| its execution | `POST …/imports/{import}/execution` | the same, and the job its own — another person's dry run is `404` — or the caller a tenant administrator | admitted the same way |
+| reading a job | `GET …/imports/{import}` | the same | admitted the same way: a report holds what its upload's files say, of those the import left out too, which only its maker and the administrators read |
 | the project export | `GET …/projects/{project}/export` | `read` on the project, which the caller must see | admitted, reading what its person reads |
 | the tenant export | `GET /api/v1/tenants/{tenant}/export` | `read` in the tenant | admitted the same way |
 
@@ -27,25 +27,38 @@ and answers it `404`, as every tenant route outside the project does (`tenantWid
 in [`tenant.go`](../../backend/internal/api/tenant.go)). A session's dry run and execution are
 writes and pass the CSRF check ([csrf.md](csrf.md)); an export is a read that records an act, which
 a session makes only from the installation's own pages — `Sec-Fetch-Site` `same-site` or
-`cross-site` is `403 csrf` ([csrf.md](csrf.md#the-reads-that-record-an-act), [H-22](csrf.md#h-22)). The browser offers the import page to a tenant's
-administrators only and the tenant's export in its settings to them alone; that is what the pages
+`cross-site` is `403 csrf` ([csrf.md](csrf.md#the-reads-that-record-an-act), [H-22](csrf.md#h-22)). The browser offers the import page to every writer of the
+project and the tenant's export in its settings to its administrators alone; that is what the pages
 offer, not a check — the routes above are the check.
 
-Below the handlers, the rows of `import_jobs` are the tenant's administrators' alone: the
-restrictive policies of [migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql)
-hold reading, inserting and changing a job to `app_is_tenant_admin()`, so a query that forgot its
-caller's role shows a member nothing; beside the administrators, the job `import-expiry` reads and
-deletes dry runs and nothing else, and the purge of a ticket (`ticket-purge`) reads and changes the
-report of its tenant's jobs ([below](#what-a-dry-run-keeps)).
+**An agent may import into every project its person may write** — its dry run, its execution, its
+report —, creating tickets in the states, horizons and answers its files carry, which its
+capabilities would not let it reach act by act: the owner's accepted tradeoff of 2026-10-09
+([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D2, [ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D6).
 
-Verified in the integration tier: a member is `403 forbidden`, an administrator's `write` token
-`403 insufficient_scope`, an administrator's token with the agent header `403 agent_forbidden` at the
-dry run and at the read of a job, and a member of another tenant `404`
-(`TestImportADryRunAndItsExecution`); a member, a viewer and an
-agent export, a member of another tenant and a member outside a restricted project get `404`
-(`TestTheExportFollowsItsReader`); a member reads, changes and inserts no job and an administrator
-deletes none at the database (`TestTheImportJobPoliciesAdmitTheTenantsAdministratorsOnly`). Not
-tested: a flagged agent token at the import, which takes the same path as the header.
+Below the handlers, the rows of `import_jobs` are their maker's and the tenant's administrators':
+the restrictive policies of [migration 45](../../backend/internal/store/migrations/000045_import_jobs_of_their_writer.up.sql)
+hold reading, inserting and changing a job to `created_by = app_user_id()` or `app_is_tenant_admin()`,
+so another writer of the project — who may not read the embargoed findings a report holds — sees
+none, even through a query that forgot its caller; beside them, the job `import-expiry` reads and
+deletes dry runs and nothing else, and the purge of a ticket (`ticket-purge`) reads and changes the
+report of its tenant's jobs ([below](#what-a-dry-run-keeps)). An executed job's tickets name it in
+their `created` acts, which every reader of such a ticket sees; the policies are what keep the
+report from them.
+
+Verified in the integration tier: a viewer is `403 forbidden` and a `read` token
+`403 insufficient_scope` at the dry run, another writer `404` at the read and the execution of a
+job not theirs, its maker's agent reads it, and a member of another tenant `404`
+(`TestImportADryRunAndItsExecution`); a member's agent token without any capability makes a dry run,
+executes it, reads its job and sets a parent afterwards, and the confidential ticket it imports is
+assigned to nobody (`TestAWriterAndTheirAgentImport`);
+a member, a viewer and an agent export, a member of another tenant and a member outside a
+restricted project get `404` (`TestTheExportFollowsItsReader`); its maker and an administrator read
+a job at the database, another member reads, changes and inserts none in another's name, and an
+administrator deletes none (`TestTheImportJobPoliciesAdmitItsMakerAndTheAdministrators`). Not
+tested: a request with `X-Cowork-Agent` on a plain token at the dry run, which takes the same path
+as the flagged token.
 
 ## What an import reads
 
@@ -60,12 +73,15 @@ A frontmatter is read as YAML nodes, and a value must be one scalar: an alias, a
 where one value belongs is an error of the file, so an alias is never expanded (read in
 [`fields.go`](../../backend/internal/importer/fields.go) `scalar`, not tested). A value outside its
 vocabulary is an error, never a guess ([ADR 0010](../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md)
-D5). A `/context` document is an error: its read-only sections are no import format
+D5). A `/context` document is skipped with its reason: its read-only sections are no import format
 ([ADR 0044](../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
 D3). A text is held to the length the API holds every write of it to, as the execution would write
-it: a body of more than 200,000 characters, and a question's options or its answer of more than
-100,000, is an error of its file ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
-D7, `TestTheImportHoldsTheTextsToTheLengthsOfTheAPI`); the database holds the same lengths
+it: a body of more than 200,000 characters, a question of more than 2,000, a question's options or
+its answer of more than 100,000, a recommendation of more than 10,000, a threat, a block's reason or
+a dropped ticket's reason of more than 2,000 and a done ticket's note of more than 10,000 is an
+error of its file, which the execution leaves out ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
+D7, `TestTheImportHoldsTheTextsToTheLengthsOfTheAPI`); the database holds the lengths of a body, a
+question and its options and answer as well
 ([migration 44](../../backend/internal/store/migrations/000044_text_length_checks.up.sql)), and what
 a reader's rendering of them costs is [rendered-markdown.md](rendered-markdown.md#what-a-rendering-reads).
 
@@ -75,14 +91,14 @@ a reader's rendering of them costs is [rendered-markdown.md](rendered-markdown.m
 |---|---|---|
 | the request's body | `COWORK_MAX_IMPORT_BYTES` (50 MiB by default) plus 64 KiB of multipart framing, before the body is read where its length is declared | `413` |
 | the files of the upload together | `COWORK_MAX_IMPORT_BYTES` once unpacked — a file the import does not read by the size its archive declares, since `tar` reads through those bytes and a `zip`'s are never decompressed; a `tar` entry that is no regular file, a link or a device, by the size it declares; a directory, a `tar`'s global header and a `zip` entry that is no regular file count nothing | `413` |
-| the files of an upload | 10,000 (`importer.MaxFiles`) | `413` |
+| the files of an upload | 10,000 (`importer.MaxFiles`); a `zip` counted, before it is parsed, by the central headers its bytes hold — its directories included, and entries past the count its directory's end declares, which Go's reader parses all the same | `413` |
 | a path | 1,024 bytes, and no path twice | `400` at `/file` |
 | imports at once | one per replica, a dry run or an execution; another waits for it within its own request timeout (`importSlot`) | `504` past the timeout |
 | time | `COWORK_REQUEST_TIMEOUT`, reading the body included; the transaction rolls back past it | `504` |
 
 A file the import reads is decompressed only up to the bound that is left
 (`io.LimitReader`), so an archive whose files unpack to more is refused, not unpacked; a `zip`
-is read whole, and so bounded by the body's limit, and the files it skips are never decompressed.
+is read whole, and so bounded by the body's limit, its entries counted before it is parsed (`TestReadUploadCountsAZipsEntriesBeforeItParsesThem`), and the files it skips are never decompressed.
 What a `tar` holds besides its files — the headers of its entries, its directories — is decompressed
 and counted by no bound but the time ([H-105](#h-105)).
 `0` switches the byte bound off, the body's included — one upload may then hold unbounded memory.
@@ -102,11 +118,14 @@ D2; `TestThePurgeTakesAnImportedTicketOutOfItsReport`).
 
 ## What an import creates
 
-- **Nothing over what is there.** A number the project holds — a deleted ticket's included — or a
-  purged ticket held is a conflict, and the execution refuses while one remains
-  ([ADR 0064](../adr/0064-one-direction-import-and-export-no-synchronisation.md) D3); so is a file
-  with an error. An execution analyses the files again under the project's rank lock, so a ticket
-  filed after the dry run cannot be overwritten either.
+- **Nothing over what is there.** A number the project holds — a deleted ticket's included — is a
+  conflict, and the execution leaves the file out
+  ([ADR 0064](../adr/0064-one-direction-import-and-export-no-synchronisation.md) D3); so it does a
+  file with an error. An execution analyses the files again under the project's rank lock, so a
+  ticket filed after the dry run cannot be overwritten either. A number a purged ticket held is
+  given back ([ADR 0007](../adr/0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md)
+  D4 as amended): the purge's act and an old reference that name its key name the new ticket from
+  then on, and the report warns of it.
 - **Attribution.** The person who executes is the reporter of every ticket, and every ticket,
   question and link has an act of theirs that names the job; the dates and notes a file carries
   are the file's claims, recorded as the import's.
@@ -115,7 +134,13 @@ D2; `TestThePurgeTakesAnImportedTicketOutOfItsReport`).
   another issuer never ([ADR 0044](../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
   D1). Assigning a confidential ticket admits its assignee to it (ADR 0065 D9), so an upload
   admits whom its files name; the report shows each assignee as the member it resolved to, and a
-  correction removes one before the execution.
+  correction removes one before the execution. The execution assigns by a file's identity only the
+  member the dry run named, so a person added as a member, or to a restricted project's list, after
+  the dry run is assigned nobody, with a warning (`TestTheExecutionAssignsWhomTheDryRunNamed`). An
+  import through a token — an agent's or not — assigns a confidential ticket to the token's own person
+  or to nobody, the report saying why on the file, so an import is no way around the rule that an act
+  which admits anybody else to a confidential ticket takes a browser session; a browser session's
+  import assigns as the file says (`TestATokenImportAssignsAConfidentialTicketToItsPersonOnly`).
 - **The confidential flag by the rule of the source** (ADR 0065 D7, [`columns.go`](../../backend/internal/importer/columns.go)
   `confidential`): a `publication-accepted:` date decides first and leaves it unset; otherwise an
   export's `confidential: true`, the `local_` prefix, or a `live` or `boundary` class without a
@@ -156,9 +181,18 @@ It leaves out the confidential tickets its reader may not read, counting them pe
 the comments, the time entries, the activity and the audit record. An administrator's export
 holds every confidential ticket of the tenant. Each export is the act `exported` on the project or
 the tenant, with the format and the counts, the token and the agent mark as every act carries them,
-and is never published to a stream ([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+before the first byte of the archive leaves, and is never published to a stream
+([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D3). The answer is `application/gzip` with `Content-Disposition: attachment` and
 `Cache-Control: no-store`.
+
+An export is streamed: it reads its tickets 50 at a time in one snapshot and writes each document as
+it goes, so it holds one page of bodies, never its archive, and a replica runs one export at a time
+([`exports.go`](../../backend/internal/api/exports.go) `exportStream`, `slot`;
+`TestTheExportStreamsALargeProjectWithinAMemoryBound` holds the memory to a fraction of what the
+archive carries). Another export waits for the slot within its own request timeout, `504` past it
+([H-110](#h-110)). An export that fails after its answer started cuts the connection off, so a
+truncated archive never ends as a whole one.
 
 ## `cowork-mcp export` on a person's machine
 
@@ -177,6 +211,17 @@ confidential tickets; Windows applies no such mode — Go sets only the read-onl
 and the files take the access list of the directory they are written to ([H-77](#h-77)). Its
 requests carry the agent mark `cowork-mcp/unknown/export`, so the export's act names the binary.
 
+## `cowork-mcp import` on a person's machine
+
+The subcommand ([`mcpcli/import.go`](../../backend/internal/mcpcli/import.go)) reads the path it is
+given and sends it to the installation `COWORK_URL` names, with the token, as an agent's request: a
+directory's regular files the import reads — `.md`, `manifest.json`, `links.json` —, no link
+followed and every read through a root opened at the directory (`os.OpenRoot`), so a `.env` or a key
+beside the tickets stays on the machine
+(`TestTheImportPacksADirectoryAndPrintsTheReports`); a file as it is, whatever it holds. Every
+Markdown file it sends is kept with the dry run for its day ([H-72](#h-72)), and the report it
+prints names every file with what was read of it. It writes nothing on the machine.
+
 ## What this does not cover
 
 <a id="h-72"></a>
@@ -185,7 +230,7 @@ requests carry the agent mark `cowork-mcp/unknown/export`, so the export's act n
 Live for every dry run. Until its execution, or for a day and up to the hour after it until the
 job `import-expiry` runs — up to twenty-five hours —, the job's `source` holds the full text of every
 `.md` file the upload carried — a file the person then excludes, an embargoed finding's among them.
-No route answers it and the policies hold it to the tenant's administrators, but whoever reads the
+No route answers it and the policies hold it to its maker and the tenant's administrators, but whoever reads the
 database past row-level security, or holds a backup taken meanwhile, reads it, as they read a
 confidential ticket ([tenancy.md, H-2](tenancy.md#h-2)). A backup keeps it for its own retention,
 and an archive of the database's write-ahead log keeps the insert for its own. Mitigation: execute the dry run, or let it expire, before
@@ -202,9 +247,9 @@ created takes that ticket's file out of the report of the job that created it, a
 file that was skipped or excluded stays as the report had it — its path, and what was read of it, an
 embargoed finding's title among them, which no ticket of cowork holds —, and so does a created ticket's text
 as the file had it after a person changed the ticket, as the audit record keeps a replaced text
-(ADR 0026 D7). The tenant's administrators read it, never an agent, and they read every confidential
-ticket anyway. Mitigation: upload only the files to be imported; a report holding what must go is
-changed by hand in the database.
+(ADR 0026 D7). Its maker reads it — their agent too —, who uploaded what it holds, and so do the
+tenant's administrators, who read every confidential ticket anyway. Mitigation: upload only the files
+to be imported; a report holding what must go is changed by hand in the database.
 
 <a id="h-74"></a>
 ### H-74 — An export tells its reader how many confidential tickets they cannot read
@@ -237,10 +282,13 @@ Live on every installation that leaves `COWORK_MAX_IMPORT_BYTES` at a size its m
 not allow for. A dry run holds its upload several times over — the zip's bytes or the files read,
 their compressed copy for the job, the parsed text, the report — and an execution the files, the
 text and the plan. One import at a time per replica bounds it to one such set, but how large the
-set is at 50 MiB was not measured, and the chart's default memory limit is 256 MiB. A tenant's
-administrator can reach that bound, and a replica that runs out of memory restarts for every
-tenant it serves; and while one import runs, every other tenant's import on that replica waits,
-each up to its request timeout, so one administrator who keeps uploading keeps the others waiting.
+set is at 50 MiB was not measured, and the chart's default memory limit is 256 MiB. Any writer of a
+project — an agent of theirs too, since 2026-10-09 — can reach that bound, and a replica that runs
+out of memory restarts for every tenant it serves; and while one import runs, every other tenant's
+import on that replica waits, each up to its request timeout, so one writer who keeps uploading
+keeps the others waiting. The analysis runs once more for every round of files whose texts the plan
+makes too long, so an upload built to chain such files multiplies its time, up to the request
+timeout.
 Mitigation: keep the backend's memory limit well above the variable, lower the
 variable to what the installation's imports need, split an import by directory.
 
@@ -266,7 +314,7 @@ directory, a global header —, count toward neither the bytes nor the number of
 ([`upload.go`](../../backend/internal/importer/upload.go) `tarEntry`). A small compressed upload can
 so make the replica decompress and walk a great many headers, bounded by the request timeout alone,
 while it holds the replica's one import slot ([H-76](#h-76)) — and by nothing with
-`COWORK_REQUEST_TIMEOUT` at `0`. It takes a tenant's administrator. Mitigation: keep the request
+`COWORK_REQUEST_TIMEOUT` at `0`. It takes a writer of a project. Mitigation: keep the request
 timeout set.
 
 <a id="h-106"></a>
@@ -276,8 +324,8 @@ Live for every import. An imported ticket keeps the number its file names, and t
 moves to the highest number an import wrote ([`queries/write/imports.sql`](../../backend/internal/store/queries/write/imports.sql)
 `AdvanceTicketCounter`), so a file numbered `2147483647`, the largest the column holds, leaves the
 project no number for its next ticket: every filing in it fails from then on, and no route lowers the
-counter. It takes a tenant's administrator, and the report shows each file's number, and the highest
-of them, before the execution. Mitigation: read the numbers in the dry run's report; a counter moved
+counter. It takes a writer of the project — an agent of theirs too, since 2026-10-09 —, and the report
+shows each file's number, and the highest of them, before the execution. Mitigation: read the numbers in the dry run's report; a counter moved
 by mistake is set back by hand in the database.
 
 <a id="h-107"></a>
@@ -290,3 +338,16 @@ the answer's size, what it unpacks to, or the number of its entries. An export o
 an answer of an installation that is not what it claims, can so take the client's memory. Mitigation:
 export from an installation the person trusts; the server's own bounds are the export's, which a
 compromised installation does not keep.
+
+<a id="h-110"></a>
+### H-110 — One reader's exports keep everybody else's waiting
+
+Live on every replica. A replica runs one export at a time, which bounds its memory, not its time:
+an export holds the slot until its archive is written or its request timeout ends, and a slow
+reader of the answer holds it as long. Any reader of a tenant — a viewer, a `read` token, an agent —
+can start exports back to back, and every other export on that replica, another tenant's nightly
+backup among them, waits up to its own request timeout and then answers `504`
+([`exports.go`](../../backend/internal/api/exports.go) `slot`). Each export is an `exported` act
+naming its caller. Mitigation: run more than one replica; let a scheduled export retry
+(`backoffLimit` in the CronJob of [docs/operations/import-and-export.md](../operations/import-and-export.md));
+read the `exported` acts when a backup failed with `504`.

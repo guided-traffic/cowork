@@ -40,7 +40,6 @@ export const PROBLEM_CODE: ProblemCode[] = [
   'link_cycle',
   'open_prerequisites',
   'import_executed',
-  'import_conflict',
   'period_locked',
   'attachment_limit',
   'attachment_quota',

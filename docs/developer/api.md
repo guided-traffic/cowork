@@ -462,7 +462,6 @@ another token and marking notifications read (`write` scope,
 | `read` | viewer, `read` | — | [`tenants.go`](../../backend/internal/api/tenants.go) |
 | `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
 | `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets; the tokens that can act in the tenant ([`tenanttokens.go`](../../backend/internal/api/tenanttokens.go)); the tenant's attachment usage ([`attachments.go`](../../backend/internal/api/attachments.go)) and its consistency check ([`consistency.go`](../../backend/internal/api/consistency.go)) |
-| `importRead` | admin, `read` | hard-off `administration` | [`imports.go`](../../backend/internal/api/imports.go): an import job and its report |
 | `deletion` | admin, `admin` | hard-off `deleting, restoring or purging` | [`deletion.go`](../../backend/internal/api/deletion.go): deleting a ticket, restoring it, purging it ([ADR 0024] D7) — the tenant role, not a project's; the purge takes a session besides, which the document declares |
 | `orphanRemoval` | admin, `admin` | hard-off `deleting, restoring or purging` | [`consistency.go`](../../backend/internal/api/consistency.go): removing the orphaned objects of a consistency check ([ADR 0059] D4); the document takes a session besides. Its acceptance of the missing files takes `administer` |
 | `filterNeed` | viewer, `write` | baseline ([ADR 0043] D2) | [`filters.go`](../../backend/internal/api/filters.go): saving, changing, sharing and unsharing the person's own saved filter; another's shared one is `403 forbidden`, but to a tenant administrator, who unshares it with `administer` (`mayChangeFilter`) |
@@ -474,8 +473,11 @@ another token and marking notifications read (`write` scope,
 | `uploadNeed` | member, `write` | `upload` | [`attachments.go`](../../backend/internal/api/attachments.go) |
 | `interestNeed(weight)` | `watch`: viewer, `write`; `need`, `urgent`: member, `write` | `interest` for `need` and `urgent` | [`interest.go`](../../backend/internal/api/interest.go) |
 
-An import's dry run and its execution use `administer`; the project export reads `read` on the
-project's role, the tenant export `read` on the tenant's ([import-and-export.md](import-and-export.md)).
+An import's dry run, its execution and the read of its job use `work`, against the tenant's role
+first and the project's in the transaction (`importWriter` in
+[`imports.go`](../../backend/internal/api/imports.go)), with no capability; the project export reads
+`read` on the project's role, the tenant export `read` on the tenant's
+([import-and-export.md](import-and-export.md)).
 The handlers also build a few needs inline: `creating` for `createProject`, `bindRepository`
 and `unbindRepository` (admin, or member while the tenant allows it; `write`; `create-project`
 — [`repositories.go`](../../backend/internal/api/repositories.go), judged by the project role for
@@ -508,8 +510,7 @@ message)` for one field, or a `&problem.Error{…}` with `Errors` and `Headers`.
 renders `application/problem+json; charset=utf-8` with `type`
 (`https://cowork.dev/problems/<code-with-hyphens>`), `title`, `status`, `detail`, `instance`
 (the path), `code`, `request_id` and `errors[]`. A field pointer is a JSON pointer into the body,
-or `query:<name>`, `header:<name>`, `path:<name>`, and on `409 import_conflict` `file:<path>`, a
-file of the upload; on a `412` an entry carries `current`. The
+or `query:<name>`, `header:<name>`, `path:<name>`; on a `412` an entry carries `current`. The
 `detail` never carries a secret, SQL or an internal path; the cause goes to the log under the
 request id.
 
@@ -724,11 +725,13 @@ What stays deprecated in `/api/v1` today is a token's `restricted_project_id` be
   plain-text body decoder registered in `validate.go`.
 - **An import's upload** is `multipart/form-data` as well, read by `importer.ReadUpload` in the
   handler ([import-and-export.md](import-and-export.md#the-dry-run)).
-- **The project and the tenant export** return `archiveResponse` from
+- **The project and the tenant export** return `exportStream` from
   [`exports.go`](../../backend/internal/api/exports.go), which implements both generated visit
-  methods: `application/gzip`, `Content-Disposition: attachment` with the archive's file name, and
-  `Content-Length`. The validator reads `application/gzip` with kin-openapi's file body decoder,
-  registered in `validate.go`.
+  methods and writes the archive as it reads it: `application/gzip` and `Content-Disposition:
+  attachment` with the archive's file name, no `Content-Length`; a failure after the answer started
+  cuts the connection off (`http.ErrAbortHandler`) rather than end a truncated archive as a whole one
+  ([import-and-export.md](import-and-export.md#the-export)). The validator reads `application/gzip`
+  with kin-openapi's file body decoder, registered in `validate.go`.
 - **The context** returns `contextResponse` from [`context.go`](../../backend/internal/api/context.go)
   for the same reason: `text/markdown; charset=utf-8` and `Content-Length`, no `ETag` — it is no
   one entity — and every call recorded as `exported` with the format `context v1`.

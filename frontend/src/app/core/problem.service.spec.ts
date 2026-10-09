@@ -322,16 +322,16 @@ describe('ProblemService', () => {
   describe('entries', () => {
     it('hands out every entry of errors[] with its pointer as it came, in its order', () => {
       const body = problem({
-        status: 409,
-        code: 'import_conflict',
+        status: 400,
+        code: 'validation_failed',
         errors: [
-          { pointer: 'file:docs/tickets/001-a.md', message: 'conflict: VKO-1' },
+          { pointer: '/corrections/0/path', message: 'names no file of the upload' },
           { pointer: '/corrections/2/block/kind', message: 'a blocks link' },
         ],
       });
 
-      expect(service.entries(failure(body, 409))).toEqual([
-        { pointer: 'file:docs/tickets/001-a.md', message: 'conflict: VKO-1' },
+      expect(service.entries(failure(body, 400))).toEqual([
+        { pointer: '/corrections/0/path', message: 'names no file of the upload' },
         { pointer: '/corrections/2/block/kind', message: 'a blocks link' },
       ]);
     });

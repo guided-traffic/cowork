@@ -75,12 +75,13 @@ inside one of these, and nothing else hands out a connection.
 | Wrapper | Transaction | Bound to | Hands `fn` |
 |---|---|---|---|
 | `DB.InTenant(ctx, tenantID, fn)` | read-only | the tenant and the caller's person | `*Reader` |
+| `DB.InTenantSnapshot(ctx, tenantID, fn)` | read-only, `REPEATABLE READ`: every read sees one snapshot — the export, which counts first and then reads a page at a time | the tenant and the caller's person | `*Reader` |
 | `DB.Installation(ctx, fn)` | read-only | no tenant: only the person-scoped policies admit rows | `*Reader` |
 | `DB.Mutate(ctx, tenantID, fn)` | read-write; `uuid.Nil` for an installation-level act | the tenant and the caller | `*Writer` |
 | `DB.RunJob(ctx, name, lockKey, fn)` | read-write, under the job's lock | no tenant, a system actor | `*Writer` |
 
 A `Reader` ([`tx.go`](../../backend/internal/store/tx.go)) embeds the generated read queries
-(`readq`), carries `TenantID` and `UserID`, and adds `ListTickets`. A `Writer` embeds a `Reader`
+(`readq`), carries `TenantID` and `UserID`, and adds `ListTickets` and `CountTickets`, its count under the same predicates. A `Writer` embeds a `Reader`
 and the generated write queries (`writeq`), and adds `Record`, `Respond` and the lock methods.
 `sqlc` generates the two packages from `queries/read/` and `queries/write/` with the migrations
 as the schema ([`sqlc.yaml`](../../backend/sqlc.yaml)); a handler that only reads never holds a
@@ -199,16 +200,18 @@ parameters, which a policy cannot see; the queries `UnshareSavedFilter` and `Del
 name `shared` as the policies do, and the unshare runs only through `Writer.UnshareAnothersFilter`
 ([`store/filters.go`](../../backend/internal/store/filters.go)), which names the filter
 (`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`). `import_jobs` carries `tenant_id`
-and the canonical policy, restrictive ones that admit reading to an administrator of the current
-tenant (`app_is_tenant_admin()`), the job `import-expiry` and the purge (`ticket-purge`), inserting to
-the administrator, and changing to the administrator and the purge — which takes a purged ticket's
-file out of its job's report —, and a restrictive delete that admits only the expiry job and only a
-dry run; the expiry job's own permissive read and delete reach the dry runs of every tenant with no
-tenant set
-([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql);
-`TestTheImportJobPoliciesAdmitTheTenantsAdministratorsOnly`). A dry run holds the content of the files
-it read, an embargoed finding's among them, so a query that forgot its caller's role must show a
-member nothing ([import-and-export.md](import-and-export.md)).
+and the canonical policy, restrictive ones that admit reading to the job's maker
+(`created_by = app_user_id()`), an administrator of the current tenant (`app_is_tenant_admin()`),
+the job `import-expiry` and the purge (`ticket-purge`), inserting to the maker in their own name and
+the administrator, and changing to the maker, the administrator and the purge — which takes a purged
+ticket's file out of its job's report —, and a restrictive delete that admits only the expiry job and
+only a dry run; the expiry job's own permissive read and delete reach the dry runs of every tenant
+with no tenant set
+([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql), the maker since
+[migration 45](../../backend/internal/store/migrations/000045_import_jobs_of_their_writer.up.sql);
+`TestTheImportJobPoliciesAdmitItsMakerAndTheAdministrators`). A dry run holds the content of the
+files it read, an embargoed finding's among them, so a query that forgot its caller must show
+another member nothing ([import-and-export.md](import-and-export.md)).
 
 ### GitHub webhook's tables
 

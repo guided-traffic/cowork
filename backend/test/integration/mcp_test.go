@@ -474,6 +474,57 @@ func TestTheBinaryRunsItsSubcommands(t *testing.T) {
 	code, _, stderr = run(configured, "", "export", e.SlugA+"/ALPHA", target)
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr, "is not empty: an export never overwrites")
+
+	// docs/adr/0070 D2: the import's dry run by the binary, the agent token's.
+	code, stdout, stderr = run(configured, "", "import", "--dry-run", e.SlugA+"/ALPHA", target)
+	assert.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout, "Dry run into "+e.SlugA+"/ALPHA")
+}
+
+// docs/adr/0070 D2, D6, docs/adr/0051 D2, D6: the import subcommand by its
+// command line, an agent's — a directory of a repository's ticket files
+// packed, the dry run's report, nothing imported with --dry-run; the
+// execution, its report, every ticket marked as the binary's act; the same
+// files again, each left out as a conflict.
+func TestTheImportSubcommand(t *testing.T) {
+	e := newMCPEnv(t)
+	dir := filepath.Join(e.repo, "docs", "tickets")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "archive"), 0o755))
+	front := "---\ntitle: %s\nstate: %s\nseverity: low\nsecurity: none\neffort: S\nopened: 2026-10-01\n%s---\n\n## Current state\n\nText.\n"
+	for name, body := range map[string]string{
+		"001-the-parent.md":           fmt.Sprintf(front, "the parent", "filed", ""),
+		"archive/002-a-done-child.md": fmt.Sprintf(front, "a done child", "done", "shipped: built and run\n"),
+		"README.md":                   "# Tickets\n",
+	} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(body), 0o600))
+	}
+
+	code, stdout := e.run(t, e.tk.MemberA, "", "import", e.SlugA+"/ALPHA", dir, "--dry-run")
+	require.Equal(t, 0, code, stdout)
+	assert.Contains(t, stdout, "2 tickets to create (1 open, 0 confidential)")
+	assert.Contains(t, stdout, "tickets/001-the-parent.md: create "+e.SlugA+"/ALPHA-1 \"the parent\" (task, filed)")
+	assert.Contains(t, stdout, "tickets/README.md: skip\n  why: not a ticket file")
+	none := e.s.do(t, caller{Token: e.tk.MemberA}, "GET", ticketPath(e.SlugA, "ALPHA", 1), nil)
+	assert.Equal(t, 404, none.StatusCode, "a dry run imports nothing")
+
+	code, stdout = e.run(t, e.tk.MemberA, "", "import", e.SlugA+"/ALPHA", dir)
+	require.Equal(t, 0, code, stdout)
+	assert.Contains(t, stdout, "Imported into "+e.SlugA+"/ALPHA")
+	assert.Contains(t, stdout, "2 tickets created (1 open, 0 confidential)")
+	assert.Contains(t, stdout, "tickets/archive/002-a-done-child.md: created "+e.SlugA+"/ALPHA-2")
+	assert.Contains(t, stdout, "The importer sets no parent a file does not name")
+	n, err := fixtures(t).QueryCount(e.ctx, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND action = 'created'
+		AND entity_type = 'ticket' AND after ? 'import_job' AND agent LIKE 'cowork-mcp/%/import'`, e.A)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, n, "every ticket is the binary's act, an agent's")
+
+	code, stdout = e.run(t, e.tk.MemberA, "", "import", e.SlugA+"/ALPHA", dir)
+	require.Equal(t, 0, code, stdout)
+	assert.Contains(t, stdout, "0 tickets created")
+	assert.Contains(t, stdout, "tickets/001-the-parent.md: conflict "+e.SlugA+"/ALPHA-1")
+	assert.Contains(t, stdout, "why: left out of the import: the project holds its number as "+e.SlugA+"/ALPHA-1")
+	code, _ = e.run(t, e.tk.ViewerA, "", "import", e.SlugA+"/ALPHA", dir)
+	assert.Equal(t, 1, code, "a viewer imports nothing")
 }
 
 // docs/adr/0070 D2, D5, D6: the export subcommand by its command line — the

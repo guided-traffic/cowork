@@ -520,27 +520,41 @@ func (a *analysis) finishPlan(e *entry, creates map[int32]bool, hasChildren bool
 	}
 	full := p.Stages == [3]int{100, 100, 100}
 	p.DoneByHand = p.State == domain.StateDone && (hasChildren || !full)
-	bounded(e)
+	a.bounded(e)
 }
 
-// bounded holds the texts the execution writes to the lengths the API holds
-// every write to (docs/adr/0051 D7): the body, and each question's options
-// and answer, as the execution writes them — with the lines and the keys the
-// import adds. A longer one is an error of the file, which refuses the
-// execution.
-func bounded(e *entry) {
+// bounded holds the texts the plan rewrites to the lengths the API holds
+// every write of them to (docs/adr/0051 D7): the body, and each question's
+// text, options, recommendation and answer, as the execution writes them —
+// with the lines and the keys the import adds. A longer one is an error of
+// the file, which Analyze leaves out of a next run.
+func (a *analysis) bounded(e *entry) {
 	p := e.plan
+	var long []Message
+	over := func(field string, line int, format string, args ...any) {
+		long = append(long, Message{Field: field, Line: line, Message: fmt.Sprintf(format, args...)})
+	}
 	if n := utf8.RuneCountInString(p.Body); n > maxBody {
-		e.f.fail(fieldBody, 0, "the body as the import writes it has %d characters, more than the %d a ticket's body holds", n, maxBody)
+		over(fieldBody, 0, "the body as the import writes it has %d characters, more than the %d a ticket's body holds", n, maxBody)
 	}
 	for _, q := range p.Questions {
 		field := questionField(q.Number)
+		if n := utf8.RuneCountInString(q.Question); n > maxQuestionLength {
+			over(field, q.Line, "Q%d as the import writes it has %d characters, more than the %d a question holds", q.Number, n, maxQuestionLength)
+		}
 		if n := utf8.RuneCountInString(q.Options); n > maxQuestionText {
-			e.f.fail(field, q.Line, "Q%d's options have %d characters, more than the %d a question's options hold", q.Number, n, maxQuestionText)
+			over(field, q.Line, "Q%d's options have %d characters, more than the %d a question's options hold", q.Number, n, maxQuestionText)
+		}
+		if n := utf8.RuneCountInString(q.Recommendation); n > maxRecommendation {
+			over(field, q.Line, "Q%d's recommendation has %d characters, more than the %d a recommendation holds", q.Number, n, maxRecommendation)
 		}
 		if n := utf8.RuneCountInString(q.Answer); n > maxQuestionText {
-			e.f.fail(field, q.Line, "Q%d's answer has %d characters, more than the %d an answer holds", q.Number, n, maxQuestionText)
+			over(field, q.Line, "Q%d's answer has %d characters, more than the %d an answer holds", q.Number, n, maxQuestionText)
 		}
+	}
+	if len(long) > 0 {
+		e.f.Errors = append(e.f.Errors, long...)
+		a.tooLong[e.f.Path] = long
 	}
 }
 
@@ -580,8 +594,13 @@ func (a *analysis) finish(e *entry) {
 	if e.corr != nil {
 		r.Correction = e.corr
 	}
-	if e.excluded {
+	switch r.Outcome {
+	case OutcomeExclude:
 		r.Reason = ptr("excluded by the correction")
+	case OutcomeError:
+		r.Reason = ptr("left out of the import: the file has an error; the other files are imported (docs/adr/0051 D2)")
+	case OutcomeConflict:
+		r.Reason = ptr("left out of the import: the project holds its number as " + e.conflict + " (docs/adr/0064 D3)")
 	}
 	if f.Number != 0 {
 		r.Number, r.Key = ptr(f.Number), ptr(a.t.Key(f.Number))

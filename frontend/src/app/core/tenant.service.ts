@@ -24,6 +24,11 @@ export class TenantService {
     this.tenant.hasValue() ? this.tenant.value() : undefined,
   );
   readonly isAdmin = computed(() => this.session.membership()?.role === 'admin');
+  /** A member or an administrator: who writes in the tenant's projects; a viewer never. */
+  readonly canWrite = computed(() => {
+    const role = this.session.membership()?.role;
+    return role === 'admin' || role === 'member';
+  });
   /** An administrator always; a member while the tenant allows it; a viewer never. */
   readonly canCreateProjects = computed(() => {
     const role = this.session.membership()?.role;

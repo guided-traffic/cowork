@@ -26,9 +26,9 @@ function ticketFile(number: number, title: string) {
 
 /**
  * The import of a project (docs/adr/0051, docs/adr/0063): a member reads the project with its export
- * and no way to the import; the administrator chooses two ticket files, makes the dry run, reads its
- * report at the job's own address — which a reload keeps —, leaves nothing out, executes after the
- * question, and finds both tickets in the backlog, then exports the project as an archive. The
+ * and its import, a writer's act; the administrator chooses two ticket files, makes the dry run, reads
+ * its report at the job's own address — which a reload keeps —, leaves nothing out, executes after
+ * the question, and finds both tickets in the backlog, then exports the project as an archive. The
  * shell's content-security policy refuses nothing on the way.
  */
 test(
@@ -39,15 +39,13 @@ test(
     const first = ticketFile(1, 'the export forgets the attachments');
     const second = ticketFile(2, 'the board wants a swimlane per project');
 
-    // A member reads the project: its export, and no way to its import.
+    // A member reads the project: its export, and its import, which a writer makes.
     await member.page.goto(`/t/${tenant}/p/${project}/backlog`);
     await expectScheme(member.page);
     await expect(member.page.getByTestId('me')).toBeVisible();
     await expect(member.page.getByTestId('project-name')).toHaveText(`Project ${project}`);
     await expect(member.page.getByRole('button', { name: 'Export the tickets' })).toBeVisible();
-    await expect(member.page.getByRole('link', { name: 'Import tickets' })).toHaveCount(0);
-    await member.page.goto(`/t/${tenant}/p/${project}/imports`);
-    await expect(member.page.getByTestId('import-not-admin')).toBeVisible();
+    await expect(member.page.getByRole('link', { name: 'Import tickets' })).toBeVisible();
 
     // The administrator's dry run.
     await page.goto(`/t/${tenant}/p/${project}/backlog`);
@@ -66,7 +64,7 @@ test(
     await expect(page.getByTestId('summary-create')).toHaveText('2');
     await expect(page.getByTestId('summary-conflict')).toHaveText('0');
     await expect(page.getByTestId('summary-error')).toHaveText('0');
-    await expect(page.getByTestId('import-blocking')).toHaveCount(0);
+    await expect(page.getByTestId('import-left-out')).toHaveCount(0);
     for (const file of [first, second]) {
       await expect(page.getByTestId(`outcome-${file.name}`)).toHaveText('create');
     }

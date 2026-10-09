@@ -76,7 +76,6 @@ var (
 	PeriodLocked           = Code{"period_locked", http.StatusConflict, "Period locked", "The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8)"}
 	OpenPrerequisites      = Code{"open_prerequisites", http.StatusConflict, "Open prerequisites", "Tickets that block this one are not done or dropped; `errors[]` lists them, and a person may override with a reason (docs/adr/0012 D7)"}
 	ImportExecuted         = Code{"import_executed", http.StatusConflict, "Import executed", "The dry run was executed already; a dry run is executed at most once (docs/adr/0051 D3)"}
-	ImportConflict         = Code{"import_conflict", http.StatusConflict, "Import conflict", "A file the execution would import has an error, or its number is a ticket of the project — or was one, purged; `errors[]` names each as `file:<path>`, and nothing was imported: exclude the file, or correct the source and make a new dry run (docs/adr/0064 D3, docs/adr/0051 D2)"}
 	PreconditionFailed     = Code{"precondition_failed", http.StatusPreconditionFailed, "Precondition failed", "The `If-Match` version is stale; the response carries the current `ETag` and `errors[]` the current values (docs/adr/0050 D5)"}
 	PayloadTooLarge        = Code{"payload_too_large", http.StatusRequestEntityTooLarge, "Payload too large", "The body is larger than the configured limit (docs/adr/0039 D2)"}
 	UnsupportedMediaType   = Code{"unsupported_media_type", http.StatusUnsupportedMediaType, "Unsupported media type", "The body's type is not one the route accepts"}
@@ -97,7 +96,7 @@ var Catalogue = []Code{
 	Forbidden, InsufficientScope, AgentForbidden, SessionRequired, PasswordChangeRequired, NotInitialised, Csrf,
 	NotFound, PersonNotFound, MethodNotAllowed, UsernameTaken, TenantSlugTaken, ProjectKeyTaken, RepositoryBound,
 	PersonAmbiguous, GrantExists, MappingExists, LastAdmin,
-	ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, ImportExecuted, ImportConflict, PeriodLocked, AttachmentLimit, AttachmentQuota,
+	ProjectArchived, StateConflict, ParentCycle, LinkCycle, OpenPrerequisites, ImportExecuted, PeriodLocked, AttachmentLimit, AttachmentQuota,
 	ConsistencyCheckStale, UploadsDisabled,
 	ChatUnavailable, PreconditionFailed, PayloadTooLarge,
 	UnsupportedMediaType, IdempotencyMismatch, PreconditionRequired, TooManyAttempts, ChatBusy,
