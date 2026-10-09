@@ -155,9 +155,18 @@ It leaves out the confidential tickets its reader may not read, counting them pe
 the comments, the time entries, the activity and the audit record. An administrator's export
 holds every confidential ticket of the tenant. Each export is the act `exported` on the project or
 the tenant, with the format and the counts, the token and the agent mark as every act carries them,
-and is never published to a stream ([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
+before the first byte of the archive leaves, and is never published to a stream
+([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D3). The answer is `application/gzip` with `Content-Disposition: attachment` and
 `Cache-Control: no-store`.
+
+An export is streamed: it reads its tickets 50 at a time in one snapshot and writes each document as
+it goes, so it holds one page of bodies, never its archive, and a replica runs one export at a time
+([`exports.go`](../../backend/internal/api/exports.go) `exportStream`, `slot`;
+`TestTheExportStreamsALargeProjectWithinAMemoryBound` holds the memory to a fraction of what the
+archive carries). Another export waits for the slot within its own request timeout, `504` past it
+([H-109](#h-109)). An export that fails after its answer started cuts the connection off, so a
+truncated archive never ends as a whole one.
 
 ## `cowork-mcp export` on a person's machine
 
@@ -289,3 +298,16 @@ the answer's size, what it unpacks to, or the number of its entries. An export o
 an answer of an installation that is not what it claims, can so take the client's memory. Mitigation:
 export from an installation the person trusts; the server's own bounds are the export's, which a
 compromised installation does not keep.
+
+<a id="h-109"></a>
+### H-109 — One reader's exports keep everybody else's waiting
+
+Live on every replica. A replica runs one export at a time, which bounds its memory, not its time:
+an export holds the slot until its archive is written or its request timeout ends, and a slow
+reader of the answer holds it as long. Any reader of a tenant — a viewer, a `read` token, an agent —
+can start exports back to back, and every other export on that replica, another tenant's nightly
+backup among them, waits up to its own request timeout and then answers `504`
+([`exports.go`](../../backend/internal/api/exports.go) `slot`). Each export is an `exported` act
+naming its caller. Mitigation: run more than one replica; let a scheduled export retry
+(`backoffLimit` in the CronJob of [docs/operations/import-and-export.md](../operations/import-and-export.md));
+read the `exported` acts when a backup failed with `504`.

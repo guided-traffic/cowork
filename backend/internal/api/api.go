@@ -228,7 +228,8 @@ func New(opts Options) (http.Handler, error) {
 		webhookSealer:  auth.NewSealer(opts.SessionKey, auth.LabelGitHubWebhookSecret),
 	}
 	h.server = &Server{h: h, db: opts.DB, cursors: newCursorCodec(opts.SessionKey), storage: opts.Storage,
-		uploads: make(chan struct{}, uploadSlots(opts.AttachmentMaxBytes)), imports: make(chan struct{}, 1)}
+		uploads: make(chan struct{}, uploadSlots(opts.AttachmentMaxBytes)), imports: make(chan struct{}, 1),
+		exports: make(chan struct{}, 1)}
 	strict := apigen.NewStrictHandlerWithOptions(h.server, nil, apigen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			problem.Write(w, r, &problem.Error{Code: problem.ValidationFailed, Detail: "the request body is not valid JSON for this route"})

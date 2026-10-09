@@ -85,9 +85,11 @@ type Server struct {
 	// storage holds the attachments' bytes; nil without object storage.
 	storage *storage.Client
 	// uploads bounds the uploads buffered at once against the memory limit;
-	// imports holds the replica to one import at a time (importSlot).
+	// imports holds the replica to one import at a time, exports to one
+	// export at a time (slot).
 	uploads chan struct{}
 	imports chan struct{}
+	exports chan struct{}
 }
 
 var _ apigen.StrictServerInterface = (*Server)(nil)

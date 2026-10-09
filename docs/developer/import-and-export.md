@@ -239,16 +239,26 @@ decodes it into the generated types. `Correction` writes back only what a correc
 
 ## The export
 
-`ExportProject` and `ExportTenant` ([`exports.go`](../../backend/internal/api/exports.go)) read in one
-`InTenant` transaction and answer a `tar.gz`:
+`ExportProject` and `ExportTenant` ([`exports.go`](../../backend/internal/api/exports.go)) decide who
+exports what in a short `InTenant` transaction and answer an `exportStream`, which writes the
+`tar.gz` as it reads it:
 
 - **Who.** The project's: the project through the predicate and `read` on the project's role;
   the tenant's: `read` on the tenant's role, the projects through `ListProjects` with the archived
   ones. An agent too. A token restricted to a project gets the project's export only, by the
   boundary's rule.
+- **One at a time, a page at a time.** `exportStream.write` waits for the replica's one export slot
+  (`slot`, as the import's, within the request's deadline), then reads everything in one
+  `InTenantSnapshot` — a read-only `REPEATABLE READ` transaction, so the counts the manifest writes
+  first are the documents that follow. It reads the tickets `exportPage`, 50, at a time
+  (`store.ByNumber`), renders and writes each, and holds no more than that page: the archive is
+  never in memory (`TestTheExportStreamsALargeProjectWithinAMemoryBound` exports 600 documents of
+  192,000 characters each, 115 MB, with the heap growing by about 14 MB). The manifests are read
+  whole: a link and an attachment are a few hundred bytes each.
 - **The documents**: every ticket the caller sees, done and dropped ones included, deleted ones
-  not — `ListTickets` with `IncludeTerminal` —, sorted by project key and number, each rendered by
-  `exportDocument` exactly as `…/markdown` answers it, at `<tenant>/<PROJECT>-<n>.md`.
+  not — `ListTickets` with `IncludeTerminal`, project by project in key order and by number —,
+  each rendered by `exportDocument` exactly as `…/markdown` answers it, at
+  `<tenant>/<PROJECT>-<n>.md`; `CountTickets` with the same filter is each project's count.
 - **The manifests**, at the archive's root: `manifest.json` (`apigen.ExportManifest`: the format
   `cowork export v1`, the tenant, each project with its count of documents and of the confidential
   tickets left out, the time, the exporter as grammar v1 writes a person, the totals);
@@ -260,11 +270,17 @@ decodes it into the generated types. `Correction` writes back only what a correc
   predicate answers `NULL`, not `false`, for a ticket without an assignee, so the query asks
   `IS NOT TRUE`; `TestTheExportFollowsItsReader` failed on `NOT` alone.
 - **The act**: `recordExport` writes `exported` on the project or the tenant with the format and the
-  counts, after the archive is built and before it is answered; `exported` is never published.
-- **The answer**: `archiveResponse` writes `application/gzip`, `Content-Disposition: attachment;
-  filename="<tenant>-<PROJECT>-<YYYYMMDD>.tar.gz"` (`<tenant>-<YYYYMMDD>.tar.gz` for the tenant) and
-  `Content-Length`; every entry carries the export's time. The validator reads `application/gzip`
-  with kin-openapi's file decoder, registered in [`validate.go`](../../backend/internal/api/validate.go).
+  counts, once they are read and before the first byte of the archive is answered; `exported` is
+  never published.
+- **The answer**: `application/gzip`, `Content-Disposition: attachment;
+  filename="<tenant>-<PROJECT>-<YYYYMMDD>.tar.gz"` (`<tenant>-<YYYYMMDD>.tar.gz` for the tenant),
+  no `Content-Length`; the three manifests first — the browser reads `manifest.json` from the
+  archive's start —, then the documents; every entry carries the export's time. A failure before
+  the answer starts is a problem as anywhere, a wait for the slot past the deadline `504`; one after
+  it is logged and cuts the connection off (`panic(http.ErrAbortHandler)`, which the recoverer
+  passes on), so a client sees a broken transfer, never a short archive that ends cleanly. The
+  request timeout bounds the whole stream. The validator reads `application/gzip` with kin-openapi's
+  file decoder, registered in [`validate.go`](../../backend/internal/api/validate.go).
 
 ## `cowork-mcp export`
 
@@ -292,7 +308,7 @@ export's act names the binary ([mcp.md](mcp.md)).
 | unit | [`upload_test.go`](../../backend/internal/importer/upload_test.go) | the three forms of an upload, the bounds, the stored form; a hand-written frontmatter read line by line |
 | unit | [`mcpcli/export_test.go`](../../backend/internal/mcpcli/export_test.go) | the unpacking stays inside its directory and never overwrites; it writes the names an export holds and no other — backslashes, steps, volumes, other tenants and projects, numbers not written as keys —, and a directory link planted in the target leads nowhere outside it |
 | integration | [`api_imports_test.go`](../../backend/test/integration/api_imports_test.go) | the dry run and its execution end to end, who may — an agent neither imports nor reads a job —, the acts, one event, the sequence, `409 import_executed`; a conflict until it is excluded, also one filed after the dry run; the bounds and the expiry; the policies of `import_jobs` as the runtime role meets them; the purge of an imported ticket taking its file out of the report, by the job; this repository's whole `docs/tickets/` read without an error, the open tickets after the execution as many as the source's open `state:` lines |
-| integration | [`api_exports_test.go`](../../backend/test/integration/api_exports_test.go) | the round trip of [ADR 0051] D5; the export as each reader sees it |
+| integration | [`api_exports_test.go`](../../backend/test/integration/api_exports_test.go) | the round trip of [ADR 0051] D5; the export as each reader sees it; a project of 115 MB of bodies streamed with the heap growing by a fraction of it (`TestTheExportStreamsALargeProjectWithinAMemoryBound`) |
 | integration | [`mcp_test.go`](../../backend/test/integration/mcp_test.go) `TestTheExportSubcommand`, `TestTheBinaryRunsItsSubcommands` | the subcommand by its command line and by the built binary |
 
 **The fixtures** under [`internal/importer/testdata/tickets/`](../../backend/internal/importer/testdata/tickets/)

@@ -75,12 +75,13 @@ inside one of these, and nothing else hands out a connection.
 | Wrapper | Transaction | Bound to | Hands `fn` |
 |---|---|---|---|
 | `DB.InTenant(ctx, tenantID, fn)` | read-only | the tenant and the caller's person | `*Reader` |
+| `DB.InTenantSnapshot(ctx, tenantID, fn)` | read-only, `REPEATABLE READ`: every read sees one snapshot — the export, which counts first and then reads a page at a time | the tenant and the caller's person | `*Reader` |
 | `DB.Installation(ctx, fn)` | read-only | no tenant: only the person-scoped policies admit rows | `*Reader` |
 | `DB.Mutate(ctx, tenantID, fn)` | read-write; `uuid.Nil` for an installation-level act | the tenant and the caller | `*Writer` |
 | `DB.RunJob(ctx, name, lockKey, fn)` | read-write, under the job's lock | no tenant, a system actor | `*Writer` |
 
 A `Reader` ([`tx.go`](../../backend/internal/store/tx.go)) embeds the generated read queries
-(`readq`), carries `TenantID` and `UserID`, and adds `ListTickets`. A `Writer` embeds a `Reader`
+(`readq`), carries `TenantID` and `UserID`, and adds `ListTickets` and `CountTickets`, its count under the same predicates. A `Writer` embeds a `Reader`
 and the generated write queries (`writeq`), and adds `Record`, `Respond` and the lock methods.
 `sqlc` generates the two packages from `queries/read/` and `queries/write/` with the migrations
 as the schema ([`sqlc.yaml`](../../backend/sqlc.yaml)); a handler that only reads never holds a

@@ -772,11 +772,13 @@ What stays deprecated in `/api/v1` today is a token's `restricted_project_id` be
   plain-text body decoder registered in `validate.go`.
 - **An import's upload** is `multipart/form-data` as well, read by `importer.ReadUpload` in the
   handler ([import-and-export.md](import-and-export.md#the-dry-run)).
-- **The project and the tenant export** return `archiveResponse` from
+- **The project and the tenant export** return `exportStream` from
   [`exports.go`](../../backend/internal/api/exports.go), which implements both generated visit
-  methods: `application/gzip`, `Content-Disposition: attachment` with the archive's file name, and
-  `Content-Length`. The validator reads `application/gzip` with kin-openapi's file body decoder,
-  registered in `validate.go`.
+  methods and writes the archive as it reads it: `application/gzip` and `Content-Disposition:
+  attachment` with the archive's file name, no `Content-Length`; a failure after the answer started
+  cuts the connection off (`http.ErrAbortHandler`) rather than end a truncated archive as a whole one
+  ([import-and-export.md](import-and-export.md#the-export)). The validator reads `application/gzip`
+  with kin-openapi's file body decoder, registered in `validate.go`.
 - **The context** returns `contextResponse` from [`context.go`](../../backend/internal/api/context.go)
   for the same reason: `text/markdown; charset=utf-8` and `Content-Length`, no `ETag` — it is no
   one entity — and every call recorded as `exported` with the format `context v1`.

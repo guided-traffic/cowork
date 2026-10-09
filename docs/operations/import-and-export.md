@@ -184,8 +184,10 @@ every link whose two ends the reader sees, `attachments.json` with the attachmen
 sizes and paths, and each ticket as its Markdown document at `<tenant>/<PROJECT>-<n>.md`, done and
 dropped ones included. A tenant export holds every project its reader sees, archived ones too.
 Each export is recorded as `exported` on the project or the tenant, in the tenant's audit view. The
-archive is built in memory and answered within the request timeout; a tenant too large for that is
-exported project by project.
+archive is streamed as it is read, a page of tickets at a time, one export at a time per replica —
+another waits for it —, and must be written within the request timeout; a tenant too large for that
+is exported project by project. A transfer cut off in the middle is an export that failed: fetch it
+again.
 
 ## The export as a backup
 
@@ -276,7 +278,7 @@ execution's on the files it names, a `404` as a dry run that is gone.
 |---|---|---|
 | `413 payload_too_large` | the body, or the files unpacked, are above `COWORK_MAX_IMPORT_BYTES`, or the upload holds more than 10,000 files | split the upload by directory, or raise the variable — and the Ingress's body limit and the backend's memory with it |
 | the controller's own `413` page | the Ingress's body limit is below the upload | raise it ([installation.md](installation.md#expose-it)) |
-| `504 timeout` | the dry run, the execution or the export took longer than `COWORK_REQUEST_TIMEOUT`, or waited that long for another import on the replica; nothing was written | split the import, or raise the timeout and the controller's read timeout with it |
+| `504 timeout` | the dry run, the execution or the export took longer than `COWORK_REQUEST_TIMEOUT`, or waited that long for another import or export on the replica; nothing was written | split the import, or raise the timeout and the controller's read timeout with it |
 | `400 validation_failed` at `/file` | the upload is no readable archive, names a path twice or a path above 1,024 bytes, or has a part not named `file` | repack it |
 | `409 project_archived` | the project is archived | import into another project |
 | `409 import_conflict` | a file the execution would import has an error or a conflict | exclude it, or fix the source and make a new dry run |

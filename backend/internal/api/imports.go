@@ -41,13 +41,16 @@ const (
 // left out too.
 var importRead = auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeRead, HardOff: auth.HardOffAdministration}
 
-// importSlot holds the replica to one import at a time, a dry run or an
-// execution: an upload is held in memory, unpacked, and kept once more
-// compressed, up to COWORK_MAX_IMPORT_BYTES each (docs/adr/0051 D7).
-func (s *Server) importSlot(ctx context.Context) (func(), error) {
+// slot waits for one of a replica's slots within the request's deadline and
+// answers its release (docs/adr/0051 D7): the imports' holds the replica to
+// one import at a time, a dry run or an execution — an upload is held in
+// memory, unpacked, and kept once more compressed, up to
+// COWORK_MAX_IMPORT_BYTES each —, the exports' to one export at a time, each
+// holding a page of tickets while it streams its archive.
+func slot(ctx context.Context, slots chan struct{}) (func(), error) {
 	select {
-	case s.imports <- struct{}{}:
-		return func() { <-s.imports }, nil
+	case slots <- struct{}{}:
+		return func() { <-slots }, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -67,7 +70,7 @@ func (s *Server) CreateImport(ctx context.Context, req apigen.CreateImportReques
 	if perr := auth.Authorize(principal(ctx), t.Role, administer); perr != nil {
 		return nil, perr
 	}
-	release, err := s.importSlot(ctx)
+	release, err := slot(ctx, s.imports)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +349,7 @@ func (s *Server) ExecuteImport(ctx context.Context, req apigen.ExecuteImportRequ
 		return nil, perr
 	}
 	corrections := correctionsOf(req.Body)
-	release, err := s.importSlot(ctx)
+	release, err := slot(ctx, s.imports)
 	if err != nil {
 		return nil, err
 	}
