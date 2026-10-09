@@ -74,14 +74,14 @@ a reader's rendering of them costs is [rendered-markdown.md](rendered-markdown.m
 |---|---|---|
 | the request's body | `COWORK_MAX_IMPORT_BYTES` (50 MiB by default) plus 64 KiB of multipart framing, before the body is read where its length is declared | `413` |
 | the files of the upload together | `COWORK_MAX_IMPORT_BYTES` once unpacked — a file the import does not read by the size its archive declares, since `tar` reads through those bytes and a `zip`'s are never decompressed; a `tar` entry that is no regular file, a link or a device, by the size it declares; a directory, a `tar`'s global header and a `zip` entry that is no regular file count nothing | `413` |
-| the files of an upload | 10,000 (`importer.MaxFiles`) | `413` |
+| the files of an upload | 10,000 (`importer.MaxFiles`); a `zip` counted, before it is parsed, by the central headers its bytes hold — its directories included, and entries past the count its directory's end declares, which Go's reader parses all the same | `413` |
 | a path | 1,024 bytes, and no path twice | `400` at `/file` |
 | imports at once | one per replica, a dry run or an execution; another waits for it within its own request timeout (`importSlot`) | `504` past the timeout |
 | time | `COWORK_REQUEST_TIMEOUT`, reading the body included; the transaction rolls back past it | `504` |
 
 A file the import reads is decompressed only up to the bound that is left
 (`io.LimitReader`), so an archive whose files unpack to more is refused, not unpacked; a `zip`
-is read whole, and so bounded by the body's limit, and the files it skips are never decompressed.
+is read whole, and so bounded by the body's limit, its entries counted before it is parsed (`TestReadUploadCountsAZipsEntriesBeforeItParsesThem`), and the files it skips are never decompressed.
 What a `tar` holds besides its files — the headers of its entries, its directories — is decompressed
 and counted by no bound but the time ([H-105](#h-105)).
 `0` switches the byte bound off, the body's included — one upload may then hold unbounded memory.

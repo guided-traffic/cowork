@@ -276,7 +276,7 @@ execution's on the files it names, a `404` as a dry run that is gone.
 
 | Answer | Cause | What to do |
 |---|---|---|
-| `413 payload_too_large` | the body, or the files unpacked, are above `COWORK_MAX_IMPORT_BYTES`, or the upload holds more than 10,000 files | split the upload by directory, or raise the variable — and the Ingress's body limit and the backend's memory with it |
+| `413 payload_too_large` | the body, or the files unpacked, are above `COWORK_MAX_IMPORT_BYTES`, or the upload holds more than 10,000 files — a `zip`'s directories count too | split the upload by directory, or raise the variable — and the Ingress's body limit and the backend's memory with it |
 | the controller's own `413` page | the Ingress's body limit is below the upload | raise it ([installation.md](installation.md#expose-it)) |
 | `504 timeout` | the dry run, the execution or the export took longer than `COWORK_REQUEST_TIMEOUT`, or waited that long for another import or export on the replica; nothing was written | split the import, or raise the timeout and the controller's read timeout with it |
 | `400 validation_failed` at `/file` | the upload is no readable archive, names a path twice or a path above 1,024 bytes, or has a part not named `file` | repack it |

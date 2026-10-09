@@ -62,6 +62,7 @@ const (
 	gzipMagic        = "\x1f\x8b"
 	zipMagic         = "PK\x03\x04"
 	zipEmptyMagic    = "PK\x05\x06"
+	zipCentralMagic  = "PK\x01\x02"
 	maxPartNameBytes = 1024
 	// maxPathBytes is the longest path a ticket records as the file it came
 	// from (docs/adr/0051 D3), and a correction names.
@@ -173,11 +174,18 @@ func (u *upload) tarEntry(h *tar.Header, tr *tar.Reader) error {
 }
 
 // zip reads a zip archive, which keeps its directory at its end and is read
-// whole — the request body's limit bounds it.
+// whole — the request body's limit bounds it. zip.NewReader parses every
+// entry of the directory before any bound here applies, and reads on past the
+// count the directory's end declares; every entry it parses starts with the
+// central header's signature, so a zip whose bytes hold more of those than
+// the upload may still hold files is refused before it is parsed.
 func (u *upload) zip(r io.Reader) error {
 	raw, err := io.ReadAll(r)
 	if err != nil {
 		return fmt.Errorf("read the upload: %w", err)
+	}
+	if left := u.lim.MaxFiles - u.entries; u.lim.MaxFiles > 0 && bytes.Count(raw, []byte(zipCentralMagic)) > left {
+		return &UploadError{TooLarge: true, Message: fmt.Sprintf("the upload holds more than %d entries, a zip's directories included", u.lim.MaxFiles)}
 	}
 	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {
