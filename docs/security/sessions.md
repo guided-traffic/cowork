@@ -213,9 +213,10 @@ takes away is not one of them: the page goes to the login page by a route change
 [`api/session.go`](../../backend/internal/api/session.go) `movesIdleClock`). Every read moves the
 idle clock — a page that loads what it shows, the event stream's connections and reconnects, its
 polling fallback's reloads, the reloads an event triggers —, and so does every write that passes
-the CSRF check, at most once a minute. A person who reads a ticket, scrolls a board or writes a long
-comment keeps the session with the reads the page makes; the UI sends nothing of its own to keep
-it. **A forged write extends nothing**: a write a page of the same site sends, where `SameSite=Lax`
+the CSRF check, at most once a minute. The UI sends nothing of its own to keep a session: a person
+keeps it with the requests the pages make, and a page that asks nothing for the length of the idle
+limit — one ticket read for two hours over a stream that stays connected in a tenant where nobody
+acts — ends at it, as before 0.8.0. **A forged write extends nothing**: a write a page of the same site sends, where `SameSite=Lax`
 lets the cookie ride along, fails the CSRF check and leaves the idle clock where it was
 (`TestEveryRequestButARefusedWriteMovesTheIdleClock`). A read is a different matter: a link of
 another site, or an image or a link on a sibling host, that names an address of the API is a read

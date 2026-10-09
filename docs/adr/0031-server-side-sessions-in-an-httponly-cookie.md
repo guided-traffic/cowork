@@ -324,8 +324,9 @@ administrator flag or memberships.)*
   reads come five minutes apart at most: an idle limit of about six minutes or less cannot be held
   that way, and such a person is signed out between two of them. A tab nobody uses ends at the idle
   limit whatever its stream does.~~ *(Superseded 2026-10-07, D3.)*
-- *(Added 2026-10-07, D3.)* A person who reads keeps the session with every read, whatever the
-  idle limit. An open tab nobody uses keeps it too, up to the absolute limit, as long as its event
+- *(Added 2026-10-07, D3.)* A person keeps the session with every request the pages make; a page
+  that asks nothing for the length of the idle limit still ends at it. An open tab nobody uses keeps
+  it too, up to the absolute limit, as long as its event
   stream reconnects, its polling fallback reloads or its page reloads what an event changed within
   each idle window — the owner's accepted risk
   ([docs/security/sessions.md](../security/sessions.md) H-109). Whoever holds a stolen cookie keeps
