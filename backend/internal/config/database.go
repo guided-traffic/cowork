@@ -58,6 +58,12 @@ func OwnerConnection() string { return ownerDatabase.connection() }
 // sslModes are the values of sslmode the driver knows.
 var sslModes = []string{"disable", "allow", "prefer", "require", "verify-ca", "verify-full"}
 
+// verifyingModes are the values of sslmode under which the driver checks the
+// server's certificate against the sslrootcert it is given: require and
+// verify-ca the chain, verify-full the host as well. Under the others it
+// checks nothing, or connects in plain text.
+var verifyingModes = []string{"require", "verify-ca", "verify-full"}
+
 // dbComponents is what the component variables of one role hold, and which of
 // them are set.
 type dbComponents struct {
@@ -141,6 +147,42 @@ func (l *loader) validComponents(v databaseVars, c dbComponents) bool {
 		ok = false
 	}
 	return ok
+}
+
+// withRootCert names caFile, COWORK_DATABASE_CA, as the sslrootcert of one
+// role's connection (docs/adr/0058 D3), which the driver reads as libpq does:
+// the server's certificate must chain to that authority alone — the system
+// pool is not consulted —, require checks the chain as verify-ca does, and
+// verify-full the host as well. A connection that is no postgres:// URL, that
+// names an sslrootcert of its own, or whose sslmode checks nothing is an error
+// that names the variables and never quotes the URL. An unset connection
+// stays unset.
+func (l *loader) withRootCert(v databaseVars, conn, caFile string) string {
+	if conn == "" {
+		return conn
+	}
+	u, err := url.Parse(conn)
+	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") {
+		l.fail("%s needs the connection of %s as a postgres:// URL", EnvDatabaseCA, v.url)
+		return conn
+	}
+	q := u.Query()
+	if q.Has("sslrootcert") {
+		l.fail("%s and an sslrootcert in %s name two authorities: set one of them", EnvDatabaseCA, v.url)
+		return conn
+	}
+	if mode := q.Get("sslmode"); !slices.Contains(verifyingModes, mode) {
+		shown := strconv.Quote(clip(mode, 32))
+		if mode == "" {
+			shown = "unset, the driver's prefer"
+		}
+		l.fail("%s checks nothing while the sslmode of %s is %s: set it to verify-full, verify-ca or require (%s, or the URL's sslmode)",
+			EnvDatabaseCA, v.url, shown, v.sslmode)
+		return conn
+	}
+	q.Set("sslrootcert", caFile)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // composeDatabaseURL writes the components as the URL the driver reads:

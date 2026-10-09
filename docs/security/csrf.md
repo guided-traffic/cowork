@@ -1,7 +1,8 @@
 # Cross-site writes: the CSRF check
 
-What keeps another site from writing with a person's session, what is checked and what is
-not, and what the check depends on, as built on 2026-10-07. The session it protects is
+What keeps another site from writing with a person's session, and from making the reads that record
+an act with it, what is checked and what is not, and what the check depends on, as built on
+2026-10-09. The session it protects is
 [sessions.md](sessions.md); how a request is authenticated at all is
 [trust-boundaries.md](trust-boundaries.md).
 
@@ -34,7 +35,7 @@ runs it through the whole server and asserts that a refused write changed nothin
 
 | Request | Checked | Why |
 |---|---|---|
-| `GET` | no | a read changes no ticket, member or setting (D2) — see [H-22](#h-22) for the reads that record an act. The API declares no `HEAD` and no `OPTIONS` and answers both `405` before any check |
+| `GET` | no — but the five reads that record an act take a session's request only from the installation's own pages ([below](#the-reads-that-record-an-act)) | a read changes no ticket, member or setting (D2). The API declares no `HEAD` and no `OPTIONS` and answers both `405` before any check |
 | a token's request | no | an `Authorization` header makes it a token's, and a cookie beside it is not looked at; a page of another site cannot set that header without a preflight the backend does not answer ([ADR 0035](../adr/0035-personal-access-tokens.md) D7) |
 | `POST /auth/local` | the origin half only | no session yet carries the check, so the `Origin` or `Referer` must still be `COWORK_BASE_URL` — a cross-site login attempt is refused (D5); the custom header is not required, because the login is public and not a write of a session |
 | `GET /auth/oidc/login`, `GET /auth/callback` | no | the identity provider's browser navigations, which make a session rather than act with one (D5) — the session cookie may ride along, and the callback ends the session the browser held when it makes the new one: the callback makes one only when the `state` the issuer returns is the one sealed in the browser's own `__Host-cowork-oidc` cookie, which another site can neither read nor set, so a page of another site cannot log a person in as someone else — a link to the start logs in the person the issuer knows at most ([identity-provider.md](identity-provider.md#the-login), [H-100](#h-100)) |
@@ -45,6 +46,34 @@ runs it through the whole server and asserts that a refused write changed nothin
 no write of a cookie and no login passes — `403 csrf` naming the variable; the backend refuses
 to start without it while the local administrator or an identity provider is configured (D6).
 Reads still work.
+
+## The reads that record an act
+
+Five routes record an act on a read, as data leaving the system must be recorded
+([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D5): an
+attachment's bytes (`downloaded`), a ticket's Markdown export and its context document, and the
+project's and the tenant's export (each `exported`, [import-and-export.md](import-and-export.md)).
+The API document marks each `x-cowork-recorded-read`, and the unit test over the document holds the
+mark to these five. A request authenticated by the session cookie for one of them is held to the
+page it comes from by `Sec-Fetch-Site`, the header a browser sets on every request and no script of
+a page can set ([`api/api.go`](../../backend/internal/api/api.go) `fromOwnPages`, called from
+`sessionRules` after the CSRF check; ADR 0026 D5 as amended 2026-10-07):
+
+| `Sec-Fetch-Site` | Who sends it | Answer |
+|---|---|---|
+| `same-origin` | the UI, and the inline images of rendered Markdown | served, recorded |
+| `none` | the address bar, a bookmark | served, recorded |
+| no header | a browser that does not send it, and every client that is no browser | served, recorded |
+| `same-site` | a page on a sibling host of the same registrable domain — an `<img>` or a link there carries the `SameSite=Lax` cookie | `403 csrf`, nothing read or recorded |
+| `cross-site` | a page of another site — a link, followed at the top level, carries the `Lax` cookie | `403 csrf`, nothing read or recorded |
+
+A token's request is not looked at: it carries no cookie that another page could make a browser
+send. Another value, or a list that names one of the two refused ones, is read as the header says:
+a refused value anywhere refuses. `TestARecordedReadComesFromTheInstallationsOwnPages` runs the
+table; `TestARecordedReadOfASessionComesFromTheInstallationsOwnPages` runs it through the whole
+server for all five and asserts that a refused read recorded nothing. A direct link from another
+site to one of these addresses stops working; the person opens the page in cowork and downloads
+from there.
 
 **There is no CORS.** The backend sends no `Access-Control-*` header and no configuration turns
 one on (D3). A cross-origin `fetch` that sets `X-Requested-With` triggers a preflight nobody
@@ -76,18 +105,6 @@ Not verified against any particular browser: the tests send the headers a browse
 run no browser. A privacy-hardened browser that strips both `Origin` and `Referer` on
 same-origin requests is refused by the rule; the UI tells the person why.
 
-## GitHub's webhook is outside the check
-
-`POST /api/v1/tenants/{tenant}/integrations/github/webhook` is a public write that carries no
-cookie — a cookie sent with it is never looked at — and whose credential is the HMAC of its body
-under the tenant's secret, which no other site can compute
-([ADR 0037](../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md)
-D5 as amended 2026-10-06). GitHub sends no `Origin`, so it is not held to the origin half either: the
-API document marks it `x-cowork-signed` instead of `x-cowork-origin-check`, and the unit test over the
-document holds that mark to this route alone. A page of another site can post to it, as any client
-can, and gets `404`, `413`, `400` or `401` like anybody without the secret
-([github-webhook.md](github-webhook.md)).
-
 ## What this does not cover
 
 <a id="h-21"></a>
@@ -112,20 +129,20 @@ which the policy does not govern —, a credential that outlives the session. A 
 outside the page's policy.
 
 <a id="h-22"></a>
-### H-22 — Reads that write an audit row, and a link can trigger them
+### H-22 — A browser that sends no `Sec-Fetch-Site` lets a link trigger the reads that record an act
 
-Live today. The rule leaves reads unchecked because a read mutates nothing (D2), and five
-routes record an act on a read, as data leaving the system must be recorded
-([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D5): an
-attachment's bytes (`downloaded`), a ticket's Markdown export and its context document, and the
-project's and the tenant's export (each `exported`, [import-and-export.md](import-and-export.md)).
-A page of
-another site that gets a person to follow a link to one of them makes a top-level `GET` that
-carries the `Lax` cookie, so the act is recorded under the person — a row in an append-only
-table, not a change to any ticket —, and the response is unreadable to the other site. An
-`<img>` or a `fetch` from another site does not carry the cookie. If an attacker choosing the
-audit record's content matters to an installation, the answer is a decision on these
-routes — a header they require too — not a setting.
+Live in a browser that does not send the header, and through the way back after a local sign-in.
+The five reads that record an act refuse a session's request that a page on a sibling host or of
+another site makes ([above](#the-reads-that-record-an-act)), but they cannot tell such a request
+from the UI's when the browser names no site: a request without `Sec-Fetch-Site` is served, so in
+a browser that sends none, a link of another site that the person follows — a top-level `GET` that
+carries the `Lax` cookie — and an image on a sibling host record the act under the person — a row
+in an append-only table, not a change to any ticket —, and the response is unreadable to the other
+page. Not verified here: which browsers in use send no `Sec-Fetch-Site`; the tests send the header
+a browser sends and run no browser. The local login's way back to such a path is a navigation of
+cowork's own login page, `same-origin`, and records the read ([sessions.md](sessions.md#h-93)
+H-93). Requiring the header would close the first and lock such a browser out of downloads and
+exports.
 
 <a id="h-99"></a>
 ### H-99 — A public write the document leaves unmarked would pass unchecked

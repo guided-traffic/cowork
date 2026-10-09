@@ -103,6 +103,11 @@ attachmentContent:
       everything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system
       (docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so
       (docs/adr/0059 D4).
+
+      A recorded read (`x-cowork-recorded-read`): a session's request whose
+      `Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and
+      no header pass, and a token's request is not looked at (docs/adr/0026 D5).
+    x-cowork-recorded-read: true
     parameters:
       - $ref: './components/parameters.yaml#/IfNoneMatch'
     responses:

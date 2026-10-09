@@ -20,7 +20,7 @@ is accountable.
 > `0.11.0`. 1.0 comes once every open question is answered.** Tenants,
 > projects and tickets — with links, state transitions, open questions, comments, interest,
 > progress, time entries and attachments — the audit record and the event stream exist behind a
-> JSON API, tested against PostgreSQL 18, MinIO and Dex. A person logs in through any OpenID Connect
+> JSON API, tested against PostgreSQL 18, PGSTY Silo — the maintained MinIO fork — and Dex. A person logs in through any OpenID Connect
 > provider, whose groups decide who gets in and — mapped per tenant — in which role, or with a local
 > account: the local administrator the installation's Secret names, or the provider's administrator
 > group, creates the first tenant, its administrators add its people, and each person makes their
@@ -70,15 +70,14 @@ flowchart LR
 - 🔖 **Saved filters** — the list filters under a name, the person's own or shared with the tenant with its owner beside it, applied, saved and shared from the filter bars of the backlog, of the tenant board and of the tenant's ticket list — every project's tickets in one table, whose address is its filter, so a filtered list is a link; a value that no longer holds is a warning, a shared filter that names what the reader cannot see is shown without its conditions, and a tenant administrator unshares or deletes a shared one — of a person who left, say — and changes nothing else of it.
 - 🔎 **Search with snippets** — PostgreSQL full text over titles, bodies, comments, questions and file names, keys by their beginning and titles by trigram, one ranked hit per ticket with the words found marked; a tenant's from its pages, every tenant's of the person from anywhere, each hit held to what the reader may see.
 - 📝 **Markdown rendered on the server** — the body, comments, options and answers rendered with goldmark and held to an allow-list by bluemonday: raw HTML shown as text, links with `rel="noopener noreferrer nofollow"`, images only of the ticket's own raster attachments; Angular's sanitiser runs over it again.
-- 📦 **Import and export** — a repository's Markdown tickets, open and archived, or an earlier export come into a project through a dry run whose report names every file's outcome, type, state and warnings for a tenant administrator to correct, on the project's import page or through the API, then one transaction that keeps their numbers, or nothing; a project or a whole tenant leaves as an archive of the tickets' Markdown with manifests of their links and attachments, fetched by anyone who reads it — from the project's header, the tenant's settings or the API — the backup's second line, and the round trip a test.
+- 📦 **Import and export** — a repository's Markdown tickets, open and archived, or an earlier export come into a project through a dry run whose report names every file's outcome, type, state and warnings for any writer of the project, or their agent, to read and correct, on the project's import page, with `cowork-mcp import` or through the API, then one transaction that imports every file it can — keeping their numbers — and leaves out each one with an error or a conflict, saying why; a project or a whole tenant leaves as an archive of the tickets' Markdown with manifests of their links and attachments, fetched by anyone who reads it — from the project's header, the tenant's settings or the API — the backup's second line, and the round trip a test.
 - 🔔 **An inbox and the lists across tenants** — a notification for an assignment, a mention in a comment (`@` picks the person), a question asked of you, your question answered, a state change or a comment on a ticket you watch, a blocker closed and an urgent need, written with the act and shown from it; a bell with the unread count, live; and "next for me" — the start page —, "assigned to me" and "open decisions" across every tenant of the person, each item beside its tenant.
-- 🔗 **Pull requests on their tickets** — optional per tenant and on trial: a GitHub webhook signed with the tenant's secret links the pull requests of the repository's owner, members and collaborators and the default-branch commits whose titles, bodies and messages name a ticket, tells its watchers of a merge and hints that the work may be ready to move — and never moves a ticket; cowork calls nothing at GitHub.
 - 📊 **A dashboard per tenant** — its front page: nine fixed tiles — open tickets by state and by severity, open security findings, the blocked, their age, done per week, lead time, open decisions, time booked — filtered by project and period, counted only over what the reader may see, and live.
 - 🎯 **Rank is the decision, score is the warning** — each project's backlog is ranked by hand, grouped by horizon; a versioned score of severity, horizon, stakes and age marks where it disagrees, can be adopted in one recorded act, and orders the lists across tenants.
 - 🗄️ **Migrations under their own role** — embedded SQL applied by an init container as the owner role, serialised across replicas by an advisory lock; the serving container holds only the runtime credential and refuses a schema with pending migrations.
 - 🐘 **PostgreSQL 18 and S3** — `uuidv7()` keys and full-text search in PostgreSQL; attachments in any S3-compatible bucket, served only through the backend.
 - ⎈ **One Helm chart** — two hardened Deployments, an Ingress that routes the API to the backend, every credential from an existing Secret, no RBAC because neither container talks to the Kubernetes API, and no NetworkPolicy, because network policies are the cluster's.
-- 🧪 **Tested in every layer** — Go unit tests; integration and API tests against PostgreSQL 18, MinIO and Dex — and an issuer in the test's own process for what Dex cannot be made to do — with every response checked against the API document; Angular unit tests, chart lint and render, one container scan per image, release tooling check; all as `make` targets CI runs unchanged.
+- 🧪 **Tested in every layer** — Go unit tests; integration and API tests against PostgreSQL 18 — one of them serving TLS under a private authority —, Silo and Dex — and an issuer in the test's own process for what Dex cannot be made to do — with every response checked against the API document; Angular unit tests, chart lint and render, one container scan per image, release tooling check; all as `make` targets CI runs unchanged.
 - 🆕 **Newest toolchains** — Go 1.27 and Angular 22, moved by Renovate as grouped updates.
 - 🗂️ **Documentation with five homes** — decisions in ADRs, work lists in tickets that get archived, one security page per perspective.
 - 🧭 **Decided, then built** — every founding question was put to the owner one at a time and became an ADR before the code that depends on it.
@@ -92,11 +91,12 @@ A database role given as components instead of a URL is `COWORK_DATABASE_HOST`, 
 `_USER`, `_PASSWORD` and `_SSLMODE`, the owner role's the same under `COWORK_DATABASE_OWNER_`.
 The frontend container takes no variable: its nginx configuration is a file in the image
 ([frontend container](#frontend-container)). The integration tier reads
-`COWORK_TEST_DATABASE_URL`, `COWORK_TEST_S3_ENDPOINT`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` and
-`COWORK_TEST_OIDC_ISSUER`, every one of them required; `make dev-seed` reads
+`COWORK_TEST_DATABASE_URL`, `COWORK_TEST_DATABASE_TLS_URL`, `COWORK_TEST_DATABASE_TLS_CA`,
+`COWORK_TEST_S3_ENDPOINT`, `_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` and `COWORK_TEST_OIDC_ISSUER`,
+every one of them required; `make dev-seed` reads
 `COWORK_DEV_SEED_DATABASE_URL`; `make dev` takes `COWORK_DEV_ADMIN` and
 `COWORK_DEV_ADMIN_PASSWORD`. The development containers take `CONTAINER_BIND` (`127.0.0.1`
-`# default`), `POSTGRES_PORT`, `MINIO_PORT` and `DEX_PORT` from `make`. `cowork-mcp` reads
+`# default`), `POSTGRES_PORT`, `POSTGRES_TLS_PORT`, `MINIO_PORT` and `DEX_PORT` from `make`. `cowork-mcp` reads
 `COWORK_URL`, `COWORK_TOKEN` and `CLAUDE_PROJECT_DIR` ([CLI (cowork-mcp)](#cli-cowork-mcp)); the
 plugin's hooks hand it `CLAUDE_PLUGIN_OPTION_COWORK_URL` and `CLAUDE_PLUGIN_OPTION_COWORK_TOKEN`
 under those names. A chat provider's variables are `COWORK_CHAT_<ID>_NAME`, `_KIND`, `_URL`,
@@ -119,8 +119,9 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Local administrator Secret rendered by the chart | `<fullname>-local-admin`, keys `username` and `password` | only with the inline `localAdmin.username` and `localAdmin.password` |
 | Identity provider's client Secret | not rendered: `auth.oidc.existingSecret` names one of yours, key `auth.oidc.keys.clientSecret` (`clientSecret`) and, when set, `auth.oidc.keys.clientId` | only with `auth.oidc.issuer`; the client secret has no inline value |
 | A chat provider's key Secret | not rendered: each entry of `chat.providers` names one of yours in `existingSecret`, key `keys.apiKey` (`apiKey`) | one per provider; required for kind `anthropic`; there is no inline value |
-| Pod annotations of the backend | `checksum/database-secret`, `checksum/database-owner-secret`, `checksum/local-admin-secret` | only with the inline values (the owner's while the init container migrates); a changed value rolls the pods |
+| Pod annotation of the backend | `cowork/inline-credentials-revision`, the release's revision | only while an inline credential is set — `database.url`, `database.owner.url` while the init container migrates, or `localAdmin.username` with `.password`; every upgrade rolls the pods, so a changed value reaches them, and no hash of a credential is in the pod template. Under `helm template` and Argo CD the revision stays `1` and a changed value takes a `rollout restart` |
 | CA volume of the backend | `s3-ca`, mounted at `/etc/cowork/s3-ca` | only with the storage on (`storage.endpoint` or `storage.existingConfigMap`) and `storage.tls.caConfigMap` |
+| Database CA volume | `database-ca`, mounted at `/etc/cowork/database-ca` into the `migrate` init container, the serving container and the migration Job, `COWORK_DATABASE_CA=/etc/cowork/database-ca/<keys.ca>` | only with `database.tls.caConfigMap` |
 | Headless metrics Service | `<fullname>-backend-metrics`, port `metrics`, component label `metrics` | only with `metrics.serviceMonitor.enabled`; the metrics port alone, so the backend Service never carries it |
 | `PodMonitor`, `ServiceMonitor`, `PrometheusRule` | `<fullname>` | each only with its switch under `metrics.*`; they need the Prometheus Operator's CRDs |
 | Grafana dashboard ConfigMap | `<fullname>-dashboard`, key `cowork.json`, label `grafana_dashboard: "1"` `# default` | only with `metrics.grafanaDashboard.enabled` |
@@ -147,7 +148,6 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | System actor | `system:<name>` in an audit row: `login`, `bootstrap`, `identity-provider`, and the jobs `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `ticket-purge`, `consistency-check`, `import-expiry` | `system:identity-provider` |
 | Local account origin | `config` — the one account `COWORK_LOCAL_ADMIN_*` names — or `tenant` — one a tenant administrator created and that tenant manages | — |
 | Agent header | `X-Cowork-Agent: <name>/<model>/<session>`, each part 1–64 printable ASCII characters | `claude-code/opus/7f3a` |
-| Activity header | `X-Cowork-Activity: input` on a read of a session: the person's activity, which moves the idle clock; any other value, or none, moves nothing | `X-Cowork-Activity: input` |
 | Agent header of the chat | `chat/<model>/<conversation>`: the picked provider's model, its `/` written `:`, and the conversation's id the browser made | `chat/qwen:qwen3-30b-a3b-2507/0199a3c2-1d2e-7f00-8000-000000000042` |
 | Chat provider id | 1–32 characters of `a-z`, `0-9` and `-`, a dash neither first nor last; named once in `COWORK_CHAT_PROVIDERS` | `lmstudio`, `claude-work` |
 | The chat's browser storage | `localStorage`: `cowork.chat.<person id>` (`open` or `closed`), `cowork.chat.provider.<person id>` (the picked provider's id) | — |
@@ -164,9 +164,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Event channel | the PostgreSQL `NOTIFY` channel `cowork_events` | — |
 | Metric | `cowork_<subsystem>_<name>_<unit>`, a counter's ending in `_total`, a duration's in `_seconds` ([Metrics](#metrics)) | `cowork_http_requests_total` |
 | Alert | `Cowork<what>`, in the chart's `PrometheusRule`, its section in [docs/operations/metrics.md](docs/operations/metrics.md) | `CoworkSchemaDirty` |
-| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `pull_request.changed`, `membership.changed`; on a person-level stream (`?me=true`) also `inbox.changed`; the control events `resync` and `unavailable` | — |
-| GitHub webhook URL | `<COWORK_BASE_URL>/api/v1/tenants/<slug>/integrations/github/webhook`, one per tenant; its secret 64 hexadecimal characters, made in the tenant's settings | `https://cowork.example.com/api/v1/tenants/acme/integrations/github/webhook` |
-| A pull request's or a commit's page on a ticket | `https://<repository identity>/pull/<number>`, `https://<repository identity>/commit/<sha>` — written from the bound repository, never taken from a delivery | `https://github.com/acme/app/pull/34` |
+| Event names | `ticket.changed` (uploads included), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`; on a person-level stream (`?me=true`) also `inbox.changed`; the control events `resync` and `unavailable` | — |
 
 ### Development environment
 
@@ -174,12 +172,13 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 |---|---|---|
 | PostgreSQL container | `cowork-postgres`, `postgres:18` on `localhost:5432` | `make postgres-up`; `POSTGRES_CONTAINER=` and `POSTGRES_PORT=` move it |
 | Development database | `cowork`, owned by `cowork_owner`, served as `cowork_app` | created by `make postgres-up`; each password is the role's name |
-| MinIO container | `cowork-minio`, `cgr.dev/chainguard/minio` pinned by digest, on `localhost:9000` | `make minio-up`; root keys `cowork` / `cowork-secret`, development values; `MINIO_CONTAINER=` and `MINIO_PORT=` move it |
+| PostgreSQL that serves TLS | `cowork-postgres-tls`, `postgres:18` on `localhost:5433`, a private authority and a server certificate for `localhost` and `127.0.0.1` made in the container at its first start; the authority's certificate copied to `bin/cowork-postgres-tls-ca.crt` | `make postgres-tls-up`, for the integration test of `COWORK_DATABASE_CA`; superuser `postgres` / `postgres`, every key a development value; `POSTGRES_TLS_CONTAINER=` and `POSTGRES_TLS_PORT=` move it, `make postgres-tls-down` removes it with the copy |
+| S3 container | `cowork-minio`, PGSTY Silo — `docker.io/pgsty/silo`, the maintained MinIO fork — pinned by release tag and digest (`MINIO_IMAGE`), on `localhost:9000`; it holds the client `mcli` | `make minio-up`; root keys `cowork` / `cowork-secret`, development values; `MINIO_CONTAINER=` and `MINIO_PORT=` move it. The names stay MinIO's because Silo keeps MinIO's interface; a `cowork-minio` made before keeps its MinIO image until `make minio-down minio-up` |
 | Dex container | `cowork-dex`, `ghcr.io/dexidp/dex` pinned by tag and digest (`DEX_IMAGE`), on `localhost:5556`; the issuer `http://localhost:5556/dex`, the client `cowork` with the secret `cowork-dev-dex-secret` | `make dex-up`, configured from [`hack/dex/config.yaml`](hack/dex/config.yaml), copied in; `DEX_CONTAINER=` and `DEX_PORT=` move it; keeps nothing, so `make dex-down` loses nothing |
 | Dex users | `ada@example.com` (`cowork-admins`, `cowork-users`), `bob@example.com` (`cowork-users`, `team-red`), `cyd@example.com` (`cowork-users`), `dan@example.com` (`team-red`), each with the password `dev-only-dex` | every credential of Dex is development-only and public in this repository |
-| Container binding | `CONTAINER_BIND=127.0.0.1` `# default` | `make postgres-up`, `minio-up` and `dex-up` publish their ports on the loopback address only; a container made before keeps its binding until it is removed |
-| All three at once | `make dev-up` | PostgreSQL, MinIO and Dex, what `make dev` and the integration tier need |
-| Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>` | one database and one bucket per run; at the end the database is dropped and the bucket emptied and removed |
+| Container binding | `CONTAINER_BIND=127.0.0.1` `# default` | `make postgres-up`, `postgres-tls-up`, `minio-up` and `dex-up` publish their ports on the loopback address only; a container made before keeps its binding until it is removed |
+| All three at once | `make dev-up` | PostgreSQL, Silo and Dex, what `make dev` needs; the integration tier needs `make postgres-tls-up` besides |
+| Integration run | roles `cowork_it_owner` and `cowork_it_app`, database `cowork_it_<unix-nanoseconds>`, bucket `cowork-it-<unix-nanoseconds>`; on the PostgreSQL that serves TLS the same roles and a database `cowork_it_tls_<unix-nanoseconds>` | one database and one bucket per run, and one database per run of the authority's test; at the end the databases are dropped and the bucket emptied and removed |
 | End-to-end stack | the network `cowork-e2e` and the containers `cowork-e2e-postgres`, `-minio`, `-dex`, `-backend`, `-frontend`, `-ingress` (`E2E_NAME=` renames them); the UI on `https://localhost:18443` (`E2E_PORT`), Dex on `http://localhost:5557/dex` (`E2E_DEX_PORT`); the database `cowork_e2e`, the bucket `cowork-e2e` | `make e2e` makes and removes it, `make e2e-up` and `make e2e-down` keep it between runs; the local administrator `e2e-admin` with the password `e2e-only-cowork`, development values |
 | End-to-end data | the tenants `e2e` (a project per test, key `E` and seven random characters; the mapping `team-red` → `member`), `e2e-other` (the administrator's second tenant, a project per test that needs one there), `e2e-visual` (the project `VIEW` of the screenshots) and `e2e-d<random>` (one per run of the dashboard's path, its projects `OPEN` and `HIDDEN`), the token `e2e-seed`, local accounts `e2e-<random>` | made by the suite through the API ([testing.md](docs/developer/testing.md#end-to-end-tests)) |
 | Development seed | person `dev`, tenant `dev`, an admin membership, a token named `dev-seed` | `make dev-seed`; every run prints a new token once |
@@ -238,8 +237,8 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 |---|---|
 | [docs/developer/](docs/developer/README.md) | Contributor entry point and how the code works: layout, package map, architecture, build/test/lint matrix, testing, CI and release, checklists, conventions |
 | [docs/developer/development-credentials.md](docs/developer/development-credentials.md) | Every development-only username, password, key and token of `make dev`, its containers and the test tiers, with the file that sets it |
-| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; [upgrading](docs/operations/upgrade.md); [backups, the consistency check and a restore](docs/operations/backups.md); runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation; [GitHub's webhook](docs/operations/github.md) per repository; [importing tickets and the export as a backup](docs/operations/import-and-export.md) |
-| [deploy/examples/](deploy/examples/) | A CloudNativePG cluster and a MinIO bucket to copy and adapt — examples checked for syntax against the operators' CRD schemas, not supported deployments |
+| [docs/operations/](docs/operations/README.md) | Installing and running: the database roles, the Secrets and the object storage, the two migration modes, the Ingress and its controller's settings; [upgrading](docs/operations/upgrade.md); [backups, the consistency check and a restore](docs/operations/backups.md); runtime behaviour, the limits, what answers what, the event stream behind an Ingress; [the metrics](docs/operations/metrics.md), their alerts and what to do when one fires; [Claude Code](docs/operations/claude-code.md) against an installation; [importing tickets and the export as a backup](docs/operations/import-and-export.md) |
+| [deploy/examples/](deploy/examples/) | A CloudNativePG cluster, the values of PGSTY Silo's Helm chart and the `mcli` commands of a bucket-scoped key to copy and adapt — examples checked for syntax against the CRD schemas and the chart of the releases they name, not supported deployments |
 | [docs/security/](docs/security/README.md) | The security architecture, one page per perspective; [SECURITY.md](SECURITY.md) to report a vulnerability |
 | [docs/adr/](docs/adr/README.md) | Why cowork is the way it is |
 | [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [Dex](https://dexidp.io/docs/) | The standard the login through an identity provider follows, and the issuer it is developed and tested against |
@@ -250,7 +249,7 @@ frontend Service ([ADR 0001](docs/adr/0001-two-containers-a-go-backend-and-an-ng
 
 ### Prerequisites
 
-Go 1.27, Node.js 26 with npm, Docker (for the local PostgreSQL and MinIO and the images),
+Go 1.27, Node.js 26 with npm, Docker (for the local PostgreSQL and Silo and the images),
 Helm 3 or 4, `openssl`. `make help` lists every target.
 
 ### Run it locally
@@ -258,7 +257,7 @@ Helm 3 or 4, `openssl`. `make help` lists every target.
 The quickest way to see cowork, with demo data and the UI reloading as you edit:
 
 ```bash
-make dev                # PostgreSQL, MinIO, Dex, the backend, demo data and the UI on https://localhost:4200 — Ctrl-C stops it
+make dev                # PostgreSQL, Silo, Dex, the backend, demo data and the UI on https://localhost:4200 — Ctrl-C stops it
 ```
 
 Sign in as `dev` with the development-only password `dev-only-cowork`, or with *Sign in with Dex*
@@ -269,7 +268,7 @@ self-signed certificate — HTTPS, because Safari stores no `Secure` session coo
 `http://localhost` — so the browser asks about it once. The parts by hand:
 
 ```bash
-make postgres-up        # postgres:18 on :5432 — database cowork, roles cowork_owner (migrates) and cowork_app (serves); make dev-up adds MinIO and Dex
+make postgres-up        # postgres:18 on :5432 — database cowork, roles cowork_owner (migrates) and cowork_app (serves); make dev-up adds Silo and Dex
 make dev-seed           # migrates; then a person, the tenant "dev", an admin membership and a token, printed once
 make run                # the backend on :8080: migrates as cowork_owner, serves as cowork_app (text logs)
 make frontend-serve     # the Angular dev server on :4200, /api and /auth proxied to :8080 — the stand-in for the Ingress
@@ -322,12 +321,13 @@ from `make frontend-serve NG_SERVE_FLAGS=--ssl` ([`hack/dev.sh`](hack/dev.sh),
 [`hack/dex/config.yaml`](hack/dex/config.yaml)).
 
 Without object storage the backend refuses uploads (`501 uploads_disabled`). To try
-attachments, start MinIO, create a bucket with any S3 client — no target creates one — and
-hand the backend its keys:
+attachments, start Silo, create a bucket with any S3 client — no target creates one; the
+container's own `mcli` will do — and hand the backend its keys:
 
 ```bash
-make minio-up           # MinIO on :9000, root keys cowork / cowork-secret
-mc alias set local http://localhost:9000 cowork cowork-secret && mc mb local/cowork
+make minio-up           # Silo on :9000, root keys cowork / cowork-secret
+docker exec cowork-minio mcli alias set local http://localhost:9000 cowork cowork-secret
+docker exec cowork-minio mcli mb local/cowork
 COWORK_S3_ENDPOINT=http://localhost:9000 COWORK_S3_BUCKET=cowork \
   COWORK_S3_ACCESS_KEY_ID=cowork COWORK_S3_SECRET_ACCESS_KEY=cowork-secret make run
 ```
@@ -336,7 +336,7 @@ COWORK_S3_ENDPOINT=http://localhost:9000 COWORK_S3_BUCKET=cowork \
 
 ```bash
 make test                       # backend unit + frontend unit
-make dev-up                     # the integration tier needs PostgreSQL, MinIO and Dex
+make dev-up postgres-tls-up     # the integration tier needs PostgreSQL, one that serves TLS, Silo and Dex
 make test-integration           # a database and a bucket of its own per run
 make e2e-browsers               # once: Playwright's Chromium and WebKit
 make docker-build e2e           # the end-to-end tier: both images behind the Ingress stand-in, a stack of its own
@@ -356,8 +356,8 @@ runtime role that owns nothing — both created by you, as
 [installation.md](docs/operations/installation.md#the-database-and-its-two-roles) shows; a Secret
 without a URL key, as an operator writes one, is read by its component keys instead
 ([the Secrets](docs/operations/installation.md#the-secrets)), and
-[`deploy/examples/`](deploy/examples/) has a CloudNativePG cluster and a MinIO bucket to copy —
-checked for syntax only.
+[`deploy/examples/`](deploy/examples/) has a CloudNativePG cluster and a Silo with its bucket to
+copy — checked for syntax only.
 
 ```bash
 kubectl create namespace cowork
@@ -494,9 +494,10 @@ size is a number of bytes or a number with `KiB`, `MiB` or `GiB`; a duration is 
 | `COWORK_DATABASE_OWNER_URL` | empty `# default` | `postgres://cowork_owner:…@postgres:5432/cowork?sslmode=require` `# example` | The owner role's URL, which the migrations run under; it must name another role than `COWORK_DATABASE_URL`. Set it or its components below, not both. Required by `cowork migrate`, and by `cowork serve` while `COWORK_MIGRATE_ON_START` is `true`. **Security:** the owner can switch row-level security off, so a serving process that holds this URL loses the second line of tenant isolation against its own compromise. The chart hands it to the migration run only: the `migrate` init container, or the migration Job in job mode |
 | `COWORK_DATABASE_HOST`, `COWORK_DATABASE_PORT`, `COWORK_DATABASE_NAME`, `COWORK_DATABASE_USER`, `COWORK_DATABASE_PASSWORD`, `COWORK_DATABASE_SSLMODE` | empty `# default` | `postgres.cowork.svc`, `5432`, `cowork`, `cowork_app`, `CHANGE-ME`, `require` `# example` | The runtime role's connection as components, for a Secret that holds no URL ([ADR 0058](docs/adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D4): the backend composes `postgres://user:password@host:port/name?sslmode=…`, the user, the password and the name escaped. The host, the name, the user and the password are required together; without the port it is 5432, without the sslmode the driver's default, `prefer`. One of them beside `COWORK_DATABASE_URL`, a port that is no port, an sslmode other than `disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`, or a host with `/`, `?`, `#`, `@` or a space refuses the start. **Security:** the password is a credential, read as it is and never echoed — an error quotes the port, the sslmode or the host, never the password |
 | `COWORK_DATABASE_OWNER_HOST`, `_PORT`, `_NAME`, `_USER`, `_PASSWORD`, `_SSLMODE` | empty `# default` | as above `# example` | The owner role's connection as components, by the same rules, in place of `COWORK_DATABASE_OWNER_URL`. **Security:** as `COWORK_DATABASE_OWNER_URL` |
+| `COWORK_DATABASE_CA` | empty `# default` | `/etc/cowork/database-ca/ca.crt` `# example` | A PEM file of the private authority the database server's certificate chains to, such as CloudNativePG's own ([ADR 0058](docs/adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3). The backend names it as the `sslrootcert` of both roles' connections, a URL and one composed of components alike, so the runtime pool, the owner's and the migration run trust that authority alone — the system pool is not consulted —; the driver reads it as libpq does: `verify-full` checks the chain and the host, `verify-ca` and `require` the chain. Beside an sslmode that checks nothing — `disable`, `allow`, `prefer`, or none, the driver's `prefer` —, beside a URL that names an `sslrootcert` of its own, or beside a connection that is no `postgres://` URL, the start is refused, the error naming the variables and never the URL. Empty leaves the connections as they are given. **Security:** with `verify-full`, a peer that redirects the connection cannot present a certificate of its own; whoever may replace the file is trusted like whoever may read the roles' Secrets |
 | `COWORK_MIGRATE_BOOTSTRAP` | `false` `# default` | `true`, `false` | Read by `cowork migrate`: with `true`, after the schema step it synchronises the local administrator and the bootstrap tenant as `cowork serve` does at its start — as the runtime role, under the bootstrap's advisory lock, with the same variables ([ADR 0057](docs/adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md) D4). The chart's migration Job sets it; the init container does not, because a bootstrap given no administrator would deactivate the one the serving container keeps |
 | `COWORK_MIGRATE_ON_START` | `true` `# default` | `true`, `false` | `serve` applies pending migrations before it listens; with `false` it refuses to start while migrations are pending. The chart sets `false` and migrates in an init container or, in job mode, in a Job |
-| `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key: keys derived from it sign the list cursors, key the fingerprint of an idempotent request and the hashes of a client's address — the login throttle's and the one every audit row of a request carries — and seal the identity provider's login state and refresh tokens and every tenant's GitHub webhook secret. Every replica needs the same key. A new key invalidates the cursors clients hold (`400 invalid_cursor`), fails the logins through the provider under way, gives every address another hash — the login throttle counts it anew, and audit rows before and after cannot be compared —, refuses the retry of an idempotent request keyed before it (`422 idempotency_mismatch`), ends each session of the provider that holds a refresh token at its next refresh, and leaves every tenant's GitHub webhook secret unopenable, so its webhook answers `404` until its administrators make a new one — no previous key is kept to open what the old one sealed ([ADR 0031](docs/adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1; [rotating it](docs/operations/installation.md#the-secrets)); it signs no session, and a session of the local login survives it. **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. With the database, it opens the stored refresh tokens ([H-27](docs/security/identity-provider.md#h-27)) and reverses the audit rows' IPv4 hashes ([H-30](docs/security/tokens.md#h-30)). `make run` makes a throw-away one |
+| `COWORK_SESSION_KEY` | — (required by `serve`) | standard base64 of at least 32 bytes, `openssl rand -base64 32` | The server key: keys derived from it sign the list cursors, key the fingerprint of an idempotent request and the hashes of a client's address — the login throttle's and the one every audit row of a request carries — and seal the identity provider's login state and refresh tokens. Every replica needs the same key. A new key invalidates the cursors clients hold (`400 invalid_cursor`), fails the logins through the provider under way, gives every address another hash — the login throttle counts it anew, and audit rows before and after cannot be compared —, refuses the retry of an idempotent request keyed before it (`422 idempotency_mismatch`), and ends each session of the provider that holds a refresh token at its next refresh — no previous key is kept to open what the old one sealed ([ADR 0031](docs/adr/0031-server-side-sessions-in-an-httponly-cookie.md) D1; [rotating it](docs/operations/installation.md#the-secrets)); it signs no session, and a session of the local login survives it. **Security:** a secret: from a Secret, never echoed; the chart has no inline value for it. With the database, it opens the stored refresh tokens ([H-27](docs/security/identity-provider.md#h-27)) and reverses the audit rows' IPv4 hashes ([H-30](docs/security/tokens.md#h-30)). `make run` makes a throw-away one |
 | `COWORK_LISTEN_ADDR` | `:8080` `# default` | `host:port` | The backend listener for API and health |
 | `COWORK_METRICS_ADDR` | `:8081` `# default` | `host:port`, another than `COWORK_LISTEN_ADDR`; empty switches it off | The metrics listener: Prometheus text at `/metrics` and nothing else ([Metrics](#metrics), [docs/operations/metrics.md](docs/operations/metrics.md)). Bound beside the API's listener before either serves — a taken port refuses the start — and shut down with it. Unlike every other variable, one set to an empty value is not unset: it closes the port, and nothing is recorded. An address without a port, or the API's, refuses the start, naming the variable. **Security:** no authentication — every pod that reaches the backend pods reads the installation's activity in counts, never a person, a ticket or a token, and a tenant only by its id on the consistency check's counts ([H-63](docs/security/metrics.md#h-63)); admit only the monitoring namespace to the port, or switch it off |
 | `COWORK_LOG_LEVEL` | `info` `# default` | `debug`, `info`, `warn`, `error` | Minimum level |
@@ -514,17 +515,17 @@ Chart values are in [Helm chart values](#helm-chart-values); the pages are
 
 | Variable | Default | Values | Meaning |
 |---|---|---|---|
-| `COWORK_LOCAL_ADMIN_USERNAME` | empty `# default` | `admin` `# example` | With `COWORK_LOCAL_ADMIN_PASSWORD`: the one account the configuration keeps, a global administrator — it creates tenants and holds no role in any until it grants itself one — and a full account (`local:<username>`). Synchronised at every start, after the migrations, under an advisory lock: created; re-hashed with all its sessions ended when the password changed; deactivated, its tokens revoked and its sessions ended, when both variables are empty; never deleted. Both set or both empty — one alone refuses the start, naming the missing variable. Needs `COWORK_BASE_URL`. 1–63 characters of `a-z`, `0-9`, `.`, `_`, `-`, starting with a letter or a digit |
-| `COWORK_LOCAL_ADMIN_PASSWORD` | empty `# default` | at least `COWORK_PASSWORD_MIN_LENGTH` characters | The account's password, read as it is — spaces included. **Security:** a secret: from a Secret, never echoed or logged; anyone who can read the pod spec or the Secret can read it. A leaked one stays valid until the Secret is rotated **and** the backend restarted; that rotation also unlocks a locked administrator and ends its sessions. The account's password cannot be changed in the UI: this is its source |
+| `COWORK_LOCAL_ADMIN_USERNAME` | empty `# default` | `admin` `# example` | With `COWORK_LOCAL_ADMIN_PASSWORD`: the one account the configuration keeps, a global administrator — it creates tenants and holds no role in any until it grants itself one — and a full account (`local:<username>`). Synchronised at every start, after the migrations, under an advisory lock: created; re-hashed with all its sessions ended and all its tokens revoked when the password changed; deactivated, its tokens revoked and its sessions ended, when both variables are empty; never deleted. Both set or both empty — one alone refuses the start, naming the missing variable. Needs `COWORK_BASE_URL`. 1–63 characters of `a-z`, `0-9`, `.`, `_`, `-`, starting with a letter or a digit |
+| `COWORK_LOCAL_ADMIN_PASSWORD` | empty `# default` | at least `COWORK_PASSWORD_MIN_LENGTH` characters | The account's password, read as it is — spaces included. **Security:** a secret: from a Secret, never echoed or logged; anyone who can read the pod spec or the Secret can read it. A leaked one stays valid until the Secret is rotated **and** the backend restarted; that rotation also unlocks a locked administrator, ends its sessions and revokes its tokens — review the grants it made afterwards ([recovery](docs/operations/installation.md#the-local-administrator)). The account's password cannot be changed in the UI: this is its source |
 | `COWORK_BOOTSTRAP_TENANT_SLUG` | empty `# default` | `acme` `# example` | With `COWORK_BOOTSTRAP_TENANT_NAME`: while no tenant exists, a start creates this tenant, gives the local administrator, when one is configured, a marked grant as its `admin`, and maps `COWORK_ADMIN_GROUP`, when one is set, to its `admin` role; once a tenant exists these variables do nothing, whatever they say. Both or neither, and only with the local administrator or an administrator group, which becomes the tenant's first administrator |
 | `COWORK_BOOTSTRAP_TENANT_NAME` | empty `# default` | `Acme Corp` `# example` | The tenant's name, 1–200 characters |
 | `COWORK_PASSWORD_MIN_LENGTH` | `12` `# default` | `8` to `1024` | The shortest password of a local account, counted in characters; the policy is length only — no character classes, no history — and it holds for the local administrator too. Below `8` the start is refused |
 | `COWORK_LOGIN_LOCKOUT` | `window` `# default` | `window`, `admin` | `window`: a username locked by failures is free again when the 15-minute window passes. `admin`: it stays locked until a tenant administrator unlocks it (`DELETE …/accounts/{username}/lockout`) — or, for the local administrator, until the Secret is rotated and the backend restarted. **Security:** `admin` lets anyone who knows a username keep its account locked |
 | `COWORK_LOGIN_MAX_FAILURES` | `5` `# default` | a count; `0` never locks | Failed attempts of one username within fifteen minutes that lock it — a username nobody has too, so neither the answer nor the lock says whether an account exists |
-| `COWORK_LOGIN_ADDRESS_LIMIT` | `20` `# default` | a count; `0` disables | Login attempts of one client address — an IPv6 client by its /64 — within a minute before `429 too_many_attempts`. The client address is the TCP peer's unless the peer is inside `COWORK_TRUSTED_PROXIES` ([H-17](docs/security/local-accounts.md#h-17)); with that list empty, behind an Ingress the peer is a controller pod and the limit holds for every browser behind it |
+| `COWORK_LOGIN_ADDRESS_LIMIT` | `20` `# default` | a count; `0` disables | Login attempts — and current passwords of a change, `PUT /api/v1/me/password` — of one client address, an IPv6 client by its /64, within a minute before `429 too_many_attempts`, counted before any hash is computed and held for parallel requests as for sequential ones. The client address is the TCP peer's unless the peer is inside `COWORK_TRUSTED_PROXIES` ([H-17](docs/security/local-accounts.md#h-17)); with that list empty, behind an Ingress the peer is a controller pod and the limit holds for every browser behind it |
 | `COWORK_TRUSTED_PROXIES` | empty `# default` | comma-separated CIDRs, IPv4 and IPv6; `10.244.0.0/16,fd00:10:244::/48` `# example` | The networks of the proxies in front of the backend. The client address — which the login throttle counts and whose keyed hash every audit row of a request carries — is found by walking `X-Forwarded-For` from the right: from the TCP peer, while the current address is inside these networks the entry to its left becomes the current one; the first address outside them is the client, and nothing to its left is read. Empty: the peer is the client and the header is never read. A single host is `/32` or `/128`; an entry that is no CIDR refuses the start, naming the variable and that entry. The proxy in front of the backend is the Ingress controller. **Security:** name the proxies and no more — a client inside a trusted network chooses its own address, which defeats the throttle and lets it fill another client's bucket; a network that holds other pods lets each of them that reaches the backend do the same, which only a network policy of the cluster's prevents — the chart ships none; an empty list leaves one address for every browser behind a controller pod ([installation.md](docs/operations/installation.md#the-client-address-and-the-trusted-proxies)) |
 | `COWORK_SESSION_LIFETIME` | `12h` `# default` | a positive duration | The absolute lifetime of a session; it is also the cookie's `Max-Age` |
-| `COWORK_SESSION_IDLE` | `2h` `# default` | a positive duration | How long a session may lie unused; the person's activity within it — a write, or a read with `X-Cowork-Activity: input`, which the UI sends every five minutes while a person works in a page — extends the session up to the lifetime, and no other read does, the event stream's included. The idle clock moves at most once a minute. Below about six minutes the keep-alive's requests, five minutes apart, cannot hold a session that is only read |
+| `COWORK_SESSION_IDLE` | `2h` `# default` | a positive duration | How long a session may lie unused; a request within it extends the session up to the lifetime — every read, the event stream's connections and reconnects included, but no write the CSRF check refuses. The idle clock moves at most once a minute. An open tab whose stream reconnects or polls keeps its session up to the lifetime with nobody at it ([H-109](docs/security/sessions.md#h-109)) |
 | `COWORK_TOKEN_DEFAULT_LIFETIME` | `2160h` (90 days) `# default` | a positive duration, not above the maximum | The lifetime of a token whose creator named none |
 | `COWORK_TOKEN_MAX_LIFETIME` | `8760h` (one year) `# default` | a positive duration | The longest lifetime a token may have; a longer request is shortened to it and the answer says what the token got |
 
@@ -555,7 +556,7 @@ refuses the start, naming itself. Chart values are `auth.oidc.*` in
 
 | Variable | Default | Values | Meaning |
 |---|---|---|---|
-| `COWORK_MAX_JSON_BODY` | `1MiB` `# default` | a size; `0` disables | A larger JSON body is `413 payload_too_large` |
+| `COWORK_MAX_JSON_BODY` | `1MiB` `# default` | a size; `0` disables | A larger JSON body is `413 payload_too_large`. It holds every operation whose body the API document does not declare as an upload, whatever `Content-Type` the request names; a body of a type the operation does not take is `415 unsupported_media_type` before it is read |
 | `COWORK_REQUEST_TIMEOUT` | `30s` `# default` | a duration, not negative; `0` disables | A request still running is cancelled and answered `504 timeout`; the event stream is exempt |
 | `COWORK_MAX_PAGE_SIZE` | `200` `# default` | a count; `0` disables | The largest page a list returns; a larger `limit` is clamped, not refused |
 | `COWORK_MAX_QUERY_LENGTH` | `256` `# default` | a count of characters; `0` disables | A longer full-text query `q` — the ticket lists' filter and the search — is `400 validation_failed` |
@@ -575,7 +576,7 @@ the endpoint, the bucket and both keys together, or none of them. Without them u
 | `COWORK_S3_ACCESS_KEY_ID` | empty `# default` | `cowork-app` `# example` | The access key's id |
 | `COWORK_S3_SECRET_ACCESS_KEY` | empty `# default` | — | **Security:** a secret, never echoed; the key of a policy that reaches this bucket only, never root credentials |
 | `COWORK_S3_REGION` | empty `# default` | `eu-central-1` `# example` | Empty lets the client ask the server |
-| `COWORK_S3_USE_PATH_STYLE` | `true` `# default` | `true`, `false` | Path-style addressing, as MinIO expects; `false` for virtual-host style |
+| `COWORK_S3_USE_PATH_STYLE` | `true` `# default` | `true`, `false` | Path-style addressing, as MinIO and Silo expect; `false` for virtual-host style |
 | `COWORK_S3_CA` | empty `# default` | `/etc/cowork/s3-ca/ca.crt` `# example` | A PEM file of a private authority, trusted in addition to the system's |
 
 **Event stream** ([ADR 0054](docs/adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md))
@@ -655,6 +656,7 @@ open: [docs/security/agent-client.md](docs/security/agent-client.md).
 | `cowork-mcp token check` | Whether the token works against the installation: its person, name, scope, restriction, capabilities and expiry; `--json` for the same as an object. Exit 1 when it does not work, with the installation's answer and the token page |
 | `cowork-mcp lookup` | The working directory's remotes, binding file and binding — or the proposal, or why there is none; `--json` for the same as an object |
 | `cowork-mcp export <tenant>/<PROJECT> <dir>` | The project's export, unpacked into `<dir>`, which must not exist or be empty: `<dir>/<tenant>/<PROJECT>-<n>.md` per ticket and the three manifests and no other name, written as new files inside `<dir>` — never over a file; on POSIX systems directories `0700` and files `0600`, on Windows the access list of `<dir>`, so export under your profile there —; prints the count of tickets and of the confidential tickets left out. Exit 1 on a target that is a file or not empty, before anything is asked, and on the installation's refusal, `2` on a malformed `<tenant>/<PROJECT>`. Recorded as an export by the agent `cowork-mcp/unknown/export` ([ADR 0070](docs/adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md) D2, D5) |
+| `cowork-mcp import <tenant>/<PROJECT> <path> [--dry-run]` | Imports into the project, as the token's person's agent: a directory packed with the files the import reads — its Markdown files and an export's `manifest.json` and `links.json`, named by their path under `<path>` as given, no link followed —, or an archive or one Markdown file as it is. Prints the dry run's report and, without `--dry-run`, executes it and prints the executed report: the summary, then per file its outcome, key, title, why it was skipped, excluded or left out, its links, errors and warnings with field and line. Exit 0 once answered — a file left out is in the report —, 1 on a path it cannot read or the installation's refusal, 2 on a malformed `<tenant>/<PROJECT>`. Recorded as acts of the agent `cowork-mcp/unknown/import` ([ADR 0070](docs/adr/0070-no-general-cli-the-mcp-binary-grows-workflow-subcommands.md) D2, [ADR 0051](docs/adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)) |
 | `cowork-mcp version` | `cowork-mcp <version> (commit <sha>, built <epoch>, API /api/v1: <n> operations)` |
 | `cowork-mcp help` | The usage (also `-h`, `--help`) |
 
@@ -701,9 +703,8 @@ serves it at `/api/v1/openapi.json` with `info.version` set to its own version, 
 every request against it. What this section says in one line per route, the document says in
 full.
 
-- **Authentication.** Every route under `/api/v1/` except `version`, `openapi.json`,
-  `schemas/cowork-yaml.json` and GitHub's webhook — whose credential is the signature of its body,
-  [below](#integrations) — takes
+- **Authentication.** Every route under `/api/v1/` except `version`, `openapi.json` and
+  `schemas/cowork-yaml.json` takes
   one of two credentials, and the document says which per operation (`bearerToken`,
   `sessionCookie`). A personal access token, `Authorization: Bearer cwk_…`, is for scripts and
   agents; the session cookie `__Host-cowork-session` of a browser login — `POST /auth/local`, or
@@ -713,21 +714,29 @@ full.
   token whose person the identity provider's gate no longer admits) with
   `WWW-Authenticate: Bearer realm="cowork"`. Nineteen routes take a **session only** and answer a
   token `403 session_required`: creating a token, a tenant or a local account, resetting or
-  changing a password, logging out, a turn of the chat and stopping one, choosing the chat's
-  capabilities, a global administrator's list of every tenant, purging a deleted ticket, making or
-  rotating the tenant's GitHub webhook secret, removing the orphaned objects of a consistency check,
+  changing a password, unlocking a local account, logging out, a turn of the chat and stopping one,
+  choosing the chat's capabilities, a global administrator's list of every tenant, purging a
+  deleted ticket, removing the orphaned objects of a consistency check,
   and the administration acts that can give access — adding a
   member, setting a grant, making or changing a group mapping, restricting or opening a project,
   putting a person on its access list ([ADR 0035](docs/adr/0035-personal-access-tokens.md) D5,
   [ADR 0024](docs/adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D7,
   [ADR 0059](docs/adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md) D4,
-  [tokens](docs/security/tokens.md#what-only-a-session-does)). A **write of a session** must come
+  [tokens](docs/security/tokens.md#what-only-a-session-does)). A token is `403 session_required` as
+  well on three acts in their giving direction: a tenant settings change that switches
+  `time_visible_to_members` or `members_create_projects` on or moves `time_locked_until` earlier or
+  clears it, lifting the confidential flag, and assigning a confidential ticket to anyone but the
+  token's person or the assignee it had
+  ([tokens](docs/security/tokens.md#acts-that-take-a-session-in-their-giving-direction)). A **write of a session** must come
   from `COWORK_BASE_URL` — its `Origin`, or without one its `Referer` — and carry
   `X-Requested-With: cowork`, else `403 csrf`; a token's writes need neither
-  ([CSRF](docs/security/csrf.md)). A session's **idle clock** moves only for the person's
-  activity: a write that passes that check, or a read with `X-Cowork-Activity: input`, which the
-  UI sends every five minutes while a person works in a page — no other read moves it, the event
-  stream's included ([sessions](docs/security/sessions.md#what-keeps-a-session-and-what-brings-a-person-back)).
+  ([CSRF](docs/security/csrf.md)). The five **reads that record an act** — an attachment's bytes, a
+  ticket's `…/markdown` and `…/context`, a project's and the tenant's export — answer a session's
+  request whose `Sec-Fetch-Site` is `same-site` or `cross-site` with `403 csrf`; `same-origin`,
+  `none` and no header pass, and a token's request is not looked at
+  ([CSRF](docs/security/csrf.md#the-reads-that-record-an-act)). A session's **idle clock** moves on every request of it, the
+  event stream's included, but a write that check refuses
+  ([sessions](docs/security/sessions.md#what-keeps-a-session-and-what-brings-a-person-back)).
   A session whose account has a temporary password can only read
   `GET /api/v1/me`, change the password and log out; everything else is
   `403 password_change_required`. `X-Cowork-Agent: <name>/<model>/<session>` marks a request as an
@@ -760,7 +769,7 @@ full.
   `page` and `per_page`, up to row 10 000 — not together with `cursor` or `limit`;
   the ticket lists, the projects, the members, the group mappings, a project's access list, the
   lists of a ticket — comments, activity, questions, links, interest, attachments, time entries,
-  the prerequisite tree, the pull requests —, the person's inbox, "next for me", assigned tickets and decisions, the bin of deleted
+  the prerequisite tree —, the person's inbox, "next for me", assigned tickets and decisions, the bin of deleted
   tickets, the saved filters, the tenant's dashboard, the tenant's tokens, the attachments' usage and their consistency check answer
   a weak `ETag`, the caller's page, and `304` without a body to it in `If-None-Match`. A query
   parameter the route does not declare is `400`; a path parameter that cannot name anything is
@@ -792,7 +801,7 @@ full.
 | `POST /auth/local` | `{"username","password"}` → `200 {"password_change_required": bool}` and the session cookie; every failure is `401 invalid_credentials`, the same answer in the same time for an unknown username, a wrong password, a locked or a deactivated account; `429 too_many_attempts` from the address throttle; `403 not_initialised` for a person who is not a global administrator while no tenant exists; `403 csrf` unless the `Origin` is `COWORK_BASE_URL`; no authentication |
 | `POST /auth/logout` | a session, CSRF-checked: ends it, clears the cookie, `204` — or, for a session of the identity provider whose discovery names an `end_session_endpoint`, `200 {"end_session_url"}`: that endpoint with `client_id` and `post_logout_redirect_uri` = `COWORK_BASE_URL` + `/login`, for the browser to go to; cowork does not call it |
 | `GET /api/v1/me` | the calling person and their memberships — each with the effective role and its `origins`, `mapping` and `grant` with their own roles — whether they are a global administrator (`global_admin`), have a local account (`local`) and must change a temporary password (`password_change_required`) |
-| `PUT /api/v1/me/password` | a session only: `{"current_password","new_password"}`; the current password counts like a login attempt towards the lockout; the new one meets `COWORK_PASSWORD_MIN_LENGTH` and differs; every other session of the account ends; `204`. Not for the local administrator, whose password is the configuration's, nor for a person of the identity provider, who has none (`403 forbidden`) |
+| `PUT /api/v1/me/password` | a session only: `{"current_password","new_password"}`; the current password counts like a login attempt towards the lockout and the address throttle (`429 too_many_attempts`); the new one meets `COWORK_PASSWORD_MIN_LENGTH` and differs; every other session of the account ends; `204`. Not for the local administrator, whose password is the configuration's, nor for a person of the identity provider, who has none (`403 forbidden`) |
 | `GET /api/v1/me/tokens` | the person's tokens, newest first, revoked and expired ones included, numbered pages with a total — metadata only: a restriction names its tenant by slug (`restricted_tenant`) and its project by key (`restricted_project`, `null` where the person no longer sees the project or belongs to its tenant — the token reaches nothing then); `restricted_project_id`, the project's id, is deprecated and kept in `/api/v1` |
 | `POST /api/v1/me/tokens` | a session only: `{"name","scope"}` and optionally `agent`, `capabilities` (`decide`, `close`, `drop`, `rank`, `set-horizon`, `interest`, `upload`, `create-project`, `record-answer`), `tenant`, `project`, `lifetime_days`; `201` with the token **and its plaintext, once** — a replay for an `Idempotency-Key` answers without it. The lifetime defaults to `COWORK_TOKEN_DEFAULT_LIFETIME` and is shortened to `COWORK_TOKEN_MAX_LIFETIME`; an agent token has at most `write` scope and every capability when `capabilities` is left out — an empty list is none, the baseline only. The `name` shows on every act made through the token, to whoever reads the act |
 | `DELETE /api/v1/me/tokens/{token_id}` | revoke one; a token may always revoke itself, another needs `write`, an agent revokes only its own |
@@ -800,7 +809,7 @@ full.
 | `GET /api/v1/me/chat` | the capabilities the person gives the chat in the UI: `{"capabilities": [...], "chosen": bool}` — `chosen` false is the default, every capability but `decide`, `close`, `drop` and `record-answer` |
 | `PUT /api/v1/me/chat` | a session only, never an agent-marked one: `{"capabilities": [...]}`, the whole set, unique — empty leaves the chat the baseline; `200` with the set in the catalogue's order; the chat's next request holds it; no `If-Match`; a change is the person's recorded act |
 | `GET /api/v1/me/repositories/lookup` | `remote` (1–10, repeatable, in order of preference) and `path` → `status` `bound`, `ambiguous` or `unbound`; the remotes with their identities (`null` for one that names no host); the bindings of the first remote that has one covering `path`, in the projects the caller sees across the person's tenants — a restricted token's only; for `unbound` a `proposal` (identity, name, the tenant and the reason `only-tenant`, `remote-owner` or `choose`, a free key per tenant) or `proposal_unavailable` saying why not. A remote's credentials are dropped, and a proxy's log may still carry the query |
-| `GET /api/v1/me/inbox` | the person's notifications across their tenants, newest first: `{"items": [...], "next_cursor", "unread"}`, each item `id`, `tenant` `{slug, name}`, `ticket` `{key, title, state}` as it is now, `reason` — `assigned`, `asked`, `answered`, `state_changed`, `blocker_closed`, `commented`, `urgent`, `mentioned`, `merged` (a pull request of the ticket merged at GitHub, told by GitHub's webhook as `system:github`) —, `act` (the act it renders from, as the ticket's activity shows it, without its payload where it names a ticket the person cannot see), `blocker` (for `blocker_closed`, the ticket that blocked it, as it is now), `withdrawn` (the comment or question has been withdrawn since), `read`, `created_at`; `unread` counts the unread ones. A notification of a ticket the person no longer sees, or of a tenant they left, is absent and counts nowhere. `tenant`, `limit`, `cursor` |
+| `GET /api/v1/me/inbox` | the person's notifications across their tenants, newest first: `{"items": [...], "next_cursor", "unread"}`, each item `id`, `tenant` `{slug, name}`, `ticket` `{key, title, state}` as it is now, `reason` — `assigned`, `asked`, `answered`, `state_changed`, `blocker_closed`, `commented`, `urgent`, `mentioned` —, `act` (the act it renders from, as the ticket's activity shows it, without its payload where it names a ticket the person cannot see), `blocker` (for `blocker_closed`, the ticket that blocked it, as it is now), `withdrawn` (the comment or question has been withdrawn since), `read`, `created_at`; `unread` counts the unread ones. A notification of a ticket the person no longer sees, or of a tenant they left, is absent and counts nowhere. `tenant`, `limit`, `cursor` |
 | `PUT /api/v1/me/inbox/read` | `{"through": "<notification id>"}`: every unread notification of the person up to and including that one, read — one that arrived after it stays unread; `tenant` narrows; `write` scope; `200 {"unread"}`; one act `read` per tenant where something changed |
 | `PUT /api/v1/me/inbox/{notification}/read` | one notification read; `write` scope; `200 {"unread"}`; one already read records nothing; another person's, or one of a ticket the person no longer sees, `404 not_found` |
 | `GET /api/v1/me/next` | "next for me": the open tickets — neither `done` nor `dropped` — assigned to the person or to nobody, in the projects they see across their tenants; another person's is not in it: `{"items": [{"tenant": {slug, name}, "ticket": {...}, "place"}], "next_cursor"}`, by the score, highest first — a ticket without one last — then by the ticket's id; `place` is the ticket's place in its project's rank among the open tickets of its horizon the caller sees, 1 for the first; `tenant`, `project` (a project key within `tenant`, which it needs: `400` without), `limit`, `cursor` |
@@ -817,10 +826,11 @@ stands for `/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}`.
 <details>
 <summary>Local accounts — 6 routes</summary>
 
-For the tenant's administrators with `admin` scope, never an agent. **Creating an account and
-resetting a password take a browser session only** — a token, an administrator's included, is
-`403 session_required` — because an account or a password made with a leaked token would outlive
-its revocation; the other four routes work with an `admin`-scope token. A tenant manages the local
+For the tenant's administrators with `admin` scope, never an agent. **Creating an account,
+resetting a password and unlocking an account take a browser session only** — a token, an
+administrator's included, is `403 session_required` — because an account or a password made with a
+leaked token would outlive its revocation, and an unlock with one would keep the lockout from ever
+holding; the other three routes work with an `admin`-scope token. A tenant manages the local
 accounts **its own administrators created** and no others: another tenant's account, a global
 administrator and the local administrator answer `404 not_found`, like a username nobody has.
 An administrator's own account is off limits for a password reset, an unlock and a deactivation
@@ -831,7 +841,7 @@ An administrator's own account is off limits for a password reset, an unlock and
 | `GET …/accounts` | the accounts the tenant manages, by person id: username, display name, role, `password_change_required`, `locked`, `deactivated_at` |
 | `POST …/accounts` | a session only: create one: `{"username","display_name","temporary_password","role"}`; the person changes the password at the first login; a marked grant with that role; `409 username_taken` (the installation has one namespace) |
 | `PUT …/accounts/{username}/password` | a session only: set a new temporary password; every session of the account ends |
-| `DELETE …/accounts/{username}/lockout` | forget the failures and the lock of the username |
+| `DELETE …/accounts/{username}/lockout` | a session only: forget the failures and the lock of the username |
 | `PUT …/accounts/{username}/deactivation` | deactivate: no login, tokens revoked, sessions ended, the person and their acts stay; `409 last_admin`, changing nothing, when the tenant would be left without an administrator who can log in — the deactivation takes the tenant's lock, so two administrators who deactivate each other at once are decided one after the other; the other tenants the person administers are not asked |
 | `DELETE …/accounts/{username}/sessions` | end every session of the account, at once; tokens are not affected |
 
@@ -890,7 +900,7 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 | Method and path | Does |
 |---|---|
 | `GET …` | the tenant and its settings; also to a global administrator without a role in the tenant, in a session |
-| `PATCH …` | change the name or the settings — an administrator with `admin` scope, never an agent; `If-Match` |
+| `PATCH …` | change the name or the settings — an administrator with `admin` scope, never an agent; `If-Match`; a change that switches `time_visible_to_members` or `members_create_projects` on, or moves `time_locked_until` earlier or clears it, takes a browser session (`403 session_required` for a token) |
 | `GET …/audit` | the audit record, newest first, for administrators, each act with `token_id` and the token's name, `token_name`; filters `actor`, `token`, `action`, `entity_type`, `from`, `to`; numbered pages with a total; CSV on `Accept: text/csv`, `token_name` its last column, after the columns released before — a CSV page carries no cursor, so a client reads several as numbered pages with `to` held at the moment it began |
 | `GET …/dashboard` | the tenant's dashboard, its nine tiles over what the caller can see — a ticket, a question or a time entry the caller may not read counts nowhere, and neither does a deleted ticket until it is restored: the open tickets per project and state; per severity, every one with zero included; the open `live` and `boundary` findings, each with the oldest by filing; the blocked tickets and the one blocked longest — since its latest act into `blocked` — with its kind; the open tickets' age in five buckets, under 7, 30, 90 and 365 days and older; the tickets done per ISO week, eight weeks to the one of the period's last day; the median from filing to done of the tickets done in the thirty days to that day, with their count; the open questions and the one asked first; the minutes booked in the period per project. Beside them the eight open tickets updated last. `project` as the ticket lists take it (repeatable, `!` leaves one out; without a plain value every project that is not archived), `from` and `to`, days inclusive, by default the thirty days that end today, UTC; `from` after `to` is `400`. Open tiles stand as the tickets do at the request. A weak `ETag` and `304`; not for a token restricted to a project |
 | `GET …/events` | the event stream of the changes the caller may see ([runtime.md](docs/operations/runtime.md#the-event-stream)) — `project.changed {"key": "<tenant>/<PROJECT>", "kind"}` among them, a project's rank sorted by the score; with `me=true` the person-level stream: every event of every tenant the person belongs to that the tenant's own stream would carry to them, each with its `id:` and replayed across the tenants after a reconnect, and `inbox.changed {"unread": n}` — when it opens and whenever the person's inbox changes, without an `id:`; a token restricted to a tenant hears its tenant alone. `membership.changed` names its tenant: `{"tenant", "person_id", "project_id", "mapping_id"}`, each key but `tenant` where it applies |
@@ -906,20 +916,20 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 </details>
 
 <details>
-<summary>Tickets — 27 routes</summary>
+<summary>Tickets — 25 routes</summary>
 
 | Method and path | Does |
 |---|---|
 | `GET …/tickets` | the tenant's tickets across its projects, newest first; filters `project`, `state`, `type`, `severity`, `security`, `horizon`, `effort`, `assignee`, `reporter`, `parent`, `progress_min`, `progress_max` (the implementation stage), `opened_after`, `opened_before`, `updated_after`, `updated_before`, `done_after` (done after it — like the four timestamps before it, the bound itself excluded), `q` (every word in the title and body, a filter in the list's order, no rank and no snippet), `include_terminal`, `blocked`, `has_open_questions`, `interest` ([ADR 0049](docs/adr/0049-filters-are-explicit-repeatable-query-parameters-no-query-language.md)) |
 | `GET …/search` | search the tenant's tickets ([ADR 0025](docs/adr/0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)): `q` (required) by full text — the `simple` dictionary after `unaccent`, every word in one text — over the title and body, the comments but a withdrawn one, the questions and the file names; a key by its beginning (`COW-1`, `acme/COW-12`), a title by trigram. `{"items": [...], "next_cursor"}`, one hit per ticket at its best match, the best first — a key, the title, the body, then comments, questions and file names, a title by trigram last: `tenant`, `key`, `title`, `type`, `state`, `found_in` (`key`, `ticket`, `comment`, `question`, `attachment`), `comment` (its id) or `question` (its number) where it matched, and `snippet`, `[{"text","match"}]`, the found words marked — text, never HTML. What the caller cannot see is not searched, snippets included; `limit`, `cursor` — a cursor belongs to its query; a project-restricted token searches its project |
 | `GET …/projects/{project}/tickets` | the project's tickets in its rank: the ranked by their key, then the unranked — done and dropped, and open ones a release before the rank filed — by number ([ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md)); the same filters but `project`; a cursor from before the rank is `400 invalid_cursor` |
-| `POST …/projects/{project}/tickets` | file a ticket (`type`, `title`, `severity`, `security`, `effort`); its number is the project's next. `horizon` is its horizon, `later` when left out; `after` or `before` names an open ticket of that horizon it is placed directly next to, the bottom of the rank — the end of its horizon — when left out ([ADR 0010](docs/adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3, [ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md) D2); an agent needs `set-horizon` for a horizon other than `later` and `rank` for a place, and assigns a confidential filing — `security` `live` or `boundary` — only to its own person (`403 agent_forbidden` otherwise) |
+| `POST …/projects/{project}/tickets` | file a ticket (`type`, `title`, `severity`, `security`, `effort`); its number is the project's next. `horizon` is its horizon, `later` when left out; `after` or `before` names an open ticket of that horizon it is placed directly next to, the bottom of the rank — the end of its horizon — when left out ([ADR 0010](docs/adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D3, [ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md) D2); an agent needs `set-horizon` for a horizon other than `later` and `rank` for a place, and assigns a confidential filing — `security` `live` or `boundary` — only to its own person (`403 agent_forbidden` otherwise); so does a person's token (`403 session_required` otherwise: admitting another person takes a browser session) |
 | `GET …/{number}` | one ticket: its state — `filed`, `analysed`, `decided`, `in-progress`, `review`, `blocked`, `done`, `dropped` —, its `horizon` and `horizon_set` — `{value, reason, by, at}` of the horizon a person or an agent set, `null` for a ticket nobody placed, which stands in `later` ([ADR 0010](docs/adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1, D3), its three progress stages `progress_refinement`, `progress` (implementation) and `progress_review`, derived from its children while it has any, `done_from` and `done_by_hand` while it is done, `open_prerequisites`, the open tickets that block it which the caller can see, and `score` with `score_version` — the weights of the severity (critical 8, high 5, medium 3, low 1, cosmetic 0), the horizon (now 8, release 5, next 3, later 1, icebox −5) and the stakes (need 1, urgent 2), plus one for every thirty days since `opened_at`, to one decimal at the moment of the read; `null` while the ticket is done or dropped ([ADR 0014](docs/adr/0014-rank-is-the-decision-score-is-the-warning.md) D4) |
-| `PATCH …/{number}` | change its fields; `If-Match`. A stage takes 0–100 in steps of five in every state but `dropped`, never on a ticket with children. The change that brings the last of the three stages of a ticket without children to 100 is the done act: it needs `note`, the verification, and over open prerequisites it is `409 open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent needs `close` and a ticket in `in-progress` or `review`. The change that lowers a stage of a ticket done by its stages reopens it to `done_from` with a `reason`, ranked at the bottom; a ticket done by hand stays done while its stages change; an open ticket whose three stages are full already — a parent whose last child left — is closed by hand. An agent assigns a confidential ticket — or one the change makes confidential — only to its own person or to nobody; another new `assignee` is `403 agent_forbidden` |
+| `PATCH …/{number}` | change its fields; `If-Match`. A stage takes 0–100 in steps of five in every state but `dropped`, never on a ticket with children. The change that brings the last of the three stages of a ticket without children to 100 is the done act: it needs `note`, the verification, and over open prerequisites it is `409 open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent needs `close` and a ticket in `in-progress` or `review`. The change that lowers a stage of a ticket done by its stages reopens it to `done_from` with a `reason`, ranked at the bottom; a ticket done by hand stays done while its stages change; an open ticket whose three stages are full already — a parent whose last child left — is closed by hand. An agent assigns a confidential ticket — or one the change makes confidential — only to its own person or to nobody; another new `assignee` is `403 agent_forbidden`, and for a person's token `403 session_required` |
 | `GET …/{number}/body` | its body, `{"body","body_html","version"}`: the Markdown as written and the HTML rendered and sanitised on the server — raw HTML shown as text; a link only to an `http`, `https`, `mailto` or relative address, with `rel="noopener noreferrer nofollow"` and `target="_blank"`; an image only of one of the ticket's own raster attachments, from that attachment's path, any other image a link to its address. The `ETag` is the ticket's ([rendered Markdown](docs/security/rendered-markdown.md)) |
 | `PUT …/{number}/body` | replace its body as a whole; `If-Match` |
 | `PUT …/{number}/horizon` | set the ticket's horizon, `{"value", "reason"}` — `now`, `release`, `next`, `later` or `icebox`, a planning category independent of the state, which holds until a person or an agent sets another; `later` clears the horizon set, and on a ticket with none set changes nothing. The reason is optional for a person, kept with a horizon set and recorded on the act either way, and required of an agent — for `later` too —, which needs `set-horizon`; `If-Match`, a `412` naming the current `horizon` and `horizon_set` |
-| `PUT …/{number}/confidential` | set or lift the confidential flag — an administrator with `admin` scope, never an agent; lifting needs a reason; `If-Match` |
+| `PUT …/{number}/confidential` | set or lift the confidential flag — an administrator with `admin` scope, never an agent; lifting needs a reason and a browser session (`403 session_required` for a token); `If-Match` |
 | `DELETE …/{number}` | delete it into the tenant's bin — an administrator with `admin` scope, never an agent (`403 agent_forbidden`, `hard-off: deleting, restoring or purging`); `204`. From then on it answers like a missing ticket everywhere but the bin: every route of it and under it `404`, absent from every list, tree, person-level list, inbox and context, its links hidden, its parent's derived stages without it; its key stays taken. Not refused when other tickets depend on it; a ticket already deleted is `404` |
 | `POST …/{number}/transitions` | move it to another state: forward one step to `review`, back with a reason, into `blocked` and out to where it came from, `dropped` with a reason and back to `filed`; `from` must be the current state, else `409 state_conflict`. To `done` is done by hand — from any open state for a person, from `in-progress` or `review` for an agent with `close` — with a verification note, and over open prerequisites it is `409 open_prerequisites` unless a person overrides with a reason; done → `done_from` with a reason withdraws it, unless it has no children and its three stages are full, when the ticket stays done by them; a ticket done by its stages leaves done only by a lower stage. An agent needs `decide`, `close` or `drop` for those moves; done and dropped take the rank away, leaving them ranks the ticket at the bottom |
 | `PUT …/{number}/rank` | place it directly after or before another open ticket of the project, `{"after": n}` or `{"before": n}`: one key written between the neighbour's and the next one's on that side, those the caller cannot see counted, recorded as `ranked` with the neighbour, the version raised — the key itself is never shown, the list's order is the rank; a ticket already there among those the caller can see is `200` unchanged; no `If-Match` — the last move wins; an agent needs `rank`; a done or dropped ticket or neighbour is `409 state_conflict`, a neighbour the caller cannot see the `400` of one that does not exist. Before a gap between two keys runs out, the project's keys are spread again, every ticket keeping its place, with no act and no version |
@@ -927,8 +937,6 @@ Every member of the tenant ([ADR 0076](docs/adr/0076-the-chat-in-the-ui-runs-its
 | `GET …/{number}/links` | its links in both directions |
 | `PUT …/{number}/links/{type}/{other}` | link it, as the source, to `other` (a short key): `blocks`, `relates-to`, `duplicates`, `found-in`; `201` new, `200` existing; a `blocks` cycle is `409 link_cycle` |
 | `DELETE …/{number}/links/{type}/{other}` | remove the link; `204` also when there was none |
-| `GET …/{number}/pull-requests` | the pull requests and default-branch commits GitHub's webhook linked to it, oldest link first: each `id`, `kind` (`pull_request` or `commit`), `repository` (the identity), `number` or `sha`, `title` as GitHub sent it, `state` (`open`, `closed`, `merged`; a commit is `merged`), `url` (the page at GitHub, written from the repository's identity), `author`, `merged_at`, `found_in` (`trailer`, `body`, `subject`), `first_seen_at`, `last_seen_at`; under the ticket's visibility; a weak `ETag`, `304` to it |
-| `DELETE …/{number}/pull-requests/{pull_request}` | remove a wrong link — a member's act with `write` scope, in the agent baseline; the removal stays, a later delivery does not link it again; `unlinked` recorded; `204` also when it is gone |
 | `GET …/{number}/prerequisites` | its prerequisite tree ([ADR 0012](docs/adr/0012-four-typed-directed-links-within-a-tenant.md) D6): the tickets that block it, what blocks those, and so on, eight levels deep, depth first; `direction=up` reads it upward, its dependents. Each node with its key, title, state, `blocked_from`, assignee, the three progress stages, `depth`, `settled` (done or dropped) and `repeated` — a ticket the tree holds under two others stands in full under the first and as `repeated` under each other; `open` counts the open ones of the whole tree, each once, on every page. A ticket the caller cannot see is absent, and so is what lies only behind it |
 | `GET …/{number}/interest` | who holds a stake in it |
 | `PUT …/{number}/interest` | set the caller's own stake; `201` new, `200` otherwise; the stake carries the agent mark and the token of the write that set it |
@@ -1028,42 +1036,27 @@ to a project is refused like an unknown tenant.
 
 </details>
 
-#### Integrations
-
-<details>
-<summary>GitHub's webhook — 4 routes</summary>
-
-Optional per tenant and on trial ([ADR 0071](docs/adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md));
-setting it up is [docs/operations/github.md](docs/operations/github.md), what it lets in
-[docs/security/github-webhook.md](docs/security/github-webhook.md).
-
-| Method and path | Does |
-|---|---|
-| `GET /api/v1/tenants/{tenant}/integrations/github` | the tenant's administrators, `read` scope: `{"secret": {"created_at", "created_by"} or null, "webhook_path", "events": ["pull_request", "push"]}` — never the secret; anybody else `403 forbidden` |
-| `POST …/integrations/github/secret` | a session only, a tenant administrator, never an agent: draw a new secret — 256 random bits as 64 hexadecimal characters — and replace the one there was at once; `201 {"secret", "created_at", "created_by", "replaced"}`, the secret **once**, kept sealed; no `Idempotency-Key`; recorded `created` without it |
-| `DELETE …/integrations/github/secret` | revoke it — an administrator with `admin` scope, a token too, never an agent; from then on every delivery is `404`; the links stay; `204` also when there is none |
-| `POST …/integrations/github/webhook` | GitHub's deliveries, public: no session, no token — the credential is `X-Hub-Signature-256`, the HMAC-SHA256 of the raw body under the tenant's secret. An unknown tenant and one without a secret `404 not_found`; a body above `COWORK_MAX_JSON_BODY` `413 payload_too_large`; a missing or wrong signature `401 signature_invalid` with `WWW-Authenticate: X-Hub-Signature-256 realm="cowork"` before anything is parsed; `X-GitHub-Delivery` not a UUID `400 validation_failed`, a type other than `application/json` `415 unsupported_media_type`, a `pull_request` or `push` body that is not GitHub's shape `400 validation_failed`; the same delivery within a day `200` without effect; everything else taken `202` with no body: `pull_request` (`opened`, `edited`, `synchronize`, `reopened`, `closed`) of an author GitHub names the repository's `OWNER`, a `MEMBER` of its organisation or a `COLLABORATOR` (`author_association`), and `push` to the default branch, of a repository a project of the tenant binds, link the tickets their texts name — `Cowork-Ticket:` trailers and full-key lines first, the short keys at the end of a title or subject otherwise —, a merge tells the ticket's assignee and watchers, no state changes; every other delivery is passed over |
-
-</details>
-
 <details>
 <summary>Import and export — 5 routes</summary>
 
 An import is a job on a project in two phases: a dry run that reads every file and imports nothing,
-then its execution with the person's corrections, every ticket, question and link in one
-transaction or nothing ([ADR 0051](docs/adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md),
+then its execution with the person's corrections, every ticket, question and link of the files it
+can import in one transaction, each file with an error or a conflict left out and the report saying
+why ([ADR 0051](docs/adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md),
 [ADR 0063](docs/adr/0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md)).
-It is a tenant administrator's act with `admin` scope and never an agent's — a flagged token and a
-request with `X-Cowork-Agent` alike are `403 agent_forbidden` (`hard-off: administration`). An
-export follows the reader: it holds what they may read. Steps and the CronJob of a backup:
+It is a writer's act of the project, as creating a ticket is — the role `member`, on a restricted
+project its list's entry, and `write` scope —, an agent's too; a job is its maker's and the tenant's
+administrators', and another person's is `404` (ADR 0051 D6). An export follows the reader: it
+holds what they may read, streamed as it is read, one export at a time per replica. Steps and the
+CronJob of a backup:
 [docs/operations/import-and-export.md](docs/operations/import-and-export.md); what passes:
 [docs/security/import-and-export.md](docs/security/import-and-export.md).
 
 | Method and path | Does |
 |---|---|
-| `POST …/projects/{project}/imports` | the dry run: `multipart/form-data` with one or more parts `file` — a `tar.gz` or a `zip`, known by its bytes, or one Markdown file each —, bounded by `COWORK_MAX_IMPORT_BYTES` and 10 000 files (`413`); a part of another name, a path twice or above 1 024 bytes, or an upload that is no archive is `400` at `/file`; an archived project `409 project_archived`. Reads every ticket file — a repository's `NNN-<slug>.md` and `local_NNN-<slug>.md`, an export's `<PROJECT>-<n>.md` with its `manifest.json` and `links.json` — against the project as it stands and keeps the files for the execution. `201` with the job and `Location`: `id`, `project`, `status` `dry_run`, `created_by`, `created_at`, `expires_at` (twenty-four hours later), `executed_by`, `executed_at`, `summary` — `files`, `create`, `conflict`, `error`, `skip`, `exclude`, `created`, `open`, `confidential`, `highest_number` — and `files[]`, one per file of the upload in its order: `path`, `outcome` (`create`, `conflict`, `error`, `skip`, `exclude`, `created`), `reason`, `format`, `number`, `key`, `conflict`, `title`, `type` with `type_reason`, `state`, `block_candidate`, `block`, `columns`, `assignee` (`source` and the member it resolved to), `parent`, `note`, `questions`, `links`, `attachments`, `confidential` with `confidential_reason`, `warnings`, `errors` (each with `field`, `line`, `message`), `correction`. Recorded as `created` on the job |
-| `GET …/projects/{project}/imports/{import}` | the job with its report; `admin` role, `read` scope, never an agent; a file whose ticket was purged since is out of the report, which the summary still counts. A dry run past its twenty-four hours, or a job of another project, is `404`; the job `import-expiry` deletes the expired ones within the hour |
-| `POST …/projects/{project}/imports/{import}/execution` | execute the dry run: optionally `{"corrections": [...]}`, each `{"path", "exclude", "type", "state", "block": {"kind", "reason", "from"}, "assignee"}` — `exclude` alone; `block` with the state `blocked` only, its kind not `ticket`; `assignee` a member's id who can see the project, or `null` —, a broken rule `400` at `/corrections/<i>/…`. The files are analysed again under the project's rank lock; a file to import that has an error or a conflict — a number the project holds, a deleted ticket's or a purged one's included — refuses the whole execution, `409 import_conflict`, each named in `errors[]` as `file:<path>`. Otherwise every ticket keeps its number and its source's state, dates, stages, horizon, block, notes and questions, the person who executes is its reporter, the assignee only by identity, the confidential flag by the source's rule, the links within the project made, the sequence advanced past the highest number; `200` with the executed job, `status` `executed`, every `create` now `created`. Every ticket, question and link has an act naming the job; one act `imported` on the job, published once as `project.changed` with the kind `imported`. A second execution is `409 import_executed` |
+| `POST …/projects/{project}/imports` | the dry run: `multipart/form-data` with one or more parts `file` — a `tar.gz` or a `zip`, known by its bytes, or one Markdown file each —, bounded by `COWORK_MAX_IMPORT_BYTES` and 10 000 files — a `zip`'s entries, its directories included, counted before it is read — (`413`); a part of another name, a path twice or above 1 024 bytes, or an upload that is no archive is `400` at `/file`; an archived project `409 project_archived`. Reads every ticket file — a repository's `NNN-<slug>.md` and `local_NNN-<slug>.md`, an export's `<PROJECT>-<n>.md` with its `manifest.json` and `links.json` — against the project as it stands and keeps the files for the execution; skips everything else, a `/context` document too, with its reason. A number the project holds, a deleted ticket's included, is a `conflict`; one a purged ticket held is imported, with a warning. An import through a token, an agent's or not, assigns a confidential ticket to the token's own person or to nobody, the file's line saying why; a browser session's assigns as the file says. `201` with the job and `Location`: `id`, `project`, `status` `dry_run`, `created_by`, `created_at`, `expires_at` (twenty-four hours later), `executed_by`, `executed_at`, `summary` — `files`, `create`, `conflict`, `error`, `skip`, `exclude`, `created`, `open`, `confidential`, `highest_number` — and `files[]`, one per file of the upload in its order: `path`, `outcome` (`create`, `conflict`, `error`, `skip`, `exclude`, `created`), `reason` (why a file is skipped, excluded or left out), `format`, `number`, `key`, `conflict`, `title`, `type` with `type_reason`, `state`, `block_candidate`, `block`, `columns`, `assignee` (`source` and the member it resolved to), `parent`, `note`, `questions`, `links`, `attachments`, `confidential` with `confidential_reason`, `warnings`, `errors` (each with `field`, `line`, `message`), `correction`. Recorded as `created` on the job |
+| `GET …/projects/{project}/imports/{import}` | the job with its report; a writer of the project, an agent too, of a job they made, or a tenant administrator; a file whose ticket was purged since is out of the report, which the summary still counts. Another person's job, a dry run past its twenty-four hours, or a job of another project, is `404`; the job `import-expiry` deletes the expired ones within the hour |
+| `POST …/projects/{project}/imports/{import}/execution` | execute the dry run: optionally `{"corrections": [...]}`, each `{"path", "exclude", "type", "state", "block": {"kind", "reason", "from"}, "assignee"}` — `exclude` alone; `block` with the state `blocked` only, its kind not `ticket`; `assignee` a member's id who can see the project, or `null` —, a broken rule `400` at `/corrections/<i>/…`. The files are analysed again under the project's rank lock; a file that has an error or a conflict — a number the project holds by now, a deleted ticket's included — is left out, its `reason` saying why, and every other ticket keeps its number and its source's state, dates, stages, horizon, block, notes and questions, the person who executes is its reporter, the assignee only by identity and only the member the dry run named, the confidential flag by the source's rule, the links within the project made, the sequence advanced past the highest number; `200` with the executed job, `status` `executed`, every `create` now `created`. Every ticket, question and link has an act naming the job; one act `imported` on the job, published once as `project.changed` with the kind `imported`. A second execution is `409 import_executed`; another person's dry run is `404` |
 | `GET …/projects/{project}/export` | the project's tickets the caller may read, done and dropped ones included, as `application/gzip` — a `tar.gz` named `<tenant>-<PROJECT>-<YYYYMMDD>.tar.gz` holding `manifest.json` (`format` `cowork export v1`, `tenant`, `projects[]` each with `key`, `name`, `archived`, `tickets` and `confidential_not_included`, `exported_at`, `exported_by` as `Name <identity>`, the totals `tickets` and `confidential_not_included`), `links.json` (`source`, `type`, `target` of every link whose two ends the caller sees, once), `attachments.json` (`ticket`, `name`, `type`, `size`, `url` — never the bytes) and each ticket's `/markdown` document at `<tenant>/<PROJECT>-<n>.md`; `read` on the project, an agent too. Recorded as `exported` on the project |
 | `GET /api/v1/tenants/{tenant}/export` | the same for every project of the tenant the caller sees, archived ones included, each link once, named `<tenant>-<YYYYMMDD>.tar.gz`; `read` in the tenant; a token restricted to a project gets `404`. Recorded as `exported` on the tenant |
 
@@ -1086,7 +1079,6 @@ every error body carries one of these as `code`.
 | `token_revoked` | 401 | The token was revoked, or its person deactivated (docs/adr/0035 D6) |
 | `not_allowed` | 401 | The token's person is outside the identity provider's gate: none of their groups, as of their last login or groups refresh, is in COWORK_OIDC_ALLOWED_GROUPS or is COWORK_ADMIN_GROUP, or the person belongs to another issuer than the configured one, or their groups were read longer ago than COWORK_OIDC_GROUPS_MAX_AGE, until a sign-in in the browser reads them again. The token is refused, not revoked, and works again once the person is back inside (docs/adr/0035 D8) |
 | `invalid_credentials` | 401 | The local login failed: the same answer, in the same time, for an unknown username, a wrong password, a locked or a deactivated account (docs/adr/0033 D6) |
-| `signature_invalid` | 401 | A GitHub webhook delivery's `X-Hub-Signature-256` is missing or is not the HMAC of its body under the tenant's secret; nothing was read or written (docs/adr/0071 D3) |
 | `forbidden` | 403 | The person's role does not allow the act (docs/adr/0034) |
 | `insufficient_scope` | 403 | The token's scope does not reach the act (docs/adr/0035 D3) |
 | `agent_forbidden` | 403 | The act is on the agent hard-off list, needs a capability the token lacks, or lies outside what the capability grants — `close` closes from in-progress and review only; `detail` names which (docs/adr/0043 D4, D5) |
@@ -1111,7 +1103,6 @@ every error body carries one of these as `code`.
 | `link_cycle` | 409 | The blocks link would close a cycle of prerequisites (docs/adr/0012 D4) |
 | `open_prerequisites` | 409 | Tickets that block this one are not done or dropped; `errors[]` lists them, and a person may override with a reason (docs/adr/0012 D7) |
 | `import_executed` | 409 | The dry run was executed already; a dry run is executed at most once (docs/adr/0051 D3) |
-| `import_conflict` | 409 | A file the execution would import has an error, or its number is a ticket of the project — or was one, purged; `errors[]` names each as `file:<path>`, and nothing was imported: exclude the file, or correct the source and make a new dry run (docs/adr/0064 D3, docs/adr/0051 D2) |
 | `period_locked` | 409 | The day lies on or before the tenant's time_locked_until: the period is closed to new, changed and voided entries (docs/adr/0017 D8) |
 | `attachment_limit` | 409 | The ticket holds as many attachments as COWORK_ATTACHMENT_MAX_PER_TICKET allows (docs/adr/0016 D6) |
 | `attachment_quota` | 409 | The tenant's attachments would hold more bytes than COWORK_ATTACHMENT_TENANT_QUOTA allows; nothing was stored (docs/adr/0016 D6) |
@@ -1123,7 +1114,7 @@ every error body carries one of these as `code`.
 | `unsupported_media_type` | 415 | The body's type is not one the route accepts |
 | `idempotency_mismatch` | 422 | The `Idempotency-Key` was used before with a different request (docs/adr/0045 D4) |
 | `precondition_required` | 428 | An overwriting write came without `If-Match` (docs/adr/0050 D3) |
-| `too_many_attempts` | 429 | More login attempts from this address within a minute than COWORK_LOGIN_ADDRESS_LIMIT allows; `Retry-After` says how long to wait (docs/adr/0033 D6) |
+| `too_many_attempts` | 429 | More attempts to prove a password — logins and the current password of a change — from this address within a minute than COWORK_LOGIN_ADDRESS_LIMIT allows; `Retry-After` says how long to wait (docs/adr/0033 D6) |
 | `chat_busy` | 429 | The person has as many turns of the chat running as COWORK_CHAT_TURNS_PER_PERSON allows on this replica — in another tab, say; one ends, or is stopped with `DELETE …/chat/turns`, first (docs/adr/0076) |
 | `internal` | 500 | Something failed inside cowork; the `request_id` finds it in the log |
 | `chat_provider_failed` | 502 | The chat's provider could not be reached, refused the request, or answered what cowork cannot read; `detail` says which, never with the provider's answer. It comes as the `error` event of a chat turn, whose answer has begun (docs/adr/0076) |
@@ -1156,7 +1147,7 @@ target's `namespace`, `pod`, `container` and `job`.
 | `cowork_db_pool_wait_duration_seconds` | summary: `_count`, `_sum` | — | The acquires among them that waited because no connection was free, and the time they waited; `rate(_sum)` is the mean number waiting |
 | `cowork_db_pool_canceled_acquires_total` | counter | — | Acquires a context ended before a connection was free |
 | `cowork_db_query_errors_total` | counter | `kind`: `unique_violation`, `foreign_key_violation`, `check_violation`, `not_null_violation`, `integrity_violation`, `serialization_failure`, `deadlock_detected`, `insufficient_privilege`, `lock_not_available`, `query_canceled`, `connection`, `other_sqlstate`, `canceled`, `timeout`, `other` | Failed statements by the SQLSTATE's meaning or what the client saw; a row that was not found is no failure. `insufficient_privilege` is a policy, a grant or a guard that refused |
-| `cowork_jobs_runs_total` | counter | `name` | Runs of a background job on this replica that took its lock, or failed before it could; `name` is the job's system actor: `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `github-delivery-expiry`, `import-expiry`, `ticket-purge`, `consistency-check` (once a day), `bootstrap` |
+| `cowork_jobs_runs_total` | counter | `name` | Runs of a background job on this replica that took its lock, or failed before it could; `name` is the job's system actor: `idempotency-expiry`, `session-expiry`, `login-expiry`, `notification-expiry`, `import-expiry`, `ticket-purge`, `consistency-check` (once a day), `bootstrap` |
 | `cowork_jobs_failures_total` | counter | `name` | The runs that failed |
 | `cowork_jobs_duration_seconds` | histogram, 10 ms to 600 s | `name` | A run's duration |
 | `cowork_jobs_consecutive_failures` | gauge | `name` | Runs that failed one after the other since the job's last success on this replica; `CoworkJobFailing` fires at 2 |
@@ -1206,6 +1197,11 @@ database:                             # the runtime role: owns nothing, held to 
   existingSecretKey: ""               # the URL's key under its earlier name; set, it wins over keys.url
   existingConfigMap: ""               # with keys.url empty: host, port, name and sslmode from this ConfigMap
   url: ""                             # renders <fullname>-database; plain text in the release Secret and in `helm get values`
+  tls:
+    caConfigMap: ""                   # ConfigMap with the database's private authority's PEM, mounted at /etc/cowork/database-ca into
+                                      # the migration run and the serving container; both roles' sslmode must check it (verify-full)
+    keys:
+      ca: ca.crt                      # the ConfigMap's key; COWORK_DATABASE_CA=/etc/cowork/database-ca/<key>
   owner:                              # the role the migrations run as; only the migration run reads it — the init container or the Job
     existingSecret: ""                # preferred, and the only source in job mode; required while the release migrates
     keys:                             # as above: COWORK_DATABASE_OWNER_URL or COWORK_DATABASE_OWNER_HOST, _PORT, _NAME, _USER, _PASSWORD, _SSLMODE
@@ -1475,11 +1471,14 @@ The modes that change what is exposed:
 - **A database role as components.** With its `keys.url` empty, a role's Secret is read key by
   key — the user and the password always from the Secret, the host, port, name and sslmode from
   `existingConfigMap` when one is named — and the backend composes the URL; a named key a Secret or
-  ConfigMap lacks stops the pod rather than falling back. The chart mounts no authority for the
-  database's certificate, so `sslmode` can be `require` but not `verify-full` against a private
-  authority ([the Secrets](docs/operations/installation.md#the-secrets)). Whoever may write the
-  `existingConfigMap` is trusted like whoever may read the Secret beside it
-  ([trust boundaries](docs/security/trust-boundaries.md)).
+  ConfigMap lacks stops the pod rather than falling back.
+- **`database.tls.caConfigMap` lets `sslmode` be `verify-full` against a private authority**, such
+  as CloudNativePG's: the backend trusts that authority alone for both roles' connections and the
+  migration run, and refuses to start beside an `sslmode` that checks nothing. Without it a server
+  that is not under a public authority can only be reached with `require` — encrypted, the server
+  not verified ([the database](docs/operations/installation.md#the-database-and-its-two-roles)).
+  Whoever may write the `existingConfigMap` or `database.tls.caConfigMap` is trusted like whoever
+  may read the Secret beside it ([trust boundaries](docs/security/trust-boundaries.md)).
 - **The server key has no inline path.** One Secret gives every replica the same key;
   rotating it invalidates the cursors clients hold and ends each session of the identity provider
   that holds a refresh token at its next refresh.
@@ -1496,8 +1495,10 @@ The modes that change what is exposed:
   sees the password. `localAdmin.username` and `.password` render `<fullname>-local-admin` for
   a throw-away installation: plain text in the release Secret and in `helm get values`, like
   `database.url`, with a warning in the notes. The account follows the Secret at every start —
-  a changed value reaches the pods when they restart; rotate the Secret **and** restart to end a
-  leaked password ([operations](docs/operations/installation.md#the-local-administrator)).
+  a changed value reaches the pods when they restart, which every `helm upgrade` does while an
+  inline credential is set (the pod annotation `cowork/inline-credentials-revision`); rotate the
+  Secret **and** restart to end a leaked password with the sessions and tokens made with it, then
+  review the grants it made ([operations](docs/operations/installation.md#the-local-administrator)).
 - **`backend.config.trustedProxies` and network policies.** Empty, the login throttle counts the
   Ingress controller pod as the one client of every browser behind it; set to the controller's
   networks it counts the browser. Too wide a list lets a client choose its address, and a network
@@ -1538,10 +1539,10 @@ make dev                  # the whole stack with demo data; the UI on :4200 with
 make generate             # after a change to backend/api/, the SQL queries, the problem catalogue or the dashboard; CI fails on drift
 make frontend-generate    # after make generate changed the API document: the Angular client; CI fails on drift
 make lint cyclo gosec vuln
-make dev-up               # what the integration tier needs: PostgreSQL, MinIO and Dex (dex-up and dex-down alone)
+make dev-up postgres-tls-up  # what the integration tier needs: PostgreSQL, one that serves TLS, Silo and Dex (dex-up and dex-down alone)
 make test test-integration
 make frontend-lint frontend-test-coverage frontend-build
-make helm-lint helm-template examples-lint   # the chart with every ci/ values file; deploy/examples/ against the operators' CRD schemas
+make helm-lint helm-template examples-lint   # the chart with every ci/ values file; deploy/examples/ against CloudNativePG's CRD schema and Silo's chart
 make docker-build e2e     # the end-to-end suite in Chromium and WebKit against both images (make e2e-browsers once)
 make build                # bin/cowork and frontend/dist/frontend/browser
 make build-mcp            # bin/cowork-mcp; GOOS= GOARCH= cross-compile

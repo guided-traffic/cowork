@@ -466,16 +466,6 @@
           "type": "string"
         }
       },
-      "PullRequestID": {
-        "description": "The id of a ticket's link to a pull request or a commit",
-        "in": "path",
-        "name": "pull_request",
-        "required": true,
-        "schema": {
-          "format": "uuid",
-          "type": "string"
-        }
-      },
       "Query": {
         "description": "A filter by full text over title and body (docs/adr/0025): the tickets whose title and body hold\nevery word, in the list's own order, without a rank or a snippet — the ranked search over\ncomments, questions, file names and keys as well is `GET …/search`. Its length is capped by\nthe server\n",
         "in": "query",
@@ -3663,107 +3653,6 @@
         ],
         "type": "object"
       },
-      "GitHubIntegration": {
-        "example": {
-          "events": [
-            "pull_request",
-            "push"
-          ],
-          "secret": {
-            "created_at": "2026-10-06T13:55:00Z",
-            "created_by": {
-              "display_name": "Ada Lovelace",
-              "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
-              "username": "ada"
-            }
-          },
-          "webhook_path": "/api/v1/tenants/acme/integrations/github/webhook"
-        },
-        "properties": {
-          "events": {
-            "description": "The events to choose in GitHub's webhook settings; every other is taken and passed over",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "secret": {
-            "description": "The secret's metadata; null while the tenant has none, and then the endpoint answers like an unknown tenant",
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/GitHubSecret"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "webhook_path": {
-            "description": "The endpoint's path, which GitHub posts to under the installation's `COWORK_BASE_URL`",
-            "type": "string"
-          }
-        },
-        "required": [
-          "secret",
-          "webhook_path",
-          "events"
-        ],
-        "type": "object"
-      },
-      "GitHubSecret": {
-        "description": "The tenant's GitHub webhook secret as its administrators read it — never the secret itself",
-        "properties": {
-          "created_at": {
-            "description": "When it was made or last rotated",
-            "format": "date-time",
-            "type": "string"
-          },
-          "created_by": {
-            "$ref": "#/components/schemas/Person"
-          }
-        },
-        "required": [
-          "created_at",
-          "created_by"
-        ],
-        "type": "object"
-      },
-      "GitHubSecretCreated": {
-        "example": {
-          "created_at": "2026-10-06T13:55:00Z",
-          "created_by": {
-            "display_name": "Ada Lovelace",
-            "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
-            "username": "ada"
-          },
-          "replaced": false,
-          "secret": "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
-        },
-        "properties": {
-          "created_at": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "created_by": {
-            "$ref": "#/components/schemas/Person"
-          },
-          "replaced": {
-            "description": "A secret existed and is replaced; a delivery signed with it is refused from now on",
-            "type": "boolean"
-          },
-          "secret": {
-            "description": "The new secret, 64 hexadecimal characters, shown in this answer only: give it to GitHub as the\nwebhook's secret. cowork keeps it sealed and never shows it again (docs/adr/0071 D1)\n",
-            "type": "string"
-          }
-        },
-        "required": [
-          "secret",
-          "created_at",
-          "created_by",
-          "replaced"
-        ],
-        "type": "object"
-      },
       "GroupMapping": {
         "example": {
           "created_at": "2026-03-04T09:00:00Z",
@@ -4240,7 +4129,7 @@
             ]
           },
           "conflict": {
-            "description": "The key of the project's ticket that holds the number — a deleted one included — or held it until it was purged",
+            "description": "The key of the project's ticket that holds the number, a deleted one included",
             "type": [
               "string",
               "null"
@@ -4322,7 +4211,7 @@
             "type": "array"
           },
           "reason": {
-            "description": "Why the file is skipped or excluded",
+            "description": "Why the file is skipped or excluded, or why the import leaves it out — its conflict, or its error",
             "type": [
               "string",
               "null"
@@ -4479,7 +4368,7 @@
               "parent": null,
               "path": "docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md",
               "questions": [],
-              "reason": null,
+              "reason": "left out of the import: the project holds its number as acme/WEB-41 (docs/adr/0064 D3)",
               "state": "decided",
               "title": "pick the SameSite mode of the session cookie",
               "type": "task",
@@ -4570,7 +4459,7 @@
               "parent": null,
               "path": "docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md",
               "questions": [],
-              "reason": null,
+              "reason": "left out of the import: the file has an error; the other files are imported (docs/adr/0051 D2)",
               "state": "analysed",
               "title": "the price table is unreadable on a phone",
               "type": "task",
@@ -4811,7 +4700,7 @@
         "type": "object"
       },
       "ImportOutcome": {
-        "description": "What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its\nnumber is a ticket of the project already, deleted ones in the bin included, or was one that was\npurged — a repeated import is a duplicate, not an update, and a number is never handed out twice\n(docs/adr/0064 D3, docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors` says\nwhy (docs/adr/0051 D2). `skip`: it is no ticket file, or it is a manifest of an export the import\nreads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it out\n(docs/adr/0063 D1). `created`: the execution created its ticket. A dry run is not executed while\na file it would import is `conflict` or `error`: exclude the file, or correct the source and make\na new dry run\n",
+        "description": "What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its\nnumber is a ticket of the project already, deleted ones in the bin included — a repeated import\nis a duplicate, not an update (docs/adr/0064 D3); a number a purged ticket held is no conflict, an\nimport gives it back (docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors`\nsays why (docs/adr/0051 D2). `skip`: it is no ticket file, a `/context` document, or a manifest of\nan export the import reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it\nout (docs/adr/0063 D1). `created`: the execution created its ticket. The execution leaves out\nevery file that is `conflict` or `error` and imports the rest; the executed report keeps their\noutcome, and `reason` says why each was left out\n",
         "enum": [
           "create",
           "conflict",
@@ -5043,7 +4932,7 @@
         "type": "object"
       },
       "InboxReason": {
-        "description": "Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a\nquestion they asked answered, a ticket they watch changed state or got a comment, a ticket that\nblocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a\ncomment that mentions them (docs/adr/0015 D5), a pull request of a ticket they watch or that is\nassigned to them merged (docs/adr/0071 D6) — its state unchanged, the move a person's\n",
+        "description": "Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a\nquestion they asked answered, a ticket they watch changed state or got a comment, a ticket that\nblocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, or a\ncomment that mentions them (docs/adr/0015 D5)\n",
         "enum": [
           "assigned",
           "asked",
@@ -5052,8 +4941,7 @@
           "blocker_closed",
           "commented",
           "urgent",
-          "mentioned",
-          "merged"
+          "mentioned"
         ],
         "type": "string"
       },
@@ -6295,7 +6183,6 @@
           "token_revoked",
           "not_allowed",
           "invalid_credentials",
-          "signature_invalid",
           "forbidden",
           "insufficient_scope",
           "agent_forbidden",
@@ -6320,7 +6207,6 @@
           "link_cycle",
           "open_prerequisites",
           "import_executed",
-          "import_conflict",
           "period_locked",
           "attachment_limit",
           "attachment_quota",
@@ -6691,189 +6577,6 @@
           "key"
         ],
         "type": "object"
-      },
-      "PullRequest": {
-        "description": "A pull request or a default-branch commit GitHub's webhook linked to the ticket (docs/adr/0071 D6)",
-        "example": {
-          "author": "grace-hopper",
-          "first_seen_at": "2026-10-06T14:02:12Z",
-          "found_in": "trailer",
-          "id": "01a11185-9ea0-7025-a5c9-d7ff9a0dcc8e",
-          "kind": "pull_request",
-          "last_seen_at": "2026-10-06T16:40:03Z",
-          "merged_at": "2026-10-06T16:40:03Z",
-          "number": 118,
-          "repository": "github.com/acme/website",
-          "sha": null,
-          "state": "merged",
-          "title": "Send the password as typed (WEB-42)",
-          "url": "https://github.com/acme/website/pull/118"
-        },
-        "properties": {
-          "author": {
-            "description": "The author's GitHub login, where GitHub named one",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "first_seen_at": {
-            "description": "When a delivery first linked it to the ticket",
-            "format": "date-time",
-            "type": "string"
-          },
-          "found_in": {
-            "$ref": "#/components/schemas/PullRequestFoundIn"
-          },
-          "id": {
-            "description": "The link's id",
-            "format": "uuid",
-            "type": "string"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/PullRequestKind"
-          },
-          "last_seen_at": {
-            "description": "When a delivery last told of it",
-            "format": "date-time",
-            "type": "string"
-          },
-          "merged_at": {
-            "description": "When the pull request was merged, or the commit reached the default branch; null otherwise",
-            "format": "date-time",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "number": {
-            "description": "The pull request's number; null for a commit",
-            "type": [
-              "integer",
-              "null"
-            ]
-          },
-          "repository": {
-            "description": "The repository's identity, host/path (docs/adr/0066 D1)",
-            "type": "string"
-          },
-          "sha": {
-            "description": "The commit's id; null for a pull request",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "state": {
-            "$ref": "#/components/schemas/PullRequestState"
-          },
-          "title": {
-            "description": "The pull request's title, or the commit's subject, as GitHub sent it",
-            "type": "string"
-          },
-          "url": {
-            "description": "The pull request's or the commit's page at GitHub, written from the bound repository's\nidentity, never taken from a payload\n",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "kind",
-          "repository",
-          "number",
-          "sha",
-          "title",
-          "state",
-          "url",
-          "author",
-          "merged_at",
-          "found_in",
-          "first_seen_at",
-          "last_seen_at"
-        ],
-        "type": "object"
-      },
-      "PullRequestFoundIn": {
-        "description": "Where the key was read (docs/adr/0068 D1, D2, D5): a `Cowork-Ticket:` trailer line, a line of a pull\nrequest's body that is a full key alone, or the short keys in parentheses at the end of a pull\nrequest's title or a commit's subject\n",
-        "enum": [
-          "trailer",
-          "body",
-          "subject"
-        ],
-        "type": "string"
-      },
-      "PullRequestKind": {
-        "description": "A pull request, or a commit on the repository's default branch (docs/adr/0071 D6)",
-        "enum": [
-          "pull_request",
-          "commit"
-        ],
-        "type": "string"
-      },
-      "PullRequestList": {
-        "example": {
-          "items": [
-            {
-              "author": "grace-hopper",
-              "first_seen_at": "2026-10-06T14:02:12Z",
-              "found_in": "trailer",
-              "id": "01a11185-9ea0-7025-a5c9-d7ff9a0dcc8e",
-              "kind": "pull_request",
-              "last_seen_at": "2026-10-06T16:40:03Z",
-              "merged_at": "2026-10-06T16:40:03Z",
-              "number": 118,
-              "repository": "github.com/acme/website",
-              "sha": null,
-              "state": "merged",
-              "title": "Send the password as typed (WEB-42)",
-              "url": "https://github.com/acme/website/pull/118"
-            },
-            {
-              "author": "grace-hopper",
-              "first_seen_at": "2026-10-06T16:40:05Z",
-              "found_in": "trailer",
-              "id": "01a11216-2a88-789b-9a95-0865acfc9150",
-              "kind": "commit",
-              "last_seen_at": "2026-10-06T16:40:05Z",
-              "merged_at": "2026-10-06T16:40:05Z",
-              "number": null,
-              "repository": "github.com/acme/website",
-              "sha": "4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281",
-              "state": "merged",
-              "title": "Send the password as typed (WEB-42) (#118)",
-              "url": "https://github.com/acme/website/commit/4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281"
-            }
-          ],
-          "next_cursor": null
-        },
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/PullRequest"
-            },
-            "type": "array"
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "items",
-          "next_cursor"
-        ],
-        "type": "object"
-      },
-      "PullRequestState": {
-        "description": "The pull request's state as GitHub last told it; a commit on the default branch is merged",
-        "enum": [
-          "open",
-          "closed",
-          "merged"
-        ],
-        "type": "string"
       },
       "Question": {
         "example": {
@@ -9585,7 +9288,7 @@
     }
   },
   "info": {
-    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat and stopping one, choosing the\nchat's capabilities, a global administrator's list of every tenant, purging a\ndeleted ticket — the one irreversible act on a ticket —, making or rotating\nthe tenant's GitHub webhook secret, removing the orphaned objects a\nconsistency check found — gone for good as well —, and the\nadministration acts that give access: adding a member, setting a grant,\nmaking or changing a group mapping, restricting or opening a project,\nputting a person on its access list. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). GitHub's\nwebhook takes neither credential: its deliveries are signed with the\ntenant's secret (docs/adr/0071). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
+    "description": "A multi-tenant backlog for people and the agents that work for them.\n\nEvery route that names a person is authenticated with one of two\ncredentials. A personal access token, `Authorization: Bearer cwk_…`\n(docs/adr/0035), is for scripts and agents; the session cookie of a\nbrowser login (docs/adr/0031 — `POST /auth/local`, or the identity\nprovider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each\noperation says which it takes: most take either, a few a session only —\ncreating a token, a tenant or a local account, resetting or changing a\npassword, logging out, a turn of the chat and stopping one, choosing the\nchat's capabilities, a global administrator's list of every tenant, purging a\ndeleted ticket — the one irreversible act on a ticket —, removing the\norphaned objects a consistency check found — gone for good as well —, and the\nadministration acts that give access: adding a member, setting a grant,\nmaking or changing a group mapping, restricting or opening a project,\nputting a person on its access list. A request of a session that writes must come from the installation's\norigin and carry `X-Requested-With: cowork` (docs/adr/0037). A request\nmarked as an agent's — by the token's agent flag, or by an `X-Cowork-Agent:\nname/model/session` header — is bound by the agent rules\n(docs/adr/0036, 0043). Errors are RFC 9457 problem details with a stable\n`code` (docs/adr/0047).\n",
     "title": "cowork",
     "version": "0.0.0"
   },
@@ -9964,7 +9667,7 @@
     },
     "/api/v1/me/password": {
       "put": {
-        "description": "Needs the current password, which counts like a login attempt towards\nthe lockout of the account (docs/adr/0033 D6). The new one must be as long\nas `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every\nother session of the account ends (D4), and a temporary password is no\nlonger temporary. The local administrator's password is set by the\nconfiguration and cannot be changed here (`403 forbidden`).\n",
+        "description": "Needs the current password, which counts like a login attempt towards\nthe lockout of the account and the throttle of the client's address —\n`429 too_many_attempts` with `Retry-After` before it is hashed\n(docs/adr/0033 D6). The new one must be as long\nas `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every\nother session of the account ends (D4), and a temporary password is no\nlonger temporary. The local administrator's password is set by the\nconfiguration and cannot be changed here (`403 forbidden`).\n",
         "operationId": "changeMyPassword",
         "requestBody": {
           "content": {
@@ -10498,7 +10201,7 @@
         }
       ],
       "patch": {
-        "description": "An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).\n`If-Match` is required (docs/adr/0050 D3).\n",
+        "description": "An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).\n`If-Match` is required (docs/adr/0050 D3).\n\nA change that widens what the members may see or do — switching\n`time_visible_to_members` or `members_create_projects` on, or moving\n`time_locked_until` earlier or clearing it — takes a browser session: a\ntoken is `403 session_required` (docs/adr/0035 D5). The other direction,\nand the name, stay open to an administrator's token.\n",
         "operationId": "updateTenant",
         "parameters": [
           {
@@ -10658,7 +10361,7 @@
     },
     "/api/v1/tenants/{tenant}/accounts/{username}/lockout": {
       "delete": {
-        "description": "Forgets the failed attempts and the lock of the username\n(docs/adr/0033 D6). Not for the administrator's own account\n(`403 forbidden`). Unlocking an account that is not locked changes\nnothing.\n",
+        "description": "Forgets the failed attempts and the lock of the username\n(docs/adr/0033 D6). Not for the administrator's own account\n(`403 forbidden`). Unlocking an account that is not locked changes\nnothing.\n\nA browser session only (`403 session_required` for a token): a leaked\ntoken that could unlock an account between guesses would make its\nlockout hold never, long after the token's revocation\n(docs/adr/0035 D5).\n",
         "operationId": "unlockAccount",
         "responses": {
           "204": {
@@ -10668,6 +10371,11 @@
             "$ref": "#/components/responses/Problem"
           }
         },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Lift the lockout of an account",
         "tags": [
           "accounts"
@@ -11319,7 +11027,7 @@
     },
     "/api/v1/tenants/{tenant}/events": {
       "get": {
-        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed`, `interest.changed` and `pull_request.changed` — a pull request or a commit\nGitHub's webhook linked, merged, closed or reopened, or a person removed (docs/adr/0071 D6) —,\neach with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`project.changed` says that a project's tickets changed as a whole — its rank set by the\nscore (docs/adr/0014 D3), `kind` `ranked`, or an import executed into it (docs/adr/0051 D3),\n`kind` `imported`, whose tickets announce no event of their own — with\n`data: {\"key\": \"\u003ctenant\u003e/\u003cPROJECT\u003e\", \"kind\": …}`; `id:` is the act's id. It reaches whoever\nsees the project, and the client reloads the lists it shows.\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries the tenant's slug, `tenant`, and keys only, each where it applies:\n`person_id`, the person whose membership or project access changed; `project_id`, the\nproject whose restriction or access list changed; `mapping_id`, the group mapping made,\nchanged or removed. The client reloads what it shows of that tenant's members, mappings and\naccess lists, its project list when `project_id` is there, and the person's own\n`GET /api/v1/me`. An event about an access entry reaches the tenant's administrators and the\nperson it names, one about a mapping the administrators, every other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream carries\nevery event of every tenant the person belongs to that the tenant's own stream would carry\nto them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with\n`data: {\"unread\": n}`, the person's unread notifications in every tenant the request reaches\n(`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox\nchanges — a notification for them, or theirs marked read. The count carries no `id:` and is\nnot replayed: it says how things stand. A tenant the person is granted a role in is followed\nat once, one they leave no more after the act that took it away. A token restricted to a\ntenant hears its tenant alone (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level\nstream the gap of every tenant it follows, in the order the server received the events;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmemberships again; the stream ends when the token or the membership of the tenant in the\npath fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
+        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`project.changed` says that a project's tickets changed as a whole — its rank set by the\nscore (docs/adr/0014 D3), `kind` `ranked`, or an import executed into it (docs/adr/0051 D3),\n`kind` `imported`, whose tickets announce no event of their own — with\n`data: {\"key\": \"\u003ctenant\u003e/\u003cPROJECT\u003e\", \"kind\": …}`; `id:` is the act's id. It reaches whoever\nsees the project, and the client reloads the lists it shows.\n\n`membership.changed` says that who belongs to the tenant, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries the tenant's slug, `tenant`, and keys only, each where it applies:\n`person_id`, the person whose membership or project access changed; `project_id`, the\nproject whose restriction or access list changed; `mapping_id`, the group mapping made,\nchanged or removed. The client reloads what it shows of that tenant's members, mappings and\naccess lists, its project list when `project_id` is there, and the person's own\n`GET /api/v1/me`. An event about an access entry reaches the tenant's administrators and the\nperson it names, one about a mapping the administrators, every other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream carries\nevery event of every tenant the person belongs to that the tenant's own stream would carry\nto them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with\n`data: {\"unread\": n}`, the person's unread notifications in every tenant the request reaches\n(`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox\nchanges — a notification for them, or theirs marked read. The count carries no `id:` and is\nnot replayed: it says how things stand. A tenant the person is granted a role in is followed\nat once, one they leave no more after the act that took it away. A token restricted to a\ntenant hears its tenant alone (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level\nstream the gap of every tenant it follows, in the order the server received the events;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmemberships again; the stream ends when the token or the membership of the tenant in the\npath fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
         "operationId": "streamEvents",
         "parameters": [
           {
@@ -11370,7 +11078,7 @@
     },
     "/api/v1/tenants/{tenant}/export": {
       "get": {
-        "description": "The export of every project of the tenant the caller can see, archived ones included, in one\n`tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all\nof them under `\u003ctenant\u003e/`, and one `manifest.json`, `links.json` and `attachments.json` over\nall of them, each link once. A restricted project the caller cannot see is absent, without a\ncount; the confidential tickets left out are counted per project and in total. Any member, an\nagent too; a token restricted to a project is refused, as on every route of the tenant outside\na project. One act `exported` on the tenant, never published.\n",
+        "description": "The export of every project of the tenant the caller can see, archived ones included, in one\n`tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all\nof them under `\u003ctenant\u003e/`, and one `manifest.json`, `links.json` and `attachments.json` over\nall of them, each link once. A restricted project the caller cannot see is absent, without a\ncount; the confidential tickets left out are counted per project and in total. Any member, an\nagent too; a token restricted to a project is refused, as on every route of the tenant outside\na project. One act `exported` on the tenant, never published. A recorded read: a session's\nrequest with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).\n",
         "operationId": "exportTenant",
         "responses": {
           "200": {
@@ -11399,7 +11107,8 @@
         "summary": "The tenant's tickets as an archive, the union over its projects",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -11809,178 +11518,6 @@
         "tags": [
           "tenants"
         ]
-      }
-    },
-    "/api/v1/tenants/{tenant}/integrations/github": {
-      "get": {
-        "description": "For the tenant's administrators (`read` scope): whether a webhook secret exists, when and by\nwhom it was made — never the secret, which is shown once, when it is made — and the path of\nthe endpoint, which GitHub posts to under the installation's `COWORK_BASE_URL`\n(docs/adr/0071 D1, D7). Until a secret exists the endpoint answers every delivery like an\nunknown tenant.\n",
-        "operationId": "getGitHubIntegration",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GitHubIntegration"
-                }
-              }
-            },
-            "description": "The integration"
-          },
-          "default": {
-            "$ref": "#/components/responses/Problem"
-          }
-        },
-        "summary": "Whether the tenant takes GitHub's webhook, and where",
-        "tags": [
-          "integrations"
-        ]
-      },
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/TenantSlug"
-        }
-      ]
-    },
-    "/api/v1/tenants/{tenant}/integrations/github/secret": {
-      "delete": {
-        "description": "A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0043 D3). It only\ntakes access away, so a token may (docs/adr/0035 D5). From this answer on the endpoint answers\nevery delivery like an unknown tenant; the links made stay. `204` also when there is none.\nRecorded as `revoked` on `github_webhook_secret`.\n",
-        "operationId": "revokeGitHubSecret",
-        "responses": {
-          "204": {
-            "description": "The tenant takes no webhook"
-          },
-          "default": {
-            "$ref": "#/components/responses/Problem"
-          }
-        },
-        "summary": "Revoke the tenant's webhook secret",
-        "tags": [
-          "integrations"
-        ]
-      },
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/TenantSlug"
-        }
-      ],
-      "post": {
-        "description": "A tenant administrator's act in a browser session (docs/adr/0071 D1, docs/adr/0035 D5): the\nsecret lets whoever holds it write links into the tenant, which outlives a leaked token's\nrevocation, so a token cannot call this (`403 session_required`), and never an agent\n(docs/adr/0043 D3). The server draws 256 random bits and answers them as 64 hexadecimal\ncharacters in `secret`, once; it keeps them sealed with a key derived from\n`COWORK_SESSION_KEY`, never in a form it could show again. A secret that exists is replaced\nat once — a delivery signed with the old one is refused from this answer on — which is the\nrotation. No `Idempotency-Key`: a stored answer could not carry the secret\n(docs/adr/0045 D6), and a repetition after a lost answer makes a new secret, which is the\none to give GitHub. Recorded as `created` on `github_webhook_secret`, without the secret.\n",
-        "operationId": "createGitHubSecret",
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GitHubSecretCreated"
-                }
-              }
-            },
-            "description": "The new secret, shown once"
-          },
-          "default": {
-            "$ref": "#/components/responses/Problem"
-          }
-        },
-        "security": [
-          {
-            "sessionCookie": []
-          }
-        ],
-        "summary": "Make the tenant's webhook secret, or rotate it",
-        "tags": [
-          "integrations"
-        ]
-      }
-    },
-    "/api/v1/tenants/{tenant}/integrations/github/webhook": {
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/TenantSlug"
-        }
-      ],
-      "post": {
-        "description": "Public: no session and no token — a cookie or an `Authorization` header is ignored — and no\norigin check, because GitHub sends no `Origin`; the credential is the signature\n(docs/adr/0071 D2, D3). The pipeline hands the request to its handler before the tenant\nboundary, and the handler goes in this order:\n\n1. The tenant and its secret: an unknown tenant, and one without a secret, are the same\n   `404 not_found`.\n2. The body, bounded by `COWORK_MAX_JSON_BODY` (docs/adr/0039 D2): `413 payload_too_large`.\n3. `X-Hub-Signature-256`, `sha256=` and the HMAC-SHA256 of the raw body under the secret,\n   compared in constant time before anything is parsed: missing or wrong is\n   `401 signature_invalid`, and nothing is read or written.\n4. `X-GitHub-Delivery`, a UUID (`400 validation_failed` otherwise), and the body's type,\n   `application/json` (`415 unsupported_media_type` otherwise). A delivery the tenant took\n   in the last twenty-four hours answers `200` without effect.\n5. `X-GitHub-Event`: `pull_request` with the action `opened`, `edited`, `synchronize`,\n   `reopened` or `closed` whose author GitHub names the repository's `OWNER`, a `MEMBER` of\n   the organisation that owns it or a `COLLABORATOR` (`pull_request.author_association`,\n   docs/adr/0071 D4 as amended 2026-10-07), and `push` to the repository's default branch,\n   are read; the repository (`repository.clone_url`, normalised as docs/adr/0066 D1 says)\n   must be bound to a project of the tenant. Every delivery taken answers `202`, whether it\n   linked anything, named a repository the tenant does not bind, was a pull request of\n   another author, or was another event — the answer says nothing about what is bound or\n   which keys exist.\n\nA pull request is linked by its title and body: a `Cowork-Ticket: \u003ctenant\u003e/\u003cKEY\u003e-\u003cn\u003e`\ntrailer line or a line that is a full key alone, else the short keys in parentheses at the\nend of the title (docs/adr/0068 D1, D2, D5). Its commits are not fetched — cowork calls\nnothing at GitHub — and are linked by the push to the default branch, each commit by its\nmessage's trailers, else its subject's short keys. A key of another tenant, or of no ticket,\nis passed over. Nothing changes a ticket's state (docs/adr/0071 D6).\n",
-        "operationId": "receiveGitHubWebhook",
-        "parameters": [
-          {
-            "description": "`sha256=` and the hex HMAC-SHA256 of the body under the tenant's secret",
-            "in": "header",
-            "name": "X-Hub-Signature-256",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The event, such as `pull_request`, `push` or `ping`",
-            "in": "header",
-            "name": "X-GitHub-Event",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "description": "The delivery's id, a UUID that a redelivery repeats",
-            "in": "header",
-            "name": "X-GitHub-Delivery",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "examples": {
-                "pullRequestOpened": {
-                  "summary": "X-GitHub-Event: pull_request, opened; the payload cut to the fields cowork reads",
-                  "value": {
-                    "action": "opened",
-                    "number": 118,
-                    "pull_request": {
-                      "author_association": "MEMBER",
-                      "body": "The form no longer trims the password before it sends it.\n\nCowork-Ticket: acme/WEB-42",
-                      "merged": false,
-                      "merged_at": null,
-                      "number": 118,
-                      "state": "open",
-                      "title": "Send the password as typed (WEB-42)",
-                      "updated_at": "2026-10-06T14:02:10Z",
-                      "user": {
-                        "login": "grace-hopper"
-                      }
-                    },
-                    "repository": {
-                      "clone_url": "https://github.com/acme/website.git",
-                      "default_branch": "main"
-                    }
-                  }
-                }
-              },
-              "schema": {
-                "type": "object"
-              }
-            }
-          },
-          "description": "GitHub's payload, read only after its signature: of `pull_request` the action, the pull\nrequest's number, title, body, state, `merged`, `merged_at`, `updated_at`, `user.login`\nand `author_association`; of `push` the `ref` and the commits' `id`, `message` and\n`author.username`; of both `repository.clone_url` and `repository.default_branch`.\nEverything else is passed over — a page the payload names too: the page a ticket links is\nwritten from the bound repository's identity.\n",
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "The tenant took this delivery before; nothing happened again"
-          },
-          "202": {
-            "description": "The delivery is taken; what it changed, if anything, is not said"
-          },
-          "default": {
-            "$ref": "#/components/responses/Problem"
-          }
-        },
-        "security": [],
-        "summary": "GitHub's webhook deliveries for the tenant",
-        "tags": [
-          "integrations"
-        ],
-        "x-cowork-signed": "github"
       }
     },
     "/api/v1/tenants/{tenant}/members": {
@@ -12591,7 +12128,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/export": {
       "get": {
-        "description": "A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done\nand dropped ones included, deleted ones not —, its `…/markdown` document named by its key,\n`\u003ctenant\u003e/\u003cPROJECT\u003e-\u003cn\u003e.md`; and three manifests at the root:\n\n- `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of\n  tickets, the time, the exporter, and the confidential tickets the caller cannot see and the\n  archive therefore leaves out, as a count (docs/adr/0065 D5);\n- `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends\n  the caller can see, once, by its source key, its type and its target key;\n- `attachments.json`, an array of `ExportAttachment`: every attachment of those tickets by its\n  ticket, name, type, size and URL — never its bytes (docs/adr/0016 D5).\n\nThe importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,\nan agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see\nis `404`. Every export is recorded, one act `exported` on the project — data left the system\n(docs/adr/0059 D3, docs/adr/0026 D5) —, and never published.\n",
+        "description": "A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done\nand dropped ones included, deleted ones not —, its `…/markdown` document named by its key,\n`\u003ctenant\u003e/\u003cPROJECT\u003e-\u003cn\u003e.md`; and three manifests at the root:\n\n- `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of\n  tickets, the time, the exporter, and the confidential tickets the caller cannot see and the\n  archive therefore leaves out, as a count (docs/adr/0065 D5);\n- `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends\n  the caller can see, once, by its source key, its type and its target key;\n- `attachments.json`, an array of `ExportAttachment`: every attachment of those tickets by its\n  ticket, name, type, size and URL — never its bytes (docs/adr/0016 D5).\n\nThe importer reads the archive back (docs/adr/0051 D5). Whoever reads the project exports it,\nan agent too (docs/adr/0051 D6, docs/adr/0064 D5); a restricted project the caller cannot see\nis `404`. Every export is recorded, one act `exported` on the project — data left the system\n(docs/adr/0059 D3, docs/adr/0026 D5) —, and never published. A recorded read: a session's\nrequest with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf`.\n",
         "operationId": "exportProject",
         "responses": {
           "200": {
@@ -12620,7 +12157,8 @@
         "summary": "The project's tickets as an archive",
         "tags": [
           "imports"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -12641,7 +12179,7 @@
         }
       ],
       "post": {
-        "description": "The first phase of an import (docs/adr/0051 D1, D2): every file of the upload is read, and the\nanswer is the new job, a dry run whose report says per file what the execution would do.\nNothing is imported yet. The upload is `multipart/form-data` with one or more parts named\n`file`: one archive — a `tar.gz` or a `zip`, known by its bytes, not its name — or Markdown\nfiles, one per part, named by the part's file name.\n\nA file is read as a ticket file of a repository (`NNN-\u003cslug\u003e.md`, `local_NNN-\u003cslug\u003e.md`,\ndocs/adr/0063 D3), as cowork's own export (`\u003cPROJECT\u003e-\u003cn\u003e.md`, grammar v1), or, without\nfrontmatter, as an archived record that becomes one done task (D4); everything else is listed\nas skipped (D5), the manifests of an export — `manifest.json`, `links.json`,\n`attachments.json` — as read beside the tickets. A `/context` document is an error\n(docs/adr/0044 D3). The numbers are kept (docs/adr/0007 D6), and a number that is a ticket of\nthe project already — or was one, purged — is a conflict (docs/adr/0064 D3); the type is\ndetected by content and open to correction (docs/adr/0008 D5); `blocked` is never inferred\n(docs/adr/0009); a value outside its vocabulary is an error, never a guess (docs/adr/0010 D5);\nthe confidential flag follows the rule of the source (docs/adr/0065 D7).\n\nAn administrator's act — the role `admin` in the tenant, a token's `admin` scope — and never\nan agent's: a flagged token, or a request with `X-Cowork-Agent`, is `403 agent_forbidden`\n(docs/adr/0051 D6, docs/adr/0043 D3). A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of\nmultipart overhead is `413 payload_too_large`, and so are files that hold more than\n`COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files (docs/adr/0051 D7); an archived\nproject is `409 project_archived`. Recorded as the act `created` on the `import_job`; the\ndry run is kept for twenty-four hours, after which its read and its execution answer `404`.\n",
+        "description": "The first phase of an import (docs/adr/0051 D1, D2): every file of the upload is read, and the\nanswer is the new job, a dry run whose report says per file what the execution would do.\nNothing is imported yet. The upload is `multipart/form-data` with one or more parts named\n`file`: one archive — a `tar.gz` or a `zip`, known by its bytes, not its name — or Markdown\nfiles, one per part, named by the part's file name.\n\nA file is read as a ticket file of a repository (`NNN-\u003cslug\u003e.md`, `local_NNN-\u003cslug\u003e.md`,\ndocs/adr/0063 D3), as cowork's own export (`\u003cPROJECT\u003e-\u003cn\u003e.md`, grammar v1), or, without\nfrontmatter, as an archived record that becomes one done task (D4); everything else is listed\nas skipped (D5), and so is a `/context` document, with its reason (docs/adr/0044 D3); the\nmanifests of an export — `manifest.json`, `links.json`, `attachments.json` — are read beside\nthe tickets. The numbers are kept (docs/adr/0007 D6): a number that is a ticket of the project\nalready, a deleted one included, is a conflict (docs/adr/0064 D3), and one a purged ticket held\nis given back, with a warning (docs/adr/0007 D4); the type is detected by content and open to\ncorrection (docs/adr/0008 D5); `blocked` is never inferred (docs/adr/0009); a value outside its\nvocabulary is an error, never a guess (docs/adr/0010 D5); the confidential flag follows the\nrule of the source (docs/adr/0065 D7); no parent is guessed — a file names its own, or the\nperson or their agent sets it after the import (docs/adr/0051 D2).\n\nA writer's act of the project, as creating a ticket is: the role `member` in the tenant — a\nrestricted project's list may lower it — and a token's `write` scope; an agent's too\n(docs/adr/0051 D6, docs/adr/0043 D2). An import through a token, an agent's or not, assigns a\nconfidential ticket to the token's own person or to nobody, the report saying why on the file\n(docs/adr/0065 D9, docs/adr/0043 D3); a browser session's assigns as the file says. A body above `COWORK_MAX_IMPORT_BYTES` and 64 KiB of multipart\noverhead is `413 payload_too_large`, and so are files that hold more than\n`COWORK_MAX_IMPORT_BYTES` unpacked, or more than 10 000 files — a `zip`'s entries counted, its\ndirectories included, before it is read (docs/adr/0051 D7); an archived project is `409\nproject_archived`. Recorded as the act `created` on the `import_job`; the dry run is kept for\ntwenty-four hours, after which its read and its execution answer `404`.\n",
         "operationId": "createImport",
         "requestBody": {
           "content": {
@@ -12695,7 +12233,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/imports/{import}": {
       "get": {
-        "description": "A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For\nthe tenant's administrators, a token's `read` scope, never an agent — a flagged token and a\nrequest with `X-Cowork-Agent` are `403 agent_forbidden` (D6); a job of another project, and a\ndry run older than twenty-four hours, is `404`.\n",
+        "description": "A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For a\nwriter of the project, an agent's token included, and of a job they made, and for the tenant's\nadministrators (D6): another person's job is `404`, as are a job of another project and a dry\nrun older than twenty-four hours.\n",
         "operationId": "getImport",
         "responses": {
           "200": {
@@ -12742,7 +12280,7 @@
         }
       ],
       "post": {
-        "description": "The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the\ncorrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008\nD5) — against the project as it stands now, and every ticket, question and link is created in\none transaction, the project's sequence advanced past the highest number, or nothing is. The\ntickets keep their numbers and take their places at the bottom of the project's rank in number\norder; the importer is their reporter; the dates, the stages, the horizon and the block are the\nsource's, and a ticket imported as done or dropped carries its note or reason on its act\n(docs/adr/0063 D2). Every ticket records the file it came from and the job.\n\nEach created row is an act of the importer naming the job: `created` on each ticket, with\n`confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`\non each question, `linked` on both ends of each link; and `imported` on the job. The event\nstreams hear one `project.changed` with the kind `imported`, not an event per ticket, and\nnobody's inbox is told.\n\nA dry run is executed at most once: a second execution is `409 import_executed`. A file the\nexecution would import that has an error, or whose number is a ticket of the project by now,\nrefuses the whole execution with `409 import_conflict`, `errors[]` naming each such file as\n`file:\u003cpath\u003e` — exclude it, or correct the source and make a new dry run (docs/adr/0064 D3). A\ncorrection naming no file of the job, or breaking the rules of `ImportCorrection`, is `400` at\nits pointer. The same administrators, never an agent; an archived project is `409\nproject_archived`; a dry run older than twenty-four hours is `404`.\n",
+        "description": "The second phase (docs/adr/0051 D2, D3): the dry run's files are read again with the\ncorrections — a file left out, a type, a state, an assignee (docs/adr/0063 D1, docs/adr/0008\nD5) — against the project as it stands now, and every ticket, question and link is created in\none transaction, the project's sequence advanced past the highest number, or nothing is. The\ntickets keep their numbers and take their places at the bottom of the project's rank in number\norder; the importer is their reporter; the dates, the stages, the horizon and the block are the\nsource's, and a ticket imported as done or dropped carries its note or reason on its act\n(docs/adr/0063 D2). Every ticket records the file it came from and the job.\n\nEach created row is an act of the importer naming the job: `created` on each ticket, with\n`confidential_set` where the flag is set, `transitioned` for a done or dropped ticket, `asked`\non each question, `linked` on both ends of each link; and `imported` on the job. The event\nstreams hear one `project.changed` with the kind `imported`, not an event per ticket, and\nnobody's inbox is told.\n\nThe execution imports every file it can and leaves out each file with an error or a conflict —\none whose number a ticket filed since the dry run holds included —, its `reason` saying why\n(docs/adr/0051 D2, docs/adr/0064 D3); nothing refuses it but a second execution. An assignee is\nthe member the dry run named: a file's identity that resolves to anybody else by now assigns\nnobody, with a warning. A dry run is executed at most once: a second execution is `409\nimport_executed`. A correction naming no file of the job, or breaking the rules of\n`ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry\nruns, and the tenant's administrators: another person's dry run is `404`; an archived project\nis `409 project_archived`; a dry run older than twenty-four hours is `404`.\n",
         "operationId": "executeImport",
         "requestBody": {
           "content": {
@@ -13442,7 +12980,7 @@
         }
       ],
       "post": {
-        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is\nthe project's next. `horizon` is the ticket's horizon, a planning category independent of\nthe state, `later` when left out; another horizon is the ticket's set horizon, set by the\ncaller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,\nthe end of its horizon, or directly `after` or `before` the open ticket of the project\nnamed, which must stand in the same horizon (docs/adr/0014 D2). An agent needs\n`set-horizon` for a horizon other than `later` and `rank` for a place, else 403\n`agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket\nconfidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own\nperson, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.\n",
+        "description": "A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is\nthe project's next. `horizon` is the ticket's horizon, a planning category independent of\nthe state, `later` when left out; another horizon is the ticket's set horizon, set by the\ncaller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,\nthe end of its horizon, or directly `after` or `before` the open ticket of the project\nnamed, which must stand in the same horizon (docs/adr/0014 D2). An agent needs\n`set-horizon` for a horizon other than `later` and `rank` for a place, else 403\n`agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket\nconfidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own\nperson, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else\n403 `session_required` — admitting another person takes a browser session\n(docs/adr/0035 D5). An archived project refuses.\n",
         "operationId": "createTicket",
         "parameters": [
           {
@@ -13594,7 +13132,7 @@
         }
       ],
       "patch": {
-        "description": "`If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new\nassignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change\nmakes confidential — only to its own person or to nobody, and another new assignee is 403\n`agent_forbidden` (docs/adr/0043 D3).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
+        "description": "`If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new\nassignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change\nmakes confidential — only to its own person or to nobody, and another new assignee is 403\n`agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another\nnew assignee is 403 `session_required` — admitting a person takes a browser session\n(docs/adr/0035 D5).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
         "operationId": "updateTicket",
         "parameters": [
           {
@@ -13850,7 +13388,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content": {
       "get": {
-        "description": "Streamed from storage after the ticket's read check, with the detected type, `nosniff`,\n`Content-Security-Policy: sandbox`, inline for raster images and a download for\neverything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system\n(docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so\n(docs/adr/0059 D4).\n",
+        "description": "Streamed from storage after the ticket's read check, with the detected type, `nosniff`,\n`Content-Security-Policy: sandbox`, inline for raster images and a download for\neverything else (docs/adr/0016 D5). Every 200 is recorded as data leaving the system\n(docs/adr/0026 D5); a 304 is not. Bytes missing from storage answer 404 saying so\n(docs/adr/0059 D4).\n\nA recorded read (`x-cowork-recorded-read`): a session's request whose\n`Sec-Fetch-Site` is `same-site` or `cross-site` is `403 csrf`; `same-origin`, `none` and\nno header pass, and a token's request is not looked at (docs/adr/0026 D5).\n",
         "operationId": "downloadAttachment",
         "parameters": [
           {
@@ -13910,7 +13448,8 @@
         "summary": "An attachment's bytes",
         "tags": [
           "attachments"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -14336,7 +13875,7 @@
         }
       ],
       "put": {
-        "description": "A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).\nLifting needs a reason and is recorded (D3).\n",
+        "description": "A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).\nLifting needs a reason and is recorded (D3), and a browser session: it shows the\nticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).\nSetting the flag stays open to an administrator's token.\n",
         "operationId": "setConfidential",
         "parameters": [
           {
@@ -14385,7 +13924,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context": {
       "get": {
-        "description": "The canonical document of `…/markdown` (docs/adr/0044 D1) under one first\nline, `\u003c!-- cowork: context of \u003ckey\u003e, exported \u003ctime\u003e by \u003cperson\u003e (via\n\u003cagent\u003e) — not an import format --\u003e`, followed by read-only sections in a\nfixed order (D2): `## Links` (typed, read from this ticket, each other\nend's key, title, state and assignee), `## Prerequisites` (the tree of the\ntickets that block it, to a depth of eight, with state, assignee and the\nimplementation stage, and the count of open ones), `## Recent comments`\n(the last `comments`, oldest of them first, each quoted under its author,\nagent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`\n(name, type, size and URL, never content), `## Pull requests` (each pull\nrequest and default-branch commit GitHub's webhook linked, with its state,\nauthor and URL, its title quoted — written only when the ticket has one,\ndocs/adr/0071 D6) and `## Recent activity` (the\nlast `activity`). `comments=0` or `activity=0` leaves its section out. What\nthe caller cannot see is absent. The document carries no `ETag`: it is not\none entity. Every call is recorded: data left the system (D5). It is no\nimport format (D3): there is no importer yet, and the one ADR 0044\ndecides refuses a file that carries these sections.\n",
+        "description": "The canonical document of `…/markdown` (docs/adr/0044 D1) under one first\nline, `\u003c!-- cowork: context of \u003ckey\u003e, exported \u003ctime\u003e by \u003cperson\u003e (via\n\u003cagent\u003e) — not an import format --\u003e`, followed by read-only sections in a\nfixed order (D2): `## Links` (typed, read from this ticket, each other\nend's key, title, state and assignee), `## Prerequisites` (the tree of the\ntickets that block it, to a depth of eight, with state, assignee and the\nimplementation stage, and the count of open ones), `## Recent comments`\n(the last `comments`, oldest of them first, each quoted under its author,\nagent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`\n(name, type, size and URL, never content) and `## Recent activity` (the\nlast `activity`). `comments=0` or `activity=0` leaves its section out. What\nthe caller cannot see is absent. The document carries no `ETag`: it is not\none entity. Every call is recorded: data left the system (D5). It is no\nimport format (D3): there is no importer yet, and the one ADR 0044\ndecides refuses a file that carries these sections. A recorded read: a\nsession's request with `Sec-Fetch-Site` `same-site` or `cross-site` is\n`403 csrf` (docs/adr/0026 D5).\n",
         "operationId": "exportTicketContext",
         "parameters": [
           {
@@ -14415,7 +13954,7 @@
           "200": {
             "content": {
               "text/markdown": {
-                "example": "\u003c!-- cowork: context of acme/WEB-42, exported 2026-10-06T17:05:00Z by Ada Lovelace (via claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911) — not an import format --\u003e\n---\nkey: acme/WEB-42\ntitle: Sign-in fails in Safari when the password contains a space\ntype: bug\nstate: in-progress\nseverity: high\nsecurity: none\nhorizon: now\neffort: S\nprogress-refinement: 100\nprogress: 60\nprogress-review: 0\nassignee: \"Grace Hopper \u003coidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw\u003e\"\nparent: acme/WEB-40\nopened: 2026-10-01\ndecided: 2026-10-02\nattachments:\n  - safari-sign-in.png\n---\n\n## Current state\n\nSafari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.\n\n## Required changes\n\n- Send the password as typed.\n- An end-to-end test that signs in with a trailing space in Safari.\n\n## Open questions\n\n### Q1: Do we trim passwords on the server as well?\n\n- A: trim nowhere: a password is sent and stored as typed.\n- B: trim on both ends, and say so at sign-up.\n\n**Recommendation:** A: a space is a character like any other; trimming would lock out who chose one.\n\n**Answer:** _open_\n\n## Links\n\n- blocked by acme/WEB-39 — Log the sign-in failures with their reason (analysed, Sam Rivera)\n- blocked by acme/WEB-41 — Pick the SameSite mode of the session cookie (done, Ada Lovelace)\n\n## Prerequisites\n\n1 of 2 open.\n\n- acme/WEB-41 — Pick the SameSite mode of the session cookie (done, Ada Lovelace, 100%)\n- acme/WEB-39 — Log the sign-in failures with their reason (analysed, Sam Rivera, 0%)\n\n## Recent comments\n\n**Grace Hopper**, 2026-10-05 15:02 UTC:\n\n\u003e Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.\n\u003e\n\u003e ![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)\n\u003e\n\u003e @Ada Lovelace, see Q1 before we change the form.\n\n## Attachments\n\n- safari-sign-in.png — image/png, 182.4 KiB — /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content\n\n## Pull requests\n\n- github.com/acme/website#118 \"Send the password as typed (WEB-42)\" (merged 2026-10-06 16:40 UTC, by grace-hopper, key in the trailer) — https://github.com/acme/website/pull/118\n- github.com/acme/website@4c1d8e2b7a9f \"Send the password as typed (WEB-42) (#118)\" (merged 2026-10-06 16:40 UTC, by grace-hopper, key in the trailer) — https://github.com/acme/website/commit/4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281\n\n## Recent activity\n\n- 2026-10-02 09:12 UTC — Grace Hopper — transitioned: decided → in-progress\n- 2026-10-02 09:14 UTC — Ada Lovelace — set the horizon to now — reason: \"Customers cannot sign in\"\n- 2026-10-05 15:02 UTC — Grace Hopper — commented\n- 2026-10-06 14:02 UTC — system:github — linked pull request github.com/acme/website#118\n- 2026-10-06 16:40 UTC — system:github — merged pull request github.com/acme/website#118\n- 2026-10-06 16:40 UTC — system:github — linked commit github.com/acme/website@4c1d8e2b7a9f\n",
+                "example": "\u003c!-- cowork: context of acme/WEB-42, exported 2026-10-06T17:05:00Z by Ada Lovelace (via claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911) — not an import format --\u003e\n---\nkey: acme/WEB-42\ntitle: Sign-in fails in Safari when the password contains a space\ntype: bug\nstate: in-progress\nseverity: high\nsecurity: none\nhorizon: now\neffort: S\nprogress-refinement: 100\nprogress: 60\nprogress-review: 0\nassignee: \"Grace Hopper \u003coidc:https://login.acme.example#CgVncmFjZRIFbG9jYWw\u003e\"\nparent: acme/WEB-40\nopened: 2026-10-01\ndecided: 2026-10-02\nattachments:\n  - safari-sign-in.png\n---\n\n## Current state\n\nSafari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.\n\n## Required changes\n\n- Send the password as typed.\n- An end-to-end test that signs in with a trailing space in Safari.\n\n## Open questions\n\n### Q1: Do we trim passwords on the server as well?\n\n- A: trim nowhere: a password is sent and stored as typed.\n- B: trim on both ends, and say so at sign-up.\n\n**Recommendation:** A: a space is a character like any other; trimming would lock out who chose one.\n\n**Answer:** _open_\n\n## Links\n\n- blocked by acme/WEB-39 — Log the sign-in failures with their reason (analysed, Sam Rivera)\n- blocked by acme/WEB-41 — Pick the SameSite mode of the session cookie (done, Ada Lovelace)\n\n## Prerequisites\n\n1 of 2 open.\n\n- acme/WEB-41 — Pick the SameSite mode of the session cookie (done, Ada Lovelace, 100%)\n- acme/WEB-39 — Log the sign-in failures with their reason (analysed, Sam Rivera, 0%)\n\n## Recent comments\n\n**Grace Hopper**, 2026-10-05 15:02 UTC:\n\n\u003e Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.\n\u003e\n\u003e ![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)\n\u003e\n\u003e @Ada Lovelace, see Q1 before we change the form.\n\n## Attachments\n\n- safari-sign-in.png — image/png, 182.4 KiB — /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content\n\n## Recent activity\n\n- 2026-10-02 09:12 UTC — Grace Hopper — transitioned: decided → in-progress\n- 2026-10-02 09:14 UTC — Ada Lovelace — set the horizon to now — reason: \"Customers cannot sign in\"\n- 2026-10-05 15:02 UTC — Grace Hopper — commented\n",
                 "schema": {
                   "type": "string"
                 }
@@ -14430,7 +13969,8 @@
         "summary": "The ticket for reading, with what surrounds it",
         "tags": [
           "tickets"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -14746,7 +14286,7 @@
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown": {
       "get": {
-        "description": "Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the\nbody, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the\ndocument is never answered 304. Every call is recorded: data left the system\n(docs/adr/0044 D5).\n",
+        "description": "Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the\nbody, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the\ndocument is never answered 304. Every call is recorded: data left the system\n(docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`\n`same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).\n",
         "operationId": "exportTicket",
         "responses": {
           "200": {
@@ -14772,7 +14312,8 @@
         "summary": "The canonical Markdown of the ticket",
         "tags": [
           "tickets"
-        ]
+        ],
+        "x-cowork-recorded-read": true
       },
       "parameters": [
         {
@@ -14851,93 +14392,6 @@
         },
         {
           "$ref": "#/components/parameters/TicketNumber"
-        }
-      ]
-    },
-    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests": {
-      "get": {
-        "description": "What GitHub's webhook linked to the ticket (docs/adr/0071 D6): each pull request whose title\nor body names it, and each commit on a bound repository's default branch whose message names\nit, with where the key was found, oldest link first. Read under the ticket's predicate, like\nits other children: a confidential ticket's pull requests exist only for whoever sees the\nticket (docs/adr/0065 D1). A link a person removed is absent.\n",
-        "operationId": "listTicketPullRequests",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/Cursor"
-          },
-          {
-            "$ref": "#/components/parameters/Limit"
-          },
-          {
-            "$ref": "#/components/parameters/IfNoneMatch"
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PullRequestList"
-                }
-              }
-            },
-            "description": "A page of pull requests",
-            "headers": {
-              "ETag": {
-                "$ref": "#/components/headers/ListETag"
-              }
-            }
-          },
-          "304": {
-            "$ref": "#/components/responses/NotModified"
-          },
-          "default": {
-            "$ref": "#/components/responses/Problem"
-          }
-        },
-        "summary": "The pull requests and default-branch commits that name the ticket",
-        "tags": [
-          "tickets"
-        ]
-      },
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/TenantSlug"
-        },
-        {
-          "$ref": "#/components/parameters/ProjectKey"
-        },
-        {
-          "$ref": "#/components/parameters/TicketNumber"
-        }
-      ]
-    },
-    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/pull-requests/{pull_request}": {
-      "delete": {
-        "description": "A key read from a title or a message can name a ticket it did not mean (docs/adr/0071\nResidual risks); a person removes the link like any link — a member's act with `write`\nscope, in the agent baseline (docs/adr/0043 D2). The removal stays: a later delivery that\nnames the ticket again does not bring the link back. Recorded as `unlinked`. Idempotent:\n`204` also when the link is gone.\n",
-        "operationId": "removeTicketPullRequest",
-        "responses": {
-          "204": {
-            "description": "The link is gone"
-          },
-          "default": {
-            "$ref": "#/components/responses/Problem"
-          }
-        },
-        "summary": "Remove a wrong link of a pull request or a commit",
-        "tags": [
-          "tickets"
-        ]
-      },
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/TenantSlug"
-        },
-        {
-          "$ref": "#/components/parameters/ProjectKey"
-        },
-        {
-          "$ref": "#/components/parameters/TicketNumber"
-        },
-        {
-          "$ref": "#/components/parameters/PullRequestID"
         }
       ]
     },
@@ -16571,9 +16025,6 @@
     },
     {
       "name": "dashboard"
-    },
-    {
-      "name": "integrations"
     },
     {
       "name": "imports"

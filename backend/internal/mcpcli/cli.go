@@ -1,7 +1,7 @@
 // Package mcpcli is the command line of cowork-mcp (docs/adr/0041,
 // docs/adr/0067, docs/adr/0070): serve, the MCP server over stdio; the hook
 // modes session-context, session-end and model-switch; and the workflow
-// subcommands token check, lookup and export. One configuration, one generated
+// subcommands token check, lookup, export and import. One configuration, one generated
 // client and one tool catalogue for all of them. cmd/cowork-mcp is its main; a
 // test runs it with its own environment and streams.
 package mcpcli
@@ -79,6 +79,10 @@ Commands:
   lookup            Print the binding of the working directory's repository, or the proposal.
   export <tenant>/<PROJECT> <dir>
                     Unpack the project's export into an empty or a new directory.
+  import <tenant>/<PROJECT> <path> [--dry-run]
+                    Import a directory of ticket files, an archive or a Markdown file into the
+                    project: the dry run's report, then its execution's; --dry-run stops after
+                    the report.
   version           Print the version, the commit and the API it was built against.
 
 token check and lookup take --json. Configuration is COWORK_URL and COWORK_TOKEN; the
@@ -100,23 +104,29 @@ func Run(ctx context.Context, e Env) int {
 		name, args = "token check", nil
 	}
 	command, ok := commandTable()[name]
+	set := false
+	if ok && command.flag != "" {
+		args, set = withoutFlag(args, command.flag)
+	}
 	if !ok || len(args) != command.args || (jsonOut && !command.json) {
 		fmt.Fprintf(e.Stderr, "cowork-mcp: unknown command %q\n\n%s", strings.Join(e.Args, " "), usageText)
 		return exitUsage
 	}
 	if command.runArgs != nil {
-		return command.runArgs(ctx, e, args)
+		return command.runArgs(ctx, e, args, set)
 	}
 	return command.run(ctx, e, jsonOut)
 }
 
 // command is one subcommand: what it runs, and whether it takes --json; one
-// that takes arguments after its name says how many and runs with them.
+// that takes arguments after its name says how many and runs with them, and
+// with whether its one switch, flag, was given.
 type command struct {
 	run     func(ctx context.Context, e Env, jsonOut bool) int
 	json    bool
 	args    int
-	runArgs func(ctx context.Context, e Env, args []string) int
+	flag    string
+	runArgs func(ctx context.Context, e Env, args []string, set bool) int
 }
 
 // commandTable is the subcommands by the name typed.
@@ -129,6 +139,7 @@ func commandTable() map[string]command {
 		"token check":     {run: tokenCheck, json: true},
 		"lookup":          {run: lookupBinding, json: true},
 		"export":          {args: 2, runArgs: exportProject},
+		"import":          {args: 2, flag: flagDryRun, runArgs: importProject},
 		"version":         {run: printVersion},
 		"help":            {run: printHelp},
 		"-h":              {run: printHelp},

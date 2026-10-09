@@ -171,9 +171,8 @@ type handler struct {
 	sourceKey []byte
 	// loginSealer seals the state of a login through the identity provider
 	// into its cookie, refreshSealer a session's refresh token
-	// (docs/adr/0031 D1), webhookSealer a tenant's GitHub webhook secret
-	// (docs/adr/0071 D1).
-	loginSealer, refreshSealer, webhookSealer auth.Sealer
+	// (docs/adr/0031 D1).
+	loginSealer, refreshSealer auth.Sealer
 	// noRefreshToken and noGroups warn once per process: an issuer that gives
 	// no refresh token leaves a session on its login's groups, and one whose
 	// refresh carries no groups claim makes the refresh read nothing
@@ -225,10 +224,10 @@ func New(opts Options) (http.Handler, error) {
 		sourceKey:      newSourceKey(opts.SessionKey),
 		loginSealer:    auth.NewSealer(opts.SessionKey, auth.LabelOIDCLogin),
 		refreshSealer:  auth.NewSealer(opts.SessionKey, auth.LabelRefreshToken),
-		webhookSealer:  auth.NewSealer(opts.SessionKey, auth.LabelGitHubWebhookSecret),
 	}
 	h.server = &Server{h: h, db: opts.DB, cursors: newCursorCodec(opts.SessionKey), storage: opts.Storage,
-		uploads: make(chan struct{}, uploadSlots(opts.AttachmentMaxBytes)), imports: make(chan struct{}, 1)}
+		uploads: make(chan struct{}, uploadSlots(opts.AttachmentMaxBytes)), imports: make(chan struct{}, 1),
+		exports: make(chan struct{}, 1)}
 	strict := apigen.NewStrictHandlerWithOptions(h.server, nil, apigen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) {
 			problem.Write(w, r, &problem.Error{Code: problem.ValidationFailed, Detail: "the request body is not valid JSON for this route"})
@@ -310,14 +309,13 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// client sent (docs/adr/0060 D5).
 	metrics.SetRoute(r.Context(), route.Path)
 	ctx := withClient(withAccept(r.Context(), r.Header.Get("Accept")), r, h.trusted)
-	opID := route.Operation.OperationID
 	if accepts := credentialsOf(h.doc, route.Operation); accepts.any() {
 		p, perr := h.authenticate(r.WithContext(ctx), accepts)
 		if perr != nil {
 			problem.Write(w, r, perr)
 			return
 		}
-		if perr := h.sessionRules(r, p, opID, accepts); perr != nil {
+		if perr := h.sessionRules(r, p, route.Operation, accepts); perr != nil {
 			problem.Write(w, r, perr)
 			return
 		}
@@ -330,11 +328,12 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if slug, ok := pathParams["tenant"]; ok {
-		var perr *problem.Error
-		if ctx, perr = h.admitTenant(ctx, route, slug); perr != nil {
+		scope, perr := h.boundary(ctx, slug, route.Path, route.Operation.OperationID)
+		if perr != nil {
 			problem.Write(w, r, perr)
 			return
 		}
+		ctx = withTenant(ctx, scope)
 	}
 	if route.Operation.OperationID == opStreamEvents {
 		// A stream lives longer than any request timeout (docs/adr/0039 D2).
@@ -349,25 +348,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.serveOperation(w, r.WithContext(ctx), route, pathParams)
 }
 
-// admitTenant admits a request to the tenant its path names: a person's
-// request through the tenant boundary (docs/adr/0023 D5), a signed delivery of
-// GitHub's webhook through its tenant's secret, which no person holds
-// (docs/adr/0071 D2).
-func (h *handler) admitTenant(ctx context.Context, route *routers.Route, slug string) (context.Context, *problem.Error) {
-	if signed(route.Operation) {
-		return h.webhookTenant(ctx, slug)
-	}
-	scope, perr := h.boundary(ctx, slug, route.Path, route.Operation.OperationID)
-	if perr != nil {
-		return ctx, perr
-	}
-	return withTenant(ctx, scope), nil
-}
-
 // serveOperation holds an admitted request to the request timeout, the body
-// limit and the document, and serves it: a turn of the chat by serveChat, a
-// delivery of GitHub's webhook by serveGitHubWebhook, every other operation by
-// the generated server.
+// limit and the document, and serves it: a turn of the chat by serveChat,
+// every other operation by the generated server.
 func (h *handler) serveOperation(w http.ResponseWriter, r *http.Request, route *routers.Route, pathParams map[string]string) {
 	ctx := r.Context()
 	unlimited := ctx
@@ -378,7 +361,7 @@ func (h *handler) serveOperation(w http.ResponseWriter, r *http.Request, route *
 	}
 	r = r.WithContext(ctx)
 	bodyDeadline(w, r)
-	if perr := h.limitBody(w, r, route.Operation.OperationID); perr != nil {
+	if perr := h.limitBody(w, r, route.Operation); perr != nil {
 		problem.Write(w, r, perr)
 		return
 	}
@@ -391,8 +374,6 @@ func (h *handler) serveOperation(w http.ResponseWriter, r *http.Request, route *
 		// The request timeout bounded reading the body; a turn has a limit
 		// of its own and streams (docs/adr/0039 D2).
 		h.serveChat(w, r.WithContext(unlimited))
-	case route.Operation.OperationID == opReceiveGitHubWebhook:
-		h.serveGitHubWebhook(w, r)
 	case h.opts.ValidateResponses:
 		h.serveValidated(w, r, route, pathParams)
 	default:
@@ -442,26 +423,58 @@ func openQuery(op *openapi3.Operation) bool {
 	return v
 }
 
+// recordedRead reports whether an operation records an act when it is read:
+// an attachment's bytes, a ticket's Markdown and its context, a project's and
+// the tenant's export — data leaving the system (docs/adr/0026 D5).
+func recordedRead(op *openapi3.Operation) bool {
+	v, _ := op.Extensions["x-cowork-recorded-read"].(bool)
+	return v
+}
+
 // sessionRules are what holds a request authenticated by a session and no
-// other: the CSRF check on its writes (docs/adr/0037 D1); what only a session
-// does, which is a person's and never an agent's — a session marked as an
-// agent's by its header is refused it, so the mark cannot make a token, change
-// a password or give access (docs/adr/0035 D5, docs/adr/0043 D3); and the
-// temporary password that has to be changed before anything else
-// (docs/adr/0033 D4). A token's request has no cookie, and none of them
-// applies (docs/adr/0035 D7).
-func (h *handler) sessionRules(r *http.Request, p auth.Principal, opID string, accepts credentials) *problem.Error {
+// other: the CSRF check on its writes (docs/adr/0037 D1), and on a recorded
+// read the page it came from (fromOwnPages); what only a session does, which
+// is a person's and never an agent's — a session marked as an agent's by its
+// header is refused it, so the mark cannot make a token, change a password or
+// give access (docs/adr/0035 D5, docs/adr/0043 D3); and the temporary password
+// that has to be changed before anything else (docs/adr/0033 D4). A token's
+// request has no cookie, and none of them applies (docs/adr/0035 D7).
+func (h *handler) sessionRules(r *http.Request, p auth.Principal, op *openapi3.Operation, accepts credentials) *problem.Error {
 	if !p.Session {
 		return nil
 	}
 	if perr := h.csrf(r); perr != nil {
 		return perr
 	}
+	if recordedRead(op) {
+		if perr := fromOwnPages(r); perr != nil {
+			return perr
+		}
+	}
 	if p.IsAgent() && !accepts.bearer {
 		return problem.New(problem.AgentForbidden, "hard-off: what only a browser session does is a person's act, never an agent's")
 	}
-	if p.PasswordChangeRequired && !whileChangingPassword[opID] {
+	if p.PasswordChangeRequired && !whileChangingPassword[op.OperationID] {
 		return problem.New(problem.PasswordChangeRequired, "the password of this account is temporary: change it with PUT /api/v1/me/password first")
+	}
+	return nil
+}
+
+// fromOwnPages holds a session's recorded read to the installation's own pages
+// (docs/adr/0026 D5 as amended 2026-10-07). A browser names in Sec-Fetch-Site
+// where a request comes from, and no script of a page can set the header:
+// same-site — a page on a sibling host, whose image or link the SameSite=Lax
+// cookie follows — and cross-site are refused; same-origin — the UI, the
+// inline images of rendered Markdown — and none — the address bar, a bookmark
+// — pass, and so does a request without the header, which an older browser
+// sends.
+func fromOwnPages(r *http.Request) *problem.Error {
+	for _, values := range r.Header.Values("Sec-Fetch-Site") {
+		for v := range strings.SplitSeq(values, ",") {
+			if site := strings.ToLower(strings.TrimSpace(v)); site == "same-site" || site == "cross-site" {
+				return problem.New(problem.Csrf, "a recorded read of a session comes from this installation's own pages; this one is "+site+" (Sec-Fetch-Site)")
+			}
+		}
 	}
 	return nil
 }

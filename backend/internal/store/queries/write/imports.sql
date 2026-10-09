@@ -1,6 +1,6 @@
 -- The writes of an import job (docs/adr/0051 D1–D3, D7). The policies of
--- migration 43 hold every row of import_jobs to a tenant's administrators,
--- and its deletion to the expiry job.
+-- migration 45 hold every row of import_jobs to the person who made it and
+-- the tenant's administrators, and its deletion to the expiry job.
 
 -- name: InsertImportJob :exec
 -- A dry run: its report and the files it read, valid until expires_at.
@@ -11,7 +11,9 @@ VALUES (sqlc.arg(id), sqlc.arg(tenant_id), sqlc.arg(project_id), sqlc.arg(create
 -- name: LockImportJob :one
 -- The job an execution writes, locked until the transaction ends: a second
 -- execution waits for the first and then finds it executed (docs/adr/0051 D3).
-SELECT status, expires_at, source
+-- Its report names the assignees the dry run resolved, which the execution
+-- holds the files to.
+SELECT status, expires_at, source, report
 FROM import_jobs
 WHERE tenant_id = sqlc.arg(tenant_id) AND project_id = sqlc.arg(project_id) AND id = sqlc.arg(id)
 FOR UPDATE;

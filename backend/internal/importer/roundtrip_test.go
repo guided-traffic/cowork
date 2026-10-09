@@ -44,7 +44,7 @@ var keyLine = regexp.MustCompile(`(?m)^key: (\S+)$`)
 
 // docs/adr/0044 D1, D3: what markdown.Render writes is what the importer
 // reads back — every golden file of grammar v1 parses without a message and
-// renders again to the same bytes; a /context document is refused.
+// renders again to the same bytes; a /context document is skipped.
 func TestParseReadsTheGoldenFilesOfGrammarV1(t *testing.T) {
 	paths, err := filepath.Glob(filepath.Join("..", "markdown", "testdata", "*.md"))
 	require.NoError(t, err)
@@ -56,8 +56,8 @@ func TestParseReadsTheGoldenFilesOfGrammarV1(t *testing.T) {
 		require.NotNil(t, key, p)
 		f := Parse(string(key[1])+".md", content)
 		if strings.HasPrefix(filepath.Base(p), "context-") {
-			require.Len(t, f.Errors, 1, p)
-			assert.Contains(t, f.Errors[0].Message, "a /context document is no import format", p)
+			assert.Equal(t, skipContext, f.Skip, p)
+			assert.Empty(t, f.Errors, p)
 			continue
 		}
 		assert.Empty(t, f.Errors, p)

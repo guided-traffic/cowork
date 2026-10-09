@@ -3,14 +3,18 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/netip"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -269,6 +273,70 @@ func TestAddressThrottle(t *testing.T) {
 	}
 }
 
+// docs/adr/0033 D6: the throttle holds for a burst of parallel attempts of one
+// address — the count and the attempt are one step under the address's lock,
+// before any hash is computed — so the burst makes as many guesses as the
+// limit allows and no more; each attempt is one row, its reservation replaced
+// by its outcome. The current password of a change is held to the same
+// throttle, where the lockout is switched off.
+func TestTheAddressThrottleHoldsForParallelAttemptsAndThePasswordChange(t *testing.T) {
+	w := newWorld(t)
+	names := withAccounts(t, w)
+	const limit = 4
+	throttled := func(key string) apiServer {
+		return newAPI(t, withLogin, func(o *api.Options) {
+			o.SessionKey = []byte(key)
+			o.LoginAddressLimit = limit
+			o.LoginMaxFailures = 0
+		})
+	}
+	s := throttled("parallel-throttle-key-0123456789")
+	body, err := json.Marshal(map[string]string{"username": names["memberA"], "password": "wrong password!"})
+	require.NoError(t, err)
+	login := func() int {
+		req, err := http.NewRequest(http.MethodPost, s.URL+"/auth/local", bytes.NewReader(body))
+		if err != nil {
+			return 0
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", testOrigin)
+		res, err := browserClient.Do(req)
+		if err != nil {
+			return 0
+		}
+		_ = res.Body.Close()
+		return res.StatusCode
+	}
+	guesses := 0
+	for _, code := range simultaneously(times(6*limit, login)...) {
+		switch code {
+		case http.StatusUnauthorized:
+			guesses++
+		case http.StatusTooManyRequests:
+		default:
+			t.Errorf("a parallel login answered %d", code)
+		}
+	}
+	assert.Equal(t, limit, guesses, "the burst made as many guesses as the limit allows")
+	assert.EqualValues(t, limit, scalar[int64](t, `SELECT count(*) FROM login_attempts WHERE username = $1 AND failed`, names["memberA"]))
+	assert.Zero(t, scalar[int64](t, `SELECT count(*) FROM login_attempts WHERE username = $1 AND NOT failed`, names["memberA"]),
+		"every reservation gave way to its outcome")
+
+	change := throttled("password-change-throttle-key-012")
+	session := sessionOf(t, w.ViewerA)
+	wrong := map[string]string{"current_password": "not the password", "new_password": "a new password of length"}
+	before := auth.Computations()
+	for range limit {
+		assertProblem(t, change.do(t, session, http.MethodPut, "/api/v1/me/password", wrong), http.StatusBadRequest, "validation_failed")
+	}
+	assert.EqualValues(t, limit, auth.Computations()-before, "each counted guess computed one hash")
+	res := change.do(t, session, http.MethodPut, "/api/v1/me/password", wrong)
+	assertProblem(t, res, http.StatusTooManyRequests, "too_many_attempts")
+	assert.Equal(t, "60", res.Header.Get("Retry-After"))
+	assert.EqualValues(t, limit, auth.Computations()-before, "a throttled change computes nothing")
+	assert.Zero(t, scalar[int64](t, `SELECT count(*) FROM login_locks WHERE username = $1`, names["viewerA"]), "the lockout is off")
+}
+
 // docs/adr/0035 D2, docs/adr/0033 D6: behind a trusted proxy the throttle counts
 // the client, not the proxy. The test server plays the proxy — every request
 // reaches the backend from 127.0.0.1, which COWORK_TRUSTED_PROXIES names — and
@@ -459,22 +527,20 @@ func TestAuthRoutesKnowTheirMethods(t *testing.T) {
 	assertProblem(t, long, http.StatusBadRequest, "validation_failed")
 }
 
-// docs/adr/0031 D3: an absolute limit and an idle limit, and the person's
-// activity within the idle window — here the keep-alive's read, which carries
-// X-Cowork-Activity: input — extends the session up to the absolute one.
+// docs/adr/0031 D3: an absolute limit and an idle limit, and a request within
+// the idle window extends the session up to the absolute one.
 func TestSessionLifetimes(t *testing.T) {
 	w := newWorld(t)
 	names := withAccounts(t, w)
 	c := newClock()
 	s := newAPI(t, withLogin, withClock(c))
-	input := withHeader(api.ActivityHeader, api.ActivityInput)
 
 	idle := s.browser(t)
 	idle.mustLogin(names["memberA"], testPassword)
 	c.Advance(119 * time.Minute)
-	require.Equal(t, http.StatusOK, idle.get("/api/v1/me", input).StatusCode, "inside the idle window")
+	require.Equal(t, http.StatusOK, idle.get("/api/v1/me").StatusCode, "inside the idle window")
 	c.Advance(90 * time.Minute)
-	require.Equal(t, http.StatusOK, idle.get("/api/v1/me", input).StatusCode, "the person's activity extended the session")
+	require.Equal(t, http.StatusOK, idle.get("/api/v1/me").StatusCode, "a use extended the session")
 	c.Advance(2*time.Hour + time.Minute)
 	res := idle.get("/api/v1/me")
 	assertProblem(t, res, http.StatusUnauthorized, "unauthenticated")
@@ -489,23 +555,21 @@ func TestSessionLifetimes(t *testing.T) {
 	absolute.mustLogin(names["viewerA"], testPassword)
 	for range 11 {
 		c.Advance(time.Hour)
-		require.Equal(t, http.StatusOK, absolute.get("/api/v1/me", input).StatusCode)
+		require.Equal(t, http.StatusOK, absolute.get("/api/v1/me").StatusCode)
 	}
 	c.Advance(59 * time.Minute)
-	require.Equal(t, http.StatusOK, absolute.get("/api/v1/me", input).StatusCode, "just inside the twelve hours")
+	require.Equal(t, http.StatusOK, absolute.get("/api/v1/me").StatusCode, "just inside the twelve hours")
 	c.Advance(2 * time.Minute)
-	assertProblem(t, absolute.get("/api/v1/me", input), http.StatusUnauthorized, "unauthenticated")
+	assertProblem(t, absolute.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
 	assert.Equal(t, http.StatusOK, idle.login(names["memberA"], testPassword).StatusCode, "a new login starts a new session")
 }
 
-// docs/adr/0031 D3 as amended 2026-10-06: only the person's activity moves
-// the idle clock — a write that passes the CSRF check, or a read that carries
-// X-Cowork-Activity: input, as the browser's keep-alive sends it after the
-// person's input — and at most once a minute. A read without the header, a
-// read with another value, the event stream's connection and a write the CSRF
-// check refuses leave it alone, so a session that is only read ends at the
-// idle limit.
-func TestOnlyThePersonsActivityMovesTheIdleClock(t *testing.T) {
+// docs/adr/0031 D3 as amended 2026-10-07: every request of a session moves its
+// idle clock, at most once a minute — a read, the event stream's connection, a
+// write — but a write the CSRF check refuses, so a forged write from a page of
+// the same site extends no session. An open tab whose stream reconnects keeps
+// its session up to the absolute limit (docs/security/sessions.md H-109).
+func TestEveryRequestButARefusedWriteMovesTheIdleClock(t *testing.T) {
 	w := newWorld(t)
 	names := withAccounts(t, w)
 	c := newClock()
@@ -521,25 +585,17 @@ func TestOnlyThePersonsActivityMovesTheIdleClock(t *testing.T) {
 	login := seen()
 
 	c.Advance(2 * time.Minute)
-	require.Equal(t, http.StatusOK, b.get("/api/v1/me").StatusCode)
-	assert.Equal(t, login, seen(), "a read without the header")
-	for _, value := range []string{"yes", "INPUT", "input, more", ""} {
-		require.Equal(t, http.StatusOK, b.get("/api/v1/me", withHeader(api.ActivityHeader, value)).StatusCode)
-		assert.Equal(t, login, seen(), "a read with the value %q", value)
-	}
-	stream := b.get("/api/v1/tenants/" + w.SlugA + "/events")
-	require.Equal(t, http.StatusOK, stream.StatusCode)
-	require.NoError(t, stream.Body.Close())
-	assert.Equal(t, login, seen(), "the event stream's connection")
 	assertProblem(t, b.request(http.MethodPost, "/api/v1/me/tokens", token, without("X-Requested-With")), http.StatusForbidden, "csrf")
 	assert.Equal(t, login, seen(), "a write the CSRF check refuses")
+	assertProblem(t, b.request(http.MethodPost, "/api/v1/me/tokens", token, withHeader("Origin", "https://a.example.com")), http.StatusForbidden, "csrf")
+	assert.Equal(t, login, seen(), "a write from a sibling host")
 
-	require.Equal(t, http.StatusOK, b.get("/api/v1/me", withHeader(api.ActivityHeader, api.ActivityInput)).StatusCode)
+	require.Equal(t, http.StatusOK, b.get("/api/v1/me").StatusCode)
 	moved := seen()
-	assert.WithinDuration(t, c.Now(), moved, time.Millisecond, "the keep-alive's read")
+	assert.WithinDuration(t, c.Now(), moved, time.Millisecond, "a read")
 
 	c.Advance(30 * time.Second)
-	require.Equal(t, http.StatusOK, b.get("/api/v1/me", withHeader(api.ActivityHeader, api.ActivityInput)).StatusCode)
+	require.Equal(t, http.StatusOK, b.get("/api/v1/me").StatusCode)
 	require.Equal(t, http.StatusCreated, b.request(http.MethodPost, "/api/v1/me/tokens", token).StatusCode)
 	assert.Equal(t, moved, seen(), "at most once a minute")
 
@@ -548,13 +604,16 @@ func TestOnlyThePersonsActivityMovesTheIdleClock(t *testing.T) {
 	moved = seen()
 	assert.WithinDuration(t, c.Now(), moved, time.Millisecond, "a write")
 
+	// A tab nobody uses: only its stream reconnects, an hour apart, and the
+	// session lives on until its absolute limit.
+	for range 10 {
+		c.Advance(time.Hour)
+		stream := b.get("/api/v1/tenants/" + w.SlugA + "/events")
+		require.Equal(t, http.StatusOK, stream.StatusCode)
+		require.NoError(t, stream.Body.Close())
+		assert.WithinDuration(t, c.Now(), seen(), time.Millisecond, "the event stream's connection")
+	}
 	c.Advance(119 * time.Minute)
-	require.Equal(t, http.StatusOK, b.get("/api/v1/me").StatusCode, "inside the idle window")
-	stream = b.get("/api/v1/tenants/" + w.SlugA + "/events")
-	require.Equal(t, http.StatusOK, stream.StatusCode)
-	require.NoError(t, stream.Body.Close())
-	assert.Equal(t, moved, seen(), "reads and the stream kept nothing")
-	c.Advance(2 * time.Minute)
 	assertProblem(t, b.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
 }
 
@@ -590,6 +649,75 @@ func TestSessionSurvivesARestartAndTheExpiryJobKeepsTheLiving(t *testing.T) {
 	assertProblem(t, dead.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
 	assert.GreaterOrEqual(t, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE action = 'expired' AND entity_type = 'sessions'
 		AND actor_system = 'system:session-expiry'`), int64(1))
+}
+
+// loginLockNamespace is the first key of the lock an attempt takes on its
+// username, "cowl" (store.RecordLoginAttempt).
+const loginLockNamespace int32 = 0x636f776c
+
+// holdLoginLock takes a username's login lock in a transaction of the test's
+// own over the administrative connection; release ends the transaction.
+func holdLoginLock(t *testing.T, username string) (release func()) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, env.AdminURL)
+	require.NoError(t, err)
+	tx, err := conn.Begin(ctx)
+	require.NoError(t, err)
+	_, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1, hashtext($2))", loginLockNamespace, username)
+	require.NoError(t, err)
+	var once sync.Once
+	release = func() {
+		once.Do(func() {
+			_ = tx.Rollback(ctx)
+			_ = conn.Close(ctx)
+		})
+	}
+	t.Cleanup(release)
+	return release
+}
+
+// waitForLoginLock returns once a transaction waits for the username's login
+// lock, and fails when the request answered without waiting for it.
+func waitForLoginLock(t *testing.T, username string, answered <-chan *http.Response) {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		select {
+		case res := <-answered:
+			require.Failf(t, "the login did not wait for its username's lock", "it answered %d", res.StatusCode)
+		default:
+		}
+		if scalar[int64](t, `SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted
+			AND classid = $1::int4::oid AND objid = hashtext($2)::oid AND objsubid = 2`, loginLockNamespace, username) > 0 {
+			return
+		}
+	}
+	require.Fail(t, "no login waited for its username's lock")
+}
+
+// docs/adr/0033 D4, docs/adr/0031 D4: a login that verified the old password
+// makes no session once the password changed before its session was made. The
+// login waits for its username's lock — after it verified the password —
+// while an administrator resets the password and commits; it then answers
+// like a wrong password, and the reset's end of every session holds.
+func TestALoginInFlightMakesNoSessionAfterThePasswordChanged(t *testing.T) {
+	w := newWorld(t)
+	names := withAccounts(t, w)
+	s := newAPI(t, withLogin)
+	admin := s.browser(t)
+	admin.mustLogin(names["adminA"], testPassword)
+	target := names["memberA"]
+
+	release := holdLoginLock(t, target)
+	answered := make(chan *http.Response, 1)
+	go func() { answered <- s.browser(t).login(target, testPassword) }()
+	waitForLoginLock(t, target, answered)
+	reset := admin.request(http.MethodPut, accountsPath(w.SlugA, "/", target, "/password"), map[string]string{"temporary_password": "a reset temporary one"})
+	require.Equal(t, http.StatusNoContent, reset.StatusCode)
+	release()
+	assertProblem(t, <-answered, http.StatusUnauthorized, "invalid_credentials")
+	assert.Zero(t, scalar[int64](t, `SELECT count(*) FROM sessions WHERE user_id = $1`, w.MemberA), "the old password made no session")
+	assert.Equal(t, http.StatusOK, s.browser(t).login(target, "a reset temporary one").StatusCode, "the new password signs in")
 }
 
 // docs/adr/0031 D4, docs/adr/0037 D5: logout deletes the row and clears the

@@ -308,6 +308,22 @@ job mode takes Secret references only, for each credential the Job reads.
 {{- end }}
 
 {{/*
+The ConfigMap with the private authority the database server's certificate
+chains to (docs/adr/0058 D3), and the key of its PEM: mounted read-only into
+the migration run and the serving container and named by COWORK_DATABASE_CA,
+which the backend sets as the sslrootcert of both roles' connections. A values
+tree without the block — an upgrade that reuses the values of a release
+before it — names none.
+*/}}
+{{- define "cowork.databaseCAConfigMap" -}}
+{{- (.Values.database.tls | default dict).caConfigMap | default "" -}}
+{{- end }}
+
+{{- define "cowork.databaseCAKey" -}}
+{{- dig "keys" "ca" "" (.Values.database.tls | default dict) | default "ca.crt" -}}
+{{- end }}
+
+{{/*
 Whether the object storage is configured (docs/adr/0016 D1, docs/adr/0058
 D3): a literal storage.endpoint, or storage.existingConfigMap, whose values
 the chart cannot see. Without either the backend refuses uploads.

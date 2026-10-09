@@ -55,7 +55,7 @@ cowork/
 │   │   ├── stubllm/            # a language model in the test's process, both wire formats, for the chat
 │   │   └── integration/        # build tag `integration`; needs PostgreSQL 18, an S3 server and Dex
 │   ├── tools/
-│   │   ├── crdschema/          # turns the operators' CRDs into the schemas make examples-lint checks against
+│   │   ├── crdschema/          # turns CloudNativePG's CRD into the schema make examples-lint checks against
 │   │   ├── dashboard/          # writes the chart's Grafana dashboard from internal/metrics
 │   │   ├── problemdoc/         # writes the problem-code enum and the README table
 │   │   └── specbundle/         # bundles api/ into openapi.gen.json
@@ -76,10 +76,11 @@ cowork/
 ├── .claude-plugin/             # marketplace.json: the repository as a Claude Code plugin marketplace
 ├── deploy/helm/cowork/         # the chart: backend (with the migrate init container, or the migration Job) + frontend; ci/*-values.yaml
 │   └── files/grafana-dashboard.json  # the dashboard of metrics.grafanaDashboard (generated)
-├── deploy/examples/            # example manifests: a CloudNativePG cluster, a MinIO Tenant, the mc commands; syntax-checked only
+├── deploy/examples/            # examples: a CloudNativePG cluster, Silo's chart values, the mcli commands; syntax-checked only
 ├── hack/                       # dev.sh + dev_demo.py (make dev); e2e.sh (make e2e); verify-release-tooling.mjs; verify-phase-2.sh + verify_phase_2.py
 │   ├── dex/config.yaml         # the development and test issuer: one client, four users; credentials development-only
-│   └── ingress/default.conf    # the stand-in for the Ingress when the two images run together
+│   ├── ingress/default.conf    # the stand-in for the Ingress when the two images run together
+│   └── postgres-tls/entrypoint.sh  # make postgres-tls-up: a private authority and a server certificate, then PostgreSQL with TLS
 ├── docs/
 │   ├── adr/                    # decisions
 │   ├── developer/              # contributor entry point: layout, package map, architecture, subsystems, build, testing, CI, checklists, conventions

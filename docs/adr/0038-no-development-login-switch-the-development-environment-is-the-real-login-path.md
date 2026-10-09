@@ -13,6 +13,11 @@ Decided by the owner as the answer to the catalog question "local development lo
 development-only authentication code, over a `COWORK_DEV_LOGIN` switch and over a test-only
 build tag. The rules of D3–D5 were put to the owner with the question and not objected to.
 
+Amended 2026-10-09 by [ADR 0058](0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D2 as the owner amended it: the S3 server
+of `make minio-up`, of `make dev-up` and of the tests is PGSTY Silo, the maintained MinIO fork, in
+place of Chainguard's MinIO build; the targets and variables keep MinIO's names. Where this record
+says MinIO for that container, it is Silo from then on; no rule changes.
+
 The amendment of 2026-10-02 is the owner's answer to the question of how the first person,
 tenant and token exist before any login does, which no record answered: a test-only fixture
 over the administrative database connection (D6, D7), over moving the local administrator's

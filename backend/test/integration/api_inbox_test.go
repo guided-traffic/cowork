@@ -308,6 +308,31 @@ func TestReadNotificationsExpire(t *testing.T) {
 		AND entity_type = 'notifications' AND action = 'expired'`), 1, "the job records what it removed")
 }
 
+// docs/adr/0071 Status, docs/adr/0020 D2: a notification of the reason merged,
+// which GitHub's webhook of the releases up to 0.12.0 made, stays in the
+// database until a later contract migration but no answer names it — the
+// document's reasons no longer hold it: it is out of the list, out of the
+// count, and not found when it is marked read.
+func TestAMergeNotificationOfTheRemovedWebhookIsLeftOut(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	e.fileIn(t, caller{Token: e.tk.AdminA}, e.SlugA, "ALPHA", task("merged once", func(b *apigen.TicketCreate) { b.Assignee = &e.MemberA }))
+	member := caller{Token: e.tk.MemberA}
+	items := e.inbox(t, member, "").Items
+	require.Len(t, items, 1)
+	var merged uuid.UUID
+	require.NoError(t, f.QueryRow(e.ctx, `INSERT INTO notifications (tenant_id, user_id, ticket_id, audit_event_id, reason)
+		SELECT tenant_id, user_id, ticket_id, audit_event_id, 'merged' FROM notifications WHERE id = $1 RETURNING id`,
+		items[0].Id).Scan(&merged))
+
+	after := e.inbox(t, member, "")
+	require.Len(t, after.Items, 1)
+	assert.Equal(t, items[0].Id, after.Items[0].Id)
+	assert.Equal(t, 1, after.Unread)
+	assertProblem(t, e.s.do(t, member, http.MethodPut, "/api/v1/me/inbox/"+merged.String()+"/read", nil),
+		http.StatusNotFound, "not_found")
+}
+
 // docs/adr/0021 D6: a forgotten filter shows nobody another person's inbox —
 // inside the tenant's own transaction, the restrictive policy admits the
 // person's own notifications only.

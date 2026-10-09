@@ -2,16 +2,15 @@ package api
 
 import (
 	"archive/tar"
-	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -23,46 +22,78 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/internal/importer"
 	"github.com/guided-traffic/cowork/backend/internal/markdown"
+	"github.com/guided-traffic/cowork/backend/internal/requestid"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 )
 
-// exportArchive is an export as the archive holds it (docs/adr/0051 D4): the
-// documents, the three manifests.
+// exportPage is how many tickets an export reads at once: one page of bodies
+// is what an export holds, never its archive (docs/adr/0051 D7).
+const exportPage = 50
+
+// exportArchive is what an export's archive holds besides the documents
+// (docs/adr/0051 D4): the three manifests, read before the archive starts.
 type exportArchive struct {
 	manifest    apigen.ExportManifest
 	links       []apigen.ExportLink
 	attachments []apigen.ExportAttachment
-	docs        []exportDoc
 }
 
-// exportDoc is one ticket's document, named by its key.
-type exportDoc struct {
-	path string
-	body []byte
-}
-
-// archiveResponse answers an archive: application/gzip, a download named by
-// what it holds and the day, its length.
-type archiveResponse struct {
-	body     []byte
+// exportStream answers an archive as it writes it (docs/adr/0051 D4, D7). Who
+// may export what is decided before the answer starts; the replica's export
+// slot, the snapshot, the act and the archive when the answer is written.
+type exportStream struct {
+	s        *Server
+	ctx      context.Context
+	t        tenantScope
+	projects []exportProject
+	// project narrows the manifests to the project's export; nil is the
+	// tenant's.
+	project  *uuid.UUID
+	entity   string
+	entityID uuid.UUID
+	now      time.Time
 	filename string
 }
 
-func (a archiveResponse) write(w http.ResponseWriter) error {
-	w.Header().Set("Content-Type", "application/gzip")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+a.filename+`"`)
-	w.Header().Set("Content-Length", strconv.Itoa(len(a.body)))
-	w.WriteHeader(http.StatusOK)
-	_, err := w.Write(a.body)
-	return err
-}
-
 // VisitExportProjectResponse writes the project's archive.
-func (a archiveResponse) VisitExportProjectResponse(w http.ResponseWriter) error { return a.write(w) }
+func (x exportStream) VisitExportProjectResponse(w http.ResponseWriter) error { return x.write(w) }
 
 // VisitExportTenantResponse writes the tenant's archive.
-func (a archiveResponse) VisitExportTenantResponse(w http.ResponseWriter) error { return a.write(w) }
+func (x exportStream) VisitExportTenantResponse(w http.ResponseWriter) error { return x.write(w) }
+
+// write waits for the replica's export slot, reads one snapshot, records the
+// export and streams the archive: application/gzip, a download named by what
+// it holds and the day. Until the answer starts, a failure is a problem like
+// any other; after it, the answer is cut off, so that no reader takes a
+// truncated archive for a whole one.
+func (x exportStream) write(w http.ResponseWriter) error {
+	release, err := slot(x.ctx, x.s.exports)
+	if err != nil {
+		return err
+	}
+	defer release()
+	started := false
+	err = x.s.db.InTenantSnapshot(x.ctx, x.t.ID, func(r *store.Reader) error {
+		var a exportArchive
+		if err := a.gather(x.ctx, r, x.t, x.projects, x.project, x.now); err != nil {
+			return err
+		}
+		if err := x.s.recordExport(x.ctx, x.t, x.entity, x.entityID, a.manifest); err != nil {
+			return err
+		}
+		w.Header().Set("Content-Type", "application/gzip")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+x.filename+`"`)
+		w.WriteHeader(http.StatusOK)
+		started = true
+		return a.stream(x.ctx, r, x.t, w, x.projects, x.now)
+	})
+	if err != nil && started {
+		x.s.h.logger.Error("the export ended before its archive", "request_id", requestid.From(x.ctx), "error", err)
+		panic(http.ErrAbortHandler)
+	}
+	return err
+}
 
 // ExportProject answers the project's tickets the caller sees as an archive,
 // and records the export (docs/adr/0051 D4, docs/adr/0059 D3): whoever reads
@@ -71,7 +102,6 @@ func (s *Server) ExportProject(ctx context.Context, req apigen.ExportProjectRequ
 	t := tenantFrom(ctx)
 	now := s.h.opts.Now().UTC()
 	var p project
-	var a exportArchive
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		var err error
 		if p, err = visibleProject(ctx, r, t, req.Project); err != nil {
@@ -84,19 +114,14 @@ func (s *Server) ExportProject(ctx context.Context, req apigen.ExportProjectRequ
 		if perr := auth.Authorize(principal(ctx), role, read); perr != nil {
 			return perr
 		}
-		return a.gather(ctx, r, t, []exportProject{{ID: p.ID, Key: p.Key, Name: p.Name, Archived: p.ArchivedAt != nil}}, &p.ID, now)
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	body, err := a.tarGz(now)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.recordExport(ctx, t, entityProject, p.ID, a.manifest); err != nil {
-		return nil, err
-	}
-	return archiveResponse{body: body, filename: fmt.Sprintf("%s-%s-%s.tar.gz", t.Slug, p.Key, now.Format("20060102"))}, nil
+	return exportStream{s: s, ctx: ctx, t: t, now: now, project: &p.ID, entity: entityProject, entityID: p.ID,
+		projects: []exportProject{{ID: p.ID, Key: p.Key, Name: p.Name, Archived: p.ArchivedAt != nil}},
+		filename: fmt.Sprintf("%s-%s-%s.tar.gz", t.Slug, p.Key, now.Format("20060102"))}, nil
 }
 
 // ExportTenant answers every project of the tenant the caller sees, archived
@@ -108,29 +133,23 @@ func (s *Server) ExportTenant(ctx context.Context, _ apigen.ExportTenantRequestO
 		return nil, perr
 	}
 	now := s.h.opts.Now().UTC()
-	var a exportArchive
+	var projects []exportProject
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		rows, err := r.ListProjects(ctx, readq.ListProjectsParams{TenantID: t.ID, IncludeArchived: true, PageSize: math.MaxInt32})
 		if err != nil {
 			return fmt.Errorf("list the projects: %w", err)
 		}
-		projects := make([]exportProject, 0, len(rows))
+		projects = make([]exportProject, 0, len(rows))
 		for _, row := range rows {
 			projects = append(projects, exportProject{ID: row.ID, Key: row.Key, Name: row.Name, Archived: row.ArchivedAt != nil})
 		}
-		return a.gather(ctx, r, t, projects, nil, now)
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	body, err := a.tarGz(now)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.recordExport(ctx, t, entityTenant, t.ID, a.manifest); err != nil {
-		return nil, err
-	}
-	return archiveResponse{body: body, filename: fmt.Sprintf("%s-%s.tar.gz", t.Slug, now.Format("20060102"))}, nil
+	return exportStream{s: s, ctx: ctx, t: t, now: now, projects: projects, entity: entityTenant, entityID: t.ID,
+		filename: fmt.Sprintf("%s-%s.tar.gz", t.Slug, now.Format("20060102"))}, nil
 }
 
 // recordExport records the export as data that left the system, one act on
@@ -153,11 +172,11 @@ type exportProject struct {
 	Archived bool
 }
 
-// gather reads what the archive holds, in one read transaction: every ticket
-// of the projects the caller sees as its …/markdown document, the links, the
-// attachments' metadata, the count of the confidential tickets left out, and
-// the exporter. project narrows the manifests to one project; nil is the
-// tenant's.
+// gather reads what the archive holds besides the documents, in the export's
+// snapshot: the count of the documents of each project and of the
+// confidential tickets it leaves out, the links, the attachments' metadata
+// and the exporter. projectID narrows the manifests to one project; nil is
+// the tenant's.
 func (a *exportArchive) gather(ctx context.Context, r *store.Reader, t tenantScope, projects []exportProject, projectID *uuid.UUID, now time.Time) error {
 	exporter, err := exporterOf(ctx, r)
 	if err != nil {
@@ -165,10 +184,6 @@ func (a *exportArchive) gather(ctx context.Context, r *store.Reader, t tenantSco
 	}
 	a.manifest = apigen.ExportManifest{Format: apigen.ExportManifestFormat(importer.ExportFormat), Tenant: t.Slug,
 		ExportedAt: now, ExportedBy: exporter, Projects: []apigen.ExportManifestProject{}}
-	counts, err := a.documents(ctx, r, t, projectID)
-	if err != nil {
-		return err
-	}
 	hidden, err := r.ExportHiddenConfidential(ctx, readq.ExportHiddenConfidentialParams{TenantID: t.ID, ProjectID: projectID})
 	if err != nil {
 		return fmt.Errorf("count the confidential tickets left out: %w", err)
@@ -178,15 +193,25 @@ func (a *exportArchive) gather(ctx context.Context, r *store.Reader, t tenantSco
 		left[h.ProjectID] = int(h.Hidden)
 	}
 	for _, p := range projects {
+		n, err := r.CountTickets(ctx, exportFilter(p))
+		if err != nil {
+			return err
+		}
 		a.manifest.Projects = append(a.manifest.Projects, apigen.ExportManifestProject{Key: p.Key, Name: p.Name, Archived: p.Archived,
-			Tickets: counts[p.Key], ConfidentialNotIncluded: left[p.ID]})
-		a.manifest.Tickets += counts[p.Key]
+			Tickets: int(n), ConfidentialNotIncluded: left[p.ID]})
+		a.manifest.Tickets += int(n)
 		a.manifest.ConfidentialNotIncluded += left[p.ID]
 	}
 	if err := a.readLinks(ctx, r, t, projectID); err != nil {
 		return err
 	}
 	return a.readAttachments(ctx, r, t, projectID)
+}
+
+// exportFilter is every ticket of the project the caller sees, done and
+// dropped ones included, deleted ones not.
+func exportFilter(p exportProject) store.TicketFilter {
+	return store.TicketFilter{ProjectID: p.ID, IncludeTerminal: true}
 }
 
 // exporterOf is the caller as grammar v1 writes a person (docs/adr/0044 D1).
@@ -201,35 +226,29 @@ func exporterOf(ctx context.Context, r *store.Reader) (string, error) {
 	return person.String(), nil
 }
 
-// documents renders every ticket the caller sees, done and dropped ones
-// included, deleted ones not, each exactly as …/markdown answers it; it
-// returns how many each project holds.
-func (a *exportArchive) documents(ctx context.Context, r *store.Reader, t tenantScope, projectID *uuid.UUID) (map[string]int, error) {
-	f := store.TicketFilter{IncludeTerminal: true}
-	if projectID != nil {
-		f.ProjectID = *projectID
-	}
-	list, err := r.ListTickets(ctx, f, store.TicketPage{Order: store.NewestFirst, Limit: math.MaxInt32})
-	if err != nil {
-		return nil, err
-	}
-	rows := list.Rows
-	slices.SortFunc(rows, func(x, y store.TicketRow) int {
-		if c := strings.Compare(x.ProjectKey, y.ProjectKey); c != 0 {
-			return c
-		}
-		return int(x.Number) - int(y.Number)
-	})
-	counts := map[string]int{}
-	for _, row := range rows {
-		doc, err := exportDocument(ctx, r, t, ticketCtx{row: row})
+// documents writes the project's documents by number, each exactly as
+// …/markdown answers it, reading a page of tickets at a time.
+func documents(ctx context.Context, r *store.Reader, t tenantScope, tw *tar.Writer, p exportProject, now time.Time) error {
+	after := ""
+	for {
+		list, err := r.ListTickets(ctx, exportFilter(p), store.TicketPage{Order: store.ByNumber, After: after, Limit: exportPage})
 		if err != nil {
-			return nil, err
+			return err
 		}
-		a.docs = append(a.docs, exportDoc{path: ticketKey(t, row) + ".md", body: markdown.Render(doc)})
-		counts[row.ProjectKey]++
+		for _, row := range list.Rows {
+			doc, err := exportDocument(ctx, r, t, ticketCtx{row: row})
+			if err != nil {
+				return err
+			}
+			if err := writeEntry(tw, ticketKey(t, row)+".md", markdown.Render(doc), now); err != nil {
+				return err
+			}
+		}
+		if len(list.Rows) < exportPage {
+			return nil
+		}
+		after = store.ByNumber.Position(list.Rows[len(list.Rows)-1])
 	}
-	return counts, nil
 }
 
 // readLinks reads the links manifest: every link whose two ends the caller
@@ -263,37 +282,48 @@ func (a *exportArchive) readAttachments(ctx context.Context, r *store.Reader, t 
 	return nil
 }
 
-// tarGz writes the archive: the three manifests at its root, then the
-// documents by key, every entry of the export's time.
-func (a *exportArchive) tarGz(now time.Time) ([]byte, error) {
-	var buf bytes.Buffer
-	gz := gzip.NewWriter(&buf)
+// stream writes the archive to w as it goes: the three manifests at its root,
+// then the documents by project key and number, every entry of the export's
+// time.
+func (a *exportArchive) stream(ctx context.Context, r *store.Reader, t tenantScope, w io.Writer, projects []exportProject, now time.Time) error {
+	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
-	files := []exportDoc{}
 	for _, m := range []struct {
 		name string
 		v    any
 	}{{importer.ManifestFile, a.manifest}, {importer.LinksFile, a.links}, {importer.AttachmentsFile, a.attachments}} {
 		body, err := json.MarshalIndent(m.v, "", "  ")
 		if err != nil {
-			return nil, fmt.Errorf("encode %s: %w", m.name, err)
+			return fmt.Errorf("encode %s: %w", m.name, err)
 		}
-		files = append(files, exportDoc{path: m.name, body: append(body, '\n')})
+		if err := writeEntry(tw, m.name, append(body, '\n'), now); err != nil {
+			return err
+		}
 	}
-	for _, f := range append(files, a.docs...) {
-		h := &tar.Header{Name: f.path, Mode: 0o644, Size: int64(len(f.body)), ModTime: now, Typeflag: tar.TypeReg, Format: tar.FormatPAX}
-		if err := tw.WriteHeader(h); err != nil {
-			return nil, fmt.Errorf("write the archive: %w", err)
-		}
-		if _, err := tw.Write(f.body); err != nil {
-			return nil, fmt.Errorf("write the archive: %w", err)
+	byKey := slices.Clone(projects)
+	slices.SortFunc(byKey, func(x, y exportProject) int { return strings.Compare(x.Key, y.Key) })
+	for _, p := range byKey {
+		if err := documents(ctx, r, t, tw, p, now); err != nil {
+			return err
 		}
 	}
 	if err := tw.Close(); err != nil {
-		return nil, fmt.Errorf("write the archive: %w", err)
+		return fmt.Errorf("write the archive: %w", err)
 	}
 	if err := gz.Close(); err != nil {
-		return nil, fmt.Errorf("write the archive: %w", err)
+		return fmt.Errorf("write the archive: %w", err)
 	}
-	return buf.Bytes(), nil
+	return nil
+}
+
+// writeEntry writes one file of the archive.
+func writeEntry(tw *tar.Writer, name string, body []byte, now time.Time) error {
+	h := &tar.Header{Name: name, Mode: 0o644, Size: int64(len(body)), ModTime: now, Typeflag: tar.TypeReg, Format: tar.FormatPAX}
+	if err := tw.WriteHeader(h); err != nil {
+		return fmt.Errorf("write the archive: %w", err)
+	}
+	if _, err := tw.Write(body); err != nil {
+		return fmt.Errorf("write the archive: %w", err)
+	}
+	return nil
 }

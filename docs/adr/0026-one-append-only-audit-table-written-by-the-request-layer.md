@@ -14,7 +14,9 @@ D6, the column `token_name`; D6: the tenant's view shows it beside the token's i
 (D3: the purge's function runs inside the transaction that records its act instead of writing the
 act itself — the first implementation found that a function cannot know the token, the agent, the
 request and the source hash the row must carry; ~~not yet put to the owner, see the Status below~~
-*(accepted by the owner 2026-10-06)*).
+*(accepted by the owner 2026-10-06)*) and 2026-10-07 by the owner's answer on the recorded reads
+(D5: the five reads that record an act take a session's request only from the installation's own
+pages, by `Sec-Fetch-Site`; built 2026-10-09).
 Date: 2026-10-01. Decided by the owner as the answer to the catalog
 question "audit log — which form?": one table for every mutation of every entity, over a
 history table per entity and over trigger-written rows. The rules of D6–D7 were put to the
@@ -136,6 +138,24 @@ belongs to.)*
 **D5 — Reads are not audited, with two exceptions:** the download of an attachment
 ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md))
 and the Markdown export of a ticket by a token — both mean "data left the system".
+*(Amended 2026-10-07 by the owner's answer to "how are the recorded reads held to the
+installation's own pages?", over the custom header on every read of a session, which breaks the
+inline images of rendered Markdown, and over leaving it named as a gap; built 2026-10-09:)* the
+reads recorded today are five — an attachment's bytes (`downloadAttachment`, `downloaded`), a
+ticket's Markdown (`exportTicket`) and its context (`exportTicketContext`), a project's and the
+tenant's export (`exportProject`, `exportTenant`; each `exported`) — and the API document marks
+each `x-cowork-recorded-read`. **A session's request for one of them comes from the installation's
+own pages:** `Sec-Fetch-Site` `same-site` — a page on a sibling host of the same site, which the
+`SameSite=Lax` cookie follows on an image or a link — or `cross-site` is `403 csrf`, before anything
+is read or recorded; `same-origin` (the UI, the inline images of rendered Markdown), `none` (the
+address bar, a bookmark) and a request without the header (a browser that sends none) pass. A
+browser sets the header and no script of a page can
+([`api/api.go`](../../backend/internal/api/api.go) `recordedRead`, `fromOwnPages`, called from
+`sessionRules`; `TestARecordedReadComesFromTheInstallationsOwnPages`,
+`TestARecordedReadOfASessionComesFromTheInstallationsOwnPages`). It closes a sibling host's image
+and, with it, another site's link to one of these addresses, which stops working; a token's request
+carries no cookie and is not looked at. Not verified in a browser: the tests send the header a
+browser sends.
 
 **D6 — The record is readable through the API** per ticket (the activity list), per tenant
 for its administrators (filterable by actor, token, action, entity and period, exportable as

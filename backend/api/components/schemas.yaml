@@ -672,6 +672,8 @@ GroupMappingList:
         updated_at: '2026-03-04T09:01:00Z'
       - *example-group-mapping
     next_cursor: null
+# merged, closed and reopened are the acts of GitHub's webhook, which only the
+# releases up to 0.12.0 recorded (docs/adr/0071 Status); the audit record keeps them.
 AuditAction:
   type: string
   enum: [created, updated, transitioned, linked, unlinked, commented, edited, withdrawn, assigned,
@@ -2281,142 +2283,6 @@ LinkList:
         created_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
         created_at: '2026-10-01T08:21:00Z'
     next_cursor: null
-PullRequestKind:
-  type: string
-  enum: [pull_request, commit]
-  description: A pull request, or a commit on the repository's default branch (docs/adr/0071 D6)
-PullRequestState:
-  type: string
-  enum: [open, closed, merged]
-  description: The pull request's state as GitHub last told it; a commit on the default branch is merged
-PullRequestFoundIn:
-  type: string
-  enum: [trailer, body, subject]
-  description: |
-    Where the key was read (docs/adr/0068 D1, D2, D5): a `Cowork-Ticket:` trailer line, a line of a pull
-    request's body that is a full key alone, or the short keys in parentheses at the end of a pull
-    request's title or a commit's subject
-PullRequest:
-  type: object
-  description: A pull request or a default-branch commit GitHub's webhook linked to the ticket (docs/adr/0071 D6)
-  required: [id, kind, repository, number, sha, title, state, url, author, merged_at, found_in, first_seen_at,
-    last_seen_at]
-  properties:
-    id: {type: string, format: uuid, description: The link's id}
-    kind:
-      $ref: '#/PullRequestKind'
-    repository: {type: string, description: 'The repository''s identity, host/path (docs/adr/0066 D1)'}
-    number: {type: [integer, 'null'], description: The pull request's number; null for a commit}
-    sha: {type: [string, 'null'], description: The commit's id; null for a pull request}
-    title: {type: string, description: 'The pull request''s title, or the commit''s subject, as GitHub sent it'}
-    state:
-      $ref: '#/PullRequestState'
-    url:
-      type: string
-      description: |
-        The pull request's or the commit's page at GitHub, written from the bound repository's
-        identity, never taken from a payload
-    author: {type: [string, 'null'], description: 'The author''s GitHub login, where GitHub named one'}
-    merged_at:
-      type: [string, 'null']
-      format: date-time
-      description: When the pull request was merged, or the commit reached the default branch; null otherwise
-    found_in:
-      $ref: '#/PullRequestFoundIn'
-    first_seen_at: {type: string, format: date-time, description: When a delivery first linked it to the ticket}
-    last_seen_at: {type: string, format: date-time, description: When a delivery last told of it}
-  example: &example-pull-request
-    id: 01a11185-9ea0-7025-a5c9-d7ff9a0dcc8e
-    kind: pull_request
-    repository: github.com/acme/website
-    number: 118
-    sha: null
-    title: Send the password as typed (WEB-42)
-    state: merged
-    url: https://github.com/acme/website/pull/118
-    author: grace-hopper
-    merged_at: '2026-10-06T16:40:03Z'
-    found_in: trailer
-    first_seen_at: '2026-10-06T14:02:12Z'
-    last_seen_at: '2026-10-06T16:40:03Z'
-PullRequestList:
-  type: object
-  required: [items, next_cursor]
-  properties:
-    items:
-      type: array
-      items:
-        $ref: '#/PullRequest'
-    next_cursor:
-      type: [string, 'null']
-  example:
-    items:
-      - *example-pull-request
-      - id: 01a11216-2a88-789b-9a95-0865acfc9150
-        kind: commit
-        repository: github.com/acme/website
-        number: null
-        sha: 4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281
-        title: Send the password as typed (WEB-42) (#118)
-        state: merged
-        url: https://github.com/acme/website/commit/4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281
-        author: grace-hopper
-        merged_at: '2026-10-06T16:40:05Z'
-        found_in: trailer
-        first_seen_at: '2026-10-06T16:40:05Z'
-        last_seen_at: '2026-10-06T16:40:05Z'
-    next_cursor: null
-GitHubSecret:
-  type: object
-  description: The tenant's GitHub webhook secret as its administrators read it — never the secret itself
-  required: [created_at, created_by]
-  properties:
-    created_at: {type: string, format: date-time, description: When it was made or last rotated}
-    created_by:
-      $ref: '#/Person'
-GitHubIntegration:
-  type: object
-  required: [secret, webhook_path, events]
-  properties:
-    secret:
-      description: The secret's metadata; null while the tenant has none, and then the endpoint answers like an unknown tenant
-      oneOf:
-        - $ref: '#/GitHubSecret'
-        - type: 'null'
-    webhook_path:
-      type: string
-      description: The endpoint's path, which GitHub posts to under the installation's `COWORK_BASE_URL`
-    events:
-      type: array
-      description: The events to choose in GitHub's webhook settings; every other is taken and passed over
-      items: {type: string}
-  example:
-    secret:
-      created_at: '2026-10-06T13:55:00Z'
-      created_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
-    webhook_path: /api/v1/tenants/acme/integrations/github/webhook
-    events: [pull_request, push]
-GitHubSecretCreated:
-  type: object
-  required: [secret, created_at, created_by, replaced]
-  properties:
-    secret:
-      type: string
-      description: |
-        The new secret, 64 hexadecimal characters, shown in this answer only: give it to GitHub as the
-        webhook's secret. cowork keeps it sealed and never shows it again (docs/adr/0071 D1)
-    created_at: {type: string, format: date-time}
-    created_by:
-      $ref: '#/Person'
-    replaced:
-      type: boolean
-      description: A secret existed and is replaced; a delivery signed with it is refused from now on
-  # The first secret of acme; its value is an example that signs nothing.
-  example:
-    secret: 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0
-    created_at: '2026-10-06T13:55:00Z'
-    created_by: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
-    replaced: false
 PrerequisiteNode:
   type: object
   description: A ticket of a prerequisite tree, or of its upward reading, the dependents (docs/adr/0012 D6)
@@ -3083,13 +2949,12 @@ ChatCapabilitiesUpdate:
         $ref: '#/Capability'
 InboxReason:
   type: string
-  enum: [assigned, asked, answered, state_changed, blocker_closed, commented, urgent, mentioned, merged]
+  enum: [assigned, asked, answered, state_changed, blocker_closed, commented, urgent, mentioned]
   description: |
     Why the person is told (docs/adr/0020 D2): a ticket assigned to them, a question asked of them, a
     question they asked answered, a ticket they watch changed state or got a comment, a ticket that
-    blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, a
-    comment that mentions them (docs/adr/0015 D5), a pull request of a ticket they watch or that is
-    assigned to them merged (docs/adr/0071 D6) — its state unchanged, the move a person's
+    blocks one they watch reached done or dropped, an urgent stake on a ticket assigned to them, or a
+    comment that mentions them (docs/adr/0015 D5)
 InboxEntry:
   type: object
   required: [id, tenant, ticket, reason, act, blocker, withdrawn, read, created_at]
@@ -3581,14 +3446,14 @@ ImportOutcome:
   enum: [create, conflict, error, skip, exclude, created]
   description: |
     What happens to a file of the upload. `create`: the execution creates its ticket. `conflict`: its
-    number is a ticket of the project already, deleted ones in the bin included, or was one that was
-    purged — a repeated import is a duplicate, not an update, and a number is never handed out twice
-    (docs/adr/0064 D3, docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors` says
-    why (docs/adr/0051 D2). `skip`: it is no ticket file, or it is a manifest of an export the import
-    reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it out
-    (docs/adr/0063 D1). `created`: the execution created its ticket. A dry run is not executed while
-    a file it would import is `conflict` or `error`: exclude the file, or correct the source and make
-    a new dry run
+    number is a ticket of the project already, deleted ones in the bin included — a repeated import
+    is a duplicate, not an update (docs/adr/0064 D3); a number a purged ticket held is no conflict, an
+    import gives it back (docs/adr/0007 D4). `error`: it cannot be imported as it stands, `errors`
+    says why (docs/adr/0051 D2). `skip`: it is no ticket file, a `/context` document, or a manifest of
+    an export the import reads beside the tickets (docs/adr/0063 D5). `exclude`: a correction left it
+    out (docs/adr/0063 D1). `created`: the execution created its ticket. The execution leaves out
+    every file that is `conflict` or `error` and imports the rest; the executed report keeps their
+    outcome, and `reason` says why each was left out
 ImportFormat:
   type: string
   enum: [repository, export, plain]
@@ -3751,7 +3616,7 @@ ImportFile:
       $ref: '#/ImportOutcome'
     reason:
       type: [string, 'null']
-      description: Why the file is skipped or excluded
+      description: Why the file is skipped or excluded, or why the import leaves it out — its conflict, or its error
     format:
       oneOf:
         - $ref: '#/ImportFormat'
@@ -3766,7 +3631,7 @@ ImportFile:
       description: The key the ticket gets — or got — in the project, `<tenant>/<PROJECT>-<n>`
     conflict:
       type: [string, 'null']
-      description: The key of the project's ticket that holds the number — a deleted one included — or held it until it was purged
+      description: The key of the project's ticket that holds the number, a deleted one included
     title: {type: [string, 'null']}
     type:
       oneOf:
@@ -3944,7 +3809,7 @@ ImportJob:
         correction: null
       - path: docs/tickets/041-pick-the-samesite-mode-of-the-session-cookie.md
         outcome: conflict
-        reason: null
+        reason: 'left out of the import: the project holds its number as acme/WEB-41 (docs/adr/0064 D3)'
         format: repository
         number: 41
         key: acme/WEB-41
@@ -4018,7 +3883,7 @@ ImportJob:
         correction: null
       - path: docs/tickets/045-the-price-table-is-unreadable-on-a-phone.md
         outcome: error
-        reason: null
+        reason: 'left out of the import: the file has an error; the other files are imported (docs/adr/0051 D2)'
         format: repository
         number: 45
         key: acme/WEB-45

@@ -286,8 +286,10 @@ func TestNextForMeAcrossTenants(t *testing.T) {
 	e.send(t, admin, http.StatusOK, http.MethodPost, ticketPath(e.SlugA, "ALPHA", done.Number)+"/transitions",
 		map[string]any{"from": "filed", "to": "done", "note": "verified by hand"})
 	e.fileIn(t, admin, e.SlugA, "ALPHA", task("secret", sev(apigen.SeverityCritical), secretly))
-	secretMine := e.fileIn(t, admin, e.SlugA, "ALPHA", task("secret and mine", sev(apigen.SeverityLow), secretly, toBoth)) // 1 + 1
-	inGamma := e.fileIn(t, admin, e.SlugA, "GAMMA", task("gamma", sev(apigen.SeverityCritical)))                           // 8 + 1
+	// Filing a confidential ticket for another person admits them: a session's act (docs/adr/0035 D5).
+	inSession := sessionOf(t, e.AdminA)
+	secretMine := e.fileIn(t, inSession, e.SlugA, "ALPHA", task("secret and mine", sev(apigen.SeverityLow), secretly, toBoth)) // 1 + 1
+	inGamma := e.fileIn(t, admin, e.SlugA, "GAMMA", task("gamma", sev(apigen.SeverityCritical)))                               // 8 + 1
 	e.fileIn(t, admin, e.SlugA, "HIDDEN", task("hidden", sev(apigen.SeverityCritical)))
 	inB := e.fileIn(t, memberB, e.SlugB, "BETA", task("in B", func(b *apigen.TicketCreate) { b.Horizon = ptr(apigen.HorizonNow) })) // 3 + 8
 	require.NoError(t, f.Exec(e.ctx, "UPDATE projects SET restricted = true WHERE id IN ($1, $2)", gamma, hidden))

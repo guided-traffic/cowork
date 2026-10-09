@@ -57,8 +57,9 @@ WHERE c.tenant_id = sqlc.arg(tenant_id) AND c.ticket_id = sqlc.arg(ticket_id) AN
 -- name: ListTicketActivity :many
 -- The ticket's acts (docs/adr/0015 D1, D6) without time entries
 -- (docs/adr/0017 D9), without data leaving the system (docs/adr/0026 D5) and
--- without a pull request's title or page changed at GitHub, which its list
--- shows (docs/adr/0071 D6), and the sorts of its project's rank by the score
+-- without a pull request's title or page changed at GitHub, an act of the
+-- webhook of the releases up to 0.12.0 (docs/adr/0071 Status) that said
+-- nothing a person acts on, and the sorts of its project's rank by the score
 -- that moved it: one act of the project, which names every ticket it moved in
 -- its refs (docs/adr/0014 D3). The caller has read the ticket through the
 -- predicate; the refs of each act are checked against it before its payload

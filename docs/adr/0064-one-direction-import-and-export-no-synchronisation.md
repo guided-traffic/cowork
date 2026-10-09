@@ -13,15 +13,25 @@ were put to the owner with the question and not objected to.
 ~~**Not built.** No importer, no exporter.~~ Amended 2026-10-04 (D4: the workflow plan that was to
 carry the sentence beside the operations page is consumed).
 
+Amended 2026-10-09 by the owner (D3): the execution leaves out each file whose number the project
+holds and imports the rest, the report naming each — "Ich will mit LLMs auf einem Ticket System
+arbeiten" —, and a number a purged ticket held is no conflict: an import gives it back
+([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D4 amended the
+same day); built the same day.
+
 **Built** (phase 6, 2026-10-06, in the API): D1–D3 and D4's sentence — the import and the export
 of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md), neither of
 which holds a repository's credential or reaches one; the dry run reports a number the project
-holds as a conflict naming the ticket's key, and the execution refuses while one remains
-(`409 import_conflict`, [`imports.go`](../../backend/internal/api/imports.go) `blockingProblem`).
+holds as a conflict naming the ticket's key, and the execution ~~refuses while one remains
+(`409 import_conflict`, [`imports.go`](../../backend/internal/api/imports.go) `blockingProblem`)~~
+*(2026-10-09: leaves the file out, its `reason` naming the ticket — `finish` in
+[`refs.go`](../../backend/internal/importer/refs.go))*.
 *(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* a number the
-project holds is one of any of its tickets, a deleted one included, and a number a purged ticket
+project holds is one of any of its tickets, a deleted one included~~, and a number a purged ticket
 held is a conflict too, since a number is never handed out again
-([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D4). D4's
+([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D4)~~
+*(amended 2026-10-09 by the owner: a number a purged ticket held is imported, with a warning that
+what named its key before names the new ticket)*. D4's
 sentence is on [docs/operations/import-and-export.md](../operations/import-and-export.md); this
 repository's own `docs/tickets/README.md` gets its note on the day its tickets are imported, which
 has not happened. D5 found the `api` tool unfit for it (below).
@@ -53,7 +63,9 @@ D2), and commits it with its own tooling.
 
 **D3 — A repeated import of the same files into the same project is a duplicate, not an
 update.** The dry run reports every file whose number already exists in the project as a
-conflict; execution refuses while any conflict remains. The importer updates nothing
+conflict; ~~execution refuses while any conflict remains~~ *(amended 2026-10-09 by the owner: the
+execution leaves each conflicting file out and imports the rest, the report naming each and the
+ticket that holds its number, ADR 0051 D2)*. The importer updates nothing
 ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D3's
 atomicity stays simple).
 
@@ -100,7 +112,9 @@ rule of D5 stands.)*
 ## Residual risks
 
 - Someone importing a corrected file expects an update and gets a conflict (D3); the report
-  says why and names the existing ticket, and the correction is made in cowork.
+  says why and names the existing ticket, and the correction is made in cowork. *(2026-10-09:)*
+  The execution leaves that file out and imports the others; whoever does not read the report —
+  or the agent that runs `cowork-mcp import`, which prints it — does not learn it.
 
 ## References
 

@@ -211,7 +211,7 @@ jobs:
 
   # The integration tier is what only a real PostgreSQL 18 decides: that the
   # embedded migrations apply, that they are idempotent, that the schema relies
-  # on nothing older than 18. The service container is the database, a MinIO
+  # on nothing older than 18. The service container is the database, a Silo
   # container the object storage; the variables are required by the tests, so
   # a job that loses one fails instead of passing on zero tests.
   integration-tests:
@@ -253,7 +253,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y build-essential
 
       # The S3 server of the attachment tests. A service container takes no
-      # command and the Chainguard MinIO image needs `server /data`, so it is
+      # command and the Silo image needs `server /data`, so it is
       # started on the job's Docker daemon with the image the Makefile pins;
       # the tests read COWORK_TEST_S3_* from make's defaults. It needs
       # make, so it starts after the build tools.
@@ -266,8 +266,20 @@ jobs:
       - name: Start the identity provider
         run: make dex-up
 
+      # The PostgreSQL that serves TLS under a private authority, for the
+      # test of COWORK_DATABASE_CA (docs/adr/0058 D3): its entrypoint is
+      # copied in and its authority's certificate copied out, which a service
+      # container cannot do; it listens on 5433 beside the service's 5432,
+      # and the tests read COWORK_TEST_DATABASE_TLS_* from make's defaults.
+      - name: Start the PostgreSQL that serves TLS
+        run: make postgres-tls-up
+
       - name: Run integration tests with coverage
         run: make test-integration-coverage
+
+      - name: Stop the PostgreSQL that serves TLS
+        if: always()
+        run: make postgres-tls-down
 
       - name: Stop the identity provider
         if: always()
@@ -718,7 +730,7 @@ jobs:
         run: docker rmi cowork-${{ matrix.component }}:scan-${{ github.sha }} || true
 
   # The end-to-end tier (docs/adr/0056): the two images the container scan built and scanned,
-  # behind the Ingress stand-in with TLS, with a PostgreSQL, a MinIO and a Dex of its own on the
+  # behind the Ingress stand-in with TLS, with a PostgreSQL, a Silo and a Dex of its own on the
   # job's Docker daemon (hack/e2e.sh), driven by Playwright in Chromium and WebKit, both colour
   # schemes. Ten minutes are its budget (D4); a trace, a video and the containers' logs of a
   # failed test are its artefact.

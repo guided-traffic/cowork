@@ -47,19 +47,6 @@
           <i class="pi pi-shield"></i><span>{{ t.threat }}</span>
         </div>
       }
-      @if (merged(); as pr) {
-        <div class="merged" role="status" data-testid="merge-hint">
-          <i class="pi pi-github" aria-hidden="true"></i>
-          <span
-            ><strong>{{
-              pr.kind === 'commit'
-                ? 'A commit naming it reached the default branch'
-                : 'Pull request #' + pr.number + ' was merged'
-            }}</strong>
-            — the work may be ready to move. Nothing moved it: moving it stays yours.</span
-          >
-        </div>
-      }
     </header>
 
     <div class="layout">
@@ -260,21 +247,6 @@
           }
           <app-link-adder [ticketKey]="t.key" />
         </section>
-
-        @if (relations.pullRequests.error(); as error) {
-          <section class="card">
-            <h2>Pull requests</h2>
-            <p class="muted" data-testid="pull-requests-failed">{{ failure(error) }}</p>
-          </section>
-        } @else if (pullRequests().length > 0) {
-          <section class="card" data-testid="pull-requests">
-            <app-pull-requests-card
-              [ticketKey]="t.key"
-              [items]="pullRequests()"
-              [mayRemove]="works()"
-            />
-          </section>
-        }
 
         <section class="card">
           @if (relations.attachments.error(); as error) {

@@ -104,8 +104,10 @@ DELETE FROM ticket_links
 WHERE tenant_id = sqlc.arg(tenant_id) AND (source_id = sqlc.arg(ticket_id) OR target_id = sqlc.arg(ticket_id));
 
 -- name: DeleteTicketPullRequests :execrows
--- The pull requests and commits GitHub's webhook linked to the ticket
--- (docs/adr/0071 D6), the removed links among them.
+-- The pull requests and commits GitHub's webhook linked to the ticket in the
+-- releases up to 0.12.0 (docs/adr/0071 Status), the removed links among them:
+-- nothing writes the table any more, but its rows reference the ticket until
+-- a later contract migration drops it (docs/adr/0028).
 DELETE FROM ticket_pull_requests WHERE tenant_id = sqlc.arg(tenant_id) AND ticket_id = sqlc.arg(ticket_id);
 
 -- name: DetachChildren :execrows

@@ -642,9 +642,7 @@ logs in again; a session without a refresh token is not affected. The rotation a
 in flight (`oidc_failed`), invalidates the cursors, starts the throttle's count of an address over,
 makes the audit rows' address hashes before and after it incomparable, and refuses an idempotent
 retry across it as `422 idempotency_mismatch`
-([installation.md](../operations/installation.md#the-secrets) lists these), and it leaves every
-tenant's GitHub webhook secret unopenable until the tenant's administrators make a new one
-([github-webhook.md](github-webhook.md#the-secret-at-rest-and-who-can-open-it)). It does not make a copy of
+([installation.md](../operations/installation.md#the-secrets) lists these). It does not make a copy of
 the database taken before it safe: the refresh tokens sealed in that copy open under the old key.
 Mitigation: guard the database, its backups and the Secrets as one; after a suspected compromise of
 both, rotate the server key and revoke the client's tokens at the issuer.

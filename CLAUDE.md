@@ -115,12 +115,14 @@ which takes `existingSecret` references only; the session key, the storage key, 
   warning as `database.url`.
 - Login (phase 3): server-side sessions in the `__Host-cowork-session` cookie, the local
   administrator from configuration, local accounts made by administrators, CSRF by origin and
-  `X-Requested-With: cowork`; token creation, password changes, tenant creation, creating or
-  resetting a local account, the acts that give access, a turn of the chat, the purge of a ticket,
-  the GitHub webhook secret and the removal of orphaned objects are session-only — nineteen
-  operations, held by a unit test; a token gets `403` (ADR 0031–0033, 0035, 0037). A session's idle
-  clock moves only on a write or the browser's keep-alive read, and the login page signs a person
-  of the identity provider in again with `prompt=none` without a click (ADR 0029 D6, 0031 D3).
+  `X-Requested-With: cowork`; token creation, password changes, tenant creation, creating,
+  resetting or unlocking a local account, the acts that give access, a turn of the chat, the purge
+  of a ticket and the removal of orphaned objects are session-only — nineteen operations, held by a
+  unit test; a token gets `403`, and so it does, in the handler, on widening the tenant's settings,
+  lifting the confidential flag and assigning a confidential ticket to another person (ADR
+  0031–0033, 0035, 0037, 0065). A session's idle clock moves on every request of it but a write the
+  CSRF check refuses, and the login page signs a person of the identity provider in again with
+  `prompt=none` without a click (ADR 0029 D6, 0031 D3).
 - `cowork-mcp` (`backend/cmd/cowork-mcp` over `internal/mcpcli`, `internal/mcpserver`,
   `internal/tools`): the MCP server and hooks for Claude Code, a client of `/api/v1` through the
   generated client and nothing else — it imports no store and no API handler, and a unit test
@@ -144,7 +146,7 @@ which takes `existingSecret` references only; the session key, the storage key, 
 | Tier | Target | Needs |
 |---|---|---|
 | Backend unit | `make test-unit` | nothing |
-| Backend integration (tag `integration`) | `make postgres-up minio-up && make test-integration` | Docker; `POSTGRES_PORT=` and `MINIO_PORT=` move the containers |
+| Backend integration (tag `integration`) | `make postgres-up postgres-tls-up minio-up dex-up && make test-integration` | Docker; `POSTGRES_PORT=`, `POSTGRES_TLS_PORT=`, `MINIO_PORT=` and `DEX_PORT=` move the containers |
 | Frontend unit | `make frontend-test` | Node.js 26 |
 | Static analysis | `make lint cyclo gosec vuln`, `make frontend-lint` | — |
 | Chart | `make helm-lint helm-template` | Helm |
@@ -152,8 +154,8 @@ which takes `existingSecret` references only; the session key, the storage key, 
 | Everything a PR gets | see [docs/developer/ci-and-release.md](docs/developer/ci-and-release.md) | |
 
 No `-short`, no `testing.Short()`, no skip on a missing dependency: the integration tier fails
-without `COWORK_TEST_DATABASE_URL` or the `COWORK_TEST_S3_*` variables and says how to set
-them. A fix comes with the test that failed without it. Every CI job is in the `needs:` list
+without `COWORK_TEST_DATABASE_URL`, the `COWORK_TEST_DATABASE_TLS_*` or the `COWORK_TEST_S3_*`
+variables and says how to set them. A fix comes with the test that failed without it. Every CI job is in the `needs:` list
 of `semantic-release`; a new job is added there in the same change.
 
 ## Conventions that bite

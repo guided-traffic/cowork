@@ -10,14 +10,14 @@ import (
 )
 
 // The labels the server key is derived under for what is sealed with it: the
-// state of a login through the identity provider, which its cookie carries, a
-// session's refresh token (docs/adr/0031 D1, docs/adr/0029 D1), and a tenant's
-// GitHub webhook secret, which the server must open to verify a delivery
-// (docs/adr/0071 D1).
+// state of a login through the identity provider, which its cookie carries, and
+// a session's refresh token (docs/adr/0031 D1, docs/adr/0029 D1). The label
+// "cowork github webhook secret v1" sealed the GitHub webhook's secrets of the
+// releases up to 0.12.0 (docs/adr/0071 Status) and is never given to another
+// use.
 const (
-	LabelOIDCLogin           = "cowork oidc login v1"
-	LabelRefreshToken        = "cowork oidc refresh token v1"    // #nosec G101 -- an HKDF label, not a credential
-	LabelGitHubWebhookSecret = "cowork github webhook secret v1" // #nosec G101 -- an HKDF label, not a credential
+	LabelOIDCLogin    = "cowork oidc login v1"
+	LabelRefreshToken = "cowork oidc refresh token v1" // #nosec G101 -- an HKDF label, not a credential
 )
 
 // ErrSealed is what opening a sealed value fails with: another key, another

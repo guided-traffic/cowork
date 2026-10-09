@@ -112,20 +112,6 @@ describe('happening', () => {
       },
       'closed COW-2, which blocks it, as done',
     ],
-    // docs/adr/0071 D6: GitHub's webhook reports a merge; the state stays the person's to move.
-    [
-      {
-        reason: 'merged',
-        act: act({
-          actor: null,
-          actor_system: 'system:github',
-          action: 'merged',
-          entity_type: 'pull_request',
-          after: { number: 34, repository: 'github.com/acme/app', state: 'merged' },
-        }),
-      },
-      'reported pull request #34 merged — the work may be ready to move',
-    ],
   ])('says what happened for %j', (overrides, said) => {
     expect(happening(entry('n1', 'acme/COW-1', overrides))).toBe(said);
   });
@@ -139,14 +125,6 @@ describe('happening', () => {
         }),
       ),
     ).toBe('system:identity-provider');
-    expect(
-      actor(
-        entry('n1', 'acme/COW-1', { act: act({ actor: null, actor_system: 'system:github' }) }),
-      ),
-    ).toBe('GitHub');
-    expect(
-      actor(entry('n1', 'acme/COW-1', { act: act({ actor: null, actor_system: null }) })),
-    ).toBe('someone');
   });
 });
 

@@ -52,9 +52,21 @@
 # The owner could instead read the URL CloudNativePG writes, with
 # database.owner.keys.url set to uri; that URL names no sslmode, so the driver
 # takes its default, prefer. CloudNativePG serves TLS with a certificate of an
-# authority of its own (the Secret cowork-db-ca); the chart mounts no authority
-# for the database, so sslmode require is the strongest mode it can use here:
-# encrypted, the server not verified.
+# authority of its own, whose certificate is ca.crt of the Secret cowork-db-ca,
+# beside the authority's key. With sslmode require below, the server is not
+# verified: encrypted, the server's certificate not checked. Copied into a
+# ConfigMap of its own and named by the chart's database.tls.caConfigMap, the
+# authority is what the backend checks the server against — require then checks
+# the chain, and verify-full the host as well, cowork-db-rw being a name
+# CloudNativePG's server certificate carries by its documentation; not tried
+# here (docs/operations/installation.md, "TLS and a private authority").
+#
+#   kubectl get secret cowork-db-ca -o jsonpath='{.data.ca\.crt}' | base64 -d >ca.crt
+#   kubectl create configmap cowork-db-ca-cert --from-file=ca.crt=./ca.crt
+#
+#   database:
+#     tls:
+#       caConfigMap: cowork-db-ca-cert
 #
 # Every name, size and password below is an example.
 ---

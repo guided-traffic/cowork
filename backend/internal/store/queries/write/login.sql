@@ -5,6 +5,17 @@
 INSERT INTO login_attempts (username, address, failed, created_at)
 VALUES (sqlc.arg(username), sqlc.arg(address), sqlc.arg(failed), sqlc.arg(created_at));
 
+-- name: ReserveLoginAttempt :one
+-- An attempt counted against its address's throttle before its password is
+-- hashed, under the address's lock (docs/adr/0033 D6); its outcome replaces it.
+INSERT INTO login_attempts (username, address, failed, created_at)
+VALUES (sqlc.arg(username), sqlc.arg(address), false, sqlc.arg(created_at))
+RETURNING id;
+
+-- name: DeleteLoginAttempt :exec
+-- The reservation of an attempt, which the attempt's outcome replaces.
+DELETE FROM login_attempts WHERE id = sqlc.arg(id);
+
 -- name: UpsertLoginLock :exec
 INSERT INTO login_locks (username, locked_at, sticky)
 VALUES (sqlc.arg(username), sqlc.arg(locked_at), sqlc.arg(sticky))

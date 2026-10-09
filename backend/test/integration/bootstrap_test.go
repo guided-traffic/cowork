@@ -73,11 +73,17 @@ func TestBootstrapKeepsTheConfiguredAdministrator(t *testing.T) {
 	require.NoError(t, bootstrap.Sync(ctx, iso.DB, bootstrap.Params{Username: "root", Password: testPassword, TenantSlug: "other", TenantName: "Other"}, logger))
 	assert.Zero(t, scalar2[int64](t, iso, `SELECT count(*) FROM tenants WHERE slug = 'other'`))
 
-	// A changed password: re-hashed, every session ended, failures and lock
-	// forgotten — how a locked administrator is recovered (D2, docs/adr/0033 D6).
+	// A changed password: re-hashed, every session ended, every token
+	// revoked, failures and lock forgotten — how a leaked password or a locked
+	// administrator is recovered (D2, docs/adr/0033 D6, D7). A start that
+	// finds the password unchanged leaves the tokens alone.
 	s := newAPI(t, withLogin, iso.option)
 	b := s.browser(t)
 	b.mustLogin("root", testPassword)
+	made, _, err := iso.F.Token(ctx, fixture.TokenSpec{UserID: id})
+	require.NoError(t, err)
+	require.NoError(t, bootstrap.Sync(ctx, iso.DB, p, logger))
+	require.Equal(t, http.StatusOK, s.do(t, caller{Token: made}, http.MethodGet, "/api/v1/me", nil).StatusCode, "nothing changed")
 	for range 5 {
 		assertProblem(t, s.browser(t).login("root", "wrong password!"), http.StatusUnauthorized, "invalid_credentials")
 	}
@@ -86,10 +92,12 @@ func TestBootstrapKeepsTheConfiguredAdministrator(t *testing.T) {
 	require.NoError(t, bootstrap.Sync(ctx, iso.DB, changed, logger))
 	assert.NotEqual(t, hash, hashOfRoot(t, iso))
 	assertProblem(t, b.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
+	assertProblem(t, s.do(t, caller{Token: made}, http.MethodGet, "/api/v1/me", nil), http.StatusUnauthorized, "token_revoked")
 	assert.Zero(t, scalar2[int64](t, iso, `SELECT count(*) FROM login_locks WHERE username = 'root'`))
 	assertProblem(t, s.browser(t).login("root", testPassword), http.StatusUnauthorized, "invalid_credentials")
 	require.Equal(t, http.StatusOK, s.browser(t).login("root", "a rotated password").StatusCode)
-	assert.EqualValues(t, 1, audit(t, iso, `actor_system = 'system:bootstrap' AND action = 'password_changed' AND reason = 'configuration' AND entity_id = $1`, id))
+	assert.EqualValues(t, 1, audit(t, iso, `actor_system = 'system:bootstrap' AND action = 'password_changed' AND reason = 'configuration' AND entity_id = $1
+		AND (after->>'tokens_revoked')::int = 1 AND (after->>'sessions_ended')::int = 1 AND after->'taken_over' IS NULL`, id))
 	assert.EqualValues(t, 0, audit(t, iso, `(coalesce(before::text, '') || coalesce(after::text, '') || coalesce(note, '') || coalesce(reason, '')) ~ 'a rotated password|correct horse'`))
 
 	// The variables unset: the account is deactivated, its sessions ended, its

@@ -15,7 +15,6 @@ import { ChatEntry, ChatService } from '../core/chat.service';
 import { HARD_NAVIGATION, HardNavigation } from '../core/hard-navigation';
 import { EventStreamService, StreamStatus } from '../core/event-stream.service';
 import { InboxService } from '../core/inbox.service';
-import { KeepAliveService } from '../core/keep-alive.service';
 import { ProjectsService } from '../core/projects.service';
 import { OpenableTenant, SessionService } from '../core/session.service';
 import { TenantService } from '../core/tenant.service';
@@ -124,7 +123,6 @@ describe('Shell', () => {
   let navigate: MockInstance<Router['navigate']>;
   let hardNavigate: MockInstance<HardNavigation>;
   let signedOut: MockInstance<() => void>;
-  let keepAlive: { start: MockInstance<() => void>; stop: MockInstance<() => void> };
   let chat: FakeChat;
 
   beforeEach(() => {
@@ -146,7 +144,6 @@ describe('Shell', () => {
     version = vi.fn<() => Observable<VersionInfo>>(() => of(backend));
     hardNavigate = vi.fn<HardNavigation>();
     signedOut = vi.fn<() => void>();
-    keepAlive = { start: vi.fn<() => void>(), stop: vi.fn<() => void>() };
   });
 
   function configure() {
@@ -176,12 +173,11 @@ describe('Shell', () => {
           })(),
         },
         { provide: ProjectsService, useValue: projects },
-        { provide: TenantService, useValue: { canCreateProjects, isAdmin } },
+        { provide: TenantService, useValue: { canCreateProjects, isAdmin, canWrite: isAdmin } },
         { provide: AuthService, useValue: { logout } },
         { provide: HARD_NAVIGATION, useValue: hardNavigate },
         { provide: EventStreamService, useValue: { status, personal } },
         { provide: InboxService, useValue: { count: () => unread() } },
-        { provide: KeepAliveService, useValue: keepAlive },
         { provide: ThemeService, useValue: { preference, cycle } },
         { provide: VersionService, useValue: { get: version } },
         { provide: ChatService, useValue: chat },
@@ -199,19 +195,6 @@ describe('Shell', () => {
 
   const text = (page: HTMLElement, testId: string) =>
     page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim();
-
-  describe("the session's idle clock (docs/adr/0031 D3)", () => {
-    it('keeps it moving while the person works in a page of the shell, and stops with the shell', async () => {
-      const { fixture } = await render();
-
-      expect(keepAlive.start).toHaveBeenCalledOnce();
-      expect(keepAlive.stop).not.toHaveBeenCalled();
-
-      fixture.destroy();
-
-      expect(keepAlive.stop).toHaveBeenCalledOnce();
-    });
-  });
 
   describe('the person-level pages (docs/adr/0018 D3, docs/adr/0020 D1)', () => {
     it('offers "next for me", the inbox, the tickets assigned to the person and the open decisions to every person', async () => {
@@ -1203,7 +1186,10 @@ describe('Shell, creating a project', () => {
           provide: ProjectsService,
           useValue: { list: signal<Project[]>([]), projects: { isLoading: signal(false) } },
         },
-        { provide: TenantService, useValue: { canCreateProjects, isAdmin: signal(false) } },
+        {
+          provide: TenantService,
+          useValue: { canCreateProjects, isAdmin: signal(false), canWrite: signal(false) },
+        },
         {
           provide: EventStreamService,
           useValue: { status: signal<StreamStatus>('idle'), personal: vi.fn() },

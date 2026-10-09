@@ -3,18 +3,25 @@
 package integration
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/guided-traffic/cowork/backend/internal/api"
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 )
 
@@ -226,4 +233,79 @@ func TestTheExportFollowsItsReader(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, c.want, n, "every export is a recorded act (docs/adr/0059 D3)")
 	}
+}
+
+// docs/adr/0051 D4, D7: the export streams its archive and reads the tickets
+// a page at a time, so a project whose documents hold far more than the
+// export may take is exported whole while the replica's heap grows by a
+// fraction of it — the archive complete, the manifest's count the documents'.
+func TestTheExportStreamsALargeProjectWithinAMemoryBound(t *testing.T) {
+	e := newTicketEnv(t)
+	const tickets, bodyChars = 600, 32 * 6000
+	require.NoError(t, fixtures(t).Exec(e.ctx, `WITH n AS (UPDATE ticket_counters SET last_number = last_number + $3
+	        WHERE tenant_id = $1 AND project_id = $2 RETURNING last_number)
+	    INSERT INTO tickets (tenant_id, project_id, number, type, title, body, severity, security, urgency_derived,
+	                         urgency_rule, effort, reporter_id)
+	    SELECT $1, $2, n.last_number - $3 + g, 'task', 'bulk ' || g, repeat(md5(g::text), 6000), 'medium', 'none',
+	           'later', 'v2:default', 'S', $4
+	    FROM n, generate_series(1, $3) g`, e.A, e.ProjectA, tickets, e.AdminA))
+	// The archive is read as it arrives, never held: the validation of the
+	// other tests would buffer it.
+	s := newAPI(t, func(o *api.Options) { o.ValidateResponses = false })
+
+	defer debug.SetGCPercent(debug.SetGCPercent(10))
+	runtime.GC()
+	var base runtime.MemStats
+	runtime.ReadMemStats(&base)
+	var peak atomic.Uint64
+	stop, sampled := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(sampled)
+		var m runtime.MemStats
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(5 * time.Millisecond):
+			}
+			runtime.ReadMemStats(&m)
+			if m.HeapAlloc > peak.Load() {
+				peak.Store(m.HeapAlloc)
+			}
+		}
+	}()
+	res := s.do(t, caller{Token: e.tk.AdminA}, http.MethodGet, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/export", e.SlugA), nil)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	gz, err := gzip.NewReader(res.Body)
+	require.NoError(t, err)
+	tr := tar.NewReader(gz)
+	docs, chars := 0, 0
+	var m apigen.ExportManifest
+	for {
+		h, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		if h.Name == "manifest.json" {
+			require.NoError(t, json.NewDecoder(tr).Decode(&m))
+			continue
+		}
+		n, err := io.Copy(io.Discard, tr)
+		require.NoError(t, err)
+		if strings.HasSuffix(h.Name, ".md") {
+			docs++
+			chars += int(n)
+		}
+	}
+	close(stop)
+	<-sampled
+
+	assert.Equal(t, tickets, docs)
+	assert.Equal(t, tickets, m.Tickets)
+	assert.Greater(t, chars, tickets*bodyChars, "every document carries its whole body")
+	grown := int64(peak.Load()) - int64(base.HeapAlloc)
+	t.Logf("the heap grew by %d bytes exporting %d bytes of bodies", grown, tickets*bodyChars)
+	assert.Less(t, grown, int64(tickets*bodyChars/4),
+		"the heap grew by %d bytes exporting %d bytes of bodies: the export holds a page, not the archive", grown, tickets*bodyChars)
 }

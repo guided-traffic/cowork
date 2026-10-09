@@ -27,7 +27,7 @@ const exportUsage = "Usage: cowork-mcp export <tenant>/<PROJECT> <dir>\n"
 // (docs/adr/0070 D2, D5): the documents named by key, `<tenant>/<PROJECT>-<n>.md`,
 // and the three manifests (docs/adr/0051 D4). The export is recorded on the
 // installation as every export is (docs/adr/0059 D3).
-func exportProject(ctx context.Context, e Env, args []string) int {
+func exportProject(ctx context.Context, e Env, args []string, _ bool) int {
 	tenant, project, ok := strings.Cut(args[0], "/")
 	if !ok || !domain.ValidTenantSlug(tenant) || !domain.ValidProjectKey(project) {
 		fmt.Fprintf(e.Stderr, "cowork-mcp: %q names no project, <tenant>/<PROJECT> such as acme/VKO\n\n%s", args[0], exportUsage)

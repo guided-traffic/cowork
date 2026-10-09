@@ -257,7 +257,8 @@ func (s *Server) ResetAccountPassword(ctx context.Context, req apigen.ResetAccou
 }
 
 // UnlockAccount forgets the failures and the lock of the account's username
-// (docs/adr/0033 D6).
+// (docs/adr/0033 D6). The document admits a session only: a token that could
+// unlock between guesses would make the lockout hold never (docs/adr/0035 D5).
 func (s *Server) UnlockAccount(ctx context.Context, req apigen.UnlockAccountRequestObject) (apigen.UnlockAccountResponseObject, error) {
 	t, p := tenantFrom(ctx), principal(ctx)
 	if perr := auth.Authorize(p, t.Role, administer); perr != nil {

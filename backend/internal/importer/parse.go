@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -110,6 +111,16 @@ func (f *File) fail(field string, line int, format string, args ...any) {
 	f.Errors = append(f.Errors, Message{Field: field, Line: line, Message: fmt.Sprintf(format, args...)})
 }
 
+// clone is a copy of the file whose messages and questions an analysis may
+// change without changing the file.
+func (f *File) clone() *File {
+	c := *f
+	c.Warnings = slices.Clone(f.Warnings)
+	c.Errors = slices.Clone(f.Errors)
+	c.Questions = slices.Clone(f.Questions)
+	return &c
+}
+
 // line is the line of a frontmatter key, 0 where the file has none.
 func (f *File) line(key string) int { return f.lines[key] }
 
@@ -138,6 +149,9 @@ const byteOrderMark = "\xef\xbb\xbf"
 // (docs/adr/0044 D3).
 const contextMarker = "<!-- cowork: context of "
 
+// skipContext is why a /context document is skipped.
+const skipContext = "a /context document, a ticket with what surrounds it for reading, is no import format: skipped (docs/adr/0044 D3)"
+
 // The fields Parse names in its messages beside the frontmatter's keys.
 const (
 	fieldFile = "file"
@@ -147,8 +161,9 @@ const (
 const skipNotTicketName = "not a ticket file: its name is neither NNN-<slug>.md, local_NNN-<slug>.md nor <PROJECT>-<n>.md (docs/adr/0063 D5)"
 
 // Parse reads one Markdown file of an upload. A file whose name is no ticket
-// file's is skipped; everything else is read as far as it goes, and what
-// cannot be read is an error of the file, with its line where it has one.
+// file's is skipped, and so is a /context document; everything else is read
+// as far as it goes, and what cannot be read is an error of the file, with
+// its line where it has one.
 func Parse(p string, content []byte) File {
 	f := File{Path: p, lines: map[string]int{}}
 	base := path.Base(p)
@@ -168,8 +183,7 @@ func Parse(p string, content []byte) File {
 	}
 	text := strings.ReplaceAll(string(bytes.TrimPrefix(content, []byte(byteOrderMark))), "\r\n", "\n")
 	if strings.HasPrefix(text, contextMarker) {
-		f.Format, f.unreadable = FormatExport, true
-		f.fail(fieldFile, contextLine(text), "a /context document is no import format: its read-only sections start here (docs/adr/0044 D3)")
+		f.Skip = skipContext
 		return f
 	}
 	front, rest, restLine, ok := splitFrontmatter(text)
@@ -200,17 +214,6 @@ func number(digits string) int32 {
 		return 0
 	}
 	return int32(n)
-}
-
-// contextLine is the line of a /context document where its first read-only
-// section starts, `## Links`; the marker's line where it has none.
-func contextLine(text string) int {
-	for i, l := range strings.Split(text, "\n") {
-		if strings.TrimSpace(l) == "## Links" {
-			return i + 1
-		}
-	}
-	return 1
 }
 
 // splitFrontmatter cuts a file into its frontmatter and the text after it,
@@ -248,12 +251,17 @@ func plainTitle(base, body string) string {
 // maxTitle is the longest title the column takes.
 const maxTitle = 300
 
-// maxBody and maxQuestionText are the longest body and the longest options or
-// answer of a question, in characters, that the API takes and the database
-// holds (docs/adr/0051 D7).
+// The longest texts the API takes, in characters (docs/adr/0051 D7,
+// components/schemas.yaml): a body, a question's options and answer — which
+// the database holds as well —, a recommendation, a threat, a transition's
+// reason — a block's, a drop's — and its note, the verification of a done.
 const (
-	maxBody         = 200000
-	maxQuestionText = 100000
+	maxBody           = 200000
+	maxQuestionText   = 100000
+	maxRecommendation = 10000
+	maxThreat         = 2000
+	maxReason         = 2000
+	maxNote           = 10000
 )
 
 func clip(s string, n int) string {

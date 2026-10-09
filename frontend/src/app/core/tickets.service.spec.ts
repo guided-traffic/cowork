@@ -878,7 +878,7 @@ describe('TicketsService', () => {
       http.expectNone(ticketUrl('acme/VKO-99'));
     });
 
-    it.each(['question.changed', 'comment.changed', 'pull_request.changed'] as const)(
+    it.each(['question.changed', 'comment.changed'] as const)(
       'never refetches the ticket on %s, whatever version it names, because they change nothing it shows',
       async (name) => {
         stream.next(changed(name, key, 99));
@@ -1058,7 +1058,7 @@ describe('TicketsService', () => {
       expect(take(tenantUrl)).toHaveLength(1);
     });
 
-    it.each(['comment.changed', 'interest.changed', 'pull_request.changed'] as const)(
+    it.each(['comment.changed', 'interest.changed'] as const)(
       'do not reload on %s, which no list shows',
       async (name) => {
         stream.next(changed(name, 'acme/VKO-1', 2));

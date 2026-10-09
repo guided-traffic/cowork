@@ -83,7 +83,6 @@ func TestAnalyzeADryRunOfARepositorysTickets(t *testing.T) {
 	r := Analyze(Read(fixtures(t)), tg, nil)
 
 	assert.Equal(t, Summary{Files: 10, Create: 9, Skip: 1, Open: 3, Confidential: 1, HighestNumber: ptr(int32(99))}, r.Report.Summary)
-	assert.Empty(t, r.Blocking())
 	readme := file(t, r, "tickets/README.md")
 	assert.Equal(t, OutcomeSkip, readme.Outcome)
 	assert.Equal(t, skipNotTicketName, *readme.Reason)
@@ -162,10 +161,11 @@ func TestAnalyzeADryRunOfARepositorysTickets(t *testing.T) {
 	assert.Equal(t, r.Report, back, "the report is stored as JSON and read back the same")
 }
 
-// docs/adr/0064 D3, docs/adr/0007 D4: a number the project holds is a
-// conflict naming its key, one a purged ticket held as well; a number the
-// upload brings twice is an error of both files; a reference to a file the
-// import does not create resolves to nothing.
+// docs/adr/0064 D3, docs/adr/0007 D4, docs/adr/0051 D2: a number the project
+// holds is a conflict naming its key, and one a purged ticket held is given
+// back with a warning; a number the upload brings twice is an error of both
+// files; each is left out of the plan, the report saying why, and a
+// reference to a file the import does not create resolves to nothing.
 func TestAnalyzeConflictsDuplicatesAndPurgedNumbers(t *testing.T) {
 	tg := target()
 	tg.Taken[26] = true
@@ -176,21 +176,35 @@ func TestAnalyzeConflictsDuplicatesAndPurgedNumbers(t *testing.T) {
 	phase := file(t, r, "026-phase-3-the-owner-and-a-second-person-cannot-yet-run-the-daily-work-in-the-browser.md")
 	assert.Equal(t, OutcomeConflict, phase.Outcome)
 	assert.Equal(t, "acme/COW-26", *phase.Conflict)
+	assert.Equal(t, "left out of the import: the project holds its number as acme/COW-26 (docs/adr/0064 D3)", *phase.Reason)
 	purged := file(t, r, "050-cowork-mcp-has-not-run-in-a-live-claude-code-session.md")
-	assert.Equal(t, OutcomeConflict, purged.Outcome)
-	assert.True(t, warned(purged, "was purged; its number is not handed out again"))
+	assert.Equal(t, OutcomeCreate, purged.Outcome)
+	assert.Nil(t, purged.Conflict)
+	assert.True(t, warned(purged, "acme/COW-50 was purged; the import gives its number back"))
 	for _, p := range []string{"archive/045-the-login-page-follows-a-return-path-with-a-control-character-to-another-site.md", "other/045-again.md"} {
 		f := file(t, r, p)
 		assert.Equal(t, OutcomeError, f.Outcome, p)
 		assert.Contains(t, f.Errors[0].Message, "the upload brings the number 45 twice", p)
+		assert.Contains(t, *f.Reason, "left out of the import: the file has an error", p)
 	}
 	frontend := file(t, r, "archive/028-the-frontend-has-no-component-library-no-theme-no-client-and-no-live-updates.md")
 	assert.Empty(t, frontend.Links)
 	assert.True(t, warned(frontend, "T26 is in the upload, but docs/tickets/026-"), "%+v", frontend.Warnings)
 	assert.Contains(t, planned(t, r, 28).Body, "- Found in T26, which is not in this import (filed-from of docs/tickets/archive/028-")
-	assert.Len(t, r.Blocking(), 4)
-	assert.Equal(t, 2, r.Report.Summary.Conflict)
+	assert.Equal(t, []int32{4, 7, 22, 28, 50, 51, 99}, plannedNumbers(r), "the plan leaves the conflict and the errors out")
+	assert.Equal(t, 1, r.Report.Summary.Conflict)
 	assert.Equal(t, 2, r.Report.Summary.Error)
+	assert.Equal(t, 7, r.Report.Summary.Create)
+}
+
+// plannedNumbers are the numbers of the tickets the plan creates, in its
+// order.
+func plannedNumbers(r Result) []int32 {
+	numbers := make([]int32, 0, len(r.Plan.Tickets))
+	for _, p := range r.Plan.Tickets {
+		numbers = append(numbers, p.Number)
+	}
+	return numbers
 }
 
 // docs/adr/0051 D2, docs/adr/0063 D1, docs/adr/0008 D5: the corrections — a
@@ -213,7 +227,7 @@ func TestAnalyzeAppliesTheCorrections(t *testing.T) {
 	}
 	require.Empty(t, u.Check(corrections))
 	r := Analyze(u, tg, corrections)
-	assert.Empty(t, r.Blocking(), "the conflict of 026 is excluded")
+	assert.Zero(t, r.Report.Summary.Conflict, "the conflict of 026 is excluded")
 
 	phase := file(t, r, "026-phase-3-the-owner-and-a-second-person-cannot-yet-run-the-daily-work-in-the-browser.md")
 	assert.Equal(t, OutcomeExclude, phase.Outcome)
@@ -401,29 +415,40 @@ func TestAnalyzeRefusesWhatABlockCannotBe(t *testing.T) {
 }
 
 // docs/adr/0051 D7: the execution writes no text longer than the API takes —
-// a body of 200,000 characters, a question's options and its answer of
-// 100,000 each, counted in characters as the execution writes them, with the
-// keys the import puts in place of a mention —; a longer one is an error of
-// its file, which refuses the execution.
+// a body of 200,000 characters, a question of 2,000, its options and its
+// answer of 100,000 each and its recommendation of 10,000, counted in
+// characters as the execution writes them, with the keys the import puts in
+// place of a mention and the lines it adds; a threat, a block's reason and a
+// dropped ticket's reason of 2,000, a done ticket's note of 10,000 —; a longer
+// one is an error of its file, which the execution leaves out.
 func TestTheImportHoldsTheTextsToTheLengthsOfTheAPI(t *testing.T) {
-	src := func(name, text string) Source {
+	src := func(name, front, text string) Source {
 		return Source{Path: "docs/tickets/" + name, Content: []byte("---\nid: T" + strings.TrimLeft(name[:3], "0") +
-			"\ntitle: x\nstate: filed\nseverity: low\nsecurity: none\neffort: S\nopened: 2026-10-07\n---\n\n" + text + "\n")}
+			"\ntitle: x\nseverity: low\neffort: S\nopened: 2026-10-07\n" + front + "---\n\n" + text + "\n")}
 	}
-	question := func(options, answer string) string {
-		return "## Open questions\n\n### Q1: which?\n\n" + options + "\n\n**Answer:** " + answer
+	const filed = "state: filed\nsecurity: none\n"
+	question := func(q, options, recommendation, answer string) string {
+		return "## Open questions\n\n### Q1: " + q + "\n\n" + options + "\n\n**Recommendation:** " + recommendation + "\n\n**Answer:** " + answer
 	}
 	long := func(n int) string { return strings.Repeat("ä", n) }
 	r := Analyze(Read([]Source{
-		src("001-a.md", long(maxBody)),
-		src("002-b.md", long(maxBody+1)),
-		src("003-c.md", question(long(maxQuestionText), long(maxQuestionText))),
-		src("004-d.md", question(long(maxQuestionText+1), "a")),
-		src("005-e.md", question("a", long(maxQuestionText+1))),
-		src("006-f.md", long(maxBody-9)+" T1 T1 T1"),
+		src("001-a.md", filed, long(maxBody)),
+		src("002-b.md", filed, long(maxBody+1)),
+		src("003-c.md", filed, question(long(maxQuestionLength), long(maxQuestionText), long(maxRecommendation), long(maxQuestionText))),
+		src("004-d.md", filed, question("which?", long(maxQuestionText+1), "a", "a")),
+		src("005-e.md", filed, question("which?", "a", "a", long(maxQuestionText+1))),
+		src("006-f.md", filed, long(maxBody-9)+" T1 T1 T1"),
+		src("007-g.md", filed+"blocked-by: T8\n", long(maxBody-30)),
+		src("008-h.md", filed, question(long(maxQuestionLength-10)+" T1 T1 T1", "a", "a", "a")),
+		src("009-i.md", filed, question("which?", "a", long(maxRecommendation+1), "a")),
+		src("010-j.md", "state: filed\nsecurity: hardening\nthreat: "+long(maxThreat+1)+"\n", ""),
+		src("011-k.md", "state: blocked\nsecurity: none\nblocked-by: human\nblocked-from: filed\nblocked-reason: "+long(maxReason+1)+"\n", ""),
+		src("012-l.md", "state: done\nsecurity: none\nshipped: "+long(maxNote+1)+"\n", ""),
+		src("013-m.md", "state: dropped\nsecurity: none\ndropped-reason: "+long(maxReason+1)+"\n", ""),
+		src("014-n.md", "state: done\nsecurity: hardening\nthreat: "+long(maxThreat)+"\nshipped: "+long(maxNote)+"\n", ""),
 	}), target(), nil)
 
-	for _, name := range []string{"001-a.md", "003-c.md"} {
+	for _, name := range []string{"001-a.md", "003-c.md", "014-n.md"} {
 		assert.Equal(t, OutcomeCreate, file(t, r, name).Outcome, "%s is at the bounds", name)
 	}
 	for name, want := range map[string]MessageReport{
@@ -431,10 +456,64 @@ func TestTheImportHoldsTheTextsToTheLengthsOfTheAPI(t *testing.T) {
 		"004-d.md": {Field: ptr("Q1"), Line: ptr(13), Message: "Q1's options have 100001 characters, more than the 100000 a question's options hold"},
 		"005-e.md": {Field: ptr("Q1"), Line: ptr(13), Message: "Q1's answer has 100001 characters, more than the 100000 an answer holds"},
 		"006-f.md": {Field: ptr(fieldBody), Message: "the body as the import writes it has 200024 characters, more than the 200000 a ticket's body holds"},
+		// The blocks link from 008 becomes a line under ## Related once 008
+		// is left out, which takes 007 past the bound.
+		"007-g.md": {Field: ptr(fieldBody), Message: "the body as the import writes it has 200066 characters, more than the 200000 a ticket's body holds"},
+		"008-h.md": {Field: ptr("Q1"), Line: ptr(13), Message: "Q1 as the import writes it has 2023 characters, more than the 2000 a question holds"},
+		"009-i.md": {Field: ptr("Q1"), Line: ptr(13), Message: "Q1's recommendation has 10001 characters, more than the 10000 a recommendation holds"},
+		"010-j.md": {Field: ptr(keyThreat), Line: ptr(9), Message: "the threat has 2001 characters, more than the 2000 a threat holds"},
+		"011-k.md": {Field: ptr(keyBlockedReason), Line: ptr(11), Message: "the block's reason has 2001 characters, more than the 2000 a reason holds"},
+		"012-l.md": {Field: ptr(keyShipped), Line: ptr(9), Message: "the shipped line has 10001 characters, more than the 10000 a verification note holds"},
+		"013-m.md": {Field: ptr(keyDroppedReason), Line: ptr(9), Message: "the dropped-reason has 2001 characters, more than the 2000 a reason holds"},
 	} {
 		f := file(t, r, name)
 		assert.Equal(t, OutcomeError, f.Outcome, name)
 		assert.Equal(t, []MessageReport{want}, f.Errors, name)
 	}
-	assert.Len(t, r.Blocking(), 4, "the execution is refused while they are in it")
+	assert.Equal(t, []int32{1, 3, 14}, plannedNumbers(r), "the execution leaves out every file past a bound")
+	assert.Empty(t, r.Plan.Links)
+}
+
+// The execution assigns by a file's identity only the member its dry run
+// named, and an import through a token assigns a confidential ticket to the
+// token's own person or to nobody (docs/adr/0043 D3, docs/adr/0065 D9) — the
+// file's assignee and a correction's alike; nothing of it refuses a file.
+func TestAnalyzeAssignsWhomTheDryRunNamedAndAnAgentMay(t *testing.T) {
+	ada := Person{ID: uuid.Must(uuid.NewV7()), Name: "Ada", Username: ptr("ada")}
+	bob := Person{ID: uuid.Must(uuid.NewV7()), Name: "Bob", Username: ptr("bob")}
+	src := func(name, assignee string) Source {
+		return Source{Path: "docs/tickets/" + name, Content: []byte("---\nid: T" + strings.TrimLeft(strings.TrimPrefix(name, "local_")[:3], "0") +
+			"\ntitle: x\nstate: filed\nseverity: low\nsecurity: none\neffort: S\nopened: 2026-10-07\nassignee: " + assignee + "\n---\n")}
+	}
+	u := Read([]Source{src("001-a.md", "Ada <local:ada>"), src("local_002-b.md", "Ada <local:ada>"),
+		src("local_003-c.md", "Bob <local:bob>"), src("004-d.md", "Bob <local:bob>")})
+	assigned := func(r Result, n int32) *uuid.UUID { return planned(t, r, n).Assignee }
+
+	tg := target()
+	tg.Persons[IdentityOf("ada", "", "")] = ada
+	tg.Persons[IdentityOf("bob", "", "")] = bob
+	dry := Analyze(u, tg, nil)
+	assert.Equal(t, &ada.ID, assigned(dry, 1), "a dry run assigns whom the identity names")
+
+	tg.Named = map[string]uuid.UUID{"docs/tickets/001-a.md": ada.ID, "docs/tickets/local_002-b.md": ada.ID,
+		"docs/tickets/local_003-c.md": ada.ID}
+	r := Analyze(Read(u.sources), tg, nil)
+	assert.Equal(t, &ada.ID, assigned(r, 1), "the member the dry run named")
+	assert.Nil(t, assigned(r, 3), "another member than the dry run named")
+	assert.True(t, warned(file(t, r, "local_003-c.md"), "whom the dry run did not name"))
+	assert.Nil(t, assigned(r, 4), "a member the dry run did not name")
+	assert.Equal(t, OutcomeCreate, file(t, r, "004-d.md").Outcome)
+
+	tg.Named, tg.TokenPerson = nil, &bob.ID
+	tg.Assignees[ada.ID] = ada
+	corrections := []Correction{{Path: "docs/tickets/local_003-c.md", AssigneeSet: true, Assignee: &ada.ID}}
+	r = Analyze(Read(u.sources), tg, corrections)
+	assert.Equal(t, &ada.ID, assigned(r, 1), "a token assigns a ticket that is not confidential to anybody")
+	assert.Nil(t, assigned(r, 2), "a token assigns a confidential ticket to nobody but its person")
+	assert.Nil(t, file(t, r, "local_002-b.md").Assignee.Person)
+	assert.True(t, warned(file(t, r, "local_002-b.md"), "assigns a confidential ticket to the token's own person or to nobody"))
+	assert.Nil(t, assigned(r, 3), "a correction as well")
+	r = Analyze(Read(u.sources), tg, nil)
+	assert.Equal(t, &bob.ID, assigned(r, 3), "its own person")
+	assert.Equal(t, 4, r.Report.Summary.Create)
 }

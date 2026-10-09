@@ -105,8 +105,8 @@ D3): it meets the hard-off list and every agent rule of
 of time, no override of the prerequisite refusal, no confidential flag, no token administration, no
 deletion, restoration or purge, and no confidential ticket assigned to anyone but the person — and
 is refused, `403 agent_forbidden`, each of the nineteen operations only a session does
-([tokens.md](tokens.md#what-only-a-session-does)) — a token, a password, an act that gives access, a
-purge, the tenant's webhook secret, the removal of orphaned objects, a turn of the chat, the stop of
+([tokens.md](tokens.md#what-only-a-session-does)) — a token, a password, an unlock, an act that gives access, a
+purge, the removal of orphaned objects, a turn of the chat, the stop of
 one, the choice of the chat's capabilities, a logout among them
 (`TestTheAgentHeaderOnASession`, `TestAnAgentSessionIsRefusedWhatOnlyASessionDoes`). A creating
 `POST` carries an `Idempotency-Key` derived from the conversation and the call. The `api` escape hatch
@@ -250,9 +250,7 @@ included, may go to it ([docs/operations/chat.md](../operations/chat.md#adding-a
 ### H-38 — A model steered by injected text does at once whatever the chosen capabilities allow
 
 Live by design. Text in a ticket, a comment, a question or an answer can carry instructions, and a
-model may follow them; the person may not even have read that text. So can the title of a pull
-request or a commit GitHub's webhook linked, which a ticket's context carries — written, of a pull
-request, by the repository's owner, a member of its organisation or a collaborator only
+model may follow them; the person may not even have read that text
 ([agent-client.md](agent-client.md#h-34) H-34). Nothing waits for the person:
 within the API's rules the chat can, at once, file a ticket in any project of the tenant the person
 may file in, replace a ticket's body, comment, ask a question of anyone in the tenant, link two
@@ -379,10 +377,10 @@ proxy, encrypted end to end. Mitigation: `https://`, or the provider's host in `
 
 Live where `COWORK_CHAT_TURN_TIMEOUT` and `COWORK_CHAT_MAX_STEPS` are both `0`. A turn is exempt from the
 request timeout and then bounded by nothing but the model, the person's Stop and the connection, and
-each tool call that writes moves the session's idle clock like any write of the person
+each tool call moves the session's idle clock like any request of the person
 ([sessions.md](sessions.md#what-keeps-a-session-and-what-brings-a-person-back)): a turn left running in
-an open tab keeps the session alive past the idle limit for as long as the model goes on writing, up
-to the absolute limit. Mitigation: leave at least one of the two limits set — the defaults are five
+an open tab keeps the session alive past the idle limit for as long as the model goes on calling
+tools, up to the absolute limit — as the tab's own event stream may anyway ([H-109](sessions.md#h-109)). Mitigation: leave at least one of the two limits set — the defaults are five
 minutes and eight calls of the model.
 
 ### What a provider does with what it receives

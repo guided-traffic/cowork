@@ -46,7 +46,7 @@ const manifest = (tickets: number, left: number): ExportManifest => ({
 describe('ProjectHeader', () => {
   let tenant: WritableSignal<string | null>;
   let projects: WritableSignal<Project[]>;
-  let isAdmin: WritableSignal<boolean>;
+  let canWrite: WritableSignal<boolean>;
   let exportProject: MockInstance<ImportsService['exportProject']>;
   let warn: MockInstance<typeof console.warn>;
 
@@ -54,7 +54,7 @@ describe('ProjectHeader', () => {
     warn = vi.spyOn(console, 'warn');
     tenant = signal<string | null>('acme');
     projects = signal<Project[]>([cowork]);
-    isAdmin = signal(false);
+    canWrite = signal(false);
     exportProject = vi.fn<ImportsService['exportProject']>();
     TestBed.configureTestingModule({
       providers: [
@@ -64,7 +64,7 @@ describe('ProjectHeader', () => {
         { provide: TicketActions, useValue: { create: vi.fn() } },
         { provide: MembersService, useValue: { list: signal([]) } },
         { provide: SessionService, useValue: { tenant } },
-        { provide: TenantService, useValue: { isAdmin } },
+        { provide: TenantService, useValue: { canWrite } },
         { provide: ImportsService, useValue: { exportProject } },
         {
           provide: ProjectsService,
@@ -366,8 +366,8 @@ describe('ProjectHeader', () => {
     const link = (page: HTMLElement) =>
       page.querySelector<HTMLAnchorElement>('[data-testid="project-import"]');
 
-    it("leads the tenant's administrators to the import of the project", async () => {
-      isAdmin.set(true);
+    it('leads a writer of the tenant — a member or an administrator — to the import of the project', async () => {
+      canWrite.set(true);
 
       const { page } = await render();
 
@@ -375,14 +375,14 @@ describe('ProjectHeader', () => {
       expect(link(page)?.getAttribute('aria-label')).toBe('Import tickets');
     });
 
-    it('is not offered to anybody else', async () => {
+    it('is not offered to a viewer', async () => {
       const { page } = await render();
 
       expect(link(page)).toBeNull();
     });
 
     it('is not offered for a project the list does not hold, an archived one', async () => {
-      isAdmin.set(true);
+      canWrite.set(true);
       projects.set([{ ...cowork, archived_at: '2026-10-06T10:00:00Z' }]);
 
       const { page } = await render();

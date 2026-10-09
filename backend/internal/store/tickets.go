@@ -136,6 +136,9 @@ const (
 	// highest first, then the id (docs/adr/0014 D5). The ids are unique across
 	// tenants, so the parts of every tenant merge into one order.
 	ByScore
+	// ByNumber is a project's tickets by their number, the export's order
+	// (docs/adr/0051 D4).
+	ByNumber
 )
 
 // rankedKey is the key a ticket is listed by in its project's rank: none
@@ -145,15 +148,17 @@ const (
 const rankedKey = "(CASE WHEN t.state IN ('done', 'dropped') THEN NULL ELSE t.rank END)"
 
 // Position is the cursor position after r in the order: the id (NewestFirst),
-// the score's key and the id (ByScore), or the key and the number,
-// "<key>.<number>", the key empty for an unranked ticket, a done or dropped
-// one included whatever its column holds (ByRank).
+// the score's key and the id (ByScore), the number (ByNumber), or the key and
+// the number, "<key>.<number>", the key empty for an unranked ticket, a done
+// or dropped one included whatever its column holds (ByRank).
 func (o TicketOrder) Position(r TicketRow) string {
 	switch o {
 	case NewestFirst:
 		return r.ID.String()
 	case ByScore:
 		return ScorePosition(r.ScoreKey, r.ID)
+	case ByNumber:
+		return strconv.Itoa(int(r.Number))
 	}
 	return RankPosition(r.Rank, r.State, r.Number)
 }
@@ -254,6 +259,17 @@ func (r *Reader) ListTickets(ctx context.Context, f TicketFilter, page TicketPag
 	return out, nil
 }
 
+// CountTickets counts the tickets a list of the filter holds, under the same
+// predicates as ListTickets.
+func (r *Reader) CountTickets(ctx context.Context, f TicketFilter) (int64, error) {
+	b := &queryBuilder{}
+	b.where("t.tenant_id = " + b.arg(r.TenantID))
+	b.where("app_ticket_visible(t.project_id, t.confidential, t.assignee_id, t.reporter_id)")
+	b.live()
+	b.filter(f)
+	return r.countTickets(ctx, b)
+}
+
 func (r *Reader) countTickets(ctx context.Context, b *queryBuilder) (int64, error) {
 	var n int64
 	sql := "SELECT count(*) FROM tickets t JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id\nWHERE " +
@@ -270,6 +286,8 @@ func orderBy(o TicketOrder) string {
 		return "ORDER BY t.id DESC"
 	case ByScore:
 		return "ORDER BY t.score_key DESC, t.id"
+	case ByNumber:
+		return "ORDER BY t.number"
 	}
 	return "ORDER BY " + rankedKey + " NULLS LAST, t.number"
 }
@@ -308,6 +326,12 @@ func (b *queryBuilder) after(o TicketOrder, after string) (string, error) {
 		}
 		k := b.arg(key)
 		return "(t.score_key < " + k + " OR (t.score_key = " + k + " AND t.id > " + b.arg(id) + "))", nil
+	case ByNumber:
+		n, err := strconv.Atoi(after)
+		if err != nil {
+			return "", fmt.Errorf("list tickets: bad cursor position: %w", err)
+		}
+		return "t.number > " + b.arg(n), nil
 	}
 	key, number, _ := strings.Cut(after, ".")
 	n, err := strconv.Atoi(number)

@@ -47,7 +47,9 @@ variable joins the table; D3: the controller's body limit covers its upload), bu
 not configured: at most 10,000 files an upload (`importer.MaxFiles`) and one import at a time per
 replica, a dry run or an execution (`importSlot` in
 [`imports.go`](../../backend/internal/api/imports.go)); both bound what one request holds in memory,
-neither is a budget, and D1 stands.
+neither is a budget, and D1 stands. Amended 2026-10-09 (D2: the body limit is the operation's, as
+the API document declares its body, and a body of a type the operation does not declare is `415`
+before it is read).
 
 ## Context
 
@@ -81,7 +83,12 @@ not guessed.
 | `COWORK_MAX_QUERY_LENGTH` | `256` | a longer search query answers `400` |
 
 A value of `0` disables that limit; the operations page says that a disabled body limit lets
-one request hold unbounded memory and that `0` belongs in no production values file. *(Added
+one request hold unbounded memory and that `0` belongs in no production values file. *(Amended
+2026-10-09, made concrete by the fix of the security review of 2026-10-07: which of the body limits
+holds a request is the operation's, as the API document declares its body — the attachment's or
+the import's for an operation that takes a multipart upload, `COWORK_MAX_JSON_BODY` for every other
+—, never the request's `Content-Type`; a body of a type the operation does not declare is `415`
+before it is read ([`api/validate.go`](../../backend/internal/api/validate.go) `limitBody`).)* *(Added
 2026-10-05: the tenant's attachment quota is no bound on what one request costs but on what a
 tenant keeps, and its default is `0` — no quota — because no figure suits every installation and an
 upgrade must not start refusing uploads; an installation of several tenants sets it, which the

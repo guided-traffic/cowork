@@ -321,7 +321,9 @@ markdown:
       Grammar v1 (docs/adr/0044 D1, docs/adr/0011 D4): the frontmatter from the columns, the
       body, then `## Open questions`. The `ETag` is the ticket's version, for `If-Match`; the
       document is never answered 304. Every call is recorded: data left the system
-      (docs/adr/0044 D5).
+      (docs/adr/0044 D5). A recorded read: a session's request with `Sec-Fetch-Site`
+      `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
+    x-cowork-recorded-read: true
     responses:
       '200':
         description: The document
@@ -393,15 +395,15 @@ context:
       implementation stage, and the count of open ones), `## Recent comments`
       (the last `comments`, oldest of them first, each quoted under its author,
       agent mark and time; a withdrawn one as `[withdrawn]`), `## Attachments`
-      (name, type, size and URL, never content), `## Pull requests` (each pull
-      request and default-branch commit GitHub's webhook linked, with its state,
-      author and URL, its title quoted — written only when the ticket has one,
-      docs/adr/0071 D6) and `## Recent activity` (the
+      (name, type, size and URL, never content) and `## Recent activity` (the
       last `activity`). `comments=0` or `activity=0` leaves its section out. What
       the caller cannot see is absent. The document carries no `ETag`: it is not
       one entity. Every call is recorded: data left the system (D5). It is no
       import format (D3): there is no importer yet, and the one ADR 0044
-      decides refuses a file that carries these sections.
+      decides refuses a file that carries these sections. A recorded read: a
+      session's request with `Sec-Fetch-Site` `same-site` or `cross-site` is
+      `403 csrf` (docs/adr/0026 D5).
+    x-cowork-recorded-read: true
     parameters:
       - name: comments
         in: query
@@ -486,72 +488,10 @@ context:
 
               - safari-sign-in.png — image/png, 182.4 KiB — /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content
 
-              ## Pull requests
-
-              - github.com/acme/website#118 "Send the password as typed (WEB-42)" (merged 2026-10-06 16:40 UTC, by grace-hopper, key in the trailer) — https://github.com/acme/website/pull/118
-              - github.com/acme/website@4c1d8e2b7a9f "Send the password as typed (WEB-42) (#118)" (merged 2026-10-06 16:40 UTC, by grace-hopper, key in the trailer) — https://github.com/acme/website/commit/4c1d8e2b7a9f60e3d5c4b1a2f8e7d6c5b4a39281
-
               ## Recent activity
 
               - 2026-10-02 09:12 UTC — Grace Hopper — transitioned: decided → in-progress
               - 2026-10-02 09:14 UTC — Ada Lovelace — set the horizon to now — reason: "Customers cannot sign in"
               - 2026-10-05 15:02 UTC — Grace Hopper — commented
-              - 2026-10-06 14:02 UTC — system:github — linked pull request github.com/acme/website#118
-              - 2026-10-06 16:40 UTC — system:github — merged pull request github.com/acme/website#118
-              - 2026-10-06 16:40 UTC — system:github — linked commit github.com/acme/website@4c1d8e2b7a9f
-      default:
-        $ref: './components/responses.yaml#/Problem'
-pullRequests:
-  parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
-    - $ref: './components/parameters.yaml#/ProjectKey'
-    - $ref: './components/parameters.yaml#/TicketNumber'
-  get:
-    operationId: listTicketPullRequests
-    tags: [tickets]
-    summary: The pull requests and default-branch commits that name the ticket
-    description: |
-      What GitHub's webhook linked to the ticket (docs/adr/0071 D6): each pull request whose title
-      or body names it, and each commit on a bound repository's default branch whose message names
-      it, with where the key was found, oldest link first. Read under the ticket's predicate, like
-      its other children: a confidential ticket's pull requests exist only for whoever sees the
-      ticket (docs/adr/0065 D1). A link a person removed is absent.
-    parameters:
-      - $ref: './components/parameters.yaml#/Cursor'
-      - $ref: './components/parameters.yaml#/Limit'
-      - $ref: './components/parameters.yaml#/IfNoneMatch'
-    responses:
-      '200':
-        description: A page of pull requests
-        headers:
-          ETag:
-            $ref: './components/headers.yaml#/ListETag'
-        content:
-          application/json:
-            schema:
-              $ref: './components/schemas.yaml#/PullRequestList'
-      '304':
-        $ref: './components/responses.yaml#/NotModified'
-      default:
-        $ref: './components/responses.yaml#/Problem'
-pullRequest:
-  parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
-    - $ref: './components/parameters.yaml#/ProjectKey'
-    - $ref: './components/parameters.yaml#/TicketNumber'
-    - $ref: './components/parameters.yaml#/PullRequestID'
-  delete:
-    operationId: removeTicketPullRequest
-    tags: [tickets]
-    summary: Remove a wrong link of a pull request or a commit
-    description: |
-      A key read from a title or a message can name a ticket it did not mean (docs/adr/0071
-      Residual risks); a person removes the link like any link — a member's act with `write`
-      scope, in the agent baseline (docs/adr/0043 D2). The removal stays: a later delivery that
-      names the ticket again does not bring the link back. Recorded as `unlinked`. Idempotent:
-      `204` also when the link is gone.
-    responses:
-      '204':
-        description: The link is gone
       default:
         $ref: './components/responses.yaml#/Problem'

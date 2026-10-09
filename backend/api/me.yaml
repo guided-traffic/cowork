@@ -190,7 +190,9 @@ password:
     summary: Change the password of the person's local account
     description: |
       Needs the current password, which counts like a login attempt towards
-      the lockout of the account (docs/adr/0033 D6). The new one must be as long
+      the lockout of the account and the throttle of the client's address —
+      `429 too_many_attempts` with `Retry-After` before it is hashed
+      (docs/adr/0033 D6). The new one must be as long
       as `COWORK_PASSWORD_MIN_LENGTH` and differ from the current one; every
       other session of the account ends (D4), and a temporary password is no
       longer temporary. The local administrator's password is set by the

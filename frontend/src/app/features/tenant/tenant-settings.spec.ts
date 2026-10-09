@@ -98,18 +98,7 @@ describe('TenantSettings', () => {
         MessageService,
         { provide: TenantService, useValue: { value, isAdmin, update } },
         { provide: SessionService, useValue: { tenant: signal('acme') } },
-        {
-          provide: Api,
-          useValue: {
-            invoke$Response: getUsage,
-            // GitHub's webhook (docs/adr/0071), which its own spec drives.
-            invoke: vi.fn().mockResolvedValue({
-              webhook_path: '/api/v1/tenants/acme/integrations/github/webhook',
-              events: ['pull_request', 'push'],
-              secret: null,
-            }),
-          },
-        },
+        { provide: Api, useValue: { invoke$Response: getUsage } },
         { provide: EventStreamService, useValue: { events } },
         // The consistency check's section reads through a service of its own, which its own spec
         // covers; here it has nothing to show.
@@ -260,15 +249,6 @@ describe('TenantSettings', () => {
 
       expect(el(fixture, 'attachment-usage')).toBeNull();
       expect(getUsage).not.toHaveBeenCalled();
-    });
-
-    it("shows an administrator GitHub's webhook, and nobody else (docs/adr/0071 D1)", async () => {
-      const fixture = await render();
-      expect(el(fixture, 'github-webhook')).not.toBeNull();
-
-      isAdmin.set(false);
-      await settle(fixture);
-      expect(el(fixture, 'github-webhook')).toBeNull();
     });
 
     it('asks again on an upload in the tenant with the tag it holds, and keeps the usage on a 304', async () => {

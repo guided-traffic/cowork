@@ -3,6 +3,7 @@ package importer
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -190,8 +191,8 @@ func (u *Upload) referenceNumber(v, project string) (int32, bool) {
 type Target struct {
 	Tenant, Project string
 	// Taken are the numbers a ticket of the project holds, deleted ones
-	// included; Purged the numbers a purged ticket held (docs/adr/0064 D3,
-	// docs/adr/0007 D4).
+	// included (docs/adr/0064 D3); Purged the numbers a purged ticket held,
+	// which an import gives back (docs/adr/0007 D4).
 	Taken, Purged map[int32]bool
 	// Existing are the project's live tickets the caller sees that the
 	// upload's references name, by number.
@@ -204,6 +205,17 @@ type Target struct {
 	// Issuer is the identity provider's issuer, "" for none: an identity of
 	// another issuer is never resolved (docs/adr/0044 D1).
 	Issuer string
+	// Named are the members the dry run's report assigned, by the file's
+	// path, for an execution; nil while a dry run is analysed. An execution
+	// assigns by a file's identity only the member its dry run named: a
+	// person who became a member who can see the project since is assigned
+	// nobody, as the report the person read said.
+	Named map[string]uuid.UUID
+	// TokenPerson is the person of a request through a token or an agent's,
+	// nil for a person's own browser session: such a request assigns a
+	// confidential ticket to that person or to nobody, since its assignee is
+	// admitted to it (docs/adr/0043 D3, docs/adr/0065 D9).
+	TokenPerson *uuid.UUID
 }
 
 // Key is the full key a number gets in the target project.
@@ -213,18 +225,6 @@ func (t Target) Key(n int32) string { return domain.FullKey(t.Tenant, t.Project,
 type Result struct {
 	Report Report
 	Plan   Plan
-}
-
-// Blocking lists the files whose error or conflict refuses an execution
-// (docs/adr/0064 D3).
-func (r Result) Blocking() []*FileReport {
-	var out []*FileReport
-	for _, f := range r.Report.Files {
-		if f.Outcome == OutcomeError || f.Outcome == OutcomeConflict {
-			out = append(out, f)
-		}
-	}
-	return out
 }
 
 // Plan is what the execution writes: the tickets, parents before their
@@ -303,6 +303,9 @@ type entry struct {
 	waitsOn string
 	// related are the lines the body gains under `## Related`.
 	related []string
+	// unnamed is the member a file's identity resolves to at an execution
+	// whose dry run did not name them, who is assigned nobody.
+	unnamed *Person
 }
 
 func (e *entry) outcome() Outcome {
@@ -330,17 +333,37 @@ type analysis struct {
 	byNumber map[int32][]*entry
 	byKey    map[string]*entry
 	project  string
+	// long are the errors of the files whose texts a run before found
+	// longer than the API takes, by path; tooLong those this run finds.
+	long, tooLong map[string][]Message
 }
 
 // Analyze reads the upload against the target project with the corrections
 // a person sent — none for a dry run — into the report and the plan
 // (docs/adr/0051 D2, docs/adr/0063). The corrections must have passed Check.
+// A file with an error or a conflict is reported and left out of the plan
+// (docs/adr/0051 D2). A text the plan makes longer than the API takes is
+// known only once the plan stands — the keys and the lines the import puts
+// in depend on what it creates —, so a file found so is an error, and the
+// analysis runs again without it, until no file is.
 func Analyze(u *Upload, t Target, corrections []Correction) Result {
-	a := &analysis{u: u, t: t, corr: map[string]*Correction{}, byNumber: map[int32][]*entry{},
-		byKey: map[string]*entry{}, project: u.sourceProject()}
-	for i := range corrections {
-		a.corr[corrections[i].Path] = &corrections[i]
+	long := map[string][]Message{}
+	for {
+		a := &analysis{u: u, t: t, corr: map[string]*Correction{}, byNumber: map[int32][]*entry{},
+			byKey: map[string]*entry{}, project: u.sourceProject(), long: long, tooLong: map[string][]Message{}}
+		for i := range corrections {
+			a.corr[corrections[i].Path] = &corrections[i]
+		}
+		r := a.run()
+		if len(a.tooLong) == 0 {
+			return r
+		}
+		maps.Copy(long, a.tooLong)
 	}
+}
+
+// run is one analysis of the upload.
+func (a *analysis) run() Result {
 	a.classify()
 	a.numbers()
 	for _, e := range a.entries {
@@ -379,8 +402,12 @@ func (a *analysis) classify() {
 	}
 }
 
-// enter takes a ticket file into the analysis.
-func (a *analysis) enter(f *File, rep *FileReport) {
+// enter takes a ticket file into the analysis, a copy of it: a run writes
+// its messages and texts into the file it reads, and a next run starts from
+// the file as it was parsed.
+func (a *analysis) enter(parsed *File, rep *FileReport) {
+	f := parsed.clone()
+	f.Errors = append(f.Errors, a.long[f.Path]...)
 	e := &entry{f: f, rep: rep, corr: a.corr[f.Path], plan: &PlannedTicket{Path: f.Path, Number: f.Number}}
 	e.excluded = e.corr != nil && e.corr.Exclude
 	a.entries = append(a.entries, e)
@@ -393,8 +420,9 @@ func (a *analysis) enter(f *File, rep *FileReport) {
 }
 
 // numbers holds every number to the project and to the upload: a number
-// another file brings too is an error of both, one the project holds — or a
-// purged ticket held — a conflict (docs/adr/0064 D3, docs/adr/0007 D4).
+// another file brings too is an error of both, one the project holds a
+// conflict (docs/adr/0064 D3); one a purged ticket held is given back, with
+// a warning (docs/adr/0007 D4).
 func (a *analysis) numbers() {
 	for _, e := range a.entries {
 		n := e.f.Number
@@ -416,8 +444,8 @@ func (a *analysis) numbers() {
 		case a.t.Taken[n]:
 			e.conflict = a.t.Key(n)
 		case a.t.Purged[n]:
-			e.conflict = a.t.Key(n)
-			e.f.warn(fieldFile, 0, "%s was purged; its number is not handed out again (docs/adr/0007 D4)", a.t.Key(n))
+			e.f.warn(fieldFile, 0, "%s was purged; the import gives its number back, and what named %s before names this ticket now (docs/adr/0007 D4)",
+				a.t.Key(n), a.t.Key(n))
 		}
 	}
 }

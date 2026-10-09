@@ -46,7 +46,14 @@ Amended 2026-10-06 for GitHub's webhook of
 (D2: `## Pull requests`, between `## Attachments` and `## Recent activity`, written only when the
 ticket has one; made concrete by the implementer and built the same day, open to the owner's
 objection — `writePullRequests` in [`internal/markdown/context.go`](../../backend/internal/markdown/context.go),
-the golden file `context-pull-requests.md`).
+the golden file `context-pull-requests.md`). Amended 2026-10-09 with the webhook's removal, which the
+owner dropped before its trial (D2: `## Pull requests` and the activity's names of a pull request
+and a commit are gone, the function and the golden file with them; ADR 0071 Status).
+
+Amended 2026-10-09 by the owner (D3, the Consequences): the importer skips a `/context` document
+with its reason instead of refusing it — nothing in an import refuses
+([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D2 amended
+the same day); built the same day.
 
 ~~**Partly built**~~ **Built** *(whole since 2026-10-06, with D3)* (phase 2, 2026-10-02; the stages and the state `review` since 2026-10-03; a person as `Name <identity>` since 2026-10-06): D1, D5 and D6 for `/markdown`
 ([`internal/markdown`](../../backend/internal/markdown/), golden files in its `testdata/`); every
@@ -63,7 +70,7 @@ importer of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-
 every golden file of `/markdown` in `internal/markdown/testdata` parses without an error and renders
 again to its own bytes — the one whose body has a heading of the questions' name with the warning
 [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md)'s Residual risks
-foresee —, and every golden file of `/context` is refused
+foresee —, and every golden file of `/context` is ~~refused~~ *(2026-10-09: skipped, D3 as amended)*
 (`TestParseReadsTheGoldenFilesOfGrammarV1`); the integration tier's round trip (ADR 0051 D5)
 holds. Made concrete the same day by the implementer, open to the owner's objection:
 D1's key `confidential` (below), built with its golden file `confidential.md`.
@@ -158,25 +165,31 @@ the place of `via <agent>` says `through the token <name>`, or `through a token`
 not record the name; the first line `(through the token <name>)`. Everything else reads as
 before.)* *(Amended 2026-10-05, ADR 0010 D1: the act on the horizon, which the audit record keeps
 as `overridden`, reads `set the horizon to <value>`, or `returned the ticket to later` where the
-horizon set was cleared.)* *(Amended 2026-10-06, ADR 0071 D6:)* after `## Attachments`, `## Pull
+horizon set was cleared.)* ~~*(Amended 2026-10-06, ADR 0071 D6:)* after `## Attachments`, `## Pull
 requests` lists what GitHub's webhook linked — each pull request by its repository and number,
 each default-branch commit by its repository and short id, its title quoted, as text from outside
 the tenant, its state with the time of its merge, its author and where its key was read, and its
 page — and is written only when the ticket has one, so a tenant without the webhook reads the
 document as before; an act on a pull request or a commit names it in the activity, `merged pull
 request github.com/acme/app#34`. `/markdown` names no pull request: D1's document is the canonical
-ticket alone.
+ticket alone.~~ *(Removed 2026-10-09 with the webhook, ADR 0071 Status: the document has no
+`## Pull requests`, and an act the webhook recorded in a release up to 0.12.0 reads by its name
+alone, `system:github — merged`.)*
 
-**D3 — The importer reads D1's form only.** A file that carries D2's sections is refused
-with the line where the first read-only section starts, so a context export is never
-imported by mistake. *(Amended 2026-10-05:)* It reads the key `urgency`, the name `horizon` had
+**D3 — The importer reads D1's form only.** A file that carries D2's sections is ~~refused
+with the line where the first read-only section starts~~ *(amended 2026-10-09 by the owner:
+skipped, the report naming why — nothing in an import refuses,
+[ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D2,
+[ADR 0063](0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md) D5)*,
+so a context export is never imported by mistake. *(Amended 2026-10-05:)* It reads the key `urgency`, the name `horizon` had
 before — in an export written before 2026-10-05 and in the ticket files of a repository, whose
 frontmatter names it so — as `horizon`; a file that names both with different values is an
 error of the report, not a guess. *(Built 2026-10-06:)* a context document is known by its first
-line, the marker of D2 — after a byte order mark, if any —, and is an error of the report at the
+line, the marker of D2 — after a byte order mark, if any —, and ~~is an error of the report at the
 line of its `## Links`, or of the marker where it has none; the execution waits until the person
 excludes it ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
-D2).
+D2)~~ *(amended 2026-10-09 by the owner: is skipped, its `reason` naming it a `/context` document;
+built the same day, `skipContext` in [`parse.go`](../../backend/internal/importer/parse.go))*.
 
 **D4 — `get_ticket` of the MCP server calls `/context`;** `session_start` calls it for the
 active ticket with `comments=5&activity=10` ([ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md)).
@@ -193,10 +206,12 @@ concrete 2026-10-02: D1's key is `attachments`, a list of the names in upload or
 ## Consequences
 
 - Two formats, each with one job: `/markdown` is a file, `/context` is a reading. The
-  importer's grammar stays exactly ADR 0011 D4 and gains a refusal, not a marker to skip.
+  importer's grammar stays exactly ADR 0011 D4 and gains a ~~refusal~~ *(2026-10-09: skip with its
+  reason)*, not a marker to skip.
 - An LLM session reads one document (`/context`) per ticket; nothing is lost against the
   one-document variant except that a context export cannot be re-imported — which D3 makes
-  an explicit refusal rather than a silent skip.
+  an explicit ~~refusal rather than a silent skip~~ *(2026-10-09: skip the report names, never a
+  silent one)*.
 - Two routes to document and test; the context sections are rendered from the same queries
   the UI's detail page uses, so they cannot drift from it.
 - A token-budgeted variant (`?budget=`) is an amendment to `/context` alone, if context

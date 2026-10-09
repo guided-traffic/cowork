@@ -11,7 +11,10 @@ unit tiers and the frontend coverage they name exist already. The rules of D7–
 the owner with the question and not objected to. Amended 2026-10-04 by the owner's decision on the
 routing recorded in [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
 D3 (D1: the two images run behind a stand-in for the Ingress, since the frontend alone serves no
-API).
+API). Amended 2026-10-09 by [ADR 0058](0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D2 as the owner amended it: the
+stack's S3 server is PGSTY Silo, the maintained MinIO fork, in place of Chainguard's MinIO build —
+`MINIO_IMAGE`, the container `<stack>-minio`; where this record says MinIO for it, it is Silo from
+then on; no rule changes, and the end-to-end tier against Silo is CI's first run.
 
 **Partly built.** The unit tiers and the frontend coverage report exist
 ([ADR 0003](0003-test-and-ci-policy.md), `make test`, `make frontend-test-coverage`, the

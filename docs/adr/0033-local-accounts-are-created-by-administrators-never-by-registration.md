@@ -14,7 +14,14 @@ amendment is made in place in the record it changes; no rule changes), amended 2
 page that offers the identity provider's button starts that sign-in by itself after a session
 ended, by
 [ADR 0029](0029-standard-oidc-with-a-configurable-groups-claim-tested-against-a-minimal-dex.md) D6;
-what it offers does not change). Date: 2026-10-01. Decided
+what it offers does not change), amended 2026-10-07 by the owner's answer to "does a changed
+password end the account's tokens?" — the synchronisation's, over every change and over the docs
+alone (D4, D6: the start-up synchronisation that stores a changed password of the local
+administrator revokes its tokens; a person's own change keeps theirs; built 2026-10-09), and
+2026-10-07 by the owner's answer recorded in [ADR 0035](0035-personal-access-tokens.md) D5 (D5:
+unlocking an account takes a browser session; built 2026-10-09), amended 2026-10-09 (D6: the
+throttle counts an attempt under the address's lock before its hash, and the password change takes
+it too; D4: a login in flight makes no session after the password changed). Date: 2026-10-01. Decided
 by the owner as the answer to the catalog question "local accounts beyond the one administrator?": administrator-managed local accounts, over none,
 over self-registration with e-mail reset, and over global-administrator-only creation. The
 owner set two conditions: the minimum password length is configurable in the chart, and
@@ -93,7 +100,24 @@ recorded in every PHC-encoded hash, which is verified with the parameters it rec
 a malformed or oversized hash is a password that does not fit, never a `500`. At most two
 computations run at once, so a flood of attempts holds no more than twice 19 MiB. A password is
 at most 1024 characters, counted in characters, and an administrator's temporary password is
-held to the same policy.)*
+held to the same policy.)* *(Amended 2026-10-07 by the owner's answer, built 2026-10-09: **the
+start-up synchronisation that stores a changed password of the local administrator of
+[ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
+revokes every token of the account**, besides ending its sessions — a system act, `revoked_by`
+empty, its count in the `password_changed` row as `tokens_revoked`
+([`bootstrap/bootstrap.go`](../../backend/internal/bootstrap/bootstrap.go) `setPassword`). The
+rotation is the recovery of a leaked password, and a token made with it must not outlive it; the
+grants that password made stay, and the recovery reviews them
+([installation.md](../operations/installation.md#the-local-administrator)). A person's own change
+of password keeps their tokens: they made them, and the change ends only their other sessions.)*
+*(Amended 2026-10-09, made concrete by the fix of the security review of 2026-10-07: a change
+ends **every** session the old password made, a login still in flight included. The transaction
+that makes a login's session reads the account's password hash again under a share lock and makes
+no session — `401 invalid_credentials` — when it is not the hash the login verified; every change of
+the password — the person's own, an administrator's reset, the start-up synchronisation — updates
+that row, so it either commits before and is seen, or waits for the lock and ends the new session
+with the others ([`store/sessions.go`](../../backend/internal/store/sessions.go) `CreateSession`;
+`TestALoginInFlightMakesNoSessionAfterThePasswordChanged`).)*
 
 **D5 — Reset is an administrator's act.** A tenant administrator (for accounts of their
 tenant) or a global administrator sets a new temporary password; there is no e-mail flow
@@ -111,16 +135,20 @@ administrator never resets, unlocks or deactivates their own account: their own 
 lockout. The local administrator's password is not changeable through the API at all
 ([ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
 D2). **The reset takes a browser session only**, for the reason of D1: a password reset with a
-leaked token is access that survives the token's revocation. Listing the accounts, unlocking one,
+leaked token is access that survives the token's revocation. Listing the accounts, ~~unlocking one,~~
 deactivating one and ending its sessions remove or restrict access, leave nothing behind, and
-stay open to an administrator's token.)*
+stay open to an administrator's token.)* *(Amended 2026-10-07 by the owner's answer recorded in
+[ADR 0035](0035-personal-access-tokens.md) D5, built 2026-10-09: **unlocking an account takes a
+browser session** too — `403 session_required` for a token —, because a leaked token that could
+unlock between guesses would keep the lockout of D6 from ever holding, long after its revocation.)*
 
 **D6 — Rate limits and lockout.** Five failed attempts per account within fifteen minutes
 lock the account until an administrator unlocks it or the window passes, whichever the
 installation configures (`COWORK_LOGIN_LOCKOUT`, default: window); twenty attempts per source
 address per minute are throttled with `429`. Failed and locked attempts are recorded without
 the attempted password. The administrator of ADR 0032 is subject to the same limits, and the
-operations page says how to recover it when it is locked (rotate the Secret, restart).
+operations page says how to recover it when it is locked (rotate the Secret, restart — which
+since 2026-10-07 also revokes its tokens, D4).
 *(Amended 2026-10-03: the failures are counted by the username **as presented**, known or not,
 so an unknown username is counted and locked exactly like a known one and neither the answer
 nor the lockout says whether an account exists. Every failure — an unknown username, a wrong
@@ -145,7 +173,16 @@ installation~~ *(amended 2026-10-04: behind the Ingress the peer is a controller
 throttle is one for every browser behind it)*; a list that is too wide lets a client choose its
 address (open gap H-17 of the security page). The failed and locked attempts, the locks and the unlocks are audit rows of the
 system actor `system:login`, without the attempted password and without a username that names no
-account.)*
+account.)* *(Amended 2026-10-09, made concrete by the fix of the security review of 2026-10-07:
+the throttle's count and the attempt are **one step under an advisory lock on the client
+address** — the attempt is written as a reservation before its password is hashed, and its outcome
+replaces it — so a burst of parallel requests of one address is held to
+`COWORK_LOGIN_ADDRESS_LIMIT` as sequential ones are, where before every request of the burst could
+read the same count before any attempt was written
+([`store/login.go`](../../backend/internal/store/login.go) `ReserveLoginAttempt`). The current
+password of a change, `PUT /api/v1/me/password`, is held to the same throttle before it is hashed,
+so where `COWORK_LOGIN_MAX_FAILURES` is `0` a stolen session still guesses only at the throttle's
+pace per address (`TestTheAddressThrottleHoldsForParallelAttemptsAndThePasswordChange`).)*
 
 **D7 — No second factor for local accounts in the first release, and this is said aloud.**
 The security page carries it as an open gap with an `H-<n>` identifier; the mitigations are

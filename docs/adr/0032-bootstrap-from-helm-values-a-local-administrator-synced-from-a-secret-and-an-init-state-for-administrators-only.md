@@ -10,7 +10,9 @@ every local account that
 2026-10-03 (D1, D2, D3, D5–D7 made concrete by the first implementation, which has no identity
 provider yet) and 2026-10-04 (D1: every view names a local account by its plain username; D5: the
 administrator group in the init state; D6: the bootstrap tenant needs the local administrator or an
-administrator group, whose mapping is seeded). Date: 2026-10-01. Decided by the owner as the answer to the catalog question "how do
+administrator group, whose mapping is seeded), and 2026-10-07 by the owner's answer recorded in
+[ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D4 (D2: a
+changed password also revokes the account's tokens; built 2026-10-09). Date: 2026-10-01. Decided by the owner as the answer to the catalog question "how do
 the first administrator and the first tenant come to exist?", reshaped by the owner's
 requirements: no command-line step — pure Helm values must yield a usable installation — and
 a local administrator account that exists without OIDC and is kept in step with a Kubernetes
@@ -82,6 +84,11 @@ D5). Another username in the configuration leaves the previous account deactivat
 new one; an account of the configured name that a tenant's administrator made first is taken
 over — the configured password, no session, no token, no tenant that manages it; a deactivated
 account is reactivated when the variables return, and its revoked tokens stay revoked.)*
+*(Amended 2026-10-07 by the owner's answer recorded in
+[ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D4: a
+password that differs from the stored hash also **revokes every token of the account** — ~~a
+take-over alone revoked them~~ —, so the rotation that recovers a leaked password leaves no token
+made with it; the grants it made stay, for the operator to review.)*
 
 **D3 — Password handling for the local administrator.** Argon2id with parameters recorded
 in the security page; ~~minimum sixteen characters~~ *(amended 2026-10-01: the configured

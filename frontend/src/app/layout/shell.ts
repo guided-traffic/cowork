@@ -4,7 +4,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  DestroyRef,
   effect,
   ElementRef,
   inject,
@@ -37,7 +36,6 @@ import { ChatService } from '../core/chat.service';
 import { EventStreamService } from '../core/event-stream.service';
 import { HARD_NAVIGATION } from '../core/hard-navigation';
 import { InboxService } from '../core/inbox.service';
-import { KeepAliveService } from '../core/keep-alive.service';
 import { ProblemService } from '../core/problem.service';
 import { ProjectsService } from '../core/projects.service';
 import { TenantService } from '../core/tenant.service';
@@ -229,11 +227,6 @@ export class Shell {
         void this.router.navigate(['/password'], { queryParams: { return: this.router.url } });
       }
     });
-    // The person's input keeps the session's idle clock moving, which no read does by itself
-    // (docs/adr/0031 D3); it stops with the shell, on the way to the login page.
-    const keepAlive = inject(KeepAliveService);
-    keepAlive.start();
-    inject(DestroyRef).onDestroy(() => keepAlive.stop());
   }
 
   /**

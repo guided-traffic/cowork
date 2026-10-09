@@ -16,7 +16,7 @@ model, is [chat.md](chat.md); what the metrics port tells whoever reaches it is
 | Component | Trusts | Verified in |
 |---|---|---|
 | The backend process | Its environment: every `COWORK_*` variable — the runtime role's connection as a URL or its components, the server key, the object storage's access key —, and the standard variables its libraries read, which the chart sets none of: the database driver's `PG*`, `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`, `SSL_CERT_FILE` | [`backend/internal/config/config.go`](../../backend/internal/config/config.go) |
-| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the Ingress controller's pods, and every other pod of the cluster that reaches the backend Service, since the chart ships no NetworkPolicy — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, the schema of a repository's binding file `/api/v1/schemas/cowork-yaml.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)), and GitHub's webhook, `POST …/tenants/{tenant}/integrations/github/webhook`, which writes only what a body signed with the tenant's secret says and answers everybody else `404`, `413`, `400` or `401` before the signature holds ([github-webhook.md](github-webhook.md), H-64). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
+| The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the Ingress controller's pods, and every other pod of the cluster that reaches the backend Service, since the chart ships no NetworkPolicy — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, the schema of a repository's binding file `/api/v1/schemas/cowork-yaml.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
 | The backend process | Every TCP peer that reaches `COWORK_METRICS_ADDR` (`:8081` by default) — every pod of the cluster that reaches the backend pods, which the chart puts on no Service the Ingress routes — for `/metrics`, the one path of that listener, unauthenticated: the installation's activity in counts, of a tenant nothing but its id on the consistency check's two counts ([metrics.md](metrics.md), H-63) | [`main.go`](../../backend/cmd/cowork/main.go) `serve`, [`server.go`](../../backend/internal/httpserver/server.go) `NewMetrics` |
 | The backend process | The row of the presented token — its person, scope, restriction, agent flag and capabilities — or of the presented session cookie: its person, who is a global administrator or must change a temporary password, and for a person of the identity provider their groups as of their last login or refresh. It knows nothing else about the caller | [`authn.go`](../../backend/internal/api/authn.go), [`session.go`](../../backend/internal/api/session.go), [`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`, [`store/sessions.go`](../../backend/internal/store/sessions.go) `LookupSession` |
 | The backend process | The identity provider of `COWORK_OIDC_ISSUER`: its discovery document and the endpoints it names, its published keys, and what a verified ID token, a token answer and UserInfo say of a person — the subject, the groups, the name, the address and whether it is verified ([below](#the-identity-provider)) | [`backend/internal/oidc/oidc.go`](../../backend/internal/oidc/oidc.go), [identity-provider.md](identity-provider.md) |
@@ -40,8 +40,7 @@ the minimum password length, the longest lifetime of a new token in days), the l
 failure alike and counts and locks by the username it was given ([local-accounts.md](local-accounts.md)),
 the identity provider's start and callback (`GET /auth/oidc/login`, `GET /auth/callback`),
 which answer redirects and make a session only out of a code the issuer gave for the browser's own
-sealed state ([identity-provider.md](identity-provider.md)), and GitHub's webhook, which writes
-nothing for a body its tenant's secret did not sign ([github-webhook.md](github-webhook.md)).
+sealed state ([identity-provider.md](identity-provider.md)).
 Through the backend Service, from inside the cluster, additionally the backend's `/healthz` and
 `/readyz`; `/readyz` says whether the database answers and nothing more — the ping's error,
 which can name the host and the user, goes to the log only
@@ -50,9 +49,7 @@ which can name the host and the user, goes to the log only
 pods, `/metrics`, which counts what the installation does and names no person, ticket or token, and
 a tenant only by its id on the consistency check's two counts ([metrics.md](metrics.md), H-63). Every other route answers `401 unauthenticated` with
 `WWW-Authenticate: Bearer realm="cowork"` before any tenant is looked up, so an anonymous
-caller learns nothing about which tenants exist — but from the webhook, whose refusals tell a tenant
-that takes GitHub's deliveries from one that does not exist
-([github-webhook.md](github-webhook.md#h-64) H-64). An unknown path answers `404` and a known
+caller learns nothing about which tenants exist. An unknown path answers `404` and a known
 path with the wrong method `405`, also before authentication; the route table is the
 published API document anyway.
 
@@ -68,13 +65,17 @@ a bearer credential too ([sessions.md](sessions.md) H-15).
 What a token buys before the handler checks the role, the scope and the agent rules: the
 tenant boundary, and the request's validation against the API document, which reads a JSON
 body — at most `COWORK_MAX_JSON_BODY`, 1 MiB by default — into memory, within the request
-timeout. An import's body is read only by its handler, after the administrator's check and one
+timeout. An import's body is read only by its handler, after the writer's check and one
 import at a time per replica ([import-and-export.md](import-and-export.md#h-76) H-76). An upload's
 body is read only by its handler, after those checks and inside the
 upload budget ([attachments.md](attachments.md) H-12): the validator neither reads a multipart
 body nor runs its own security check, which would read every body first
 ([`api/validate.go`](../../backend/internal/api/validate.go) `unsecured`;
-`TestAnUploadIsRefusedBeforeItsBodyIsRead`). How many requests a token sends at once is not
+`TestAnUploadIsRefusedBeforeItsBodyIsRead`). Which body is an upload is the operation's, as the
+document declares it, never the request's `Content-Type`: a body of a type the operation does not
+declare is `415` before it is read, so no request — the login and GitHub's webhook, which take no
+credential, included — escapes the JSON limit or the validation by calling itself multipart
+(`acceptedBody`, `declaresMultipart`; `TestABodyIsTheTypeTheOperationDeclares`). How many requests a token sends at once is not
 bounded ([ADR 0039](../adr/0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
 D1).
 
@@ -90,6 +91,30 @@ those networks that reaches the backend chooses its client address
 the list empty — the default — no peer is trusted, and a pod that reaches the backend is its own
 client. Which pods a policy should admit is
 [installation.md](../operations/installation.md#network-policies-are-the-clusters).
+
+## The connection to the database
+
+Both roles' connections can be held to the database server's certificate. A server under a public
+authority is checked against the image's system pool with `sslmode` `verify-full`. A server under a
+private authority — CloudNativePG's own, a cluster's internal one — is checked against it with
+`database.tls.caConfigMap`: the chart mounts the authority's certificate into the `migrate` init
+container, the migration Job and the serving container, and the backend sets `COWORK_DATABASE_CA`
+as the `sslrootcert` of both roles' connections, so the serving container's pool, the owner's and
+the migration run trust that authority alone, the system pool not consulted
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3;
+[`config/database.go`](../../backend/internal/config/database.go) `withRootCert`). Under
+`verify-full` a peer that redirects a pod's connection — on the pod network, on a node, on the way
+to a database outside the cluster — cannot present a certificate of its own, and gets neither the
+roles' passwords nor the rows the queries carry. The integration tier proves it against a
+PostgreSQL that serves TLS under a private authority: the binary's migration run and the runtime
+pool hold `verify-full` with the authority, and refuse the same server through an authority that
+did not issue its certificate and through the system pool
+([`database_tls_test.go`](../../backend/test/integration/database_tls_test.go)
+`TestTheDatabaseAuthorityHoldsVerifyFull`). The backend refuses to start while a role's `sslmode`
+checks nothing beside the authority — none, `disable`, `allow` or `prefer` —, so naming an
+authority never leaves a connection unchecked. Without an authority and with `require`, the
+connection is encrypted and the server unchecked; the path between the pods and the database is
+then what keeps a peer from redirecting it ([below](#the-databases-own-controls)).
 
 ## The identity provider
 
@@ -158,7 +183,6 @@ backend.
 | The issuer's refresh tokens | not in the chart; sealed in `sessions.refresh_token_sealed` under a key derived from the server key ([identity-provider.md](identity-provider.md#what-cowork-keeps-of-the-issuers-tokens)) | the issuer; whoever holds the database, the server key and the client secret ([identity-provider.md](identity-provider.md#h-27) H-27) |
 | A chat provider's API key, `COWORK_CHAT_<ID>_API_KEY` | that provider's `chat.providers[].existingSecret` only — one Secret per provider, there is no inline value — under its `keys.apiKey`; required for kind `anthropic`, optional for `openai` | the serving container, which sends it to that provider's host and to no other ([chat.md](chat.md#what-reaches-a-provider)) |
 | A login's state, nonce and PKCE verifier | not in the chart; the cookie `__Host-cowork-oidc`, sealed under a key derived from the server key, for ten minutes | the browser that began the login |
-| A tenant's GitHub webhook secret | not in the chart; made by a tenant administrator in the UI, sealed in `github_webhook_secrets` under a key derived from the server key and bound to the tenant ([github-webhook.md](github-webhook.md#the-secret-at-rest-and-who-can-open-it)) | GitHub, in every webhook it is set up in, and whoever holds the database and the server key together ([github-webhook.md](github-webhook.md#h-67) H-67) |
 | Personal access tokens | not in the chart; the database holds their SHA-256 ([tokens.md](tokens.md)) | whoever holds one |
 | Session cookies | not in the chart; the database holds their SHA-256 ([sessions.md](sessions.md)) | the browser that logged in, and whoever steals the cookie |
 | Local passwords | not in the chart (but the local administrator's); the database holds Argon2id hashes ([local-accounts.md](local-accounts.md)) | the person, and the administrator who set a temporary one |
@@ -168,7 +192,8 @@ Each Secret value reaches its container through `secretKeyRef`
 [`migrate-job.yaml`](../../deploy/helm/cowork/templates/migrate-job.yaml)); a database role's
 location may come through `configMapKeyRef` instead, its user and password never do. The
 ConfigMaps the chart reads — `database.existingConfigMap`, `database.owner.existingConfigMap`,
-`storage.existingConfigMap` and `storage.tls.caConfigMap` — are part of this boundary as the
+`database.tls.caConfigMap`, `storage.existingConfigMap` and `storage.tls.caConfigMap` — are part of
+this boundary as the
 Secrets beside them are: whoever may write one is trusted like whoever may read those Secrets
 ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
 D3). The frontend
@@ -177,10 +202,15 @@ value. The inline `database.url`, `database.owner.url` and `localAdmin.username`
 `localAdmin.password` put the credential in plain text into `helm get values`, and into a release
 Secret while the chart uses it — `database.owner.url` only while the init container migrates; the
 chart notes warn while an inline value is in use, and not for one set beside its `existingSecret`
-([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt), [H-88](#h-88)). The identity provider's client
+([`NOTES.txt`](../../deploy/helm/cowork/templates/NOTES.txt), [H-88](#h-88)). Nothing derived from an
+inline credential reaches the pod template, which a namespace viewer without access to Secrets reads:
+while one is set, the backend pods carry the release's revision, `cowork/inline-credentials-revision`,
+so an upgrade rolls them, and no hash of the value
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
+D3; `make helm-template` holds it). The identity provider's client
 secret and the chat providers' API keys have no inline path at all.
 
-The server key is one secret with seven uses, each under a key derived from it by HKDF-SHA256 with a
+The server key is one secret with six uses, each under a key derived from it by HKDF-SHA256 with a
 label of its own, so no two uses share a key:
 
 | Use | Label | Whoever holds the server key |
@@ -191,15 +221,15 @@ label of its own, so no two uses share a key:
 | hashing a login's client address for the throttle ([`api/login.go`](../../backend/internal/api/login.go) `newAddressKey`) | `cowork login address v1` | tests a guessed address against `login_attempts`, which keeps its rows fifteen minutes |
 | hashing the client address of an audit row (`newSourceKey`) | `cowork audit address v1` | reverses every IPv4 hash in the record ([tokens.md](tokens.md#h-30) H-30) |
 | sealing a login's state cookie and a session's refresh token ([`auth/seal.go`](../../backend/internal/auth/seal.go)) | `cowork oidc login v1`, `cowork oidc refresh token v1` | opens the stored refresh tokens ([identity-provider.md](identity-provider.md#h-27) H-27) |
-| sealing a tenant's GitHub webhook secret, bound to the tenant (`auth/seal.go`, `LabelGitHubWebhookSecret`) | `cowork github webhook secret v1` | opens every tenant's webhook secret and signs deliveries for any of them ([github-webhook.md](github-webhook.md#the-secret-at-rest-and-who-can-open-it)) |
 
 It signs no session: a session is a random value and a row. There is one key and no previous one
 kept beside it, so rotating it invalidates the cursors clients hold and the stored fingerprints,
 fails the logins in flight, gives every address another hash, and ends each session of the identity
 provider that holds a refresh token at its next refresh — a session of the local login, and one
-without a refresh token, stays —, and leaves every tenant's sealed GitHub webhook secret unopenable,
-so each tenant's webhook answers `404` until its administrator rotates the secret
-([github-webhook.md](github-webhook.md#the-secret-at-rest-and-who-can-open-it)).
+without a refresh token, stays. The label `cowork github webhook secret v1` sealed the GitHub
+webhook's secrets of the releases up to 0.12.0; the webhook is removed
+([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+Status), nothing opens what that label sealed, and no other use takes it.
 
 The backend does not log a credential. An error about a secret variable names the variable,
 never its value ([`config.go`](../../backend/internal/config/config.go) `Load`); the request
@@ -367,37 +397,6 @@ issuer's word ([above](#the-identity-provider)) and verifies none of it. Where t
 second factor, a person who logs in through it has one; the local login has none
 ([local-accounts.md](local-accounts.md#h-16) H-16).
 
-<a id="h-78"></a>
-### H-78 — The chart cannot have the database's certificate verified against a private authority
-
-Live wherever the database serves TLS with a certificate of an authority of its own —
-CloudNativePG's, or a cluster's internal one. The chart mounts no authority for the database's
-certificate, neither into the serving container nor into the migration run, and passes the URLs and
-the components through as given, so `verify-ca` and `verify-full` fail against such a server:
-`require` — encrypted, the server not verified — is the strongest mode a chart installation can use
-with it, for a URL as for the components
-([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
-Residual risks). Whoever can redirect a pod's connection to the database — on the pod network, on a
-node, on the way to a database outside the cluster — can then present a certificate of their own,
-which `require` accepts, and read and change what passes: every tenant's rows, as the runtime role's
-and the owner's queries carry them. Such a peer that asks for the password in clear text gets it —
-the runtime role's from the serving container and, from the migration run, the owner role's. A URL or
-components that name no `sslmode` get the driver's
-default, `prefer`, which falls back to plain text as well. A server whose certificate chains to an
-authority of the image's system pool — a public one — needs no authority of the chart's:
-`verify-full` verifies it against that pool, which the driver uses when no authority is named; not
-tried here. Mitigation: `sslmode` `require` at the least; the path between the backend's pods and the
-database kept where nobody else can redirect it — the database inside the cluster, and a policy of
-the cluster's that admits only cowork's pods to it; for a database elsewhere, a certificate of a
-public authority and `verify-full`. A URL may add `require_auth=scram-sha-256`, with which the
-driver refuses a server that asks for the password in clear text or as MD5, and `channel_binding=require`,
-which the driver holds only inside a SCRAM exchange; components carry neither, and `PGREQUIREAUTH` and
-`PGCHANNELBINDING` through `backend.extraEnv` reach the serving container and not the migration run —
-not tried here. The owner decided on 2026-10-07 that the chart takes the database's authority as it
-takes the storage's, `database.tls.caConfigMap`
-([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
-D3); not built yet, so the gap stands until it is.
-
 <a id="h-88"></a>
 ### H-88 — An inline credential beside its reference stays in the release's values, unwarned
 
@@ -415,9 +414,16 @@ revision.
 TLS to the database (`sslmode`), backups, encryption at rest, who else may connect, and the
 roles' attributes beyond what the start-up check verifies ([tenancy.md](tenancy.md) "Two
 database roles") — all the database's, none enforced by cowork. The URLs are passed through
-as given; a URL composed of components carries the `sslmode` named, or none, and then the driver's
-default, `prefer`, which falls back to plain text and verifies no server. What the chart cannot
-verify is [H-78](#h-78). Who else may connect matters for the event channel: [tenancy.md](tenancy.md) H-4.
+as given, but for the `sslrootcert` of a named authority; a URL composed of components carries the
+`sslmode` named, or none, and then the driver's default, `prefer`, which falls back to plain text
+and verifies no server. Which `sslmode` an installation sets, and whether it names its database's
+authority, is its own ([above](#the-connection-to-the-database)); with `require` and no authority,
+what keeps a peer from redirecting the connection is the path between the backend's pods and the
+database — the database inside the cluster, and a policy of the cluster's that admits only
+cowork's pods to it. A URL may add `require_auth=scram-sha-256`, with which the driver refuses a
+server that asks for the password in clear text or as MD5, and `channel_binding=require`, which
+the driver holds only inside a SCRAM exchange; components carry neither — not tried here. Who else
+may connect matters for the event channel: [tenancy.md](tenancy.md) H-4.
 
 ### The transport in front of the pods
 

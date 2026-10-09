@@ -182,19 +182,31 @@ func (db *DB) InTenant(ctx context.Context, tenantID uuid.UUID, fn func(r *Reade
 	if tenantID == uuid.Nil {
 		return errors.New("store: InTenant without a tenant")
 	}
-	return db.read(ctx, tenantID, fn)
+	return db.read(ctx, tenantID, "", fn)
+}
+
+// InTenantSnapshot is InTenant over one snapshot of the database: every read
+// of fn sees the same rows, for a reader that counts first and then reads
+// what it counted a page at a time — the export (docs/adr/0051 D4).
+func (db *DB) InTenantSnapshot(ctx context.Context, tenantID uuid.UUID, fn func(r *Reader) error) error {
+	if tenantID == uuid.Nil {
+		return errors.New("store: InTenantSnapshot without a tenant")
+	}
+	return db.read(ctx, tenantID, pgx.RepeatableRead, fn)
 }
 
 // Installation runs fn in a read-only transaction bound to no tenant: only the
 // person-scoped policies admit rows — the person's own memberships, tenants
 // and tokens (docs/adr/0021 D6).
 func (db *DB) Installation(ctx context.Context, fn func(r *Reader) error) error {
-	return db.read(ctx, uuid.Nil, fn)
+	return db.read(ctx, uuid.Nil, "", fn)
 }
 
-func (db *DB) read(ctx context.Context, tenantID uuid.UUID, fn func(r *Reader) error) error {
+// read runs fn in a read-only transaction at the isolation level iso, "" for
+// the database's default.
+func (db *DB) read(ctx context.Context, tenantID uuid.UUID, iso pgx.TxIsoLevel, fn func(r *Reader) error) error {
 	caller, _ := CallerFrom(ctx)
-	tx, err := db.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	tx, err := db.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: iso, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
 	}

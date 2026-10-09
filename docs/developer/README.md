@@ -41,8 +41,10 @@ change.
   header and a browser session's when it carries only the cookie; everything after the resolver —
   the tenant boundary, the role, the predicates — is the same code. A session's writes are
   CSRF-checked, nineteen routes take a session only — what can give access, or outlive a leaked
-  token, the purge of a deleted ticket and the tenant's GitHub webhook secret and the removal of a consistency check's orphaned objects among them, the chat's
-  turn, its stop and its capabilities, and a global administrator's list of every tenant — and a temporary
+  token, the purge of a deleted ticket and the removal of a consistency check's orphaned objects among them, the unlock of a local account, the chat's
+  turn, its stop and its capabilities, and a global administrator's list of every tenant —, three
+  acts refuse a token in their giving direction in the handler — widening the tenant's settings,
+  lifting the confidential flag, assigning a confidential ticket to another person — and a temporary
   password gates everything but its own change;
   `X-Cowork-Agent` makes a token's or a session's request an agent's and only narrows it, and
   every act made through a token records and shows the token's id and name beside the agent mark
@@ -78,8 +80,8 @@ change.
   you ([ADR 0003](../adr/0003-test-and-ci-policy.md) D1). Go targets `cd backend`, npm
   targets `cd frontend`. `make help` lists them.
 - **Nothing is skipped.** No `-short`, no `testing.Short()`, no "skip when the database is
-  missing". The integration tier fails and tells you how to start PostgreSQL, MinIO and Dex
-  (`make dev-up`).
+  missing". The integration tier fails and tells you how to start PostgreSQL, the one that serves TLS, Silo
+  and Dex (`make dev-up postgres-tls-up`).
 - **Newest toolchains.** Go 1.27 and Angular 22 today, moved by Renovate; a lagging version
   is a defect (ADR 0001 D9).
 - **A statement has one home.** Decision → ADR; work → ticket; how → `docs/developer/`; run →
@@ -93,9 +95,9 @@ change.
 | [repository-layout.md](repository-layout.md) | You are new and want the tree |
 | [package-map.md](package-map.md) | You are looking for where something lives and what it is responsible for |
 | [architecture.md](architecture.md) | You want the picture: what runs where, what a request goes through, what happens at start |
-| [api.md](api.md) | You touch the API: the document, generation, the pipeline, authentication, the tenant's dashboard, the tenant boundary, authorization, errors, idempotency, versions, paging, filters, GitHub's webhook, the deprecated names a rename keeps for a release |
-| [data-access.md](data-access.md) | You write SQL or a mutation: the two roles, the wrappers, the settings the policies read, the visibility lint, the list builder, locks, jobs, GitHub's deliveries, publication |
-| [domain.md](domain.md) | You change a rule of tickets, links, transitions, questions, comments, interest, progress, time or the pull requests GitHub's webhook links |
+| [api.md](api.md) | You touch the API: the document, generation, the pipeline, authentication, the tenant's dashboard, the tenant boundary, authorization, errors, idempotency, versions, paging, filters, the deprecated names a rename keeps for a release |
+| [data-access.md](data-access.md) | You write SQL or a mutation: the two roles, the wrappers, the settings the policies read, the visibility lint, the list builder, locks, jobs, publication |
+| [domain.md](domain.md) | You change a rule of tickets, links, transitions, questions, comments, interest, progress or time |
 | [storage.md](storage.md) | You touch attachments or the object storage, or the consistency check of the bytes against their metadata |
 | [events.md](events.md) | You touch the event stream, from `NOTIFY` to the Ingress |
 | [metrics.md](metrics.md) | You touch the Prometheus metrics: the registry and who records what, the metrics listener, the generated Grafana dashboard, the consistency family read from the database; or you add an instrument |
@@ -126,10 +128,9 @@ change.
 | A search | One statement per tenant, every text read through its ticket's predicate, one hit per ticket at its best match by `ts_rank`, the snippet cut of the page's rows only; across the person's tenants one read each, merged by rank | [search.md](search.md) |
 | Rendered text | Rendered on every read: goldmark, the tree rewritten — raw HTML as text, links held to their schemes, images only of the ticket's raster attachments —, then bluemonday's allow-list; shown through Angular's sanitiser | [rendered-markdown.md](rendered-markdown.md) |
 | An event | `NOTIFY` at commit, one listener per replica, a hub that filters per stream; a key and a version — for `membership.changed` the ids of what changed — never content | [events.md](events.md) |
-| An import | A tenant administrator's act, never an agent's: a dry run reads the upload into a report and keeps the files; the execution analyses them again with the person's corrections under the project's rank lock and writes every ticket, question and link in one transaction, or refuses while a file has an error or a conflict; one `project.changed` announces it; in the browser, the project's import page and the job's own address | [import-and-export.md](import-and-export.md), [frontend.md](frontend.md#the-import-and-the-export) |
+| An import | A writer's act of the project, an agent's included, the job its maker's: a dry run reads the upload into a report and keeps the files; the execution analyses them again with the person's corrections under the project's rank lock and writes every ticket, question and link of the files it can import in one transaction, leaving out each file with an error or a conflict; one `project.changed` announces it; in the browser, the project's import page and the job's own address; on a person's machine, `cowork-mcp import` | [import-and-export.md](import-and-export.md), [frontend.md](frontend.md#the-import-and-the-export) |
 | A deletion | A tenant administrator's act, never an agent's: the ticket keeps everything and answers like a missing one everywhere but the tenant's bin — every query carries `deleted_at IS NULL` beside the visibility predicate, held to it by a lint —; the bin restores it, and the purge, an explicit act or a job thirty days later, removes it and what belongs only to it under restrictive policies, empties its audit rows through an owner function and removes its files after the commit | [data-access.md](data-access.md#deletion-and-the-purge), [domain.md](domain.md#deletion-the-bin-and-the-purge) |
 | The consistency check | Once a day, in the hour after 03:00 UTC, one replica lists each tenant's objects and reads its attachment rows behind the listing, a thousand objects at a time, and keeps what disagrees for the tenant's administrators — the missing files, the objects no row names —, removing nothing; an administrator accepts a loss or, in a browser session, confirms the removal of the orphans, each asked again first; `cowork check-consistency` runs it at once | [storage.md](storage.md#the-consistency-check), [data-access.md](data-access.md#the-consistency-checks-tables) |
-| A GitHub delivery | Public and signed: the tenant and its sealed secret before the body is read, the HMAC over the raw body in constant time before anything is parsed, the delivery kept a day, then the pull requests and default-branch commits linked to the tickets their texts name, as `system:github`, no state changed; every delivery taken answers `202` | [api.md](api.md#githubs-webhook), [domain.md](domain.md#pull-requests-and-githubs-webhook), [github-webhook](../security/github-webhook.md) |
 | A notification | Written by the act's own transaction for each person the act tells — an active member who sees the ticket, never the actor —, referencing the audit row it renders from; read per tenant, counted on the person-level stream as `inbox.changed` | [data-access.md](data-access.md#notifications), [events.md](events.md#the-person-level-stream) |
 | Frontend request | the Ingress sends `/api/` and `/auth/` to the backend and the rest to nginx: `/healthz` itself, hashed bundles immutable, everything else `index.html` with `no-store`, the shell's content-security policy on all of the UI, and a `404` problem for an `/api/` or `/auth/` path that reaches it by mistake | [architecture.md](architecture.md#frontend-container) |
 | A change on screen | An event names a key and a version; the tickets service refetches what it holds and reloads the open lists once per burst; every view reads the one cache | [frontend.md](frontend.md#how-a-change-reaches-the-screen) |

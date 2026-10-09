@@ -1,0 +1,15 @@
+# The database's private authority (docs/adr/0058 D3) in job mode: the
+# ConfigMap, under a key of its own, mounted into the migration Job and the
+# serving container; the pods have no init container.
+migrations:
+  mode: job
+database:
+  existingSecret: cowork-database
+  owner:
+    existingSecret: cowork-database-owner
+  tls:
+    caConfigMap: cowork-db-ca-cert
+    keys:
+      ca: root.crt
+session:
+  existingSecret: cowork-session

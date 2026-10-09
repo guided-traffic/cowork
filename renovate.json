@@ -280,6 +280,14 @@
       "allowedVersions": "<19"
     },
     {
+      "description": "PGSTY Silo, the S3 test server's image and the example's chart (Makefile MINIO_IMAGE and SILO_VERSION): its releases are tagged RELEASE.<date>T<time>Z, which neither docker nor semver versioning reads; the date orders them, a new year being a major",
+      "matchDepNames": [
+        "docker.io/pgsty/silo",
+        "pgsty/silo"
+      ],
+      "versioning": "regex:^RELEASE\\.(?<major>\\d{4})-(?<minor>\\d{2})-(?<patch>\\d{2})T\\d{2}-\\d{2}-\\d{2}Z$"
+    },
+    {
       "description": "Release notes preset: conventional-changelog-conventionalcommits 10 needs conventional-changelog-writer 9, while @semantic-release/release-notes-generator 14 still brings writer 8, and hack/verify-release-tooling.mjs fails with that pair; hold the preset below 10 until the generator moves to writer 9",
       "matchDepNames": [
         "conventional-changelog-conventionalcommits"

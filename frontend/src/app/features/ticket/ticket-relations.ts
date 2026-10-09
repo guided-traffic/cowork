@@ -17,7 +17,6 @@ import { getTicketBody } from '../../api/fn/tickets/get-ticket-body';
 import { listInterest } from '../../api/fn/tickets/list-interest';
 import { listPrerequisites } from '../../api/fn/tickets/list-prerequisites';
 import { listTicketLinks } from '../../api/fn/tickets/list-ticket-links';
-import { listTicketPullRequests } from '../../api/fn/tickets/list-ticket-pull-requests';
 import { listTicketTime } from '../../api/fn/time/list-ticket-time';
 import { PrerequisiteTree, TicketBody as RenderedBody } from '../../api/models';
 import { ConditionalPages, PageFetcher } from '../../core/conditional';
@@ -42,10 +41,9 @@ export type TreeDirection = 'down' | 'up';
 
 /**
  * What surrounds a ticket on its detail page — the rendered body, comments, activity, questions,
- * links, interest, attachments, time, the pull requests, the prerequisite tree — loaded through the
- * API and reloaded when the event stream names the ticket (docs/adr/0054 D2): an event says which
- * part changed, and only that part and the activity are fetched again; an upload is a
- * `ticket.changed`, what GitHub's webhook linked a `pull_request.changed` (docs/adr/0071). Time entries
+ * links, interest, attachments, time, the prerequisite tree — loaded through the API and reloaded
+ * when the event stream names the ticket (docs/adr/0054 D2): an event says which part changed, and
+ * only that part and the activity are fetched again; an upload is a `ticket.changed`. Time entries
  * are not published (D4): the page that books reloads them, and `resync` and `poll` do. The tree
  * loads again on a link of the ticket and on any change of a ticket it shows. The rendered body
  * loads again when the ticket's version moves ({@link version}, which the page sets from the
@@ -85,10 +83,6 @@ export class TicketRelations {
     page(listAttachments, { ...params, limit: 200 }),
   );
   readonly time = this.part((params, page) => page(listTicketTime, { ...params, limit: 200 }));
-  /** The pull requests and default-branch commits GitHub's webhook linked (docs/adr/0071 D6). */
-  readonly pullRequests = this.part((params, page) =>
-    page(listTicketPullRequests, { ...params, limit: 200 }),
-  );
   /** The prerequisites, or read upward the dependents (docs/adr/0012 D6). */
   readonly direction = signal<TreeDirection>('down');
   private readonly treePages = new ConditionalPages(this.api);
@@ -123,7 +117,6 @@ export class TicketRelations {
         this.interest,
         this.attachments,
         this.time,
-        this.pullRequests,
         this.tree,
         this.activity,
       ]) {
@@ -158,8 +151,6 @@ export class TicketRelations {
       refresh(this.tree, this.injector);
     } else if (event.name === 'interest.changed') {
       refresh(this.interest, this.injector);
-    } else if (event.name === 'pull_request.changed') {
-      refresh(this.pullRequests, this.injector);
     } else {
       refresh(this.attachments, this.injector);
       // A change that moves the version reloads the body through the version the page sets.

@@ -22,8 +22,6 @@ import {
   LinkList,
   Me,
   Problem,
-  PullRequest,
-  PullRequestList,
   Question,
   PrerequisiteTree,
   QuestionList,
@@ -49,7 +47,6 @@ import {
   LinkAdder,
 } from './conversation-forms';
 import { InterestControl } from './interest-control';
-import { PullRequestsCard } from './pull-requests-card';
 import { AttachmentsCard, TimeCard } from './records-cards';
 import { describe as describeActivity, TicketDetail } from './ticket-detail';
 import { TicketFields } from './ticket-fields';
@@ -284,46 +281,6 @@ describe('describe', () => {
       ),
     ).toBe('Ada Lovelace returned the ticket to later');
   });
-
-  // docs/adr/0071 D6: what GitHub's webhook linked and reported reads by the number or the id,
-  // the webhook's system actor as GitHub.
-  it('says what GitHub reported of a pull request or a commit, and who removed a link', () => {
-    const github = { actor: null, actor_system: 'system:github' };
-    const pr = { number: 34, repository: 'github.com/acme/app', state: 'open' };
-    expect(
-      describeActivity(
-        activity({ ...github, action: 'linked', entity_type: 'pull_request', after: pr }),
-      ),
-    ).toBe('GitHub linked pull request #34');
-    expect(
-      describeActivity(
-        activity({
-          ...github,
-          action: 'merged',
-          entity_type: 'pull_request',
-          after: { ...pr, state: 'merged' },
-        }),
-      ),
-    ).toBe('GitHub reported pull request #34 merged');
-    expect(
-      describeActivity(
-        activity({
-          ...github,
-          action: 'linked',
-          entity_type: 'commit',
-          after: {
-            sha: '0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c',
-            repository: 'github.com/acme/app',
-          },
-        }),
-      ),
-    ).toBe('GitHub linked commit 0d1a26e');
-    expect(
-      describeActivity(
-        activity({ action: 'unlinked', entity_type: 'pull_request', before: pr, after: null }),
-      ),
-    ).toBe('Ada Lovelace removed the link of pull request #34');
-  });
 });
 
 describe('TicketDetail', () => {
@@ -336,7 +293,6 @@ describe('TicketDetail', () => {
     interest: `${base}/interest?limit=200`,
     attachments: `${base}/attachments?limit=200`,
     time: `${base}/time-entries?limit=200`,
-    pullRequests: `${base}/pull-requests?limit=200`,
     tree: `${base}/prerequisites?direction=down&limit=200`,
     body: `${base}/body`,
   };
@@ -351,7 +307,6 @@ describe('TicketDetail', () => {
     interest?: InterestList;
     attachments?: AttachmentList;
     time?: TimeEntryList;
-    pullRequests?: PullRequestList;
     body?: RenderedBody;
   }
 
@@ -488,7 +443,6 @@ describe('TicketDetail', () => {
         '/api/v1/tenants/acme/projects/OPS/tickets/3/interest',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/attachments',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/time-entries',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/pull-requests',
         '/api/v1/tenants/acme/projects/OPS/tickets/3/prerequisites',
       ]);
     });
@@ -1300,117 +1254,6 @@ describe('TicketDetail', () => {
         heading.textContent?.replace(/\s+/g, ' ').trim(),
       );
       expect(headings).toEqual(['Interest', 'Links', 'Attachments', 'Time']);
-    });
-  });
-
-  // docs/adr/0071 D6: what GitHub's webhook linked, hidden while there is none, and the hint that
-  // the work may be ready to move once something merged — which moves nothing.
-  describe('the pull requests', () => {
-    function pr(overrides: Partial<PullRequest> = {}): PullRequest {
-      return {
-        id: 'l-1',
-        kind: 'pull_request',
-        repository: 'github.com/acme/app',
-        number: 34,
-        sha: null,
-        title: 'fix: the flicker (COW-12)',
-        state: 'open',
-        url: 'https://github.com/acme/app/pull/34',
-        author: 'octocat',
-        merged_at: null,
-        found_in: 'subject',
-        first_seen_at: '2026-10-05T08:00:00Z',
-        last_seen_at: '2026-10-05T08:00:00Z',
-        ...overrides,
-      };
-    }
-
-    it('hides the card while the ticket has none', async () => {
-      show();
-      const { page } = await render('COW-12', { pullRequests: list() });
-
-      expect(page.querySelector('[data-testid="pull-requests"]')).toBeNull();
-      expect(page.querySelector('[data-testid="merge-hint"]')).toBeNull();
-    });
-
-    it('shows the card beside the links, and lets a member remove a wrong link', async () => {
-      show();
-      const { fixture, page } = await render('COW-12', { pullRequests: list(pr()) });
-
-      expect(page.querySelector('[data-testid="pull-requests"]')).not.toBeNull();
-      const card = fixture.debugElement.query(By.directive(PullRequestsCard))
-        .componentInstance as PullRequestsCard;
-      expect(card.ticketKey()).toBe('acme/COW-12');
-      expect(card.items().map((each) => each.id)).toEqual(['l-1']);
-      expect(card.mayRemove()).toBe(true);
-      const headings = [...page.querySelectorAll('aside.side h2')].map((heading) =>
-        heading.textContent?.replace(/\s+/g, ' ').trim(),
-      );
-      expect(headings).toEqual(['Interest', 'Links', 'Pull requests', 'Attachments', 'Time']);
-    });
-
-    it('offers a viewer no removal', async () => {
-      role.set('viewer' as 'member');
-      show();
-      const { fixture } = await render('COW-12', { pullRequests: list(pr()) });
-
-      const card = fixture.debugElement.query(By.directive(PullRequestsCard))
-        .componentInstance as PullRequestsCard;
-      expect(card.mayRemove()).toBe(false);
-    });
-
-    it('hints that an open ticket may be ready to move once a pull request merged', async () => {
-      show({ state: 'in-progress' });
-      const { page } = await render('COW-12', {
-        pullRequests: list(pr({ state: 'merged', merged_at: '2026-10-06T09:00:00Z' })),
-      });
-
-      expect(text(page, '[data-testid="merge-hint"]')).toBe(
-        'Pull request #34 was merged — the work may be ready to move. Nothing moved it: moving it stays yours.',
-      );
-      expect(text(page, '[data-testid="ticket-state"]')).toBe('in-progress');
-    });
-
-    it('names a commit that reached the default branch, and hints nothing on a closed ticket', async () => {
-      const commit = pr({
-        kind: 'commit',
-        number: null,
-        sha: 'a'.repeat(40),
-        state: 'merged',
-        merged_at: '2026-10-06T09:00:00Z',
-      });
-      show({ state: 'review' });
-      const { page } = await render('COW-12', { pullRequests: list(commit) });
-      expect(text(page, '[data-testid="merge-hint"]')).toContain(
-        'A commit naming it reached the default branch',
-      );
-
-      show({ state: 'done' });
-      const done = await render('COW-12', { pullRequests: list(commit) });
-      expect(done.page.querySelector('[data-testid="merge-hint"]')).toBeNull();
-    });
-
-    it('says why in place of the card when they could not be loaded', async () => {
-      show();
-      const { fixture, page } = await render();
-      for (const request of http.match(urls.pullRequests)) {
-        request.flush(
-          {
-            type: 'about:blank',
-            title: 'Not ready',
-            status: 503,
-            detail: 'The database is starting.',
-            code: 'not_ready',
-          },
-          { status: 503, statusText: 'Not ready' },
-        );
-      }
-      await new Promise((resolve) => setTimeout(resolve));
-      fixture.detectChanges();
-
-      expect(text(page, '[data-testid="pull-requests-failed"]')).toBe(
-        'Could not load this: The database is starting.',
-      );
     });
   });
 

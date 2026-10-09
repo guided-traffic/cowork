@@ -199,7 +199,7 @@ describe('notesOf', () => {
       {
         tone: 'error',
         place: 'number',
-        text: 'VKO-1 holds this number in the project, or held it until it was purged',
+        text: 'VKO-1 holds this number in the project',
       },
       { tone: 'warn', place: 'body', text: 'a warning' },
       { tone: 'info', place: 'block', text: 'ticket: waits (from decided, waiting on VKO-9)' },
@@ -228,14 +228,14 @@ describe('notesOf', () => {
 describe('ProjectImport', () => {
   let http: HttpTestingController;
   let tenant: WritableSignal<string | null>;
-  let isAdmin: WritableSignal<boolean>;
+  let canWrite: WritableSignal<boolean>;
   let meLoading: WritableSignal<boolean>;
   let now: WritableSignal<number>;
   let navigate: MockInstance<Router['navigate']>;
 
   beforeEach(() => {
     tenant = signal<string | null>('acme');
-    isAdmin = signal(true);
+    canWrite = signal(true);
     meLoading = signal(false);
     now = signal(Date.parse('2026-10-07T09:00:00Z'));
     TestBed.configureTestingModule({
@@ -246,7 +246,7 @@ describe('ProjectImport', () => {
         provideApiConfiguration(''),
         MessageService,
         { provide: SessionService, useValue: { tenant, me: { isLoading: meLoading } } },
-        { provide: TenantService, useValue: { isAdmin } },
+        { provide: TenantService, useValue: { canWrite } },
         {
           provide: MembersService,
           useValue: { list: signal([member(ada), member({ id: 'p-sam', display_name: 'Sam' })]) },
@@ -321,30 +321,30 @@ describe('ProjectImport', () => {
   const executeButton = (fixture: ComponentFixture<ProjectImport>) =>
     el(fixture, 'import-execute') as HTMLButtonElement | null;
 
-  /** Leaves out the conflict and the error, which block the execution as the report has them. */
+  /** Leaves out the conflict and the error by hand, as a person may: the execution would anyway. */
   async function leaveOutTheBlocking(fixture: ComponentFixture<ProjectImport>) {
-    el(fixture, 'exclude-blocking')?.click();
-    await settle(fixture);
+    await change(fixture, 'exclude-docs/tickets/002-taken.md', true);
+    await change(fixture, 'exclude-docs/tickets/003-broken.md', true);
   }
 
   describe('who', () => {
-    it("tells anybody but the tenant's administrators that the import is theirs, and asks nothing", async () => {
-      isAdmin.set(false);
+    it('tells a viewer that the import is a writer’s, and asks nothing', async () => {
+      canWrite.set(false);
 
       const fixture = await render(id);
 
-      expect(text(el(fixture, 'import-not-admin'))).toContain("tenant's administrators");
+      expect(text(el(fixture, 'import-not-writer'))).toContain('a viewer imports nothing');
       expect(el(fixture, 'import-drop')).toBeNull();
       http.expectNone(jobUrl);
     });
 
     it('waits for the person before it says so', async () => {
-      isAdmin.set(false);
+      canWrite.set(false);
       meLoading.set(true);
 
       const fixture = await render();
 
-      expect(el(fixture, 'import-not-admin')).toBeNull();
+      expect(el(fixture, 'import-not-writer')).toBeNull();
       expect(host(fixture).querySelector('p-skeleton')).not.toBeNull();
     });
   });
@@ -572,7 +572,7 @@ describe('ProjectImport', () => {
       );
       const taken = row(fixture, 'docs/tickets/002-taken.md');
       expect(text(taken?.querySelector('.notes li.error'))).toBe(
-        'number VKO-2 holds this number in the project, or held it until it was purged',
+        'number VKO-2 holds this number in the project',
       );
       // A conflict is only ever left out: no type, state or assignee to correct.
       expect(taken?.querySelector('p-select')).toBeNull();
@@ -610,26 +610,30 @@ describe('ProjectImport', () => {
     });
   });
 
-  describe('what blocks the execution', () => {
-    it('names the conflict and the error, and offers no execution while they stand', async () => {
+  describe('what the execution leaves out', () => {
+    it('names the conflict and the error, marks their rows, and executes the rest', async () => {
       const fixture = await open();
 
-      const notice = el(fixture, 'import-blocking');
-      expect(text(notice?.querySelector('h2'))).toBe('2 files block the execution');
+      const notice = el(fixture, 'import-left-out');
+      expect(text(notice?.querySelector('h2'))).toBe('2 files will be left out');
       expect(text(notice?.querySelector('ul'))).toBe(
         'docs/tickets/002-taken.md — conflict: VKO-2 holds its number docs/tickets/003-broken.md — error: severity "urgent" is no severity',
       );
-      expect(executeButton(fixture)?.disabled).toBe(true);
-      expect(text(el(fixture, 'import-execute-text'))).toBe('2 files block the execution.');
+      for (const path of ['docs/tickets/002-taken.md', 'docs/tickets/003-broken.md']) {
+        expect(text(el(fixture, `left-out-${path}`))).toBe('will be left out');
+      }
+      expect(el(fixture, 'left-out-docs/tickets/001-the-export-fails.md')).toBeNull();
+      expect(executeButton(fixture)?.disabled).toBe(false);
+      expect(text(executeButton(fixture))).toBe('Import 3 tickets');
+      expect(text(el(fixture, 'import-execute-text'))).toBe('3 of 6 files to import, 2 left out.');
     });
 
-    it('leaves them out at one click, and offers the execution of the rest', async () => {
+    it('takes a file left out by hand as excluded', async () => {
       const fixture = await open();
 
       await leaveOutTheBlocking(fixture);
 
-      expect(el(fixture, 'import-blocking')).toBeNull();
-      expect(executeButton(fixture)?.disabled).toBe(false);
+      expect(el(fixture, 'import-left-out')).toBeNull();
       expect(text(executeButton(fixture))).toBe('Import 3 tickets');
       expect(text(el(fixture, 'import-execute-text'))).toBe('3 of 6 files to import, 2 left out.');
       expect(el(fixture, 'file-docs/tickets/002-taken.md')?.classList).toContain('excluded');
@@ -642,7 +646,8 @@ describe('ProjectImport', () => {
 
       await change(fixture, 'state-docs/tickets/003-broken.md', 'analysed');
 
-      expect(el(fixture, 'import-blocking')).toBeNull();
+      expect(el(fixture, 'import-left-out')).toBeNull();
+      expect(el(fixture, 'left-out-docs/tickets/003-broken.md')).toBeNull();
       expect(text(executeButton(fixture))).toBe('Import 4 tickets');
     });
 
@@ -778,42 +783,22 @@ describe('ProjectImport', () => {
       expect(el(fixture, 'import-execute-bar')).toBeNull();
     });
 
-    it('lands a conflict found by the execution on the files it names, and leaves them out at one click', async () => {
+    it('executes with the conflict and the error in it, which the execution leaves out', async () => {
       const fixture = await open();
-      await leaveOutTheBlocking(fixture);
       executeButton(fixture)?.click();
       await settle(fixture);
       press('Import 3 tickets');
       await tick(fixture);
 
-      http.expectOne(`${jobUrl}/execution`).flush(
-        problem(409, 'import_conflict', [
-          {
-            pointer: 'file:docs/tickets/archive/006-shipped.md',
-            message: 'conflict: the project holds the number as acme/VKO-6',
-          },
-        ]),
-        { status: 409, statusText: 'Conflict' },
-      );
+      const request = http.expectOne(`${jobUrl}/execution`);
+      expect(request.request.body).toEqual({ corrections: [] });
+      request.flush(executed());
       await settle(fixture);
 
-      const refusal = el(fixture, 'import-refusal');
-      expect(text(refusal?.querySelector('h2'))).toBe(
-        'The execution was refused — nothing was imported',
-      );
-      expect(text(refusal?.querySelector('ul'))).toBe(
-        'docs/tickets/archive/006-shipped.md — conflict: the project holds the number as acme/VKO-6',
-      );
-      expect(
-        text(el(fixture, 'file-docs/tickets/archive/006-shipped.md')?.querySelector('.notes li')),
-      ).toBe('execution conflict: the project holds the number as acme/VKO-6');
-
-      el(fixture, 'exclude-refused')?.click();
-      await settle(fixture);
-      expect(text(executeButton(fixture))).toBe('Import 2 tickets');
+      expect(el(fixture, 'import-done')).not.toBeNull();
     });
 
-    it('lands a refused correction on the file it corrects', async () => {
+    it('lands a refused correction on the file it corrects, and leaves it out at one click', async () => {
       const fixture = await open();
       await leaveOutTheBlocking(fixture);
       await change(fixture, 'type-docs/tickets/001-the-export-fails.md', 'decision');
@@ -835,6 +820,13 @@ describe('ProjectImport', () => {
       expect(text(el(fixture, 'import-refusal')?.querySelector('ul'))).toBe(
         'docs/tickets/001-the-export-fails.md — is no type',
       );
+      expect(
+        text(el(fixture, 'file-docs/tickets/001-the-export-fails.md')?.querySelector('.notes li')),
+      ).toBe('execution is no type');
+
+      el(fixture, 'exclude-refused')?.click();
+      await settle(fixture);
+      expect(text(executeButton(fixture))).toBe('Import 2 tickets');
     });
 
     it('reads the job again when it was executed elsewhere meanwhile', async () => {

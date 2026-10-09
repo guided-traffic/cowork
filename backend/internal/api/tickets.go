@@ -535,14 +535,24 @@ func checkAssignee(ctx context.Context, r *store.Reader, t tenantScope, projectI
 // mayAssign holds an assignment to the hard-off rule of docs/adr/0043 D3:
 // the assignee of a confidential ticket is admitted to it (docs/adr/0065 D9),
 // so an agent assigns one only to its own person — assigning nobody admits
-// nobody and never reaches here. confidential is the flag as the write leaves
-// it; current is the assignee before the write, nil on a filing, and an
-// assignee the write leaves as it was admits nobody new.
+// nobody and never reaches here. A person's token is held the same way, by the
+// rule of docs/adr/0035 D5: admitting another person to a confidential ticket
+// gives access that would outlive a leaked token's revocation, so it takes a
+// browser session. confidential is the flag as the write leaves it; current
+// is the assignee before the write, nil on a filing, and an assignee the write
+// leaves as it was admits nobody new.
 func mayAssign(p auth.Principal, confidential bool, current *uuid.UUID, assignee uuid.UUID) *problem.Error {
 	if !confidential || assignee == p.PersonID || (current != nil && *current == assignee) {
 		return nil
 	}
-	return auth.Authorize(p, "", auth.Need{HardOff: auth.HardOffConfidentialAssignee})
+	if perr := auth.Authorize(p, "", auth.Need{HardOff: auth.HardOffConfidentialAssignee}); perr != nil {
+		return perr
+	}
+	if !p.Session {
+		return problem.New(problem.SessionRequired,
+			"assigning a confidential ticket to another person admits them to it, which takes a browser session; a token assigns it only to its own person")
+	}
+	return nil
 }
 
 // UpdateTicket changes a ticket's fields with If-Match. A live or boundary
@@ -1097,12 +1107,27 @@ func horizonInputs(p auth.Principal, role domain.Role, hw horizonWrite) *problem
 	return nil
 }
 
+// confidentialInputs holds a change of the confidential flag to who may make
+// it: a tenant administrator with admin scope, never an agent (docs/adr/0065
+// D6); and a lift to a browser session — it shows the ticket to every member,
+// which would outlive a leaked token's revocation, while setting the flag only
+// takes sight away and stays open to a token (docs/adr/0035 D5).
+func confidentialInputs(p auth.Principal, role domain.Role, body apigen.ConfidentialSet) *problem.Error {
+	if perr := auth.Authorize(p, role, auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeAdmin, HardOff: auth.HardOffConfidential}); perr != nil {
+		return perr
+	}
+	if !body.Confidential && !p.Session {
+		return problem.New(problem.SessionRequired, "lifting the confidential flag takes a browser session; a token may only set it")
+	}
+	return nil
+}
+
 // SetConfidential sets or lifts the confidential flag: a tenant
-// administrator's act, never an agent's; lifting needs a reason
-// (docs/adr/0065 D2, D3, D6).
+// administrator's act, never an agent's, a lift in a browser session alone
+// (confidentialInputs); lifting needs a reason (docs/adr/0065 D2, D3, D6).
 func (s *Server) SetConfidential(ctx context.Context, req apigen.SetConfidentialRequestObject) (apigen.SetConfidentialResponseObject, error) {
 	t := tenantFrom(ctx)
-	if perr := auth.Authorize(principal(ctx), t.Role, auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeAdmin, HardOff: auth.HardOffConfidential}); perr != nil {
+	if perr := confidentialInputs(principal(ctx), t.Role, *req.Body); perr != nil {
 		return nil, perr
 	}
 	version, perr := ifMatch(req.Params.IfMatch)

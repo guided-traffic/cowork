@@ -35,19 +35,16 @@ const (
 	opCreateImport = "createImport"
 )
 
-// importRead is reading an import job and its report: the tenant's
-// administrators', never an agent's. An agent never imports (docs/adr/0051
-// D6), and a report holds what the upload's files say, of those the import
-// left out too.
-var importRead = auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeRead, HardOff: auth.HardOffAdministration}
-
-// importSlot holds the replica to one import at a time, a dry run or an
-// execution: an upload is held in memory, unpacked, and kept once more
-// compressed, up to COWORK_MAX_IMPORT_BYTES each (docs/adr/0051 D7).
-func (s *Server) importSlot(ctx context.Context) (func(), error) {
+// slot waits for one of a replica's slots within the request's deadline and
+// answers its release (docs/adr/0051 D7): the imports' holds the replica to
+// one import at a time, a dry run or an execution — an upload is held in
+// memory, unpacked, and kept once more compressed, up to
+// COWORK_MAX_IMPORT_BYTES each —, the exports' to one export at a time, each
+// holding a page of tickets while it streams its archive.
+func slot(ctx context.Context, slots chan struct{}) (func(), error) {
 	select {
-	case s.imports <- struct{}{}:
-		return func() { <-s.imports }, nil
+	case slots <- struct{}{}:
+		return func() { <-slots }, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -60,14 +57,16 @@ func importURL(t tenantScope, project string, id uuid.UUID) string {
 
 // CreateImport reads an upload into a dry run: every file read, the report
 // made against the project as it stands, the files kept compressed for the
-// execution, nothing imported (docs/adr/0051 D1, D2). An administrator's act,
-// never an agent's (D6).
+// execution, nothing imported (docs/adr/0051 D1, D2). A writer's act of the
+// project, as creating a ticket is, an agent's included (D6); the tenant's
+// role is held to it before the upload is read, the project's in the
+// transaction.
 func (s *Server) CreateImport(ctx context.Context, req apigen.CreateImportRequestObject) (apigen.CreateImportResponseObject, error) {
 	t := tenantFrom(ctx)
-	if perr := auth.Authorize(principal(ctx), t.Role, administer); perr != nil {
+	if perr := auth.Authorize(principal(ctx), t.Role, work); perr != nil {
 		return nil, perr
 	}
-	release, err := s.importSlot(ctx)
+	release, err := slot(ctx, s.imports)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +91,7 @@ func (s *Server) CreateImport(ctx context.Context, req apigen.CreateImportReques
 		if err != nil {
 			return err
 		}
-		target, err := s.importTarget(ctx, w.Reader, t, p, upload, nil)
+		target, err := s.importTarget(ctx, w.Reader, t, p, upload, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -141,15 +140,34 @@ func uploadProblem(err error) error {
 	return problem.New(problem.ValidationFailed, "the upload is not a readable multipart body")
 }
 
-// importProject is the project an import goes into: one the caller sees, not
-// archived — an archived project takes no new ticket (docs/adr/0006 D4).
+// importProject is the project an import goes into: one the caller sees and
+// writes, as creating a ticket needs (docs/adr/0051 D6), not archived — an
+// archived project takes no new ticket (docs/adr/0006 D4).
 func importProject(ctx context.Context, r *store.Reader, t tenantScope, key string) (project, error) {
-	p, err := visibleProject(ctx, r, t, key)
+	p, err := importWriter(ctx, r, t, key)
 	if err != nil {
 		return p, err
 	}
 	if p.ArchivedAt != nil {
 		return p, problem.New(problem.ProjectArchived, "the project is archived")
+	}
+	return p, nil
+}
+
+// importWriter is a project the caller sees and writes: its role there, a
+// restricted project's lowered to its list's entry, and the token's write
+// scope (docs/adr/0034 D3, docs/adr/0035 D3).
+func importWriter(ctx context.Context, r *store.Reader, t tenantScope, key string) (project, error) {
+	p, err := visibleProject(ctx, r, t, key)
+	if err != nil {
+		return p, err
+	}
+	role, err := projectRole(ctx, r, t, p)
+	if err != nil {
+		return p, err
+	}
+	if perr := auth.Authorize(principal(ctx), role, work); perr != nil {
+		return p, perr
 	}
 	return p, nil
 }
@@ -162,16 +180,18 @@ func summaryAct(project, status string, s importer.Summary) map[string]any {
 }
 
 // GetImport answers a job with its report; a dry run past its day is gone
-// (docs/adr/0051 D7). For the tenant's administrators, never an agent.
+// (docs/adr/0051 D7). A writer's of the project, an agent's included (D6),
+// and the job's: the policies of import_jobs hold it to the person who made
+// it and the tenant's administrators, and another's is 404.
 func (s *Server) GetImport(ctx context.Context, req apigen.GetImportRequestObject) (apigen.GetImportResponseObject, error) {
 	t := tenantFrom(ctx)
-	if perr := auth.Authorize(principal(ctx), t.Role, importRead); perr != nil {
+	if perr := auth.Authorize(principal(ctx), t.Role, work); perr != nil {
 		return nil, perr
 	}
 	now := s.h.opts.Now()
 	var job readq.GetImportJobRow
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
-		p, err := visibleProject(ctx, r, t, req.Project)
+		p, err := importWriter(ctx, r, t, req.Project)
 		if err != nil {
 			return err
 		}
@@ -219,15 +239,22 @@ func importJobView(projectKey string, j readq.GetImportJobRow) (apigen.ImportJob
 // (importer.Needs): the numbers the project holds or a purged ticket held, the
 // tickets the references name, and the members the assignees name — each
 // one who can see the project, as an assignee must (docs/adr/0065 D9). A
-// corrected assignee who is none is refused at its correction.
+// corrected assignee who is none is refused at its correction. named are the
+// members the dry run assigned, for an execution; a request through a token,
+// or an agent's, names its person, which a confidential ticket may be
+// assigned to alone — a person's browser session does not.
 func (s *Server) importTarget(ctx context.Context, r *store.Reader, t tenantScope, p project, u *importer.Upload,
-	corrections []importer.Correction) (importer.Target, error) {
+	corrections []importer.Correction, named map[string]uuid.UUID) (importer.Target, error) {
 	issuer := ""
 	if s.h.opts.OIDC.Provider != nil {
 		issuer = s.h.opts.OIDC.Provider.Issuer()
 	}
 	tg := importer.Target{Tenant: t.Slug, Project: p.Key, Issuer: issuer, Taken: map[int32]bool{}, Purged: map[int32]bool{},
-		Existing: map[int32]uuid.UUID{}, Persons: map[string]importer.Person{}, Assignees: map[uuid.UUID]importer.Person{}}
+		Existing: map[int32]uuid.UUID{}, Persons: map[string]importer.Person{}, Assignees: map[uuid.UUID]importer.Person{},
+		Named: named}
+	if caller := principal(ctx); !caller.Session || caller.IsAgent() {
+		tg.TokenPerson = &caller.PersonID
+	}
 	needs := u.Needs(issuer)
 	if err := importNumbers(ctx, r, t, p, needs, &tg); err != nil {
 		return tg, err
@@ -337,16 +364,18 @@ func correctedAssignees(ctx context.Context, r *store.Reader, t tenantScope, p p
 }
 
 // ExecuteImport executes a dry run with its corrections in one transaction:
-// every ticket, question and link, the sequence advanced, or nothing
-// (docs/adr/0051 D3). The project's rank lock is taken first: filings wait,
-// and the numbers the analysis checks cannot be taken meanwhile.
+// every ticket, question and link of the files it can import, the sequence
+// advanced, or nothing (docs/adr/0051 D3); a file with an error or a conflict
+// is left out, and the report says why (D2). The project's rank lock is taken
+// first: filings wait, and the numbers the analysis checks cannot be taken
+// meanwhile. The same writers as the dry run, of their own dry runs (D6).
 func (s *Server) ExecuteImport(ctx context.Context, req apigen.ExecuteImportRequestObject) (apigen.ExecuteImportResponseObject, error) {
 	t := tenantFrom(ctx)
-	if perr := auth.Authorize(principal(ctx), t.Role, administer); perr != nil {
+	if perr := auth.Authorize(principal(ctx), t.Role, work); perr != nil {
 		return nil, perr
 	}
 	corrections := correctionsOf(req.Body)
-	release, err := s.importSlot(ctx)
+	release, err := slot(ctx, s.imports)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +387,7 @@ func (s *Server) ExecuteImport(ctx context.Context, req apigen.ExecuteImportRequ
 		if err != nil {
 			return err
 		}
-		upload, err := lockedDryRun(ctx, w, t, p, req.Import, now)
+		upload, named, err := lockedDryRun(ctx, w, t, p, req.Import, now)
 		if err != nil {
 			return err
 		}
@@ -368,14 +397,11 @@ func (s *Server) ExecuteImport(ctx context.Context, req apigen.ExecuteImportRequ
 		if err := lockRank(ctx, w, t, p.ID); err != nil {
 			return err
 		}
-		target, err := s.importTarget(ctx, w.Reader, t, p, upload, corrections)
+		target, err := s.importTarget(ctx, w.Reader, t, p, upload, corrections, named)
 		if err != nil {
 			return err
 		}
 		result := importer.Analyze(upload, target, corrections)
-		if perr := blockingProblem(result); perr != nil {
-			return perr
-		}
 		if err := s.execute(ctx, w, t, p, req.Import, now, target, &result); err != nil {
 			return err
 		}
@@ -392,26 +418,37 @@ func (s *Server) ExecuteImport(ctx context.Context, req apigen.ExecuteImportRequ
 	return apigen.ExecuteImport200JSONResponse(view), nil
 }
 
-// lockedDryRun locks the job and reads its files back: a second execution
-// waits for the first and finds it executed (docs/adr/0051 D3), and a dry run
-// past its day is gone (D7).
-func lockedDryRun(ctx context.Context, w *store.Writer, t tenantScope, p project, id uuid.UUID, now time.Time) (*importer.Upload, error) {
+// lockedDryRun locks the job and reads its files back, with the members its
+// report assigned by the files' paths: a second execution waits for the
+// first and finds it executed (docs/adr/0051 D3), and a dry run past its day
+// is gone (D7).
+func lockedDryRun(ctx context.Context, w *store.Writer, t tenantScope, p project, id uuid.UUID, now time.Time) (*importer.Upload, map[string]uuid.UUID, error) {
 	job, err := w.LockImportJob(ctx, writeq.LockImportJobParams{TenantID: t.ID, ProjectID: p.ID, ID: id})
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		return nil, problem.New(problem.NotFound, "no such import job")
+		return nil, nil, problem.New(problem.NotFound, "no such import job")
 	case err != nil:
-		return nil, err
+		return nil, nil, err
 	case job.Status == importExecuted:
-		return nil, problem.New(problem.ImportExecuted, "the dry run was executed already; a dry run is executed at most once")
+		return nil, nil, problem.New(problem.ImportExecuted, "the dry run was executed already; a dry run is executed at most once")
 	case job.ExpiresAt == nil || !job.ExpiresAt.After(now):
-		return nil, problem.New(problem.NotFound, "no such import job")
+		return nil, nil, problem.New(problem.NotFound, "no such import job")
 	}
 	sources, err := importer.Unpack(job.Source)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return importer.Read(sources), nil
+	var report importer.Report
+	if err := json.Unmarshal(job.Report, &report); err != nil {
+		return nil, nil, fmt.Errorf("decode the dry run's report: %w", err)
+	}
+	named := map[string]uuid.UUID{}
+	for _, f := range report.Files {
+		if f.Assignee != nil && f.Assignee.Person != nil {
+			named[f.Path] = f.Assignee.Person.ID
+		}
+	}
+	return importer.Read(sources), named, nil
 }
 
 // correctionsOf reads the request's corrections.
@@ -458,27 +495,4 @@ func checkCorrections(u *importer.Upload, corrections []importer.Correction) *pr
 		fields = append(fields, problem.FieldError{Pointer: e.Pointer, Message: e.Message})
 	}
 	return &problem.Error{Code: problem.ValidationFailed, Detail: "a correction cannot be applied", Errors: fields}
-}
-
-// blockingProblem refuses an execution while a file it would import has an
-// error or a conflict (docs/adr/0064 D3), naming each as file:<path>.
-func blockingProblem(r importer.Result) *problem.Error {
-	blocking := r.Blocking()
-	if len(blocking) == 0 {
-		return nil
-	}
-	errs := make([]problem.FieldError, 0, len(blocking))
-	for _, f := range blocking {
-		msg := string(f.Outcome)
-		switch {
-		case len(f.Errors) > 0:
-			msg += ": " + f.Errors[0].Message
-		case f.Conflict != nil:
-			msg += ": the project holds the number as " + *f.Conflict
-		}
-		errs = append(errs, problem.FieldError{Pointer: "file:" + f.Path, Message: msg})
-	}
-	return &problem.Error{Code: problem.ImportConflict,
-		Detail: fmt.Sprintf("%d files the execution would import have an error or a conflict; nothing was imported", len(blocking)),
-		Errors: errs}
 }

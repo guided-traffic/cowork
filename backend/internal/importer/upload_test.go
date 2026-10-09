@@ -5,7 +5,10 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"encoding/binary"
+	"fmt"
 	"mime/multipart"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -160,6 +163,70 @@ func TestReadUploadRefusesWhatItCannotTake(t *testing.T) {
 			assert.Contains(t, ue.Message, c.message)
 		})
 	}
+}
+
+// manyEntries is a zip of n empty entries whose directory's end declares n
+// modulo 65,536 of them, as a 16-bit count does — archive/zip compares only
+// those bits and reads every entry of the directory regardless.
+func manyEntries(n int) []byte {
+	var local, central bytes.Buffer
+	le := binary.LittleEndian
+	for i := range n {
+		name := fmt.Sprintf("e/%06d", i)
+		offset := local.Len()
+		local.Write(le.AppendUint32(nil, 0x04034b50))
+		local.Write(make([]byte, 22))
+		local.Write(le.AppendUint16(nil, uint16(len(name))))
+		local.Write(make([]byte, 2))
+		local.WriteString(name)
+		central.Write(le.AppendUint32(nil, 0x02014b50))
+		central.Write(make([]byte, 24))
+		central.Write(le.AppendUint16(nil, uint16(len(name))))
+		central.Write(make([]byte, 12))
+		central.Write(le.AppendUint32(nil, uint32(offset)))
+		central.WriteString(name)
+	}
+	out := append(local.Bytes(), central.Bytes()...)
+	out = le.AppendUint32(out, 0x06054b50)
+	out = append(out, make([]byte, 4)...)
+	out = le.AppendUint16(out, uint16(n))
+	out = le.AppendUint16(out, uint16(n))
+	out = le.AppendUint32(out, uint32(central.Len()))
+	out = le.AppendUint32(out, uint32(local.Len()))
+	return append(out, 0, 0)
+}
+
+// docs/adr/0051 D7: a zip's entries are counted before the zip is parsed, so
+// a zip of a great many empty entries — more than its directory's end
+// declares — is refused at the bound of the files without the memory a parse
+// of each entry takes.
+func TestReadUploadCountsAZipsEntriesBeforeItParsesThem(t *testing.T) {
+	archive := manyEntries(3*65536 + 100)
+	declared, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	require.NoError(t, err, "archive/zip takes the zip")
+	require.Len(t, declared.File, 3*65536+100, "and parses every entry, though its end declares 100")
+	declared = nil
+	in := form(t, "file", archived{name: "many.zip", body: archive})
+	runtime.GC()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, err = ReadUpload(in, Limits{MaxFiles: MaxFiles})
+	runtime.ReadMemStats(&after)
+
+	var ue *UploadError
+	require.ErrorAs(t, err, &ue)
+	assert.True(t, ue.TooLarge)
+	assert.Contains(t, ue.Message, "more than 10000 entries")
+	allocated := after.TotalAlloc - before.TotalAlloc
+	assert.Less(t, allocated, uint64(3*len(archive)),
+		"reading a zip of %d bytes allocated %d bytes: its entries were parsed", len(archive), allocated)
+
+	ok := zipped(t, archived{name: "001-a.md", body: ticket}, archived{name: "002-b.md", body: ticket})
+	_, err = ReadUpload(form(t, "file", archived{name: "two.zip", body: ok}), Limits{MaxFiles: 2})
+	require.NoError(t, err, "a zip at the bound is read")
+	_, err = ReadUpload(form(t, "file", archived{name: "one.md", body: ticket}, archived{name: "two.zip", body: ok}), Limits{MaxFiles: 2})
+	require.ErrorAs(t, err, &ue, "the zip's entries count with the files before it")
+	assert.True(t, ue.TooLarge)
 }
 
 // A repository's frontmatter written by hand that is no YAML — a value with

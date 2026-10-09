@@ -21,10 +21,12 @@ the mechanics are [api.md](api.md)).
    keeps the default — added to the test's `sessionOnly` set and to
    [ADR 0035](../adr/0035-personal-access-tokens.md) D5; or `security: []` for what a client
    reads or does before it authenticates, which as a write also carries `x-cowork-origin-check:
-   true` — or, for a write whose credential is a signature over its body that its handler
-   verifies, `x-cowork-signed` instead, which the test holds to GitHub's webhook alone
-   ([api.md](api.md#githubs-webhook)). Only the identity provider's callback takes query parameters it does not declare
-   (`x-cowork-open-query`). A creating `POST` takes the `IdempotencyKey` parameter, an overwriting
+   true`. Only the identity provider's callback takes query parameters it does not declare
+   (`x-cowork-open-query`). A read that records an act — data leaving the system,
+   [ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D5 — says
+   `x-cowork-recorded-read: true` and joins the test's `recordedRead` set, and a session's request
+   for it is then held to the installation's own pages
+   ([csrf.md](../security/csrf.md#the-reads-that-record-an-act)). A creating `POST` takes the `IdempotencyKey` parameter, an overwriting
    write `IfMatch`, a list `Cursor` and `Limit`.
 2. **The examples** ([api.md](api.md#examples)). The request body's on the operation; each answer
    names a schema that carries an `example` — a new schema gets one, a new list an anchor to its
@@ -95,7 +97,7 @@ the mechanics are [api.md](api.md)).
    `TestUnfilteredQueryUnderTenantSeesNothingOfAnother` fails for the new table.
 6. A database enum the Go code reads gets its `domain` type in
    [`sqlc.yaml`](../../backend/sqlc.yaml); `make generate`, `make test-unit`,
-   `make postgres-up minio-up test-integration`.
+   `make postgres-up postgres-tls-up minio-up dex-up test-integration`.
 
 ## A migration
 
@@ -112,7 +114,7 @@ the mechanics are [api.md](api.md)).
    refuses a new enum value in the transaction that adds it: `ALTER TYPE … ADD VALUE` goes into a
    file of its own, and what uses the value into the next, as `000018_ticket_state_review` and
    `000019` do.
-2. Run `make postgres-up minio-up test-integration`; add an assertion there for what only the
+2. Run `make postgres-up postgres-tls-up minio-up dex-up test-integration`; add an assertion there for what only the
    database proves. A rewrite of existing rows is tested from the version before it:
    `migrateTo(t, ownerURL, n-1)` in [`migrate_test.go`](../../backend/test/integration/migrate_test.go)
    on a database of its own, the rows written with the fixture, then `store.Migrate`.

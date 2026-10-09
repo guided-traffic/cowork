@@ -9,31 +9,60 @@ qualification that it is **not mandatory**: it is tried, and may be dropped if i
 earn its place. The rules of D5–D8 were put to the owner with the question and not objected
 to.
 
-~~**Not built.** Phase 7.~~ **Built** (phase 7, 2026-10-06), **on trial**: D1–D7 —
+~~**Not built.** Phase 7.~~ ~~**Built** (phase 7, 2026-10-06), **on trial**~~ *(removed 2026-10-09,
+below)*: D1–D7 —
 `POST /api/v1/tenants/{tenant}/integrations/github/webhook`
-([`api/github.go`](../../backend/internal/api/github.go),
-[`api/github_links.go`](../../backend/internal/api/github_links.go), the pure parser
-[`internal/github`](../../backend/internal/github/)), the tenant's secret
+(`api/github.go`,
+`api/github_links.go`, the pure parser
+`internal/github`), the tenant's secret
 (`GET …/integrations/github`, `POST` and `DELETE …/integrations/github/secret`,
-[`api/integrations.go`](../../backend/internal/api/integrations.go)), a ticket's pull requests
+`api/integrations.go`), a ticket's pull requests
 (`GET …/tickets/{number}/pull-requests`, `DELETE …/pull-requests/{pull_request}`,
-[`api/pullrequests.go`](../../backend/internal/api/pullrequests.go)),
+`api/pullrequests.go`),
 [migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql), the settings'
-GitHub section and the ticket page's card and hint in the UI; the operator's page is
-[docs/operations/github.md](../operations/github.md), the boundary and its gaps
-[docs/security/github-webhook.md](../security/github-webhook.md). Whether the feature earns its place
+GitHub section and the ticket page's card and hint in the UI; the operator's page was
+`docs/operations/github.md`, the boundary and its gaps `docs/security/github-webhook.md`. Whether the feature earns its place
 is the owner's trial on a real repository, outstanding.
 
 **Dropped 2026-10-09 by the owner, before its trial:** cowork tracks no pull requests, no branches
 and no pushes — "das Tool braucht keine MR oder Branches tracken"; the owner starts using cowork
 with the tickets as they are, and the webhook did not earn its place. D1–D8 no longer hold as rules
-for cowork. **The code built on 2026-10-06 is still in the tree and in the releases up to 0.12.0**,
+for cowork. ~~**The code built on 2026-10-06 is still in the tree and in the releases up to 0.12.0**,
 off in every tenant that has no secret; its removal is a change of its own, which takes out the
 routes, the UI's GitHub section and ticket card, the parser, the delivery-expiry job and the pages
 above, amends in place the records that name the webhook (ADR 0020 D2, ADR 0031 D6, ADR 0035 D5,
 ADR 0037 D5, ADR 0043 D2 and D3), and leaves migration 41's tables to a later contract migration
-(ADR 0028). The questions the trial left open — what a push adds, whether a removal stays, whether a
+(ADR 0028).~~ The questions the trial left open — what a push adds, whether a removal stays, whether a
 key that leaves a pull request unlinks it, which keys a body and a title give — lapse with it.
+
+**Removed 2026-10-09.** The code built on 2026-10-06 is out of the tree; the releases from 0.9.0 to
+0.12.0 carry it, off in every tenant without a secret. Gone are the six routes and the family
+`integrations.yaml` of the API document, with the extension `x-cowork-signed` and the problem code
+`signature_invalid`; the handlers, the parser `internal/github` and the store's reads and writes of
+the webhook; the job `github-delivery-expiry`, whose lock key 7 no job takes from now on; the
+reason `merged` of the inbox, the event `pull_request.changed` and the context's `## Pull requests`;
+the label `cowork github webhook secret v1` as a use of the server key, which no other use takes;
+the UI's GitHub section of the tenant's settings and the ticket page's card and merge hint; the
+operator's page and the security page, whose gaps H-64 to H-67 close with the endpoint. The session-only operations lose
+`createGitHubSecret` ([ADR 0035](0035-personal-access-tokens.md) D5,
+[ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) D6), and the records that name the
+webhook are amended in place: [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D2,
+[ADR 0037](0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md) D5,
+[ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
+D2 and D3, [ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
+D2, [ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D1, D2, D6 and D8 and
+[ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D2. **What stays, written by nothing:** [migration 41](../../backend/internal/store/migrations/000041_github_webhook.up.sql)'s
+three tables, its enum values and its policies, which the releases up to 0.12.0 read — a contract
+migration of a later release drops them
+([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3). Until
+then the purge of a ticket still deletes the ticket's rows of `ticket_pull_requests`, which
+reference it ([`deletion.sql`](../../backend/internal/store/queries/write/deletion.sql)
+`DeleteTicketPullRequests`); the inbox leaves out a notification of the reason `merged` that such a
+release made, since no answer names the reason any more
+([`inbox.sql`](../../backend/internal/store/queries/read/inbox.sql)); the API's `AuditAction` keeps
+`merged`, `closed` and `reopened`, the acts the audit record keeps; and a ticket's activity shows the
+webhook's past acts by their names, without what they named.
 
 *(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)*
 
@@ -102,15 +131,14 @@ key that leaves a pull request unlinks it, which keys a body and a title give �
   member's act with `write` scope in the agent baseline, and the removal stays: the row is kept,
   marked removed, so a later delivery does not bring the link back.
 - **D7 — the setup.** The tenant's settings make, rotate and revoke the secret and show the payload
-  URL with what to set at GitHub; [docs/operations/github.md](../operations/github.md) is the
-  operator's page.
+  URL with what to set at GitHub; `docs/operations/github.md` was the operator's page.
 
 *(Made concrete 2026-10-07 by the implementer and built the same day; confirmed by the owner the
 same day, over linking an outside author's pull request without its title and over linking every
 author:)* **D4 — whose pull requests are linked.** A pull request is read only when its author is
 the repository's owner, a member of the organisation that owns it or a collaborator of it, as
 GitHub's `author_association` names them — `OWNER`, `MEMBER`, `COLLABORATOR`
-([`internal/github`](../../backend/internal/github/payload.go) `linkedAuthors`); the pull request of
+(`internal/github` `linkedAuthors`); the pull request of
 any other author, and one whose payload names no association, is taken with the same `202` and
 changes nothing — no link, no fact of a link, no act, nobody told. A push to the default branch is
 read as before: a commit is there because somebody who may write the repository put it there. So a
@@ -204,10 +232,10 @@ provider, each its own amendment, each optional.
 
 - A public endpoint, however small: D3's signature check is the whole defence, and the
   security page of integrations carries it with its `H-<n>` for what signature verification
-  does not cover (a leaked secret). *(2026-10-06:)* the page is
-  [docs/security/github-webhook.md](../security/github-webhook.md), its gaps H-64 to H-67: the
-  answers tell which tenants take the webhook, nothing throttles it, a leaked secret writes until it
-  is rotated, and one secret serves every repository of a tenant.
+  does not cover (a leaked secret). *(2026-10-06:)* the page was `docs/security/github-webhook.md`,
+  its gaps H-64 to H-67: the answers tell which tenants take the webhook, nothing throttles it, a
+  leaked secret writes until it is rotated, and one secret serves every repository of a tenant.
+  *(2026-10-09:)* the endpoint is removed, and the page and its four gaps with it.
 - Keys read from free text can be wrong (a key mentioned, not meant); the section shows the
   source, and a wrong link is removed by a person like any link.
 
@@ -219,4 +247,4 @@ provider, each its own amendment, each optional.
 - [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D2, D5, [ADR 0064](0064-one-direction-import-and-export-no-synchronisation.md) — inbound only
 - [ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md) D2 — the body limit
 - [ADR 0035](0035-personal-access-tokens.md) D5, [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D3 — who makes the secret
-- [`backend/api/integrations.yaml`](../../backend/api/integrations.yaml), [`internal/api/github.go`](../../backend/internal/api/github.go), [`internal/github`](../../backend/internal/github/) — the route, its handler and the parser
+- `backend/api/integrations.yaml`, `internal/api/github.go`, `internal/github` — the route, its handler and the parser, removed 2026-10-09 (Status)

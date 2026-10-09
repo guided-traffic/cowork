@@ -11,7 +11,11 @@ D3; nothing of the decision changes), and on 2026-10-06 for GitHub's webhook of
 [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
 (D5: a third route outside D1, a public write whose credential is a signature over its body, which
 carries no origin check; made concrete by the implementer and built the same day, open to the
-owner's objection). Date:
+owner's objection), and on 2026-10-07 by the owner's answer recorded in
+[ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D5 (Residual risks:
+the reads that record an act take a session's request only from the installation's own pages;
+built 2026-10-09), and on 2026-10-09 with the webhook's removal, which the owner dropped before its
+trial (D5: the third route is gone; ADR 0071 Status). Date:
 2026-10-01. Decided by the owner as the answer to the catalog question "CSRF
 for the cookie session?": origin check plus custom header, over a synchroniser token, over
 `SameSite=Lax` alone, and over `SameSite=Strict`. The rules of D4–D6 were put to the owner
@@ -84,13 +88,16 @@ when the returned `state` is the one sealed — with the nonce and the PKCE veri
 browser's own `__Host-cowork-oidc` cookie, which another site can neither read nor set.)*
 *(Amended 2026-10-06, made concrete by the implementer for
 [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
-D2, D3:)* a third route is outside D1 by nature: GitHub's webhook,
+D2, D3:)* ~~a third route is outside D1 by nature: GitHub's webhook,
 `POST /api/v1/tenants/{tenant}/integrations/github/webhook`, a public write that carries no
 cookie — one sent is ignored — and whose credential is the HMAC of its body under the tenant's
 secret, which no other site can compute. GitHub sends no `Origin`, so it carries no origin check
 either; the API document marks it `x-cowork-signed: github` instead, and the unit test over the
 document requires every public write to carry one of the two marks, the signed one on that route
-alone ([`document_test.go`](../../backend/api/document_test.go)).
+alone.~~ *(Removed 2026-10-09 with the webhook, ADR 0071 Status: the route and the mark
+`x-cowork-signed` are gone; the unit test over the document,
+[`document_test.go`](../../backend/api/document_test.go), requires every public write to carry
+`x-cowork-origin-check` again.)*
 
 **D6 — `COWORK_BASE_URL` is required whenever a cookie login exists** (an issuer or a local
 account configured), and it must be the origin the browser sees — behind the Ingress, the
@@ -136,7 +143,12 @@ still work.)* *(Built 2026-10-04 for the issuer as well: the backend refuses to 
   leaving the system must be recorded: an attachment's download and a ticket's Markdown export.
   A link to one of them, followed from another site, carries the `Lax` cookie and records the
   act under the person; it changes no ticket and the answer is unreadable to the other site
-  (H-22 of the same page).
+  (H-22 of the same page). *(Amended 2026-10-07 by the owner's answer recorded in
+  [ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D5: the reads that
+  record an act are five, and a session's request for one of them that a page on a sibling host
+  or of another site makes is refused by its `Sec-Fetch-Site`, `403 csrf`; ~~a link followed from
+  another site records the act~~ only in a browser that sends no such header, which H-22 names
+  now.)*
 - Privacy-hardened browsers that strip both `Origin` and `Referer` on same-origin requests
   are refused by D1; the UI tells the person why. Not verified against any particular
   browser; the integration tier tests the rule, not browsers.

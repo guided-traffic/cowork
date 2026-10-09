@@ -1,8 +1,19 @@
 package config
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"maps"
+	"math/big"
+	"net/url"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
@@ -178,4 +189,116 @@ func TestMigrateBootstrapSwitch(t *testing.T) {
 	_, err = Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvMigrateBootstrap: "sometimes"}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), EnvMigrateBootstrap+`: "sometimes" is not a boolean`)
+}
+
+// writeAuthority writes the PEM of a self-signed authority into a file of
+// the test's own and returns its path: the driver reads the file when it
+// parses a connection that names it.
+func writeAuthority(t *testing.T) string {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "cowork test authority"},
+		NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), IsCA: true,
+		KeyUsage: x509.KeyUsageCertSign, BasicConstraintsValid: true}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	path := filepath.Join(t.TempDir(), "ca.crt")
+	require.NoError(t, os.WriteFile(path, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600))
+	return path
+}
+
+// docs/adr/0058 D3: COWORK_DATABASE_CA becomes the sslrootcert of both roles'
+// connections, a URL and one composed of components alike, so the runtime
+// pool, the owner's and the migration run trust that authority alone: the
+// driver reads it into the pool it verifies against, verify-full checks the
+// host as well, and require checks the chain as verify-ca does. Everything
+// else of the connection stays as it was given.
+func TestTheDatabaseAuthorityIsEachConnectionsRootCert(t *testing.T) {
+	ca := writeAuthority(t)
+	env := runtimeComponents(map[string]string{EnvDatabaseSSLMode: "verify-full", EnvDatabaseCA: ca,
+		EnvDatabaseOwnerURL: "postgres://cowork_owner:owner-secret@postgres.cowork.svc:5432/cowork?sslmode=require&pool_max_conns=4"})
+	cfg, err := Load(envOf(env))
+	require.NoError(t, err)
+	assert.Equal(t, ca, cfg.DatabaseCA)
+
+	runtime, err := pgconn.ParseConfig(cfg.DatabaseURL)
+	require.NoError(t, err)
+	assert.Equal(t, reservedPassword, runtime.Password, "the password survives the rewrite")
+	require.NotNil(t, runtime.TLSConfig)
+	assert.NotNil(t, runtime.TLSConfig.RootCAs, "the authority is the pool the server is verified against")
+	assert.Equal(t, "postgres.cowork.svc", runtime.TLSConfig.ServerName, "verify-full checks the host")
+	assert.False(t, runtime.TLSConfig.InsecureSkipVerify)
+	assert.Empty(t, runtime.Fallbacks, "no plain-text fallback")
+
+	owner, err := pgconn.ParseConfig(cfg.DatabaseOwnerURL)
+	require.NoError(t, err)
+	assert.Equal(t, "owner-secret", owner.Password)
+	assert.Equal(t, "4", mustQuery(t, cfg.DatabaseOwnerURL).Get("pool_max_conns"), "the URL's other parameters stay")
+	require.NotNil(t, owner.TLSConfig)
+	assert.NotNil(t, owner.TLSConfig.RootCAs)
+	assert.NotNil(t, owner.TLSConfig.VerifyPeerCertificate, "require with an authority checks the chain, as verify-ca does")
+	assert.Empty(t, owner.Fallbacks)
+
+	cfg, err = Load(envOf(runtimeComponents(map[string]string{EnvDatabaseSSLMode: "verify-ca", EnvDatabaseCA: ca})))
+	require.NoError(t, err)
+	assert.Empty(t, cfg.DatabaseOwnerURL, "a role that is not given stays unset")
+
+	cfg, err = Load(envOf(runtimeComponents(map[string]string{EnvDatabaseSSLMode: "verify-full"})))
+	require.NoError(t, err)
+	assert.NotContains(t, cfg.DatabaseURL, "sslrootcert", "without the variable the connection is as it was given")
+	assert.Empty(t, cfg.DatabaseCA)
+}
+
+func mustQuery(t *testing.T, raw string) url.Values {
+	t.Helper()
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+	return u.Query()
+}
+
+// docs/adr/0058 D3: an authority beside a connection that would not use it is
+// a configuration error — an sslmode that checks nothing, a second authority
+// in the URL, a connection that is no URL —, which names the variables and
+// never quotes the URL or the password.
+func TestTheDatabaseAuthorityRefusals(t *testing.T) {
+	const ca = "/etc/cowork/database-ca/ca.crt"
+	for name, c := range map[string]struct {
+		env  map[string]string
+		want string
+	}{
+		"no sslmode": {
+			runtimeComponents(map[string]string{EnvDatabaseCA: ca}),
+			EnvDatabaseCA + " checks nothing while the sslmode of " + EnvDatabaseURL + " is unset, the driver's prefer",
+		},
+		"an sslmode that checks nothing": {
+			runtimeComponents(map[string]string{EnvDatabaseCA: ca, EnvDatabaseSSLMode: "prefer"}),
+			EnvDatabaseCA + ` checks nothing while the sslmode of ` + EnvDatabaseURL + ` is "prefer"`,
+		},
+		"plain text": {
+			map[string]string{EnvDatabaseCA: ca, EnvDatabaseURL: "postgres://app:url-secret@db/cowork?sslmode=disable"},
+			EnvDatabaseCA + ` checks nothing while the sslmode of ` + EnvDatabaseURL + ` is "disable"`,
+		},
+		"the owner's sslmode": {
+			map[string]string{EnvDatabaseCA: ca, EnvDatabaseURL: "postgres://app:url-secret@db/cowork?sslmode=verify-full",
+				EnvDatabaseOwnerURL: "postgres://owner:url-secret@db/cowork?sslmode=allow"},
+			`the sslmode of ` + EnvDatabaseOwnerURL + ` is "allow"`,
+		},
+		"a second authority": {
+			map[string]string{EnvDatabaseCA: ca, EnvDatabaseURL: "postgres://app:url-secret@db/cowork?sslmode=verify-full&sslrootcert=/other.crt"},
+			EnvDatabaseCA + " and an sslrootcert in " + EnvDatabaseURL + " name two authorities",
+		},
+		"no URL": {
+			map[string]string{EnvDatabaseCA: ca, EnvDatabaseURL: "host=db user=app password=url-secret sslmode=verify-full"},
+			EnvDatabaseCA + " needs the connection of " + EnvDatabaseURL + " as a postgres:// URL",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(envOf(c.env))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), c.want)
+			assert.NotContains(t, err.Error(), reservedPassword, "the password is never echoed")
+			assert.NotContains(t, err.Error(), "url-secret", "the URL is never echoed")
+		})
+	}
 }

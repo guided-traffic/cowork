@@ -31,7 +31,7 @@ works the same way with `deploy/helm/cowork` and the image values set. The value
 | A local administrator, an identity provider, or both, and the public URL | yes, to log in at all — without one of the two nobody can | the administrator's username and password from a Secret ([below](#the-local-administrator)); the provider's issuer and client id as values, its client secret from a Secret ([below](#the-identity-provider)); `backend.config.baseURL` for either |
 | An S3-compatible bucket with an access key scoped to it | no — without it uploads are refused | endpoint and bucket as values or from a ConfigMap, the key from a Secret, a private authority from a ConfigMap |
 
-[Example manifests](#example-manifests) for CloudNativePG and for MinIO show one way to provide the
+[Example manifests](#example-manifests) for CloudNativePG and for PGSTY Silo show one way to provide the
 database and the bucket; they are checked for syntax only.
 | A model the chat in the UI talks to | no — without it there is no chat | the provider, its URL and the model as values, its API key from a Secret ([below](#the-chat)) |
 | A Prometheus — with the Prometheus Operator's CRDs for the monitors and the alerts — and a Grafana with the dashboard sidecar | no — the metrics port is on either way, until `metrics.enabled: false` | `metrics.*` switches each resource on; nothing of it is a credential ([metrics.md](metrics.md)) |
@@ -124,10 +124,42 @@ CloudNativePG's. The runtime role is not part of that bootstrap:
 [`deploy/examples/cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml)
 creates it and keeps its password from a `kubernetes.io/basic-auth` Secret, and reads both roles'
 location from a ConfigMap of its own, which is how `sslmode` gets set. CloudNativePG serves TLS
-with a certificate of its own authority; the chart mounts no authority for the database, so
-`require` — encrypted, the server not verified — is the strongest mode it can use with it. Not
-verified against a CloudNativePG cluster in this repository: the example is checked for syntax
+with a certificate of its own authority, whose certificate is `ca.crt` of the Secret `<cluster>-ca`
+beside the authority's key; copied into a ConfigMap of its own, it is the chart's
+`database.tls.caConfigMap` ([below](#tls-and-a-private-authority)). Not verified against a
+CloudNativePG cluster in this repository: the example is checked for syntax
 ([example manifests](#example-manifests)).
+
+<a id="tls-and-a-private-authority"></a>
+**TLS and a private authority.** The connection's `sslmode` decides what is checked: `verify-full`
+checks that the server's certificate chains to an authority the backend trusts and names the host
+connected to, `verify-ca` and `require` the chain alone where an authority is named, `prefer` and
+`allow` nothing — and they fall back to plain text —, `disable` connects in plain text. A server
+whose certificate chains to a public authority is checked against the image's system pool. One
+whose authority is private — CloudNativePG's own, a cluster's internal one — is named by
+`database.tls.caConfigMap`, a ConfigMap with the authority's certificate under `database.tls.keys.ca`
+(`ca.crt` `# default`):
+
+```bash
+# CloudNativePG: the authority's certificate, never its key, out of the cluster's Secret
+kubectl -n cowork get secret cowork-db-ca -o jsonpath='{.data.ca\.crt}' | base64 -d >ca.crt
+kubectl -n cowork create configmap cowork-db-ca-cert --from-file=ca.crt=./ca.crt
+# values: database.tls.caConfigMap=cowork-db-ca-cert, and each role's sslmode verify-full
+```
+
+The chart mounts it read-only at `/etc/cowork/database-ca` into the `migrate` init container, the
+migration Job and the serving container, and sets `COWORK_DATABASE_CA` to the key; the backend names
+it as the `sslrootcert` of both roles' connections, so the runtime role's pool, the owner's and the
+migration run trust that authority and no other
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D3). The start is refused
+while a role's `sslmode` checks nothing beside it — none, `disable`, `allow` or `prefer` —, with
+`COWORK_DATABASE_CA checks nothing while the sslmode of COWORK_DATABASE_URL is …`, and so is a URL
+that names an `sslrootcert` of its own. A server outside the authority fails the connection with
+`tls: failed to verify certificate: x509: certificate signed by unknown authority`; the migration
+run then logs `migration failed`, the serving container `database connection failed`.
+Whoever may write the ConfigMap decides which server the backend trusts with both roles'
+credentials, as whoever may write the roles' Secrets does
+([trust boundaries](../security/trust-boundaries.md)).
 
 ## The Secrets
 
@@ -221,9 +253,6 @@ once:
   from the server key, and is refused with `422 idempotency_mismatch`, neither replayed nor run a
   second time. A client that retries a creation across a rotation reads the list to see whether it
   happened.
-- **Every tenant's GitHub webhook secret no longer opens**: its webhook answers `404` and the log
-  says to rotate the secret, until the tenant's administrators make a new one and set it at GitHub
-  ([github.md](github.md)).
 - **The sessions of the local login survive**, and so does every personal access token: a session
   row and a token are found by the SHA-256 of their value, which no key enters.
 
@@ -250,8 +279,11 @@ prints a warning in its notes for each. When a Secret reference and its inline v
 set, the reference wins and the value is ignored. [Job mode](#job-mode) takes none of them.
 
 **A changed Secret reaches the pods when they start again.** The chart restarts them by
-itself only for the inline values (a checksum annotation on the pod); after rotating a Secret
-you created, run `kubectl -n cowork rollout restart deploy/cowork-backend`.
+itself only while an inline value is set, and then at every `helm upgrade`: the backend pod carries
+the annotation `cowork/inline-credentials-revision` with the release's revision — never a hash of
+the credential, which anyone who may view the namespace's pods could read. Under `helm template` and
+Argo CD the revision stays `1`, so nothing rolls. After rotating a Secret you created, or an inline
+value rendered that way, run `kubectl -n cowork rollout restart deploy/cowork-backend`.
 
 ## The local administrator
 
@@ -278,7 +310,7 @@ What happens at every start of a backend pod, after the migrations and under an 
 | The Secret says | The start does |
 |---|---|
 | a username and password, no such account yet | creates a **global administrator** with that username and password: it creates tenants and holds no role in any until it grants itself one |
-| the same, and the password differs from the stored hash | stores the new hash, **ends every session** of the account and forgets its failed logins and its lock |
+| the same, and the password differs from the stored hash | stores the new hash, **ends every session** of the account, **revokes every token** of it and forgets its failed logins and its lock |
 | the same, and the account was deactivated | reactivates it |
 | a username that a tenant's administrator already gave to an account | takes the account over: the configured password, no session, no token, and no tenant manages it any more |
 | another username than the account kept before | deactivates the old account — its tokens revoked, its sessions ended — and creates the new one |
@@ -300,16 +332,22 @@ it and grant the administrator. Once a tenant exists the bootstrap values do not
 they say. The administrator of a tenant then creates the accounts of its people
 (`POST …/accounts`, [README, API](../../README.md#api-backend)): there is no registration and
 no invitation link, and no e-mail, so a forgotten password is an administrator's reset. Creating
-an account and resetting a password take a **browser session**: a script with an administrator's
-token is `403 session_required` on both, so that a leaked token cannot leave an account or a
-password behind it ([local-accounts.md](../security/local-accounts.md)). Listing the accounts,
-unlocking one, deactivating one and ending its sessions work with an `admin`-scope token.
+an account, resetting a password and unlocking an account take a **browser session**: a script
+with an administrator's token is `403 session_required` on all three, so that a leaked token cannot
+leave an account or a password behind it, nor keep an account's lockout from holding
+([local-accounts.md](../security/local-accounts.md)). Listing the accounts, deactivating one and
+ending its sessions work with an `admin`-scope token.
 
 **Recovering the local administrator** — its password leaked, or the account is locked
 (`COWORK_LOGIN_LOCKOUT=admin`, or an attacker who keeps failing the logins): rotate the Secret
 **and restart the backend pods**. The environment is read once, at start, so a changed Secret
 does nothing until the pods restart; the start then stores the new password, ends every session
-of the account and forgets the lock. A leaked password stays valid until both steps are done.
+of the account, revokes every token of it and forgets the lock. A leaked password stays valid until
+both steps are done. **Then review its grants:** what the leaked password could make outlives the
+rotation — a membership the local administrator granted itself in a tenant, an account or a tenant
+it created — so read each tenant's audit record and members for acts of the local administrator you
+did not make, and take back what you find. Its tokens are gone: make new ones in a session where you
+need them.
 
 **What it can and cannot do through the UI.** The local administrator's password changes only
 where it comes from: `PUT /api/v1/me/password` is refused for it (`403`, naming
@@ -527,8 +565,9 @@ never the store's root credentials
 The backend writes, reads and deletes objects under `<tenant-id>/<attachment-id>`, and lists the
 objects under each tenant's prefix once a day for the consistency check
 ([backups.md](backups.md#the-consistency-check)); it never creates or deletes a bucket, so the
-bucket exists before the first upload. This policy was enough against the MinIO of
-`make minio-up`, with the region left empty:
+bucket exists before the first upload. This policy was enough against the store of
+`make minio-up` — MinIO on 2026-10-07, PGSTY Silo, its maintained fork, on 2026-10-09 —, with the
+region left empty:
 
 ```json
 {
@@ -553,34 +592,35 @@ check fails at its listing — the log says `job failed` with `consistency-check
 and [`CoworkJobFailing`](metrics.md#coworkjobfailing) fires. With it the key can list every
 tenant's object keys, which it could not before: a key that leaks alone then reads every object, not
 only those whose keys the database names
-([attachments.md H-68](../security/attachments.md#h-68)). Checked on 2026-10-07 against that MinIO
-with a key of this policy and with one without its second statement: the listing was refused
-without it and answered with it, another bucket's listing was refused either way, and a missing
-object's `HEAD` and `GET` answered `404` either way. AWS S3 documents a `403` instead of the `404`
+([attachments.md H-68](../security/attachments.md#h-68)). Checked against that store — MinIO on
+2026-10-07, Silo on 2026-10-09 — with a key of this policy and with one without its second
+statement: the listing was refused without it and answered with it, another bucket's listing was
+refused either way, and a missing object's `HEAD` and `GET` answered `404` either way. AWS S3 documents a `403` instead of the `404`
 for a missing object to a key without `s3:ListBucket`, which a download of a lost file would then
 answer as `500 internal` instead of the `404` that names the cause — not verified here.
 
-With the MinIO client, against an existing MinIO, by its administrator — cowork never sees the
-administrator's keys (names and secrets are examples):
+With `mcli`, the client PGSTY Silo carries in its image — it reads MinIO's `mc` commands —, against
+a Silo by its administrator; cowork never sees the administrator's keys (names and
+secrets are examples):
 
 ```bash
-mc alias set minio https://minio.example.com <admin-access-key> <admin-secret-key>
-mc mb minio/cowork
-mc admin policy create minio cowork-attachments cowork-policy.json   # the policy above
-mc admin user add minio cowork-app 'CHANGE-ME'
-mc admin policy attach minio cowork-attachments --user cowork-app
+mcli alias set silo https://silo.example.com <admin-access-key> <admin-secret-key>
+mcli mb silo/cowork
+mcli admin policy create silo cowork-attachments cowork-policy.json   # the policy above
+mcli admin user add silo cowork-app 'CHANGE-ME'
+mcli admin policy attach silo cowork-attachments --user cowork-app
 kubectl -n cowork create secret generic cowork-storage \
   --from-literal=accessKeyId=cowork-app --from-literal=secretAccessKey='CHANGE-ME'
 ```
 
-[`deploy/examples/minio-bucket.sh`](../../deploy/examples/minio-bucket.sh) is these commands as a
-script, with a generated key; it was run once against the MinIO of `make minio-up`
+[`deploy/examples/silo-bucket.sh`](../../deploy/examples/silo-bucket.sh) is these commands as a
+script, with a generated key; it was run once against the Silo of `make minio-up`
 ([example manifests](#example-manifests)).
 
 The values: `storage.existingSecret=cowork-storage`, `storage.endpoint` (`http://` or
 `https://`, host and port; setting it turns the storage on), `storage.bucket`,
 `storage.region` (empty lets the client ask the server) and `storage.pathStyle` (`true`, as
-MinIO expects; `false` for virtual-host addressing).
+MinIO and Silo expect; `false` for virtual-host addressing).
 
 **From a ConfigMap.** Where the store's location is handed out in a ConfigMap — one the platform
 team keeps for every application, say — name it in `storage.existingConfigMap`: each of the four
@@ -622,24 +662,25 @@ not check it: a wrong endpoint, key or bucket shows on the first upload, as
 [`deploy/examples/`](../../deploy/examples/) shows one way to provide what the chart takes
 references to ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md)
 D1, D2). **They are examples to copy and adapt, not supported deployments, and they are checked for
-syntax only**: `make examples-lint`, in CI's `helm` job, validates them against the
-CustomResourceDefinitions of the operator releases they name, which proves that they parse against
-those releases and nothing more. Each file names, in its first lines, what it was written against
-and what it makes, and the chart's values for it.
+syntax only**: `make examples-lint`, in CI's `helm` job, validates the CloudNativePG manifest
+against the CustomResourceDefinitions of the release it names, and renders Silo's Helm chart at the
+release its values name and checks what it renders, which proves that they parse against those
+releases and nothing more. Each file names, in its first lines, what it was written against and
+what it makes, and cowork's values for it.
 
 | File | Written against | What it makes |
 |---|---|---|
 | [`cloudnative-pg-cluster.yaml`](../../deploy/examples/cloudnative-pg-cluster.yaml) | CloudNativePG 1.30.1, PostgreSQL 18.6 | a `Cluster` whose `initdb` bootstrap makes the database, the owner role, the runtime role with the attributes [above](#the-database-and-its-two-roles), the three extensions and `CONNECT` for the two roles only; the runtime role's `basic-auth` Secret; a ConfigMap with the location. Applied on 2026-10-07 to a kind cluster with CloudNativePG 1.30.1, with only the password changed, for the upgrade from 0.8.0 to 0.9.0; the runtime role's Secret carries `cnpg.io/reload`, so a changed password reaches the role at once — without the label CloudNativePG applies it only at a later reconciliation and the old password stays valid meanwhile |
-| [`minio-tenant.yaml`](../../deploy/examples/minio-tenant.yaml) | the MinIO Operator v7.1.1 | a `Tenant` with one pool and the bucket — and no user: the operator gives every user of its `users` field the policy `consoleAdmin`, an administrator of the whole store. Never applied to a cluster here |
-| [`minio-bucket.sh`](../../deploy/examples/minio-bucket.sh) | `mc` RELEASE.2025-08-13T08-35-41Z | the bucket, the bucket-scoped policy, the access key with that policy alone and the Secret `cowork-storage`, for an existing MinIO or the Tenant above. Run on 2026-10-07 against the MinIO of `make minio-up`: the key put, read, listed and deleted objects in its bucket and was refused listing another bucket and the administration |
+| [`silo-values.yaml`](../../deploy/examples/silo-values.yaml) | PGSTY Silo RELEASE.2026-09-16T00-00-00Z, the chart `helm/silo` of its repository at that tag | one Silo server in standalone mode with a volume of its own, served over TLS with the certificate of a Secret the installation brings, its root credentials from another; no bucket and no user. Silo publishes its chart in no Helm repository, so the file says how to install it from the repository's archive at the tag. Rendered and checked by `make examples-lint`, never applied to a cluster here |
+| [`silo-bucket.sh`](../../deploy/examples/silo-bucket.sh) | `mcli` RELEASE.2026-09-16T00-00-00Z, the client in Silo's image | the bucket, the bucket-scoped policy, the access key with that policy alone and the Secret `cowork-storage`, for the Silo above or another one — `mcli` reads MinIO's commands, but against a MinIO it was not tried. Run on 2026-10-09, with a stand-in for kubectl, against the Silo of `make minio-up`: the key put, read, listed and deleted objects in its bucket and was refused listing and writing another bucket, making a bucket and the administration |
 
-**MinIO is archived.** The repositories of the MinIO Operator, the MinIO server and `mc` are
-archived on GitHub, and the server image the operator defaults to, `minio/minio`, can no longer
-be pulled (checked 2026-10-06): no fix follows for any of them. Do not install the operator or
-MinIO for a new installation; the two MinIO files are for a cluster that runs them already, and
-the Tenant names Chainguard's build of the server, which this repository's tests run and which
-was not tried with the operator. cowork needs no MinIO: any S3-compatible store with a bucket and
-a key scoped to it will do ([object storage](#object-storage)).
+**Silo in place of MinIO.** The repositories of the MinIO server, its client and its operator are
+archived, and the server image `minio/minio` can no longer be pulled (checked 2026-10-06); the owner
+chose PGSTY Silo, the maintained MinIO fork, on 2026-10-09
+([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D1). Silo keeps MinIO's S3
+API, its `MINIO_*` variables and its `/minio/` routes; a MinIO an installation runs already works
+with cowork as before, through the same S3 library. cowork needs neither: any
+S3-compatible store with a bucket and a key scoped to it will do ([object storage](#object-storage)).
 
 ## The chat
 
@@ -1073,6 +1114,13 @@ with a warning; `helm rollback` runs no Job at all. A migration never removes wh
 release still reads, which is what makes that safe
 ([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md));
 there is no schema rollback and no `migrate down`.
+
+**The release that removes GitHub's webhook**
+([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
+Status, 2026-10-09): a tenant that set the webhook up at GitHub gets `404` for every delivery from
+then on, and the tenant's settings no longer show it — remove the webhook from each repository's
+settings at GitHub. The tables of migration 41 stay, written by nothing, until a later release drops
+them; nothing else needs doing.
 
 **The release with the migration Job and the component keys**
 ([ADR 0057](../adr/0057-migrations-on-start-by-default-a-helm-hook-job-as-the-switchable-alternative.md)

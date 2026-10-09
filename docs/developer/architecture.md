@@ -61,7 +61,8 @@ the person's token, like a script — no path to the database, nothing the API d
 
 1. `config.Load(os.LookupEnv)` reads and validates every `COWORK_*` variable — a database role's
    components composed into its URL in [`config/database.go`](../../backend/internal/config/database.go),
-   so everything after reads `DatabaseURL` and `DatabaseOwnerURL` whichever way they came —, then
+   and `COWORK_DATABASE_CA` named as both URLs' `sslrootcert`, so everything after reads
+   `DatabaseURL` and `DatabaseOwnerURL` whichever way they came —, then
    `requireForServe` adds what only `serve` needs: `COWORK_SESSION_KEY`, the owner role's
    connection while `COWORK_MIGRATE_ON_START` is true, and with an issuer the client's id and
    secret (`OIDC.RequireClient`). `config.Load` reports
@@ -105,10 +106,10 @@ the person's token, like a script — no path to the database, nothing the API d
    ([chat.md](chat.md)).
 10. `api.New` loads the embedded API document and builds the router and the generated server
     (it also makes the dummy hash the login verifies unknown usernames against, and derives from
-    the server key the keys of the cursors, the fingerprints, the two address hashes, the two
-    sealers of the identity provider and the sealer of the tenants' GitHub webhook secrets);
+    the server key the keys of the cursors, the fingerprints, the two address hashes and the two
+    sealers of the identity provider);
     `httpserver.New` wraps it with the health endpoints.
-11. `go runJobs` runs the idempotency, session, login, notification, GitHub delivery and import expiries and
+11. `go runJobs` runs the idempotency, session, login, notification and import expiries and
     the purge of the tickets deleted thirty days ago at start and every hour, and asks as often whether the daily
     consistency check of the attachments is due ([data-access.md](data-access.md#jobs),
     [storage.md](storage.md#the-consistency-check)).
@@ -165,14 +166,9 @@ route in the document ─► authenticate ─► session rules ─► tenant bou
                           (token or         agent_forbidden /              │                                       └─► runChatTurn: serveChat
                            session)         password_change_required       │                                           (the turn's own limits; a stream)
                                                                            └─► streamEvents: validate ─► serveEvents (no timeout, no limit)
-
-receiveGitHubWebhook (public, x-cowork-signed): route ─► webhookTenant (the tenant and its secret; 404) ─► timeout ─► body limit (413)
-                                                ─► validate the headers, not the body ─► serveGitHubWebhook: signature (401) ─► 400 / 415
-                                                ─► the delivery kept a day (200 again) ─► 202
 ```
 
-Each step, and what it answers, is [api.md](api.md#the-pipeline) — GitHub's webhook, which takes
-no person's credential and meets no boundary, is [api.md](api.md#githubs-webhook). Every error is an
+Each step, and what it answers, is [api.md](api.md#the-pipeline). Every error is an
 RFC 9457 problem details body written by `problem.Write` ([ADR 0047]).
 
 **Authentication may call the identity provider.** For a session of the identity provider whose
@@ -270,8 +266,7 @@ authenticateSession ─► LookupSession ─► sessionLive ─► checkProvider
             memberships derived while admitted; judged: the session row only; outside the gate every session of
             the person deleted; refused: this session deleted; unreachable: retry in a minute
    ─► ended: 401 like any ended session ─► otherwise LookupSession again (the administrator flag may have changed)
-   ─► the person's activity (movesIdleClock: a write that passes the CSRF check, or a read with
-      X-Cowork-Activity: input)? ─► TouchSession ─► the principal
+   ─► not a write the CSRF check refuses (movesIdleClock)? ─► TouchSession ─► the principal
 ```
 
 An event stream checks the same at its heartbeat (`streamStillAdmitted`), without touching the idle
