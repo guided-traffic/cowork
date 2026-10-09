@@ -308,7 +308,9 @@ func TestAccountAdministration(t *testing.T) {
 
 // docs/adr/0033 D1, D5: creating an account and resetting a password are a
 // session's alone, because an account or a password the administrator chose
-// outlives the revocation of a leaked token; the routes that only remove or
+// outlives the revocation of a leaked token, and so is the unlock — a token
+// that could unlock between guesses would keep the lockout from ever holding
+// (docs/adr/0035 D5 as amended 2026-10-07); the routes that only remove or
 // restrict access stay open to an administrator's token.
 func TestAccountRoutesAnAdministratorsTokenMayStillCall(t *testing.T) {
 	w := newWorld(t)
@@ -333,18 +335,24 @@ func TestAccountRoutesAnAdministratorsTokenMayStillCall(t *testing.T) {
 		assertProblem(t, s.browser(t).login(target, "wrong password!"), http.StatusUnauthorized, "invalid_credentials")
 	}
 	assertProblem(t, s.browser(t).login(target, "temporary secret 1"), http.StatusUnauthorized, "invalid_credentials")
-	require.Equal(t, http.StatusNoContent, viaToken(http.MethodDelete, "/lockout").StatusCode, "unlocking")
+	assertProblem(t, viaToken(http.MethodDelete, "/lockout"), http.StatusForbidden, "session_required")
+	assertProblem(t, s.browser(t).login(target, "temporary secret 1"), http.StatusUnauthorized, "invalid_credentials")
+	require.Equal(t, http.StatusNoContent, admin.request(http.MethodDelete, accountsPath(w.SlugA, "/", target, "/lockout"), nil).StatusCode,
+		"unlocking, in a session")
 	live.mustLogin(target, "temporary secret 1")
 
 	require.Equal(t, http.StatusNoContent, viaToken(http.MethodPut, "/deactivation").StatusCode, "deactivating")
 	assertProblem(t, live.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
 	assertProblem(t, s.browser(t).login(target, "temporary secret 1"), http.StatusUnauthorized, "invalid_credentials")
 
-	// Each is the administrator's act through the token: the row carries the token.
-	for _, action := range []string{"revoked", "unlocked", "deactivated"} {
+	// Each is the administrator's act through the token: the row carries the
+	// token; the unlock is the session's, and its row carries none.
+	for _, action := range []string{"revoked", "deactivated"} {
 		assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND actor_user_id = $2 AND action = $3::audit_action
 			AND token_id IS NOT NULL AND entity_type = 'user'`, w.A, w.AdminA, action), action)
 	}
+	assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE tenant_id = $1 AND actor_user_id = $2 AND action = 'unlocked'
+		AND token_id IS NULL AND entity_type = 'user'`, w.A, w.AdminA))
 }
 
 // tenantLockNamespace is the first key of a tenant's lock, "cowt"

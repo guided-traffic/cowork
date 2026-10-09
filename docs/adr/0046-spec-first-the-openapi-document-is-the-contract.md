@@ -26,7 +26,9 @@ D7; D6, D8: seventeen session-only operations), and on 2026-10-06 for GitHub's w
 would parse its body before its signature holds; D6, D8: eighteen session-only operations, and a
 signed public write, `x-cowork-signed`, without the origin check; built the same day), and on 2026-10-06 for the consistency check of
 [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-D4 (D6, D8: nineteen session-only operations, by the rule of ADR 0035 D5). `oapi-codegen`
+D4 (D6, D8: nineteen session-only operations, by the rule of ADR 0035 D5), and on 2026-10-07 by
+the owner's answer recorded in [ADR 0035](0035-personal-access-tokens.md) D5 (D6, D8: twenty
+session-only operations, unlocking a local account the twentieth; built 2026-10-09). `oapi-codegen`
 does not resolve references into other files, so the split document is bundled first; a stream
 is not a response a strict handler returns; and the rule D8 wants checked is three assertions
 over the loaded document, which a unit test makes without a Node toolchain in the backend's
@@ -124,8 +126,9 @@ for the ~~six~~ routes a token must not call *(amended 2026-10-04: ~~twelve~~ ~~
 ~~sixteen~~, a turn of the chat, stopping one, choosing the chat's capabilities and the list of every
 tenant among them — [ADR 0035](0035-personal-access-tokens.md) D5; amended 2026-10-05: ~~seventeen~~,
 the purge of a deleted ticket the seventeenth; amended 2026-10-06: ~~eighteen~~, making or rotating the
-tenant's GitHub webhook secret the eighteenth, and nineteen, the removal of a consistency check's
-orphaned objects the nineteenth)*; or none, for the public ones — and the pipeline reads
+tenant's GitHub webhook secret the eighteenth, and ~~nineteen~~, the removal of a consistency check's
+orphaned objects the nineteenth; amended 2026-10-07: twenty, unlocking a local account the
+twentieth)*; or none, for the public ones — and the pipeline reads
 the credentials an operation takes from its own requirement. A public write carries the
 extension `x-cowork-origin-check: true`, which makes the pipeline hold it to the origin check of
 [ADR 0037](0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md) D5.)*
@@ -163,7 +166,7 @@ document ([`backend/api/document_test.go`](../../backend/api/document_test.go)) 
 `operationId`, the bearer requirement (or an explicit empty one on the public operations), the
 problem response and a tag on every operation. *(Amended 2026-10-03: the requirement is either
 credential, the session cookie alone for exactly the ~~six~~ session-only operations *(amended
-2026-10-04: ~~twelve~~ ~~thirteen~~ ~~fourteen~~ ~~sixteen~~; amended 2026-10-05: ~~seventeen~~; amended 2026-10-06: ~~eighteen~~ nineteen)*, or an explicit empty one on the public operations, which as writes also carry
+2026-10-04: ~~twelve~~ ~~thirteen~~ ~~fourteen~~ ~~sixteen~~; amended 2026-10-05: ~~seventeen~~; amended 2026-10-06: ~~eighteen~~ ~~nineteen~~; amended 2026-10-07: twenty)*, or an explicit empty one on the public operations, which as writes also carry
 `x-cowork-origin-check` *(amended 2026-10-06: or, signed, `x-cowork-signed`, which the test holds to
 GitHub's webhook alone)*.)* *(Added 2026-10-04: the same test holds `x-cowork-open-query` to the
 callback alone.)*

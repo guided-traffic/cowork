@@ -212,22 +212,30 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
 ([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
 `sessionCookie` the operation declares — the default is both, written once at the root; the
-nineteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
+twenty session-only operations (`createMyToken`, `createTenant`, `createAccount`,
 `resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
 `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`,
 `runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`,
-`purgeTicket`, `createGitHubSecret`, `removeOrphanedObjects`) declare `sessionCookie` alone, the eight public ones declare nothing — and
+`purgeTicket`, `createGitHubSecret`, `removeOrphanedObjects`, `unlockAccount`) declare `sessionCookie` alone, the eight public ones declare nothing — and
 `authenticate` decides. What the first twelve make — a token, a tenant, an account, a password only
 its setter knows, a role, a mapping, a way into a restricted project — would outlive the revocation
 of a leaked token, which is why a token cannot call them, and so would the chat's capabilities
 (`setMyChat`), what a purge destroys (`purgeTicket`, [ADR 0024] D7 as amended 2026-10-05), the
 tenant's GitHub webhook secret, which writes into the tenant for whoever holds it
 (`createGitHubSecret`, [ADR 0071] D1), and the removal of a consistency check's orphaned objects
-(`removeOrphanedObjects`, ADR 0035 D5 as amended 2026-10-06); a turn of the chat acts with the person's session and its stop ends the session's
+(`removeOrphanedObjects`, ADR 0035 D5 as amended 2026-10-06), and the unlock of a local account,
+with which a leaked token could keep its lockout from ever holding (`unlockAccount`, ADR 0035 D5 as
+amended 2026-10-07); a turn of the chat acts with the person's session and its stop ends the session's
 person's turns, and a token's agent has the MCP server; the list of every tenant is a global
 administrator's view of the installation's clients, which a token of theirs does not get
 ([ADR 0033] D1, D5, [ADR 0035] D5, [ADR 0034] D2; the rule is
-[tokens.md](../security/tokens.md#what-only-a-session-does)):
+[tokens.md](../security/tokens.md#what-only-a-session-does)). Three acts of operations that take
+either credential refuse a token `403 session_required` in their handler, in their giving direction
+only: a tenant settings change that widens what the members may see or do (`UpdateTenant` with
+`tenantSettings.gives` and `sessionToGive` in [`tenants.go`](../../backend/internal/api/tenants.go)),
+lifting the confidential flag (`SetConfidential`), and assigning a confidential ticket to anyone but
+the token's own person or the assignee as it was (`mayAssign` in
+[`tickets.go`](../../backend/internal/api/tickets.go)):
 
 - **A request with an `Authorization` header is a token's**, whatever cookie it carries; the
   cookie is not looked at. A valid token on a session-only operation is `403 session_required`
@@ -440,7 +448,8 @@ another token and marking notifications read (`write` scope,
    review: …` (ADR 0043 D4), and `mayAssign` in [`tickets.go`](../../backend/internal/api/tickets.go)
    hands `Authorize` the hard-off rule `assigning a confidential ticket to anyone but the agent's
    person` for a filing or a `PATCH` that leaves a ticket confidential with an assignee who is
-   neither the caller's person nor the one it had (ADR 0043 D3, [ADR 0065] D9).
+   neither the caller's person nor the one it had (ADR 0043 D3, [ADR 0065] D9), and answers a
+   token's such assignment `403 session_required` (ADR 0035 D5 as amended 2026-10-07).
 
 | Need | Role, scope | Agent rule | Defined in |
 |---|---|---|---|

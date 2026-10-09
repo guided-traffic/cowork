@@ -41,7 +41,9 @@ D4, made concrete by the implementer, open to the owner's objection (D6: ninetee
 2026-10-07 by the owner's answer to "which requests of a session keep it alive?" — every request, as
 before 2026-10-06, over only the person's input and writes (D3: every request of a session moves the
 idle clock again but a write the CSRF check refuses; the activity header and the browser's
-keep-alive are gone; built 2026-10-09). Date: 2026-10-01. Decided by the owner as the answer to the
+keep-alive are gone; built 2026-10-09), and on 2026-10-07 by the owner's answer recorded in
+[ADR 0035](0035-personal-access-tokens.md) D5 (D6: twenty routes, unlocking a local account the
+twentieth, and three acts that take a session in their giving direction; built 2026-10-09). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "browser session mechanism?": server-side sessions, over the identity
 provider's JWT in the browser and over a stateless signed cookie. The rules of D5–D7 were put
 to the owner with the question and explicitly confirmed.
@@ -282,7 +284,14 @@ a cookie on a delivery is ignored, never resolved.)*
 *(Amended 2026-10-06 by the rule of ADR 0035 D5 for the consistency check of
 [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D4: ~~eighteen~~ nineteen routes, removing the orphaned objects of a consistency check the
-nineteenth; an agent-marked request is refused all nineteen.)*
+nineteenth; an agent-marked request is refused all ~~nineteen~~.)*
+*(Amended 2026-10-07 by the owner's answer recorded in ADR 0035 D5, built 2026-10-09: ~~nineteen~~
+twenty routes, unlocking a local account (`DELETE …/accounts/{username}/lockout`) the twentieth;
+an agent-marked request is refused all twenty. Beside the routes, three acts of operations that
+take either credential refuse a token `403 session_required` in their giving direction, in the
+request layer rather than the document: widening the tenant's settings, lifting the confidential
+flag, and assigning a confidential ticket to a person other than the token's own or the assignee
+as it was.)*
 
 **D7 — Sessions are recorded, never by id.** Login, logout, revocation and refresh outcomes
 are audit rows ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md))

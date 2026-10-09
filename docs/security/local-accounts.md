@@ -150,7 +150,8 @@ lock is refused whatever its password and counts as one more failure.
 - `COWORK_LOGIN_LOCKOUT=window` (the default): the lock ends when the window has passed since
   it was set.
 - `COWORK_LOGIN_LOCKOUT=admin`: a lock on an account stays until an administrator unlocks it
-  (`DELETE …/accounts/{username}/lockout`), or — for the local administrator — until the Secret
+  in a browser session (`DELETE …/accounts/{username}/lockout`, never with a token,
+  [below](#who-may-manage-which-account)), or — for the local administrator — until the Secret
   is rotated and the backend restarted. A lock on a username nobody has ends with the window
   all the same; nobody could unlock it, and nothing can show the difference.
 - **What an unlock forgets** is the failures and the lock of the username; the creation of an
@@ -212,14 +213,17 @@ condition, the managing tenant's administrators (`TestPoliciesOfThePersonsAndThe
 - **Who may.** The tenant's administrators with `admin` scope, never an agent: account
   administration is the hard-off rule "administration" ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
   D3). A member and a viewer are `403`.
-- **Creating an account and resetting a password take a browser session only.** A token — an
-  administrator's, with `admin` scope — is `403 session_required` before anything is written
+- **Creating an account, resetting a password and unlocking an account take a browser session
+  only.** A token — an administrator's, with `admin` scope — is `403 session_required` before
+  anything is written
   ([ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
-  D1, D5; `TestAccountAdministration`), because what these two routes make outlives the token:
+  D1, D5; `TestAccountAdministration`), because what these routes make outlives the token:
   an account, or a password only the administrator and the person know, would stay with whoever
-  held a leaked token after the token was revoked. The API document declares the two with the
-  session cookie alone, and the unit test over the document holds that set. Listing the
-  accounts, unlocking one, deactivating one and ending its sessions remove or restrict access,
+  held a leaked token after the token was revoked, and an unlock undoes the lockout — a token that
+  could unlock between guesses would keep the lockout of an account from ever holding
+  ([ADR 0035](../adr/0035-personal-access-tokens.md) D5 as amended 2026-10-07). The API document
+  declares the three with the session cookie alone, and the unit test over the document holds that
+  set. Listing the accounts, deactivating one and ending its sessions remove or restrict access,
   leave nothing behind, and stay open to an administrator's token
   (`TestAccountRoutesAnAdministratorsTokenMayStillCall`).
 - **A deactivation** ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)

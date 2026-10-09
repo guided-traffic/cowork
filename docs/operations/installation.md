@@ -300,10 +300,11 @@ it and grant the administrator. Once a tenant exists the bootstrap values do not
 they say. The administrator of a tenant then creates the accounts of its people
 (`POST …/accounts`, [README, API](../../README.md#api-backend)): there is no registration and
 no invitation link, and no e-mail, so a forgotten password is an administrator's reset. Creating
-an account and resetting a password take a **browser session**: a script with an administrator's
-token is `403 session_required` on both, so that a leaked token cannot leave an account or a
-password behind it ([local-accounts.md](../security/local-accounts.md)). Listing the accounts,
-unlocking one, deactivating one and ending its sessions work with an `admin`-scope token.
+an account, resetting a password and unlocking an account take a **browser session**: a script
+with an administrator's token is `403 session_required` on all three, so that a leaked token cannot
+leave an account or a password behind it, nor keep an account's lockout from holding
+([local-accounts.md](../security/local-accounts.md)). Listing the accounts, deactivating one and
+ending its sessions work with an `admin`-scope token.
 
 **Recovering the local administrator** — its password leaked, or the account is locked
 (`COWORK_LOGIN_LOCKOUT=admin`, or an attacker who keeps failing the logins): rotate the Secret

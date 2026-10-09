@@ -115,6 +115,12 @@ tenant:
     description: |
       An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
       `If-Match` is required (docs/adr/0050 D3).
+
+      A change that widens what the members may see or do — switching
+      `time_visible_to_members` or `members_create_projects` on, or moving
+      `time_locked_until` earlier or clearing it — takes a browser session: a
+      token is `403 session_required` (docs/adr/0035 D5). The other direction,
+      and the name, stay open to an administrator's token.
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
     requestBody:
@@ -543,7 +549,9 @@ projectTickets:
       `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
       `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
       confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-      person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+      person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+      403 `session_required` — admitting another person takes a browser session
+      (docs/adr/0035 D5). An archived project refuses.
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
@@ -639,7 +647,9 @@ ticket:
       `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
       assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
       makes confidential — only to its own person or to nobody, and another new assignee is 403
-      `agent_forbidden` (docs/adr/0043 D3).
+      `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+      new assignee is 403 `session_required` — admitting a person takes a browser session
+      (docs/adr/0035 D5).
 
       The three progress stages — `progress_refinement`, `progress` (implementation),
       `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -898,7 +908,9 @@ ticketConfidential:
     summary: Set or lift the confidential flag
     description: |
       A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-      Lifting needs a reason and is recorded (D3).
+      Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+      ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+      Setting the flag stays open to an administrator's token.
     parameters:
       - $ref: './components/parameters.yaml#/IfMatch'
     requestBody:

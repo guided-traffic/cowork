@@ -129,11 +129,12 @@ D3 as amended; `authenticateSession` in [`api/session.go`](../../backend/interna
 The chat in the UI marks its tool calls so ([chat.md](chat.md)); a request without the header is the
 person's.
 
-- **Nineteen routes take a session only** and answer a token `403 session_required`
+- **Twenty routes take a session only** and answer a token `403 session_required`
   ([ADR 0035](../adr/0035-personal-access-tokens.md) D5, [ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
   D1, D5): creating a token (`POST /api/v1/me/tokens`), creating a tenant
   (`POST /api/v1/tenants`), creating a local account (`POST …/accounts`), resetting its
-  password (`PUT …/accounts/{username}/password`), changing one's own password
+  password (`PUT …/accounts/{username}/password`), unlocking it
+  (`DELETE …/accounts/{username}/lockout`), changing one's own password
   (`PUT /api/v1/me/password`), logging out (`POST /auth/logout`), the six administration acts
   that can give access — adding a member, setting a grant, making or changing a group mapping,
   restricting or opening a project, putting a person on a project's access list —, a turn of the
@@ -147,17 +148,22 @@ person's.
   (`POST …/attachment-consistency/orphan-removal`,
   [ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
   D4). What creating a token, a tenant or an account, the two password acts, the six administration
-  acts, choosing the chat's capabilities and making the webhook secret leave behind, and what a purge
-  or a removal destroys, would outlive the revocation of a leaked token; a logout has no session of a
+  acts, choosing the chat's capabilities and making the webhook secret leave behind, what a purge
+  or a removal destroys, and a lockout an unlock undoes, would outlive the revocation of a leaked
+  token; a logout has no session of a
   token's to end, a turn acts with the person's session and its stop ends the session's person's
   turns, and the list shows a global administrator's view across the installation's
   clients, which a token of theirs does not get; the table and the rule are
   [tokens.md](tokens.md#what-only-a-session-does). The API document declares them with
-  `sessionCookie` alone, and a unit test over the document holds the set to exactly these nineteen
+  `sessionCookie` alone, and a unit test over the document holds the set to exactly these twenty
   ([`backend/api/document_test.go`](../../backend/api/document_test.go)). A session's request the
-  agent header marks is refused all nineteen with `403 agent_forbidden`. Every other operation
+  agent header marks is refused all twenty with `403 agent_forbidden`. Every other operation
   that names a person takes either credential; GitHub's webhook names none, and a session cookie on
-  a delivery is not looked at ([github-webhook.md](github-webhook.md)).
+  a delivery is not looked at ([github-webhook.md](github-webhook.md)). Three acts of those
+  operations take a session in their giving direction alone — widening the tenant's settings,
+  lifting the confidential flag, assigning a confidential ticket to another person — and refuse a
+  token `403 session_required` in the handler
+  ([tokens.md](tokens.md#acts-that-take-a-session-in-their-giving-direction)).
 - **A turn of the chat presents the session again with every tool call.** Each call is a request of
   its own through the whole pipeline with the person's cookie ([chat.md](chat.md)): it is
   authenticated anew — each call moves the idle clock like any request, as the turn's own `POST`

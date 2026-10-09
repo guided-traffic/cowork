@@ -230,7 +230,7 @@ func TestCredentialsComeFromTheDocument(t *testing.T) {
 	both := credentials{bearer: true, session: true}
 	for id, want := range map[string]credentials{
 		"getMe": both, "listMyTokens": both, "getTenant": both, "createTicket": both, "streamEvents": both,
-		"listAccounts": both, "unlockAccount": both, "deactivateAccount": both, "endAccountSessions": both,
+		"listAccounts": both, "unlockAccount": {session: true}, "deactivateAccount": both, "endAccountSessions": both,
 		"createMyToken": {session: true}, "changeMyPassword": {session: true}, "createTenant": {session: true}, "logout": {session: true},
 		"createAccount": {session: true}, "resetAccountPassword": {session: true},
 		"getChatAvailability": both, "runChatTurn": {session: true},

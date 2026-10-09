@@ -113,6 +113,13 @@ accountLockout:
       (docs/adr/0033 D6). Not for the administrator's own account
       (`403 forbidden`). Unlocking an account that is not locked changes
       nothing.
+
+      A browser session only (`403 session_required` for a token): a leaked
+      token that could unlock an account between guesses would make its
+      lockout hold never, long after the token's revocation
+      (docs/adr/0035 D5).
+    security:
+      - sessionCookie: []
     responses:
       '204':
         description: Unlocked

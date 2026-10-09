@@ -134,7 +134,8 @@ to its own person or to nobody: `mayAssign`, after `CanSeeProject`, refuses a fi
 that leaves the ticket confidential — the flag as the write leaves it, so a change to `live` or
 `boundary` in the same write counts — with an assignee who is neither the caller's person nor the
 one it had, `403 agent_forbidden`, `hard-off: assigning a confidential ticket to anyone but the
-agent's person` ([ADR 0043] D3). A write that takes the ticket out of the
+agent's person` ([ADR 0043] D3). A person's token is held the same way, `403 session_required`:
+admitting another person is a session's act ([ADR 0065] D9 as amended 2026-10-07). A write that takes the ticket out of the
 writer's sight — a confidential ticket reassigned away from its writer — still answers with the
 row it wrote (`GetWrittenTicket`).
 

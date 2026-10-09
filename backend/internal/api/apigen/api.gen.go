@@ -5875,6 +5875,12 @@ type ClientInterface interface {
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 	// `If-Match` is required (docs/adr/0050 D3).
 	//
+	// A change that widens what the members may see or do — switching
+	// `time_visible_to_members` or `members_create_projects` on, or moving
+	// `time_locked_until` earlier or clearing it — takes a browser session: a
+	// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+	// and the name, stay open to an administrator's token.
+	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with PATCH /api/v1/tenants/{tenant} (the `UpdateTenant` operationId).
@@ -5884,6 +5890,12 @@ type ClientInterface interface {
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 	// `If-Match` is required (docs/adr/0050 D3).
+	//
+	// A change that widens what the members may see or do — switching
+	// `time_visible_to_members` or `members_create_projects` on, or moving
+	// `time_locked_until` earlier or clearing it — takes a browser session: a
+	// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+	// and the name, stay open to an administrator's token.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -5955,6 +5967,11 @@ type ClientInterface interface {
 	// (docs/adr/0033 D6). Not for the administrator's own account
 	// (`403 forbidden`). Unlocking an account that is not locked changes
 	// nothing.
+	//
+	// A browser session only (`403 session_required` for a token): a leaked
+	// token that could unlock an account between guesses would make its
+	// lockout hold never, long after the token's revocation
+	// (docs/adr/0035 D5).
 	//
 	// Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/lockout (the `UnlockAccount` operationId).
 	UnlockAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -6907,7 +6924,9 @@ type ClientInterface interface {
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+	// 403 `session_required` — admitting another person takes a browser session
+	// (docs/adr/0035 D5). An archived project refuses.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -6925,7 +6944,9 @@ type ClientInterface interface {
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+	// 403 `session_required` — admitting another person takes a browser session
+	// (docs/adr/0035 D5). An archived project refuses.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -6957,7 +6978,9 @@ type ClientInterface interface {
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3).
+	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+	// new assignee is 403 `session_required` — admitting a person takes a browser session
+	// (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -6984,7 +7007,9 @@ type ClientInterface interface {
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3).
+	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+	// new assignee is 403 `session_required` — admitting a person takes a browser session
+	// (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -7159,7 +7184,9 @@ type ClientInterface interface {
 	// SetConfidentialWithBody Set or lift the confidential flag
 	//
 	// A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-	// Lifting needs a reason and is recorded (D3).
+	// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+	// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+	// Setting the flag stays open to an administrator's token.
 	//
 	// Takes any type of body and a specified content type.
 	//
@@ -7169,7 +7196,9 @@ type ClientInterface interface {
 	// SetConfidential Set or lift the confidential flag
 	//
 	// A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-	// Lifting needs a reason and is recorded (D3).
+	// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+	// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+	// Setting the flag stays open to an administrator's token.
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -8470,6 +8499,12 @@ func (c *Client) GetTenant(ctx context.Context, tenant TenantSlug, reqEditors ..
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 // `If-Match` is required (docs/adr/0050 D3).
 //
+// A change that widens what the members may see or do — switching
+// `time_visible_to_members` or `members_create_projects` on, or moving
+// `time_locked_until` earlier or clearing it — takes a browser session: a
+// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+// and the name, stay open to an administrator's token.
+//
 // Takes any type of body and a specified content type.
 //
 // Corresponds with PATCH /api/v1/tenants/{tenant} (the `UpdateTenant` operationId).
@@ -8489,6 +8524,12 @@ func (c *Client) UpdateTenantWithBody(ctx context.Context, tenant TenantSlug, pa
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 // `If-Match` is required (docs/adr/0050 D3).
+//
+// A change that widens what the members may see or do — switching
+// `time_visible_to_members` or `members_create_projects` on, or moving
+// `time_locked_until` earlier or clearing it — takes a browser session: a
+// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+// and the name, stay open to an administrator's token.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -8610,6 +8651,11 @@ func (c *Client) DeactivateAccount(ctx context.Context, tenant TenantSlug, usern
 // (docs/adr/0033 D6). Not for the administrator's own account
 // (`403 forbidden`). Unlocking an account that is not locked changes
 // nothing.
+//
+// A browser session only (`403 session_required` for a token): a leaked
+// token that could unlock an account between guesses would make its
+// lockout hold never, long after the token's revocation
+// (docs/adr/0035 D5).
 //
 // Corresponds with DELETE /api/v1/tenants/{tenant}/accounts/{username}/lockout (the `UnlockAccount` operationId).
 func (c *Client) UnlockAccount(ctx context.Context, tenant TenantSlug, username Username, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -10212,7 +10258,9 @@ func (c *Client) ListProjectTickets(ctx context.Context, tenant TenantSlug, proj
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+// 403 `session_required` — admitting another person takes a browser session
+// (docs/adr/0035 D5). An archived project refuses.
 //
 // Takes any type of body and a specified content type.
 //
@@ -10240,7 +10288,9 @@ func (c *Client) CreateTicketWithBody(ctx context.Context, tenant TenantSlug, pr
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+// 403 `session_required` — admitting another person takes a browser session
+// (docs/adr/0035 D5). An archived project refuses.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -10302,7 +10352,9 @@ func (c *Client) GetTicket(ctx context.Context, tenant TenantSlug, project Proje
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 // makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3).
+// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+// new assignee is 403 `session_required` — admitting a person takes a browser session
+// (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -10339,7 +10391,9 @@ func (c *Client) UpdateTicketWithBody(ctx context.Context, tenant TenantSlug, pr
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 // makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3).
+// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+// new assignee is 403 `session_required` — admitting a person takes a browser session
+// (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -10684,7 +10738,9 @@ func (c *Client) WithdrawComment(ctx context.Context, tenant TenantSlug, project
 // SetConfidentialWithBody Set or lift the confidential flag
 //
 // A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-// Lifting needs a reason and is recorded (D3).
+// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+// Setting the flag stays open to an administrator's token.
 //
 // Takes any type of body and a specified content type.
 //
@@ -10704,7 +10760,9 @@ func (c *Client) SetConfidentialWithBody(ctx context.Context, tenant TenantSlug,
 // SetConfidential Set or lift the confidential flag
 //
 // A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-// Lifting needs a reason and is recorded (D3).
+// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+// Setting the flag stays open to an administrator's token.
 //
 // Takes a body of the `application/json` content type.
 //
@@ -21475,6 +21533,12 @@ type ClientWithResponsesInterface interface {
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 	// `If-Match` is required (docs/adr/0050 D3).
 	//
+	// A change that widens what the members may see or do — switching
+	// `time_visible_to_members` or `members_create_projects` on, or moving
+	// `time_locked_until` earlier or clearing it — takes a browser session: a
+	// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+	// and the name, stay open to an administrator's token.
+	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with PATCH /api/v1/tenants/{tenant} (the `UpdateTenant` operationId).
@@ -21484,6 +21548,12 @@ type ClientWithResponsesInterface interface {
 	//
 	// An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 	// `If-Match` is required (docs/adr/0050 D3).
+	//
+	// A change that widens what the members may see or do — switching
+	// `time_visible_to_members` or `members_create_projects` on, or moving
+	// `time_locked_until` earlier or clearing it — takes a browser session: a
+	// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+	// and the name, stay open to an administrator's token.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -21559,6 +21629,11 @@ type ClientWithResponsesInterface interface {
 	// (docs/adr/0033 D6). Not for the administrator's own account
 	// (`403 forbidden`). Unlocking an account that is not locked changes
 	// nothing.
+	//
+	// A browser session only (`403 session_required` for a token): a leaked
+	// token that could unlock an account between guesses would make its
+	// lockout hold never, long after the token's revocation
+	// (docs/adr/0035 D5).
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -22575,7 +22650,9 @@ type ClientWithResponsesInterface interface {
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+	// 403 `session_required` — admitting another person takes a browser session
+	// (docs/adr/0035 D5). An archived project refuses.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -22593,7 +22670,9 @@ type ClientWithResponsesInterface interface {
 	// `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 	// `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 	// confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-	// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+	// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+	// 403 `session_required` — admitting another person takes a browser session
+	// (docs/adr/0035 D5). An archived project refuses.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -22629,7 +22708,9 @@ type ClientWithResponsesInterface interface {
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3).
+	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+	// new assignee is 403 `session_required` — admitting a person takes a browser session
+	// (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -22656,7 +22737,9 @@ type ClientWithResponsesInterface interface {
 	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3).
+	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+	// new assignee is 403 `session_required` — admitting a person takes a browser session
+	// (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -22849,7 +22932,9 @@ type ClientWithResponsesInterface interface {
 	// SetConfidentialWithBodyWithResponse Set or lift the confidential flag
 	//
 	// A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-	// Lifting needs a reason and is recorded (D3).
+	// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+	// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+	// Setting the flag stays open to an administrator's token.
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -22859,7 +22944,9 @@ type ClientWithResponsesInterface interface {
 	// SetConfidentialWithResponse Set or lift the confidential flag
 	//
 	// A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-	// Lifting needs a reason and is recorded (D3).
+	// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+	// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+	// Setting the flag stays open to an administrator's token.
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -31925,6 +32012,12 @@ func (c *ClientWithResponses) GetTenantWithResponse(ctx context.Context, tenant 
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 // `If-Match` is required (docs/adr/0050 D3).
 //
+// A change that widens what the members may see or do — switching
+// `time_visible_to_members` or `members_create_projects` on, or moving
+// `time_locked_until` earlier or clearing it — takes a browser session: a
+// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+// and the name, stay open to an administrator's token.
+//
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
 // Corresponds with PATCH /api/v1/tenants/{tenant} (the `UpdateTenant` operationId).
@@ -31940,6 +32033,12 @@ func (c *ClientWithResponses) UpdateTenantWithBodyWithResponse(ctx context.Conte
 //
 // An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
 // `If-Match` is required (docs/adr/0050 D3).
+//
+// A change that widens what the members may see or do — switching
+// `time_visible_to_members` or `members_create_projects` on, or moving
+// `time_locked_until` earlier or clearing it — takes a browser session: a
+// token is `403 session_required` (docs/adr/0035 D5). The other direction,
+// and the name, stay open to an administrator's token.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -32045,6 +32144,11 @@ func (c *ClientWithResponses) DeactivateAccountWithResponse(ctx context.Context,
 // (docs/adr/0033 D6). Not for the administrator's own account
 // (`403 forbidden`). Unlocking an account that is not locked changes
 // nothing.
+//
+// A browser session only (`403 session_required` for a token): a leaked
+// token that could unlock an account between guesses would make its
+// lockout hold never, long after the token's revocation
+// (docs/adr/0035 D5).
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -33451,7 +33555,9 @@ func (c *ClientWithResponses) ListProjectTicketsWithResponse(ctx context.Context
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+// 403 `session_required` — admitting another person takes a browser session
+// (docs/adr/0035 D5). An archived project refuses.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -33475,7 +33581,9 @@ func (c *ClientWithResponses) CreateTicketWithBodyWithResponse(ctx context.Conte
 // `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
 // `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
 // confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
-// person, else 403 `agent_forbidden` (docs/adr/0043 D3). An archived project refuses.
+// person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+// 403 `session_required` — admitting another person takes a browser session
+// (docs/adr/0035 D5). An archived project refuses.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -33529,7 +33637,9 @@ func (c *ClientWithResponses) GetTicketWithResponse(ctx context.Context, tenant 
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 // makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3).
+// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+// new assignee is 403 `session_required` — admitting a person takes a browser session
+// (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -33562,7 +33672,9 @@ func (c *ClientWithResponses) UpdateTicketWithBodyWithResponse(ctx context.Conte
 // `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
 // assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
 // makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3).
+// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+// new assignee is 403 `session_required` — admitting a person takes a browser session
+// (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -33857,7 +33969,9 @@ func (c *ClientWithResponses) WithdrawCommentWithResponse(ctx context.Context, t
 // SetConfidentialWithBodyWithResponse Set or lift the confidential flag
 //
 // A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-// Lifting needs a reason and is recorded (D3).
+// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+// Setting the flag stays open to an administrator's token.
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -33873,7 +33987,9 @@ func (c *ClientWithResponses) SetConfidentialWithBodyWithResponse(ctx context.Co
 // SetConfidentialWithResponse Set or lift the confidential flag
 //
 // A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
-// Lifting needs a reason and is recorded (D3).
+// Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+// ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+// Setting the flag stays open to an administrator's token.
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //

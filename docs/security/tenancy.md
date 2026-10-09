@@ -653,8 +653,11 @@ predicate (ADR 0065 D1).
   no code path clears it except the administrator's act (ADR 0065 D3).
 - **Set or lifted by hand** only through `PUT …/confidential`: the `admin` role and `admin`
   scope, never an agent — the hard-off rule "setting or lifting the confidential flag".
-  Lifting needs a reason; both are recorded as `confidential_set` or `confidential_lifted`
-  (`SetConfidential`; ADR 0065 D2, D3, D6).
+  Lifting needs a reason and a browser session — a token is `403 session_required`, because a
+  lift shows the ticket to every member long after a leaked token's revocation; setting it stays
+  open to an administrator's token. Both are recorded as `confidential_set` or
+  `confidential_lifted` (`SetConfidential`; ADR 0065 D2, D3, D6;
+  [tokens.md](tokens.md#acts-that-take-a-session-in-their-giving-direction)).
 - **An agent sets it indirectly** by filing or classifying a ticket `live` or `boundary`,
   which is intended (ADR 0065 D6).
 - **Assignment admits** (ADR 0065 D9): a person who can see the ticket's project sees a
@@ -662,7 +665,9 @@ predicate (ADR 0065 D1).
   person: it assigns a confidential ticket only to its person or to nobody, at a filing and on a
   change, and is otherwise refused by the hard-off rule "assigning a confidential ticket to anyone
   but the agent's person" ([`tickets.go`](../../backend/internal/api/tickets.go) `mayAssign`;
-  [tokens.md](tokens.md#capabilities-the-baseline-and-the-hard-off-list), ADR 0043 D3).
+  [tokens.md](tokens.md#capabilities-the-baseline-and-the-hard-off-list), ADR 0043 D3). A person's
+  token is held the same way and is otherwise `403 session_required`: admitting another person is a
+  person's act in a browser session (ADR 0065 D9 as amended 2026-10-07).
 - **The chat reads it for a person who sees it** and sends what it read to the provider the person
   picked, which for a hosted provider is a copy outside the installation — a risk the owner accepted
   ([chat.md H-37](chat.md#h-37)). The model is told never to copy a confidential ticket's text into

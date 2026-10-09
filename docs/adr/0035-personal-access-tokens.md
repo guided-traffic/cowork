@@ -38,7 +38,12 @@ by D5's rule and built the same day (D5: eighteen operations, making or rotating
 webhook secret the eighteenth), and again by the rule of D5 itself for the consistency check of
 [ADR 0059](0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D4, made concrete by the implementer, open to the owner's objection (D5: nineteen operations,
-removing the orphaned objects of a consistency check the nineteenth; built the same day). Date: 2026-10-01. Decided by the owner as the answer to the
+removing the orphaned objects of a consistency check the nineteenth; built the same day), and on
+2026-10-07 by the owner's answer to "do these three acts take a browser session?" — each in its
+giving direction, over keeping the token's reach and naming each as a gap (D5: twenty operations,
+unlocking a local account the twentieth; widening the tenant's settings, lifting the confidential
+flag and a token's assignment of a confidential ticket to another person take a session in the
+request layer; built 2026-10-09). Date: 2026-10-01. Decided by the owner as the answer to the
 catalog question "personal access token design?" at its three contested points: three hierarchical scopes
 with optional tenant and project restriction; mandatory expiry with a ninety-day default and
 a one-year maximum; creation only by the person themselves in a browser session, never by an
@@ -196,8 +201,8 @@ and [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implic
 D3: adding a member, setting a grant, making or changing a group mapping, restricting or opening a
 project, putting a person on its access list — ~~twelve~~ operations in all *(thirteen since the
 chat, below)*, which the unit test over the document holds. Removing a grant, a mapping or an access entry stays open to an administrator's
-`admin`-scope token, as listing, unlocking, deactivating a local account and ending its sessions
-do. A route that does both — a grant or a mapping raised or lowered, a project restricted or opened
+`admin`-scope token, as listing, ~~unlocking,~~ *(2026-10-07: unlocking takes a session, below)*
+deactivating a local account and ending its sessions do. A route that does both — a grant or a mapping raised or lowered, a project restricted or opened
 — takes a session for both.)* *(Amended 2026-10-04 for the chat in the UI,
 [ADR 0076](0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md):
 ~~twelve~~ thirteen operations — a turn of the chat, `runChatTurn`, takes a session too, for a
@@ -262,7 +267,35 @@ session: nothing brings a removed object back, so what a leaked token did there 
 revocation, as with the purge of a ticket. Reading the check takes either credential with `read`
 scope, and accepting the loss of its missing files an administrator's `admin`-scope token as well:
 the acceptance removes nothing, and a file whose bytes come back is whole again. A session the agent
-header marks is refused all nineteen. Built the same day.)*
+header marks is refused all ~~nineteen~~. Built the same day.)*
+*(Amended 2026-10-07 by the owner's answer to "do these three acts take a browser session?", over
+keeping the token's reach and naming each as a gap, and built 2026-10-09: the rule decided them,
+and they were missed when it was applied. **Each takes a session in its giving direction; taking
+away stays open to a token.**
+- **Unlocking a local account**, `unlockAccount` (`DELETE …/accounts/{username}/lockout`), takes a
+  session — ~~nineteen~~ **twenty operations**, which the unit test over the document holds. A
+  token that could unlock an account between guesses would keep its lockout from ever holding,
+  long after the token's revocation
+  ([ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D5, D6).
+  Listing, deactivating and ending the sessions stay open to an administrator's token.
+- **Widening the tenant's settings** in `PATCH /api/v1/tenants/{tenant}` — switching
+  `time_visible_to_members` or `members_create_projects` on, or moving `time_locked_until` earlier
+  or clearing it, which opens closed days to writes again — is `403 session_required` for a token
+  ([`tenants.go`](../../backend/internal/api/tenants.go) `gives`, `sessionToGive`). The other
+  direction and the name stay open to an administrator's `admin`-scope token; the operation
+  declares either credential, so the rule is the handler's, as the switched-on consent of the chat
+  was before it went.
+- **Lifting the confidential flag** (`PUT …/confidential` with `false`) takes a session; setting it
+  stays open to a token ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+  D3).
+- **A token's assignment of a confidential ticket** to anyone but its own person or the assignee as
+  it was — at a filing or on a change — is `403 session_required`; assigning nobody stays open
+  (ADR 0065 D9, `mayAssign`).
+A session the agent header marks is refused all twenty, and the three acts by their hard-off rules.
+Held by `TestWideningTheTenantSettingsTakesASession`,
+`TestATokenAssignsAConfidentialTicketOnlyToItsPerson` (unit), and
+`TestWideningTheTenantSettingsTakesASession`, `TestConfidentialTickets` and
+`TestAccountRoutesAnAdministratorsTokenMayStillCall` (integration).)*
 
 **D6 — Revocation is immediate and keeps the row.** Revoked and expired tokens stay listed
 with their state; a revoked token answers `401` with the reason. *(Amended 2026-10-02: a

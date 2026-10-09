@@ -17,7 +17,9 @@ ended, by
 what it offers does not change), amended 2026-10-07 by the owner's answer to "does a changed
 password end the account's tokens?" — the synchronisation's, over every change and over the docs
 alone (D4, D6: the start-up synchronisation that stores a changed password of the local
-administrator revokes its tokens; a person's own change keeps theirs; built 2026-10-09). Date: 2026-10-01. Decided
+administrator revokes its tokens; a person's own change keeps theirs; built 2026-10-09), and
+2026-10-07 by the owner's answer recorded in [ADR 0035](0035-personal-access-tokens.md) D5 (D5:
+unlocking an account takes a browser session; built 2026-10-09). Date: 2026-10-01. Decided
 by the owner as the answer to the catalog question "local accounts beyond the one administrator?": administrator-managed local accounts, over none,
 over self-registration with e-mail reset, and over global-administrator-only creation. The
 owner set two conditions: the minimum password length is configurable in the chart, and
@@ -123,9 +125,12 @@ administrator never resets, unlocks or deactivates their own account: their own 
 lockout. The local administrator's password is not changeable through the API at all
 ([ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
 D2). **The reset takes a browser session only**, for the reason of D1: a password reset with a
-leaked token is access that survives the token's revocation. Listing the accounts, unlocking one,
+leaked token is access that survives the token's revocation. Listing the accounts, ~~unlocking one,~~
 deactivating one and ending its sessions remove or restrict access, leave nothing behind, and
-stay open to an administrator's token.)*
+stay open to an administrator's token.)* *(Amended 2026-10-07 by the owner's answer recorded in
+[ADR 0035](0035-personal-access-tokens.md) D5, built 2026-10-09: **unlocking an account takes a
+browser session** too — `403 session_required` for a token —, because a leaked token that could
+unlock between guesses would keep the lockout of D6 from ever holding, long after its revocation.)*
 
 **D6 — Rate limits and lockout.** Five failed attempts per account within fifteen minutes
 lock the account until an administrator unlocks it or the window passes, whichever the

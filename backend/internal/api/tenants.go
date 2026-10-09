@@ -115,12 +115,44 @@ func (s tenantSettings) apply(p apigen.TenantPatch) (tenantSettings, []string) {
 	return s, sent
 }
 
+// gives names the settings a change widens: the members' sight of everyone's
+// time switched on, the members' creation of projects switched on, and the
+// time lock moved earlier or lifted, which opens closed days to writes again
+// (docs/adr/0035 D5). The other direction only takes access away.
+func (s tenantSettings) gives(after tenantSettings) []string {
+	var widened []string
+	if after.TimeVisibleToMembers && !s.TimeVisibleToMembers {
+		widened = append(widened, "time_visible_to_members")
+	}
+	if after.MembersCreateProjects && !s.MembersCreateProjects {
+		widened = append(widened, "members_create_projects")
+	}
+	if s.TimeLockedUntil != nil && (after.TimeLockedUntil == nil || after.TimeLockedUntil.Before(*s.TimeLockedUntil)) {
+		widened = append(widened, fieldTimeLockedUntil)
+	}
+	return widened
+}
+
+// sessionToGive refuses a token a change of the tenant's settings that widens
+// a member's sight or rights: what it gives would outlive a leaked token's
+// revocation, so it takes a browser session, as the acts that give access do;
+// the change that takes it away stays open to an administrator's token
+// (docs/adr/0035 D5).
+func sessionToGive(p auth.Principal, widened []string) *problem.Error {
+	if p.Session || len(widened) == 0 {
+		return nil
+	}
+	return problem.New(problem.SessionRequired, "widening "+strings.Join(widened, ", ")+
+		" takes a browser session; a token may only narrow what the members may see or do")
+}
+
 // UpdateTenant changes the tenant's name or settings: an administration act
-// with If-Match (docs/adr/0050 D3). Moving the time lock is recorded as
-// locked (docs/adr/0026 D1), everything else as updated.
+// with If-Match (docs/adr/0050 D3). A change that widens what the members may
+// see or do takes a browser session (sessionToGive). Moving the time lock is
+// recorded as locked (docs/adr/0026 D1), everything else as updated.
 func (s *Server) UpdateTenant(ctx context.Context, req apigen.UpdateTenantRequestObject) (apigen.UpdateTenantResponseObject, error) {
-	t := tenantFrom(ctx)
-	if perr := auth.Authorize(principal(ctx), t.Role, administer); perr != nil {
+	t, p := tenantFrom(ctx), principal(ctx)
+	if perr := auth.Authorize(p, t.Role, administer); perr != nil {
 		return nil, perr
 	}
 	version, perr := ifMatch(req.Params.IfMatch)
@@ -135,6 +167,9 @@ func (s *Server) UpdateTenant(ctx context.Context, req apigen.UpdateTenantReques
 		}
 		before := settingsOf(cur)
 		after, sent := before.apply(*req.Body)
+		if perr := sessionToGive(p, before.gives(after)); perr != nil {
+			return perr
+		}
 		if cur.Version != version {
 			return stale(cur.Version, pick(before.values(), sent))
 		}

@@ -104,8 +104,8 @@ D3): it meets the hard-off list and every agent rule of
 [tokens.md](tokens.md#capabilities-the-baseline-and-the-hard-off-list) — no administration, no booking
 of time, no override of the prerequisite refusal, no confidential flag, no token administration, no
 deletion, restoration or purge, and no confidential ticket assigned to anyone but the person — and
-is refused, `403 agent_forbidden`, each of the nineteen operations only a session does
-([tokens.md](tokens.md#what-only-a-session-does)) — a token, a password, an act that gives access, a
+is refused, `403 agent_forbidden`, each of the twenty operations only a session does
+([tokens.md](tokens.md#what-only-a-session-does)) — a token, a password, an unlock, an act that gives access, a
 purge, the tenant's webhook secret, the removal of orphaned objects, a turn of the chat, the stop of
 one, the choice of the chat's capabilities, a logout among them
 (`TestTheAgentHeaderOnASession`, `TestAnAgentSessionIsRefusedWhatOnlyASessionDoes`). A creating
