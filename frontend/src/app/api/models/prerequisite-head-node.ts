@@ -20,7 +20,8 @@ export interface PrerequisiteHeadNode {
   assignee: (Person | null);
 
   /**
-   * The state a blocked ticket came from; null unless it is blocked, and for a placeholder
+   * The state a blocked ticket came from, of a ticket the reader reads; null unless it is blocked,
+   * and for a head or a placeholder, a head being the five fields of TicketHead alone
    */
   blocked_from: (TicketState | null);
 

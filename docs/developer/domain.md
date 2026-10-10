@@ -265,7 +265,8 @@ the `blocks` links the other way, the dependents. The walk is the crossing `prer
 `ListPrerequisites`' walk below with every step decided by the sight: it goes on only from a ticket
 the caller reads, so a head and a placeholder are leaves and what lies behind them stays behind
 their team's membership. A node carries its depth, `repeated`, `settled` (`null` for a
-placeholder), `blocked_from` and its head; its assignee and its progress only where it is a ticket of
+placeholder) and its head; `blocked_from` only where the caller reads the ticket — a head is its
+five fields alone (migration 50) —, and its assignee and its progress only where it is a ticket of
 the caller's own team they read. `open` counts the open tickets of the tree whose state the caller
 reads, each once, never a placeholder. The cursor carries the node's path, ids of tickets the caller
 may not see among them, so it is sealed.

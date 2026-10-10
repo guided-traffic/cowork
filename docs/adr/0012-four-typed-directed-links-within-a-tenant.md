@@ -90,7 +90,8 @@ it, as `blocker_closed`
 D6: `GET …/tickets/{number}/prerequisite-tree`, and its mirror with `direction=up`, reads the tree
 across teams, each node by its head; the walk goes on only from a ticket the caller reads, a head
 and a placeholder are leaves, and only a node of the caller's own team they read shows its assignee
-and its progress; `…/prerequisites` keeps its meaning, the team's tickets the caller sees, and is
+and its progress *(after the security review: and only a node the caller reads where its blocked
+ticket came from, a head being five fields, migration 50)*; `…/prerequisites` keeps its meaning, the team's tickets the caller sees, and is
 deprecated ([ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D7). D6's count
 and D7's refusal read one rule: an open direct prerequisite counts, and refuses `done`, whenever the
 caller reads its state in a head, of any team, and a placeholder neither counts nor refuses — so a

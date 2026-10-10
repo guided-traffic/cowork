@@ -705,6 +705,37 @@ func TestClosingAParentAndTheChildItBlocksAtOnceFinishesBoth(t *testing.T) {
 	require.NoError(t, ctx.Err())
 }
 
+// A node of the prerequisite tree that the reader sees by its head shows its
+// team, key, title, type and state and nothing more: not the state a blocked
+// ticket came from, which a reader of the ticket reads (docs/adr/0005 D3,
+// docs/adr/0012 D6 as amended 2026-10-10).
+func TestAHeadInThePrerequisiteTreeShowsNoBlockedFrom(t *testing.T) {
+	e := newRelEnv(t)
+	memberA, memberB, both := caller{Token: e.tk.MemberA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
+	root := e.fileIn(t, memberA, e.SlugA, "ALPHA", task("Waits in A"))
+	pre := e.fileIn(t, memberB, e.SlugB, "BETA", task("Blocked in B"))
+	link := e.s.do(t, both, http.MethodPut, ticketPathOf(e.SlugB, pre)+"/links/blocks/"+e.SlugA+"/"+shortOf(root), nil)
+	require.Equal(t, http.StatusCreated, link.StatusCode)
+	res := e.transitionIn(t, memberB, e.SlugB, pre, apigen.Transition{From: apigen.TicketStateFiled, To: apigen.TicketStateBlocked,
+		Reason: ptr("waits on a vendor"), Block: &apigen.BlockSet{Kind: apigen.BlockKindExternal}})
+	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
+
+	node := func(c caller) apigen.PrerequisiteHeadNode {
+		t.Helper()
+		var tree apigen.PrerequisiteHeadTree
+		require.NoError(t, json.Unmarshal(e.rawBody(t, c, ticketPathOf(e.SlugA, root)+"/prerequisite-tree"), &tree))
+		require.Len(t, tree.Items, 1)
+		return tree.Items[0]
+	}
+	head := node(memberA)
+	assert.False(t, head.Head.Readable, "a member of A alone reads the head")
+	assert.Equal(t, apigen.TicketStateBlocked, head.Head.State.MustGet())
+	assert.True(t, head.BlockedFrom.IsNull(), "a head shows not where the blocked ticket stood")
+	read := node(both)
+	assert.True(t, read.Head.Readable)
+	assert.Equal(t, apigen.TicketStateFiled, read.BlockedFrom.MustGet(), "a reader of the ticket reads it")
+}
+
 // done is refused over an open prerequisite in another team whose state the
 // closer reads in its head, unless a person overrides with a reason; an agent
 // cannot; a placeholder neither shows nor refuses (docs/adr/0012 D7 as

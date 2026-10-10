@@ -2655,7 +2655,9 @@ PrerequisiteHeadNode:
       type: [boolean, 'null']
       description: Done or dropped (docs/adr/0012 D6); null for a placeholder, whose state the reader may not read
     blocked_from:
-      description: The state a blocked ticket came from; null unless it is blocked, and for a placeholder
+      description: |
+        The state a blocked ticket came from, of a ticket the reader reads; null unless it is blocked,
+        and for a head or a placeholder, a head being the five fields of TicketHead alone
       oneOf:
         - $ref: '#/TicketState'
         - type: 'null'

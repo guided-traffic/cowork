@@ -3251,7 +3251,8 @@ type PrerequisiteHeadNode struct {
 	// Assignee The assignee, of a ticket of the reader's own team they read; null otherwise and without one
 	Assignee nullable.Nullable[Person] `json:"assignee"`
 
-	// BlockedFrom The state a blocked ticket came from; null unless it is blocked, and for a placeholder
+	// BlockedFrom The state a blocked ticket came from, of a ticket the reader reads; null unless it is blocked,
+	// and for a head or a placeholder, a head being the five fields of TicketHead alone
 	BlockedFrom nullable.Nullable[TicketState] `json:"blocked_from"`
 
 	// Depth 1 for a ticket next to the one asked about — blocking it, or blocked by it read upward
