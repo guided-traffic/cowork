@@ -723,6 +723,18 @@ describe('Shell', () => {
         return render();
       }
 
+      /**
+       * Moves the focus to an element of the page, which must be there: a test id the page lost
+       * would otherwise move nothing, and a test that the panel stays open would pass whatever the
+       * shell does.
+       */
+      function focusOn(page: HTMLElement, testId: string): void {
+        const element = page.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+        expect(element, testId).not.toBeNull();
+        element?.focus();
+        expect(document.activeElement, testId).toBe(element);
+      }
+
       const input = (page: HTMLElement) =>
         page.querySelector<HTMLTextAreaElement>('[data-testid="chat-input"]') as HTMLElement;
 
@@ -776,7 +788,7 @@ describe('Shell', () => {
         windowIs(true);
         const { fixture, page } = await opened();
 
-        page.querySelector<HTMLElement>('[data-testid="nav-team-acme"]')?.focus();
+        focusOn(page, 'nav-team-acme');
         await fixture.whenStable();
 
         expect(chat.setOpen).toHaveBeenCalledExactlyOnceWith(false);
@@ -786,7 +798,7 @@ describe('Shell', () => {
         windowIs(true);
         const { fixture, page } = await opened();
 
-        page.querySelector<HTMLElement>('[data-testid="theme-toggle"]')?.focus();
+        focusOn(page, 'theme-toggle');
         await fixture.whenStable();
 
         expect(chat.setOpen).not.toHaveBeenCalled();
@@ -798,7 +810,7 @@ describe('Shell', () => {
         const { fixture, page } = await opened();
 
         escape(input(page));
-        page.querySelector<HTMLElement>('[data-testid="nav-overview"]')?.focus();
+        focusOn(page, 'nav-team-acme');
         await fixture.whenStable();
 
         expect(chat.setOpen).not.toHaveBeenCalled();
@@ -823,11 +835,11 @@ describe('Shell', () => {
         });
         const { fixture, page } = await render();
 
-        page.querySelector<HTMLElement>('[data-testid="nav-overview"]')?.focus();
+        focusOn(page, 'nav-team-acme');
         chat.availabilityValue.set(chatAvailable);
         chat.open.set(false);
         await fixture.whenStable();
-        page.querySelector<HTMLElement>('[data-testid="nav-members"]')?.focus();
+        focusOn(page, 'nav-next');
         await fixture.whenStable();
 
         expect(chat.setOpen).not.toHaveBeenCalled();
