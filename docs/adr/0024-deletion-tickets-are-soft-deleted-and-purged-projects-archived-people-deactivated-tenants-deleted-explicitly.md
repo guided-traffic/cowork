@@ -105,7 +105,14 @@ security review: which names the purged ticket in its refs alone, no id of it in
 link to or from the ticket goes, with an `unlinked` act on the other end, read from its side; the
 actor is the purge's, the administrator or `system:ticket-purge` *(after the security review:
 `system:ticket-purge` also for an administrator who holds no role in the other team, ADR 0026 D1)*. A block of another team never waits on the
-ticket, since a block names a ticket of its own team.)*
+ticket, since a block names a ticket of its own team.)* *(Made concrete 2026-10-10 by the
+implementer after the security re-check, open to the owner's objection:)* a write of another team
+that would record an act on a ticket while the ticket is being purged — the removal of a link to it,
+a child leaving it, the close of a ticket it waits on — records none: the act waited on the purge's
+lock of the ticket while the purge waited on the row the write held, a child or a link the purge
+ends, and one of the two failed as a deadlock. The ticket is gone when the purge commits; a purge
+that fails after it locked the ticket leaves it in the bin without the act
+([docs/developer/data-access.md](../developer/data-access.md#crossings-between-teams)).
 
 **D3 — Soft deletion is an application filter, not a policy.** Row-level security
 ([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md)) stays the

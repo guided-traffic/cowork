@@ -286,7 +286,10 @@ keeps onto the ticket through the crossing `end_relation` (`removeFarLink`,
 `Writer.EndLinkElsewhere`), its act on the source recorded in that team's record. By id, a link that
 does not touch the ticket in the path, or none, is `404 not_found` "no such link" (`noSuchLink`);
 by key, a key that names no link is `204`. Of two removals of one link at once, the second finds it
-gone and records nothing — `DeleteLinkByID` answers the rows it deleted.
+gone and records nothing — `DeleteLinkByID` answers the rows it deleted —, and so does a removal
+whose other end a purge took since the link was read (`LinkEndKey` finds no row). An act on a
+ticket of another team that a purge holds is not recorded, so a removal never waits on a purge
+([data-access.md](data-access.md#crossings-between-teams)).
 
 ### The prerequisite tree
 

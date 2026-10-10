@@ -486,7 +486,8 @@ func (r *Reader) RelationsElsewhere(ctx context.Context, ticket uuid.UUID) ([]Fa
 // transaction is bound to the far team for those statements alone and to its
 // own team again after them. The far ticket is held against a deletion of its
 // row until the transaction ends, so a purge of it waits for these acts and
-// empties them with the rest; one a purge took away before records nothing. A
+// empties them with the rest; one a purge took away before, or is purging
+// now, records nothing, and the transaction never waits on a purge. A
 // person who holds no role in the far team is no actor there: the acts are a
 // system actor's — system:ticket-purge inside a purge, system:relation
 // otherwise —, with no person, token or agent mark of the caller's
@@ -573,10 +574,18 @@ func (w *Writer) actorElsewhere(ctx context.Context) (string, error) {
 // holdFarTicket locks the far ticket's row FOR KEY SHARE in the far team's
 // own context, the transaction bound to it: a purge's deletion of the row
 // waits for the transaction, and an update of the ticket does not. False
-// where the row is gone — purged since the crossing named it.
+// where the row is gone — purged since the crossing named it — or being
+// purged now: the lock is taken SKIP LOCKED and waits on nobody. The one
+// lock on a ticket's row KEY SHARE conflicts with is the purge's — its
+// FOR UPDATE before it ends the ticket's relations, and its deletion; no
+// update changes a ticket's key columns —, and a transaction that holds a row
+// the purge ends, a child or a link of the ticket, and waited here would wait
+// in a circle: the purge on the row, the transaction on the purge. A ticket
+// being purged takes no act; it is gone when the purge commits
+// (docs/adr/0024 D2 as made concrete 2026-10-10).
 func (w *Writer) holdFarTicket(ctx context.Context, far FarEnd) (bool, error) {
 	var id uuid.UUID
-	err := w.tx.QueryRow(ctx, "SELECT id FROM tickets WHERE tenant_id = $1 AND id = $2 FOR KEY SHARE", far.team, far.ticket).Scan(&id)
+	err := w.tx.QueryRow(ctx, "SELECT id FROM tickets WHERE tenant_id = $1 AND id = $2 FOR KEY SHARE SKIP LOCKED", far.team, far.ticket).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}

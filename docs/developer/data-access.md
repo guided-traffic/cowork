@@ -424,15 +424,25 @@ of a ticket inside a crossing that changes more than its kind may: `derive` the 
 columns, and on a ticket of the transaction's own team the seeded stages, `done_by_hand` and
 `updated_at` besides; `purge` the `parent_id`. An act on a ticket of
 another team is no crossing's: `Writer.RecordElsewhere(ctx, far, events...)` binds the transaction to
-the far team — `set_config('app.tenant_id', …)` —, locks the far ticket's row `FOR KEY SHARE` there
-(`holdFarTicket`), writes the audit rows, their notifications and their publication as the caller's
+the far team — `set_config('app.tenant_id', …)` —, locks the far ticket's row `FOR KEY SHARE SKIP
+LOCKED` there (`holdFarTicket`), writes the audit rows, their notifications and their publication as the caller's
 acts, under that team's own policies, and binds it back. A caller who holds no role in the far team
 (`app_is_member()` there) is no actor in its record: the acts are `system:ticket-purge`'s inside a
 purge and `system:relation`'s otherwise (`actorElsewhere`, through `Event.System`), with no person,
 token or agent mark; every such act names the ticket of the caller's team in its refs. The lock makes a purge of the far ticket,
 whose deletion locks the row `FOR UPDATE`, wait for the transaction and empty its acts with the
 rest; a far ticket whose row a purge took away since the crossing named it records nothing, where
-its publication would have found no row (`TestAnActElsewhereHoldsItsTicketAgainstAPurge`). A
+its publication would have found no row (`TestAnActElsewhereHoldsItsTicketAgainstAPurge`). The lock
+waits on nobody: a far ticket a purge holds now records nothing either. The purge is the one lock on
+a ticket's row that `FOR KEY SHARE` waits for — `GetPurgedTicket` locks the row `FOR UPDATE` before
+the purge ends the ticket's relations, and its deletion; no update changes a ticket's key columns
+([below](#advisory-locks)) —, and a write that holds a row the purge ends — a child of the ticket, a
+link to it, a ticket it parents — and then waited on the ticket would close a circle with the purge,
+which waits on that row: a link of the team removed by its id from its source, a child clearing
+its parent, the close of a ticket that blocks the purged one and is its child, each answered
+`500 deadlock_detected` before (`TestAnActOnATicketBeingPurgedWaitsOnNoPurge`). A ticket being
+purged needs no act: it is gone when the purge commits. A purge that fails after it locked the row
+leaves the ticket in the bin without the act a write skipped meanwhile. A
 `FarEnd` has unexported fields, so only a crossing of the store makes one, and a handler cannot
 record into a team of its choosing.
 

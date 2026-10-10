@@ -437,7 +437,10 @@ another.
 - **An act in another team** — a link's act on its other end, the end of a relation at a purge, a
   settled prerequisite — is written by the runtime role with the transaction bound to that team for
   those statements alone (`Writer.RecordElsewhere`), under that team's own policies, at a far end
-  only a crossing hands out, whose row it holds against a purge until it commits; a unit test
+  only a crossing hands out, whose row it holds against a purge until it commits — so the purge
+  empties the act with the rest —; a far end a purge holds already takes no act, the ticket being
+  gone when the purge commits, so no write waits on a purge
+  (`TestAnActOnATicketBeingPurgedWaitsOnNoPurge`); a unit test
   refuses a binding of `app.tenant_id` anywhere else and `app.crossing` in any Go or query file
   (`TestOnlyTheCrossingFunctionsCross`). Such an act names the ticket of the caller's team in its
   refs, so the activity of the other team withholds its payload, and stores no head of it — a

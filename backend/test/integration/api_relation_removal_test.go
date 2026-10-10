@@ -425,3 +425,88 @@ func TestAPatchComparesTheParentItRead(t *testing.T) {
 	require.NoError(t, f.QueryRow(ctx, "SELECT parent_id FROM tickets WHERE id = $1", c.CA).Scan(&parent))
 	assert.Nil(t, parent)
 }
+
+// A write that records an act on a ticket of another team while that ticket
+// is purged finishes, whichever comes first, and so does the purge: the
+// removal of a link onto it by the link's id, a child clearing it as its
+// parent, the close of a ticket that blocks it and is its child — each 500 in
+// a circle of locks before, the write holding a row the purge ends and waiting
+// on the ticket the purge holds. A ticket being purged takes no act, so the
+// write waits on no purge; the relation ends once
+// (docs/adr/0024 D2 as made concrete 2026-10-10).
+func TestAnActOnATicketBeingPurgedWaitsOnNoPurge(t *testing.T) {
+	e := newRelEnv(t)
+	memberA, memberB, both := caller{Token: e.tk.MemberA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
+	adminA, adminB := caller{Token: e.tk.AdminA}, caller{Token: e.tkAdminB}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	clA, clB := e.s.client(t, memberA), e.s.client(t, memberB)
+	purgerA, purgerB := e.s.client(t, sessionOf(t, e.AdminA)), e.s.client(t, sessionOf(t, e.AdminB))
+	bin := func(c caller, team string, tk apigen.Ticket) {
+		t.Helper()
+		require.Equal(t, http.StatusNoContent, e.s.do(t, c, http.MethodDelete, ticketPathOf(team, tk), nil).StatusCode)
+	}
+	purge := func(cl *apigen.ClientWithResponses, team string, tk apigen.Ticket) func() int {
+		return func() int {
+			res, err := cl.PurgeTicketWithResponse(ctx, team, shortOf(tk))
+			if err != nil {
+				return 0
+			}
+			return res.StatusCode()
+		}
+	}
+	count := func(sql string, args ...any) int64 {
+		t.Helper()
+		n, err := e.f.QueryCount(ctx, sql, args...)
+		require.NoError(t, err)
+		return n
+	}
+	for round := range 10 {
+		w := e.fileIn(t, memberA, e.SlugA, "ALPHA", task(fmt.Sprintf("blocks a ticket of B %d", round)))
+		x := e.fileIn(t, memberB, e.SlugB, "BETA", task(fmt.Sprintf("in the bin of B %d", round)))
+		id := uuid.MustParse(linkID(t, e.s.do(t, both, http.MethodPut, ticketPathOf(e.SlugA, w)+"/links/blocks/"+e.SlugB+"/"+shortOf(x), nil)))
+		bin(adminB, e.SlugB, x)
+		codes := simultaneously(func() int {
+			res, err := clA.RemoveTicketLinkWithResponse(ctx, e.SlugA, w.Project, w.Number, id)
+			if err != nil {
+				return 0
+			}
+			return res.StatusCode()
+		}, purge(purgerB, e.SlugB, x))
+		assert.Contains(t, []int{http.StatusNoContent, http.StatusNotFound}, codes[0], "round %d: the removal of the link", round)
+		assert.Equal(t, http.StatusNoContent, codes[1], "round %d: the purge of its other end", round)
+		assert.Zero(t, count(`SELECT count(*) FROM ticket_links WHERE id = $1`, id), "round %d: the link is gone", round)
+
+		pa := e.fileIn(t, memberA, e.SlugA, "ALPHA", task(fmt.Sprintf("a parent in the bin of A %d", round)))
+		cb := e.fileIn(t, both, e.SlugB, "BETA", task(fmt.Sprintf("its child in B %d", round), func(c *apigen.TicketCreate) { c.Parent = ptr(pa.Key) }))
+		bin(adminA, e.SlugA, pa)
+		etag := strconv.Quote(strconv.Itoa(e.readIn(t, memberB, e.SlugB, cb).Version))
+		codes = simultaneously(func() int {
+			res, err := clB.UpdateTicketWithResponse(ctx, e.SlugB, cb.Project, cb.Number, &apigen.UpdateTicketParams{IfMatch: &etag},
+				apigen.TicketPatch{Parent: nullable.NewNullNullable[string]()})
+			if err != nil {
+				return 0
+			}
+			return res.StatusCode()
+		}, purge(purgerA, e.SlugA, pa))
+		assert.Contains(t, []int{http.StatusOK, http.StatusPreconditionFailed}, codes[0], "round %d: the child clears its parent", round)
+		assert.Equal(t, http.StatusNoContent, codes[1], "round %d: the purge of the parent", round)
+		assert.Zero(t, count(`SELECT count(*) FROM tickets WHERE id = $1 AND parent_id IS NOT NULL`, cb.Id), "round %d: the child is a root", round)
+
+		x2 := e.fileIn(t, memberB, e.SlugB, "BETA", task(fmt.Sprintf("a parent in the bin of B %d", round)))
+		c := e.fileIn(t, both, e.SlugA, "ALPHA", task(fmt.Sprintf("its child that blocks it %d", round), func(c *apigen.TicketCreate) { c.Parent = ptr(x2.Key) }))
+		linkID(t, e.s.do(t, both, http.MethodPut, ticketPathOf(e.SlugA, c)+"/links/blocks/"+e.SlugB+"/"+shortOf(x2), nil))
+		bin(adminB, e.SlugB, x2)
+		codes = simultaneously(func() int {
+			res, err := clA.TransitionTicketWithResponse(ctx, e.SlugA, c.Project, c.Number, &apigen.TransitionTicketParams{},
+				apigen.Transition{From: apigen.TicketStateFiled, To: apigen.TicketStateDone, Note: ptr("verified")})
+			if err != nil {
+				return 0
+			}
+			return res.StatusCode()
+		}, purge(purgerB, e.SlugB, x2))
+		assert.Equal(t, []int{http.StatusOK, http.StatusNoContent}, codes, "round %d: the close and the purge", round)
+		assert.Zero(t, count(`SELECT count(*) FROM tickets WHERE id = $1`, x2.Id), "round %d: the parent is purged", round)
+	}
+	require.NoError(t, ctx.Err(), "no write waited on the purge for long")
+}

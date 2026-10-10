@@ -470,7 +470,8 @@ func linkByKey(rels []store.Relation, typ domain.LinkType, key string) *store.Re
 // removeLink removes a link the team keeps that touches the path's ticket, its
 // source or its target, and records the act on both tickets, the other end's
 // in its own team's record (docs/adr/0012 D3). removed is false, and nothing
-// is recorded, where a writer that raced this one removed it first.
+// is recorded, where a writer that raced this one removed it first, or a
+// purge took its other end since it was read.
 func removeLink(ctx context.Context, w *store.Writer, t tenantScope, path ticketCtx, l writeq.GetLinkByIDRow) (removed bool, err error) {
 	otherID := l.TargetID
 	if l.SourceID != path.row.ID {
@@ -485,6 +486,12 @@ func removeLink(ctx context.Context, w *store.Writer, t tenantScope, path ticket
 		otherKey = far.Key()
 	} else {
 		k, err := w.LinkEndKey(ctx, writeq.LinkEndKeyParams{TenantID: t.ID, ID: otherID})
+		if errors.Is(err, pgx.ErrNoRows) {
+			// The other end went since the link was read — a purge took it,
+			// and the link with it, or ended the link into its team —: the
+			// answer of a link that is gone.
+			return false, nil
+		}
 		if err != nil {
 			return false, fmt.Errorf("read the other end of the link: %w", err)
 		}
