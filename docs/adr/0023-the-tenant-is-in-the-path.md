@@ -86,7 +86,9 @@ under `team` alone: a route new in this release has no name before that a client
 before reads ([ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D7) — made
 concrete by the implementer, open to the owner's objection. `GET /api/v1/me` answers
 `can_create_projects` per membership, what the role allows in the team (ADR 0034 D9), which the
-plus of each team's group follows. D4 — the sidebar
+plus of each team's group follows; no event tells of a change of the setting it follows, so the
+pages ask for `me` again on every team they enter and when the team's settings change who may
+create projects. D4 — the sidebar
 ([`layout/team-nav.ts`](../../frontend/src/app/layout/team-nav.ts)): a group per team of the
 person, by slug, its name leading to `/t/{slug}`, a gear beside it opening the team's configuration
 on its settings — the tab every role shows —, a plus where the membership says the person may

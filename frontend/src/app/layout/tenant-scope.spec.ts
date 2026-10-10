@@ -10,12 +10,13 @@ import { TenantScope } from './tenant-scope';
 describe('TenantScope', () => {
   let session: {
     enter: ReturnType<typeof vi.fn<(tenant: string | null) => void>>;
+    me: { reload: ReturnType<typeof vi.fn<() => boolean>> };
     oversight: WritableSignal<boolean>;
   };
   let stream: { connect: ReturnType<typeof vi.fn<(tenant: string | null) => void>> };
 
   beforeEach(() => {
-    session = { enter: vi.fn(), oversight: signal(false) };
+    session = { enter: vi.fn(), me: { reload: vi.fn(() => true) }, oversight: signal(false) };
     stream = { connect: vi.fn() };
     TestBed.configureTestingModule({
       providers: [
@@ -62,6 +63,30 @@ describe('TenantScope', () => {
     expect(stream.connect).toHaveBeenLastCalledWith('globex');
     expect(session.enter).toHaveBeenCalledTimes(2);
     expect(stream.connect).toHaveBeenCalledTimes(2);
+  });
+
+  // docs/adr/0023 D4 as amended 2026-10-10: the plus of the team's group is what `me` says, and
+  // no event tells of a change of the setting it follows.
+  it('asks for the person again on entering a tenant, and on moving to another', async () => {
+    const fixture = await mount('acme');
+
+    expect(session.me.reload).toHaveBeenCalledOnce();
+
+    fixture.componentRef.setInput('tenant', 'globex');
+    await fixture.whenStable();
+
+    expect(session.me.reload).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks for the person once for a tenant, not again when a grant ends the oversight', async () => {
+    session.oversight.set(true);
+    const fixture = await mount('acme');
+
+    session.oversight.set(false);
+    await fixture.whenStable();
+
+    expect(stream.connect).toHaveBeenLastCalledWith('acme');
+    expect(session.me.reload).toHaveBeenCalledOnce();
   });
 
   it('leaves no tenant and closes the stream when the page is left', async () => {
