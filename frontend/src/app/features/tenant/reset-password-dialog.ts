@@ -37,6 +37,7 @@ import { IssuedPassword, TemporaryPassword } from './temporary-password';
       [draggable]="false"
       [closable]="!saving()"
       [dismissableMask]="!saving()"
+      appendTo="body"
       [style]="{ width: '32rem' }"
       [header]="'Reset the password of ' + (account()?.username ?? '')"
       data-testid="reset-password-dialog"

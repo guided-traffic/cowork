@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   inject,
+  input,
   linkedSignal,
   signal,
 } from '@angular/core';
@@ -19,7 +20,9 @@ export const tenantSlug = /^[a-z0-9][a-z0-9-]{1,62}$/;
 
 /**
  * The start of an installation that has no tenant for the person to work in (docs/adr/0032 D5):
- * a global administrator makes the first one, and becomes its administrator (D7). The slug is
+ * a global administrator makes the first one, and becomes its administrator (D7). The same form,
+ * without its heading, is the "New team" dialog of the page of every team (`first` false,
+ * docs/adr/0023 D4 as amended 2026-10-10), whose header names it. The slug is
  * checked as it is typed, because it goes into every URL and never changes (docs/adr/0005 D4).
  * When the tenant exists the person is taken into it. A retry of the same slug and name — after
  * an answer was lost — sends the same Idempotency-Key, so the server answers the first attempt
@@ -30,13 +33,25 @@ export const tenantSlug = /^[a-z0-9][a-z0-9-]{1,62}$/;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [ButtonDirective, FormsModule, InputText],
   template: `
-    <section class="first" aria-labelledby="first-tenant-title" data-testid="first-tenant">
-      <h1 id="first-tenant-title">Create the first team</h1>
-      <p class="muted lead">
-        A team holds its own projects and their tickets, apart from every other team of this
-        installation; a person may belong to several. You are a global administrator and are not a
-        member of any team yet. The team you create makes you its administrator.
-      </p>
+    <section
+      class="first"
+      [attr.aria-labelledby]="first() ? 'first-tenant-title' : null"
+      data-testid="first-tenant"
+    >
+      @if (first()) {
+        <h1 id="first-tenant-title">Create the first team</h1>
+        <p class="muted lead">
+          A team holds its own projects and their tickets, apart from every other team of this
+          installation; a person may belong to several. You are a global administrator and are not
+          a member of any team yet. The team you create makes you its administrator.
+        </p>
+      } @else {
+        <p class="muted lead">
+          A team holds its own projects and their tickets, apart from every other team of this
+          installation; a person may belong to several. The team you create makes you its
+          administrator, and its dashboard opens.
+        </p>
+      }
       <form class="card form" (ngSubmit)="create()">
         <div class="field">
           <label for="first-tenant-slug-input">Slug</label>
@@ -159,6 +174,8 @@ export const tenantSlug = /^[a-z0-9][a-z0-9-]{1,62}$/;
   `,
 })
 export class FirstTenant {
+  /** The first team of an installation, headed so; false for the form of the "New team" dialog. */
+  readonly first = input(true);
   private readonly tenants = inject(TenantsService);
   private readonly problems = inject(ProblemService);
   private readonly router = inject(Router);
@@ -166,7 +183,8 @@ export class FirstTenant {
   protected readonly describedBy = describedBy;
   protected readonly slug = signal('');
   protected readonly name = signal('');
-  protected readonly creating = signal(false);
+  /** A creation is on its way: a dialog around the form stays open meanwhile. */
+  readonly creating = signal(false);
   protected readonly errors = signal<Record<string, string>>({});
   protected readonly slugInvalid = computed(
     () => this.slug() !== '' && !tenantSlug.test(this.slug()),

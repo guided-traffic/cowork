@@ -6,7 +6,6 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { MenuItem, MessageService } from 'primeng/api';
 import { Menu } from 'primeng/menu';
-import { Select } from 'primeng/select';
 import { Observable, of, throwError } from 'rxjs';
 import type { MockInstance } from 'vitest';
 import { ChatAvailability, Me, Membership, Project } from '../api/models';
@@ -15,11 +14,10 @@ import { ChatEntry, ChatService } from '../core/chat.service';
 import { HARD_NAVIGATION, HardNavigation } from '../core/hard-navigation';
 import { EventStreamService, StreamStatus } from '../core/event-stream.service';
 import { InboxService } from '../core/inbox.service';
+import { MyProjectsService } from '../core/my-projects.service';
 import { ProjectsService } from '../core/projects.service';
 import { OpenableTenant, SessionService } from '../core/session.service';
-import { TenantService } from '../core/tenant.service';
 import { VersionInfo, VersionService } from '../core/version.service';
-import { NewProjectDialog } from '../features/project/new-project-dialog';
 import { ThemePreference, ThemeService } from '../theme/theme.service';
 import { initials, Shell } from './shell';
 
@@ -28,12 +26,14 @@ const acme: Membership = {
   team: { name: 'Acme Corp', slug: 'acme' },
   tenant: { name: 'Acme Corp', slug: 'acme' },
   origins: [{ source: 'grant', role: 'admin' }],
+  can_create_projects: true,
 };
 const globex: Membership = {
   role: 'member',
   team: { name: 'Globex', slug: 'globex' },
   tenant: { name: 'Globex', slug: 'globex' },
   origins: [{ source: 'grant', role: 'member' }],
+  can_create_projects: true,
 };
 const ada: Me = {
   id: 'p1',
@@ -111,13 +111,16 @@ describe('Shell', () => {
   let person: WritableSignal<Me | undefined>;
   let projects: {
     list: WritableSignal<Project[]>;
-    projects: { isLoading: WritableSignal<boolean> };
+    projects: { isLoading: WritableSignal<boolean>; hasValue: () => boolean };
   };
+  /** The current team's projects are known. */
+  let projectsKnown: WritableSignal<boolean>;
+  /** The other teams' projects, by their slugs, and whether they are known. */
+  let theirs: WritableSignal<Record<string, Project[]>>;
+  let theirsKnown: WritableSignal<boolean>;
   let status: WritableSignal<StreamStatus>;
   let personal: MockInstance<(tenant: string | null) => void>;
   let unread: WritableSignal<number>;
-  let canCreateProjects: WritableSignal<boolean>;
-  let isAdmin: WritableSignal<boolean>;
   let logout: MockInstance<AuthService['logout']>;
   let preference: WritableSignal<ThemePreference>;
   let cycle: MockInstance<() => void>;
@@ -134,12 +137,16 @@ describe('Shell', () => {
     oversight = signal(false);
     tenant = signal<string | null>('acme');
     person = signal<Me | undefined>(ada);
-    projects = { list: signal<Project[]>([]), projects: { isLoading: signal(false) } };
+    projectsKnown = signal(false);
+    projects = {
+      list: signal<Project[]>([]),
+      projects: { isLoading: signal(false), hasValue: () => projectsKnown() },
+    };
+    theirs = signal<Record<string, Project[]>>({});
+    theirsKnown = signal(false);
     status = signal<StreamStatus>('idle');
     personal = vi.fn<(tenant: string | null) => void>();
     unread = signal(0);
-    canCreateProjects = signal(false);
-    isAdmin = signal(false);
     logout = vi.fn<AuthService['logout']>().mockResolvedValue(null);
     preference = signal<ThemePreference>('system');
     cycle = vi.fn<() => void>();
@@ -168,14 +175,19 @@ describe('Shell', () => {
               tenant,
               membership: computed(() => memberships().find((m) => m.team.slug === tenant())),
               shown: computed(() => tenants().find((t) => t.slug === tenant())),
-              soleTenant: computed(() => (tenants().length === 1 ? tenants()[0].slug : null)),
               oversight,
               signedOut,
             };
           })(),
         },
         { provide: ProjectsService, useValue: projects },
-        { provide: TenantService, useValue: { canCreateProjects, isAdmin, canWrite: isAdmin } },
+        {
+          provide: MyProjectsService,
+          useValue: {
+            of: (team: string) => theirs()[team] ?? [],
+            projects: { hasValue: () => theirsKnown() },
+          },
+        },
         { provide: AuthService, useValue: { logout } },
         { provide: HARD_NAVIGATION, useValue: hardNavigate },
         { provide: EventStreamService, useValue: { status, personal } },
@@ -287,6 +299,28 @@ describe('Shell', () => {
       const { fixture } = await render();
 
       expect(labels(fixture)).toEqual(['Ada Lovelace', 'Your tokens', 'Sign out']);
+    });
+
+    // docs/adr/0023 D4 as amended 2026-10-10, docs/adr/0034 D2: every team of the installation.
+    it('offers a global administrator every team of the installation, first', async () => {
+      person.set({ ...ada, global_admin: true });
+
+      const { fixture } = await render();
+
+      expect(labels(fixture)).toEqual([
+        'Ada Lovelace',
+        'All teams',
+        'Your tokens',
+        'Change password',
+        'Sign out',
+      ]);
+      expect(item(fixture, 'All teams').routerLink).toBe('/teams');
+    });
+
+    it('offers anybody else no list of every team', async () => {
+      const { fixture } = await render();
+
+      expect(labels(fixture)).not.toContain('All teams');
     });
 
     it('signs out and loads the login page as a new document, which empties what the application holds', async () => {
@@ -421,105 +455,34 @@ describe('Shell', () => {
     expect(page.querySelector('p-toast')?.textContent).toContain('Ticket not found');
   });
 
-  describe('the tenant in the top bar', () => {
-    it('shows the name of the only tenant and no switch', async () => {
-      const { page } = await render();
-
-      expect(text(page, 'tenant-name')).toBe('Acme Corp');
-      expect(page.querySelector('[data-testid="tenant-switch"]')).toBeNull();
-    });
-
-    // docs/adr/0023 D4 as amended 2026-10-05: the start page is "next for me", for one tenant too.
-    it('leads to the only tenant by its name on a page that belongs to no tenant, and offers no switch', async () => {
-      tenant.set(null);
-
-      const { page } = await render();
-
-      const name = page.querySelector('[data-testid="tenant-name"]');
-      expect(name?.tagName).toBe('A');
-      expect(name?.getAttribute('href')).toBe('/t/acme');
-      expect(name?.textContent?.trim()).toBe('Acme Corp');
-      expect(page.querySelector('[data-testid="tenant-switch"]')).toBeNull();
-    });
-
-    it('shows no name on a page that belongs to no tenant for a person without one', async () => {
-      tenant.set(null);
-      memberships.set([]);
-
-      const { page } = await render();
-
-      expect(page.querySelector('[data-testid="tenant-name"]')).toBeNull();
-      expect(page.querySelector('[data-testid="tenant-switch"]')).toBeNull();
-    });
-
-    it('offers a switch over the tenants of the person when there are several', async () => {
+  // docs/adr/0023 D4 as amended 2026-10-10: the sidebar is the way between the person's teams.
+  describe('the top bar', () => {
+    it.each([
+      ['a page of a team', 'acme'],
+      ['a page of no team', null],
+    ])('names no team and switches none on %s, whatever teams the person has', async (_, shown) => {
+      tenant.set(shown);
       memberships.set([acme, globex]);
-
-      const { fixture, page } = await render();
-
-      expect(page.querySelector('[data-testid="tenant-name"]')).toBeNull();
-      const select = fixture.debugElement.query(By.directive(Select));
-      expect((select.componentInstance as Select).options()).toEqual([acme.team, globex.team]);
-      expect(select.nativeElement).toBe(page.querySelector('[data-testid="tenant-switch"]'));
-      expect(select.nativeElement.querySelector('.p-select-label').textContent.trim()).toBe(
-        'Acme Corp',
-      );
-    });
-
-    it('asks to choose a tenant while the page belongs to none', async () => {
-      memberships.set([acme, globex]);
-      tenant.set(null);
-
-      const { page } = await render();
-
-      expect(
-        page.querySelector('[data-testid="tenant-switch"] .p-select-label')?.textContent?.trim(),
-      ).toBe('Choose a team');
-    });
-
-    it('goes to the tenant that is chosen in the switch', async () => {
-      memberships.set([acme, globex]);
-      const { fixture } = await render();
-
-      fixture.debugElement
-        .query(By.directive(Select))
-        .triggerEventHandler('ngModelChange', 'globex');
-
-      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'globex']);
-    });
-
-    it('offers a global administrator the tenants they hold no role in too, marked so (docs/adr/0034 D2)', async () => {
       roleless.set([{ slug: 'initech', name: 'Initech', role: null }]);
 
-      const { fixture } = await render();
+      const { page } = await render();
 
-      const select = fixture.debugElement.query(By.directive(Select));
-      expect((select.componentInstance as Select).options()).toEqual([
-        acme.team,
-        { slug: 'initech', name: 'Initech (no role)' },
-      ]);
+      const banner = page.querySelector('header.topbar') as HTMLElement;
+      expect(banner.querySelector('[role="combobox"]')).toBeNull();
+      expect(banner.querySelector('p-select')).toBeNull();
+      expect(page.querySelector('[data-testid="tenant-switch"]')).toBeNull();
+      expect(page.querySelector('[data-testid="tenant-name"]')).toBeNull();
+      expect(banner.textContent).not.toContain('Acme Corp');
+      expect(banner.textContent).not.toContain('Globex');
     });
 
-    it('names the only tenant a global administrator holds no role in', async () => {
-      memberships.set([]);
-      roleless.set([{ slug: 'initech', name: 'Initech', role: null }]);
-      tenant.set('initech');
+    it('names no team for a person with one either', async () => {
+      tenant.set(null);
 
       const { page } = await render();
 
-      expect(text(page, 'tenant-name')).toBe('Initech');
-    });
-
-    it('follows the tenant of the page', async () => {
-      memberships.set([acme, globex]);
-      const { fixture, page } = await render();
-
-      tenant.set('globex');
-      await fixture.whenStable();
-
-      expect(
-        page.querySelector('[data-testid="tenant-switch"] .p-select-label')?.textContent?.trim(),
-      ).toBe('Globex');
+      expect(page.querySelector('header.topbar')?.textContent).not.toContain('Acme Corp');
+      expect(page.querySelector('header.topbar a[href="/t/acme"]')).toBeNull();
     });
   });
 
@@ -661,7 +624,6 @@ describe('Shell', () => {
 
     it('is neither offered nor shown while the tenant has no chat', async () => {
       chat.availabilityValue.set({ available: false, providers: [], reason: 'not_configured' });
-      isAdmin.set(true);
 
       const { page } = await render();
 
@@ -814,7 +776,7 @@ describe('Shell', () => {
         windowIs(true);
         const { fixture, page } = await opened();
 
-        page.querySelector<HTMLElement>('[data-testid="nav-overview"]')?.focus();
+        page.querySelector<HTMLElement>('[data-testid="nav-team-acme"]')?.focus();
         await fixture.whenStable();
 
         expect(chat.setOpen).toHaveBeenCalledExactlyOnceWith(false);
@@ -890,11 +852,11 @@ describe('Shell', () => {
   });
 
   describe('the version in the footer', () => {
-    it('shows the version and the commit of the backend', async () => {
+    it('shows the version of the backend alone, without its commit', async () => {
       const { page } = await render();
 
       expect(version).toHaveBeenCalledOnce();
-      expect(text(page, 'version')).toBe('1.0.0 (abc)');
+      expect(text(page, 'version')).toBe('1.0.0');
     });
 
     it('says the backend is unreachable when its version cannot be read', async () => {
@@ -906,194 +868,89 @@ describe('Shell', () => {
     });
   });
 
+  // docs/adr/0023 D4 as amended 2026-10-10: the sidebar holds the daily links — the person-level
+  // pages, then every team of the person with its projects (layout/team-nav.ts).
   describe('the navigation', () => {
-    it('links the overview, the board, the tickets, the members, the time and the settings of the tenant', async () => {
+    const groups = (page: HTMLElement) =>
+      [...page.querySelectorAll('nav.sidebar [data-team]')].map((group) => ({
+        team: group.getAttribute('data-team'),
+        projects: [...group.querySelectorAll('a.project')].map((link) =>
+          link.getAttribute('data-testid'),
+        ),
+      }));
+
+    beforeEach(() => {
+      memberships.set([acme, globex]);
+      projects.list.set([project('COW', 'Cowork')]);
+      projectsKnown.set(true);
+      theirs.set({ acme: [project('COW', 'Cowork')], globex: [project('OPS', 'Operations')] });
+      theirsKnown.set(true);
+    });
+
+    it('lists every team of the person with its projects inside a team', async () => {
       const { page } = await render();
 
-      const links = [
+      expect(groups(page)).toEqual([
+        { team: 'acme', projects: ['nav-project-acme-COW'] },
+        { team: 'globex', projects: ['nav-project-globex-OPS'] },
+      ]);
+    });
+
+    it('lists them on a person-level page as well', async () => {
+      tenant.set(null);
+
+      const { page } = await render();
+
+      expect(groups(page)).toEqual([
+        { team: 'acme', projects: ['nav-project-acme-COW'] },
+        { team: 'globex', projects: ['nav-project-globex-OPS'] },
+      ]);
+    });
+
+    it('stands between the person-level pages and the foot of the sidebar', async () => {
+      const { page } = await render();
+
+      const parts = [...(page.querySelector('nav.sidebar')?.children ?? [])].map(
+        (part) => part.getAttribute('class') ?? part.tagName.toLowerCase(),
+      );
+      expect(parts).toEqual(['section', 'app-team-nav', 'section bottom']);
+    });
+
+    it('offers no page of a team: its dashboard has the board, the tickets and the time as tabs, its gear the rest', async () => {
+      const { page } = await render();
+
+      for (const testId of [
         'nav-overview',
         'nav-board',
         'nav-tickets',
         'nav-members',
+        'nav-accounts',
+        'nav-group-mappings',
+        'nav-audit',
+        'nav-tenant-tokens',
         'nav-time',
+        'nav-deleted-tickets',
         'nav-settings',
-      ].map((testId) => [
-        page.querySelector(`[data-testid="${testId}"]`)?.getAttribute('href'),
-        page.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim(),
-      ]);
-      expect(links).toEqual([
-        ['/t/acme', 'Overview'],
-        ['/t/acme/board', 'Board'],
-        ['/t/acme/tickets', 'Tickets'],
-        ['/t/acme/members', 'Members'],
-        ['/t/acme/time', 'Time'],
-        ['/t/acme/settings', 'Settings'],
-      ]);
+        'nav-new-project',
+      ]) {
+        expect(page.querySelector(`[data-testid="${testId}"]`), testId).toBeNull();
+      }
+      expect(page.querySelector('nav.sidebar')?.textContent).not.toContain('Projects');
     });
 
-    // docs/adr/0018 D4: the tenant's board stands beside its front page.
-    it('links the board of the tenant right after its overview', async () => {
-      const { page } = await render();
-
-      expect(
-        page
-          .querySelector('[data-testid="nav-board"]')
-          ?.previousElementSibling?.getAttribute('data-testid'),
-      ).toBe('nav-overview');
-    });
-
-    // docs/adr/0018 D5, docs/adr/0023 D4: the list of the tenant's tickets, beside its board.
-    it('links the tickets of the tenant right after its board', async () => {
-      const { page } = await render();
-
-      expect(
-        page
-          .querySelector('[data-testid="nav-tickets"]')
-          ?.previousElementSibling?.getAttribute('data-testid'),
-      ).toBe('nav-board');
-    });
-
-    it('lists the projects of the tenant, each linked to its board', async () => {
-      projects.list.set([project('COW', 'Cowork'), project('OPS', 'Operations')]);
-
-      const { page } = await render();
-
-      const cow = page.querySelector('[data-testid="nav-project-COW"]');
-      expect(cow?.getAttribute('href')).toBe('/t/acme/p/COW/board');
-      expect(cow?.querySelector('.key')?.textContent).toBe('COW');
-      expect(cow?.querySelector('.name')?.textContent).toBe('Cowork');
-      expect(page.querySelector('[data-testid="nav-project-OPS"]')?.getAttribute('href')).toBe(
-        '/t/acme/p/OPS/board',
-      );
-      expect(page.querySelector('.empty')).toBeNull();
-    });
-
-    it('says there are no projects yet when the tenant has none', async () => {
-      const { page } = await render();
-
-      expect(page.querySelector('.item.empty')?.textContent).toBe('No projects yet');
-    });
-
-    it('does not say there are no projects while they still load', async () => {
-      projects.projects.isLoading.set(true);
-
-      const { page } = await render();
-
-      expect(page.querySelector('.item.empty')).toBeNull();
-    });
-
-    it('offers the accounts page to an administrator of the tenant only', async () => {
-      const { page, fixture } = await render();
-      expect(page.querySelector('[data-testid="nav-accounts"]')).toBeNull();
-
-      isAdmin.set(true);
-      await fixture.whenStable();
-
-      expect(page.querySelector('[data-testid="nav-accounts"]')?.getAttribute('href')).toBe(
-        '/t/acme/accounts',
-      );
-    });
-
-    it('offers the group mappings to an administrator of the tenant only, beside the accounts', async () => {
-      const { page, fixture } = await render();
-      expect(page.querySelector('[data-testid="nav-group-mappings"]')).toBeNull();
-
-      isAdmin.set(true);
-      await fixture.whenStable();
-
-      const link = page.querySelector('[data-testid="nav-group-mappings"]');
-      expect(link?.getAttribute('href')).toBe('/t/acme/group-mappings');
-      expect(link?.textContent).toBe('Group mappings');
-      expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-accounts');
-    });
-
-    // docs/adr/0026 D6: the tenant's audit record is its administrators'.
-    it('offers the audit record to an administrator of the tenant only, after the group mappings', async () => {
-      const { page, fixture } = await render();
-      expect(page.querySelector('[data-testid="nav-audit"]')).toBeNull();
-
-      isAdmin.set(true);
-      await fixture.whenStable();
-
-      const link = page.querySelector('[data-testid="nav-audit"]');
-      expect(link?.getAttribute('href')).toBe('/t/acme/audit');
-      expect(link?.textContent).toBe('Audit record');
-      expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-group-mappings');
-    });
-
-    // docs/adr/0035 D5: the tokens that can act in the tenant are its administrators'.
-    it('offers the tokens of the tenant to an administrator of the tenant only, after the audit record', async () => {
-      const { page, fixture } = await render();
-      expect(page.querySelector('[data-testid="nav-tenant-tokens"]')).toBeNull();
-
-      isAdmin.set(true);
-      await fixture.whenStable();
-
-      const link = page.querySelector('[data-testid="nav-tenant-tokens"]');
-      expect(link?.getAttribute('href')).toBe('/t/acme/tokens');
-      expect(link?.textContent).toBe('Tokens');
-      expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-audit');
-    });
-
-    it('offers the deleted tickets to an administrator of the tenant only (docs/adr/0024 D1)', async () => {
-      const { page, fixture } = await render();
-      expect(page.querySelector('[data-testid="nav-deleted-tickets"]')).toBeNull();
-
-      isAdmin.set(true);
-      await fixture.whenStable();
-
-      const link = page.querySelector('[data-testid="nav-deleted-tickets"]');
-      expect(link?.getAttribute('href')).toBe('/t/acme/deleted-tickets');
-      expect(link?.textContent).toBe('Deleted tickets');
-      expect(link?.previousElementSibling?.getAttribute('data-testid')).toBe('nav-time');
-    });
-
-    // docs/adr/0034 D2: a global administrator without a role in the tenant sees its
-    // administration — the members, the group mappings, the settings — and none of its work.
-    it('offers a global administrator without a role the administration only', async () => {
+    // docs/adr/0034 D2: the team a global administrator oversees without a role is no team of theirs.
+    it('has no group for a team a global administrator only oversees', async () => {
       memberships.set([]);
       roleless.set([{ slug: 'acme', name: 'Acme Corp', role: null }]);
       oversight.set(true);
-      projects.list.set([project('COW', 'Cowork')]);
 
       const { page } = await render();
 
+      expect(groups(page)).toEqual([]);
       const shown = [...page.querySelectorAll('nav a.item')].map((link) =>
         link.getAttribute('data-testid'),
       );
-      expect(shown).toEqual([
-        'nav-next',
-        'nav-inbox',
-        'nav-assigned',
-        'nav-decisions',
-        'nav-overview',
-        'nav-members',
-        'nav-group-mappings',
-        'nav-settings',
-        'nav-design',
-      ]);
-      expect(page.querySelector('[data-testid="nav-new-project"]')).toBeNull();
-      expect(page.textContent).not.toContain('Projects');
-    });
-
-    it('has no tenant navigation on a page that belongs to no tenant', async () => {
-      tenant.set(null);
-      canCreateProjects.set(true);
-      isAdmin.set(true);
-      projects.list.set([project('COW', 'Cowork')]);
-
-      const { page } = await render();
-
-      expect(page.querySelector('[data-testid="nav-overview"]')).toBeNull();
-      expect(page.querySelector('[data-testid="nav-members"]')).toBeNull();
-      expect(page.querySelector('[data-testid="nav-accounts"]')).toBeNull();
-      expect(page.querySelector('[data-testid="nav-group-mappings"]')).toBeNull();
-      expect(page.querySelector('[data-testid="nav-board"]')).toBeNull();
-      expect(page.querySelector('[data-testid="nav-tickets"]')).toBeNull();
-      expect(page.querySelector('[data-testid="nav-time"]')).toBeNull();
-      expect(page.querySelector('[data-testid="nav-settings"]')).toBeNull();
-      expect(page.querySelector('[data-testid="nav-new-project"]')).toBeNull();
-      expect(page.querySelector('[data-testid="nav-project-COW"]')).toBeNull();
+      expect(shown).toEqual(['nav-next', 'nav-inbox', 'nav-assigned', 'nav-decisions', 'nav-design']);
     });
 
     it('links the design preview in a development build', async () => {
@@ -1103,153 +960,6 @@ describe('Shell', () => {
       expect(link?.getAttribute('href')).toBe('/dev/design');
       expect(link?.textContent).toContain('Design preview');
     });
-
-    it('marks only the link of the page that is open as active', async () => {
-      projects.list.set([project('COW', 'Cowork')]);
-      const { fixture, page } = await render();
-      const active = () =>
-        [...page.querySelectorAll('a.item.active')].map((link) => link.getAttribute('data-testid'));
-
-      await TestBed.inject(Router).navigateByUrl('/t/acme');
-      await fixture.whenStable();
-      expect(active()).toEqual(['nav-overview']);
-
-      // The dashboard keeps its filters in its address (docs/adr/0018 D6).
-      await TestBed.inject(Router).navigateByUrl(
-        '/t/acme?project=COW&from=2026-09-01&to=2026-09-30',
-      );
-      await fixture.whenStable();
-      expect(active()).toEqual(['nav-overview']);
-
-      await TestBed.inject(Router).navigateByUrl('/t/acme/board');
-      await fixture.whenStable();
-      expect(active()).toEqual(['nav-board']);
-
-      await TestBed.inject(Router).navigateByUrl('/t/acme/board?project=COW');
-      await fixture.whenStable();
-      expect(active()).toEqual(['nav-board']);
-
-      await TestBed.inject(Router).navigateByUrl('/t/acme/tickets');
-      await fixture.whenStable();
-      expect(active()).toEqual(['nav-tickets']);
-
-      // The list stays active whatever it is filtered by; a ticket's own page is not the list.
-      await TestBed.inject(Router).navigateByUrl('/t/acme/tickets?state=filed&project=COW');
-      await fixture.whenStable();
-      expect(active()).toEqual(['nav-tickets']);
-
-      await TestBed.inject(Router).navigateByUrl('/t/acme/tickets/COW-12');
-      await fixture.whenStable();
-      expect(active()).toEqual([]);
-
-      await TestBed.inject(Router).navigateByUrl('/t/acme/members');
-      await fixture.whenStable();
-      expect(active()).toEqual(['nav-members']);
-
-      await TestBed.inject(Router).navigateByUrl('/t/acme/time');
-      await fixture.whenStable();
-      expect(active()).toEqual(['nav-time']);
-
-      await TestBed.inject(Router).navigateByUrl('/t/acme/settings');
-      await fixture.whenStable();
-      expect(active()).toEqual(['nav-settings']);
-
-      await TestBed.inject(Router).navigateByUrl('/t/acme/p/COW/board');
-      await fixture.whenStable();
-      expect(active()).toEqual(['nav-project-COW']);
-    });
-  });
-});
-
-describe('Shell, creating a project', () => {
-  let canCreateProjects: WritableSignal<boolean>;
-
-  beforeEach(() => {
-    canCreateProjects = signal(false);
-    TestBed.configureTestingModule({
-      providers: [
-        provideRouter([{ path: '**', component: Page }]),
-        provideLocationMocks(),
-        MessageService,
-        {
-          provide: SessionService,
-          useValue: {
-            person: signal<Me | undefined>(ada),
-            memberships: signal<Membership[]>([acme]),
-            tenants: signal<OpenableTenant[]>([{ ...acme.team, role: acme.role }]),
-            tenant: signal<string | null>('acme'),
-            membership: signal<Membership | undefined>(acme),
-            shown: signal<OpenableTenant | undefined>({ ...acme.team, role: acme.role }),
-            soleTenant: signal<string | null>('acme'),
-            oversight: signal(false),
-          },
-        },
-        {
-          provide: ProjectsService,
-          useValue: { list: signal<Project[]>([]), projects: { isLoading: signal(false) } },
-        },
-        {
-          provide: TenantService,
-          useValue: { canCreateProjects, isAdmin: signal(false), canWrite: signal(false) },
-        },
-        {
-          provide: EventStreamService,
-          useValue: { status: signal<StreamStatus>('idle'), personal: vi.fn() },
-        },
-        { provide: InboxService, useValue: { count: () => 0 } },
-        {
-          provide: ThemeService,
-          useValue: { preference: signal<ThemePreference>('system'), cycle: vi.fn() },
-        },
-        { provide: VersionService, useValue: { get: () => of(backend) } },
-        { provide: ChatService, useValue: new FakeChat() },
-      ],
-    });
-  });
-
-  async function render() {
-    const fixture = TestBed.createComponent(Shell);
-    await fixture.whenStable();
-    return { fixture, page: fixture.nativeElement as HTMLElement };
-  }
-
-  const plus = (page: HTMLElement) =>
-    page.querySelector<HTMLButtonElement>('[data-testid="nav-new-project"]');
-
-  it('offers a plus next to the projects only to a person who may create one', async () => {
-    const { fixture, page } = await render();
-    expect(plus(page)).toBeNull();
-
-    canCreateProjects.set(true);
-    await fixture.whenStable();
-
-    expect(plus(page)?.getAttribute('aria-label')).toBe('New project');
-    expect(plus(page)?.closest('.heading')?.textContent).toContain('Projects');
-  });
-
-  it('opens the dialog for a new project from the plus', async () => {
-    canCreateProjects.set(true);
-    const { fixture, page } = await render();
-    const dialog = fixture.debugElement.query(By.directive(NewProjectDialog));
-    expect((dialog.componentInstance as NewProjectDialog).visible()).toBe(false);
-
-    plus(page)?.click();
-    await fixture.whenStable();
-
-    expect((dialog.componentInstance as NewProjectDialog).visible()).toBe(true);
-  });
-
-  it('closes the dialog when it asks to be closed', async () => {
-    canCreateProjects.set(true);
-    const { fixture, page } = await render();
-    const dialog = fixture.debugElement.query(By.directive(NewProjectDialog));
-    plus(page)?.click();
-    await fixture.whenStable();
-
-    dialog.componentInstance.visible.set(false);
-    await fixture.whenStable();
-
-    expect((dialog.componentInstance as NewProjectDialog).visible()).toBe(false);
   });
 });
 

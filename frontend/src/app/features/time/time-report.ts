@@ -15,6 +15,7 @@ import { timeReport } from '../../api/fn/time/time-report';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { Clock, duration, today } from '../../shared/time';
+import { TeamHeader } from '../tenant/team-header';
 
 type GroupBy = 'ticket' | 'project' | 'person' | 'team';
 
@@ -26,12 +27,13 @@ export function monthStart(day: string): string {
 /**
  * The time report (docs/adr/0017 D10, docs/adr/0018): the minutes booked in a period, summed per
  * ticket, project or person, or for the whole team, under the visibility of time entries the
- * server applies. Days are the browser's dates; the API takes them as days (docs/adr/0055 D3).
+ * server applies. Days are the browser's dates; the API takes them as days (docs/adr/0055 D3). A tab
+ * of the team's head ({@link TeamHeader}, docs/adr/0018 D6 as amended 2026-10-10).
  */
 @Component({
   selector: 'app-time-report',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, InputText, SelectButton],
+  imports: [FormsModule, InputText, SelectButton, TeamHeader],
   templateUrl: './time-report.html',
   styleUrl: './time-report.scss',
 })

@@ -148,6 +148,58 @@ describe('FirstTenant', () => {
     });
   });
 
+  // docs/adr/0023 D4 as amended 2026-10-10: the "New team" dialog of the page of every team.
+  describe('as the form of another team', () => {
+    async function another() {
+      const fixture = TestBed.createComponent(FirstTenant);
+      fixture.componentRef.setInput('first', false);
+      await settle(fixture);
+      return fixture;
+    }
+
+    it('leaves the heading to its dialog and says what the team makes of the person', async () => {
+      const fixture = await another();
+
+      expect(host(fixture).querySelector('h1')).toBeNull();
+      expect(el(fixture, 'first-tenant')?.hasAttribute('aria-labelledby')).toBe(false);
+      const lead = host(fixture).querySelector('.lead')?.textContent ?? '';
+      expect(lead).toContain(
+        'A team holds its own projects and their tickets, apart from every other team of this installation',
+      );
+      expect(lead).toContain('The team you create makes you its administrator, and its dashboard opens.');
+      expect(lead).not.toContain('not a member of any team yet');
+    });
+
+    it('creates the team as the first is created, and goes into it', async () => {
+      const fixture = await another();
+      fill(fixture, 'acme', 'Acme Corp');
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(create).toHaveBeenCalledExactlyOnceWith(
+        { slug: 'acme', name: 'Acme Corp' },
+        expect.stringMatching(uuid),
+      );
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme']);
+    });
+
+    it('says while the team is on its way, for a dialog to stay open', async () => {
+      let finish: (team: Team) => void = () => undefined;
+      create.mockReturnValue(new Promise<Team>((resolve) => (finish = resolve)));
+      const fixture = await another();
+      fill(fixture);
+
+      submit(fixture);
+      await settle(fixture);
+      expect(fixture.componentInstance.creating()).toBe(true);
+
+      finish(made);
+      await settle(fixture);
+      expect(fixture.componentInstance.creating()).toBe(false);
+    });
+  });
+
   describe('the slug while it is typed', () => {
     const hint = (fixture: ComponentFixture<FirstTenant>) => el(fixture, 'first-tenant-slug-hint');
     const field = (fixture: ComponentFixture<FirstTenant>) => el(fixture, 'first-tenant-slug');

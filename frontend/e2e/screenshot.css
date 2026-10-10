@@ -8,9 +8,17 @@
   display: none !important;
 }
 
-/* The build's version and commit in the navigation. */
+/* The build's version in the navigation. */
 [data-testid='version'] {
   visibility: hidden !important;
+}
+
+/*
+ * The sidebar's groups of the administrator's other teams: the paths that ran before made teams
+ * and projects of their own. The group of the team the page shows, the visual fixture's, stays.
+ */
+app-team-nav [data-team]:not(.current) {
+  display: none !important;
 }
 
 /* The dashboard's period and how long a ticket has been blocked: they move with the day of the run. */

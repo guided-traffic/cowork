@@ -18,18 +18,21 @@ const person: Me = {
       team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'acme', name: 'Acme Corp' },
       origins: [{ source: 'grant', role: 'admin' }],
+      can_create_projects: true,
     },
     {
       role: 'member',
       team: { slug: 'globex', name: 'Globex' },
       tenant: { slug: 'globex', name: 'Globex' },
       origins: [{ source: 'grant', role: 'member' }],
+      can_create_projects: true,
     },
     {
       role: 'viewer',
       team: { slug: 'initech', name: 'Initech' },
       tenant: { slug: 'initech', name: 'Initech' },
       origins: [{ source: 'grant', role: 'viewer' }],
+      can_create_projects: false,
     },
   ],
 };

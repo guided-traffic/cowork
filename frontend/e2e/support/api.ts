@@ -130,6 +130,17 @@ export class Session {
     return created.token;
   }
 
+  /** A grant of a role in a team to a person who exists, by username or address (docs/adr/0030 D3). */
+  async addMember(slug: string, person: string, role: 'viewer' | 'member' | 'admin'): Promise<void> {
+    await ok(
+      `grant ${person} a role in ${slug}`,
+      await this.context.post(`/api/v1/teams/${slug}/members`, {
+        data: { person, role },
+        headers: { 'Idempotency-Key': randomUUID() },
+      }),
+    );
+  }
+
   /** A local account of a tenant with a temporary password, which its person changes first. */
   async createAccount(
     username: string,

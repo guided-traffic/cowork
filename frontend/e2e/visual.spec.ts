@@ -5,8 +5,9 @@ import { visualProject, visualTenant } from './support/visual';
  * Coarse comparisons of the scheme (docs/adr/0056 D3): pages of the visual fixture tenant, which the
  * global setup seeds alike for every run, against their picture per browser and scheme. They catch
  * what a scheme regression looks like — a light surface, a token that lost its value, text that
- * vanished — not a pixel; screenshot.css leaves out what differs by build or by the day of the run.
- * The board runs in the dark projects only (`@dark`), the dashboard in all four.
+ * vanished — not a pixel; screenshot.css leaves out what differs by build or by the day of the run,
+ * and the sidebar's groups of the teams the page does not show, which the paths that ran before
+ * filled. The board runs in the dark projects only (`@dark`), the dashboard in all four.
  */
 test(
   'the board in the dark scheme looks as it did',

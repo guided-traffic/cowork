@@ -79,6 +79,7 @@ describe('TenantDashboard', () => {
       team: { name: 'Acme Corp', slug: 'acme' },
       tenant: { name: 'Acme Corp', slug: 'acme' },
       origins: [{ source: 'grant', role: 'member' }],
+      can_create_projects: true,
     });
     projects = { list: signal<Project[]>([]), projects: { isLoading: signal(false) } };
     value = signal<Dashboard | undefined>(undefined);

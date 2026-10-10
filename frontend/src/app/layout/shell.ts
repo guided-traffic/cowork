@@ -9,24 +9,15 @@ import {
   inject,
   Injector,
   linkedSignal,
-  signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import {
-  IsActiveMatchOptions,
-  NavigationEnd,
-  Router,
-  RouterLink,
-  RouterLinkActive,
-  RouterOutlet,
-} from '@angular/router';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { MenuItem } from 'primeng/api';
 import { Avatar } from 'primeng/avatar';
 import { ButtonDirective } from 'primeng/button';
 import { InputText } from 'primeng/inputtext';
 import { Menu } from 'primeng/menu';
-import { Select } from 'primeng/select';
 import { Toast } from 'primeng/toast';
 import { Tooltip } from 'primeng/tooltip';
 import { catchError, filter, map, of } from 'rxjs';
@@ -37,15 +28,13 @@ import { EventStreamService } from '../core/event-stream.service';
 import { HARD_NAVIGATION } from '../core/hard-navigation';
 import { InboxService } from '../core/inbox.service';
 import { ProblemService } from '../core/problem.service';
-import { ProjectsService } from '../core/projects.service';
-import { TenantService } from '../core/tenant.service';
-import { NewProjectDialog } from '../features/project/new-project-dialog';
 import { SessionService } from '../core/session.service';
 import { VersionService } from '../core/version.service';
 import { devRoutes } from '../dev/dev.routes';
 import { ThemePreference, ThemeService } from '../theme/theme.service';
 import { ChatPanel } from './chat-panel';
 import { LiveIndicator } from './live-indicator';
+import { TeamNav } from './team-nav';
 
 const themeTexts: Record<ThemePreference, { icon: string; label: string }> = {
   system: { icon: 'pi pi-desktop', label: 'Theme: follows the system' },
@@ -74,24 +63,15 @@ export function searchedFor(router: Router, url: string): string | null {
   return isSearch ? String(tree.queryParams['q'] ?? '') : null;
 }
 
-/**
- * When *Overview* is the page that is open: the tenant's front page, its dashboard
- * (docs/adr/0018 D6), whatever filters its address holds — its path exactly, so that the tenant's
- * board and every other page of the tenant leave it inactive.
- */
-export const frontPageActive: IsActiveMatchOptions = {
-  paths: 'exact',
-  queryParams: 'ignored',
-  matrixParams: 'ignored',
-  fragment: 'ignored',
-};
-
 /** The windows on which the assistant lies over the content instead of beside it (shell.scss). */
 export const overlayQuery = '(max-width: 64rem)';
 
 /**
- * The frame of every page: the top bar, the navigation of the tenant, the content, and the
- * assistant at the right edge where the tenant's chat is available.
+ * The frame of every page: the top bar, the navigation — the person-level pages and every team of
+ * the person with its projects ({@link TeamNav}) —, the content, and the assistant at the right edge
+ * where the tenant's chat is available. The top bar names no team and switches none: the sidebar is
+ * the way between the person's teams, and a global administrator reaches every team of the
+ * installation through "All teams" in the person menu (docs/adr/0023 D4 as amended 2026-10-10).
  */
 @Component({
   selector: 'app-shell',
@@ -105,11 +85,10 @@ export const overlayQuery = '(max-width: 64rem)';
     InputText,
     LiveIndicator,
     Menu,
-    NewProjectDialog,
     RouterLink,
     RouterLinkActive,
     RouterOutlet,
-    Select,
+    TeamNav,
     Toast,
     Tooltip,
     Wordmark,
@@ -120,22 +99,11 @@ export const overlayQuery = '(max-width: 64rem)';
 export class Shell {
   private readonly router = inject(Router);
   protected readonly session = inject(SessionService);
-  protected readonly projects = inject(ProjectsService);
   protected readonly stream = inject(EventStreamService);
   protected readonly theme = inject(ThemeService);
-  protected readonly tenantInfo = inject(TenantService);
   protected readonly chat = inject(ChatService);
   protected readonly inbox = inject(InboxService);
-  protected readonly creatingProject = signal(false);
   protected readonly dev = devRoutes.length > 0;
-  protected readonly frontPageActive = frontPageActive;
-  /** A link active on its own path, whatever the query; not on the paths below it. */
-  protected readonly listOnly: IsActiveMatchOptions = {
-    paths: 'exact',
-    queryParams: 'ignored',
-    matrixParams: 'ignored',
-    fragment: 'ignored',
-  };
 
   /** null until the backend answered, and null when it cannot be reached. */
   protected readonly version = toSignal(
@@ -145,24 +113,6 @@ export class Shell {
     { initialValue: null },
   );
 
-  /**
-   * The tenants of the switch: the person's, and for a global administrator every other tenant of
-   * the installation, marked as one they hold no role in (docs/adr/0034 D2).
-   */
-  protected readonly tenants = computed(() =>
-    this.session.tenants().map(({ slug, name, role }) => ({
-      slug,
-      name: role ? name : `${name} (no role)`,
-    })),
-  );
-  /**
-   * The only tenant of a person who has one, with its name: no switcher offers it, so on the
-   * person-level pages — "next for me" is the start page — its name leads to it (docs/adr/0023 D4).
-   */
-  protected readonly soleTenant = computed(() => {
-    const sole = this.session.soleTenant();
-    return this.session.tenants().find((tenant) => tenant.slug === sole);
-  });
   protected readonly themeText = computed(() => themeTexts[this.theme.preference()]);
   /** The bell's count as it is read: `99+` above ninety-nine. */
   protected readonly unread = computed(() => {
@@ -200,12 +150,18 @@ export class Shell {
   private readonly injector = inject(Injector);
   private readonly host: HTMLElement = inject(ElementRef).nativeElement;
 
-  /** The person's own menu: who is signed in, their tokens, their password, the way out. */
+  /**
+   * The person's own menu: who is signed in, for a global administrator every team of the
+   * installation (docs/adr/0034 D2), their tokens, their password, the way out.
+   */
   protected readonly meItems = computed<MenuItem[]>(() => {
     const person = this.session.person();
     return [
       { label: person?.display_name ?? '', disabled: true, styleClass: 'who' },
       { separator: true },
+      ...(person?.global_admin
+        ? [{ label: 'All teams', icon: 'pi pi-th-large', routerLink: '/teams' }]
+        : []),
       { label: 'Your tokens', icon: 'pi pi-key', routerLink: '/me/tokens' },
       ...(person?.local
         ? [{ label: 'Change password', icon: 'pi pi-lock', routerLink: '/password' }]
@@ -259,10 +215,6 @@ export class Shell {
     void this.router.navigate(tenant ? ['/t', tenant, 'search'] : ['/me', 'search'], {
       queryParams: { q },
     });
-  }
-
-  protected switchTenant(slug: string): void {
-    void this.router.navigate(['/t', slug]);
   }
 
   /**

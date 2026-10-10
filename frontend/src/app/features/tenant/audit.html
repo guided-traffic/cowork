@@ -48,6 +48,7 @@
           filterBy="label"
           size="small"
           ariaLabelledBy="audit-actor-label"
+          appendTo="body"
           data-testid="audit-actor"
         />
       </div>
@@ -82,6 +83,7 @@
           [filter]="true"
           size="small"
           ariaLabelledBy="audit-action-label"
+          appendTo="body"
           data-testid="audit-action"
         />
       </div>
@@ -239,6 +241,7 @@
         [rows]="perPage()"
         [totalRecords]="total()"
         [rowsPerPageOptions]="perPageOptions"
+        appendTo="body"
         [showCurrentPageReport]="true"
         currentPageReportTemplate="{first}–{last} of {totalRecords}"
         (onPageChange)="turn($event)"

@@ -51,11 +51,18 @@ export const routes: Routes = [
         data: { scope: 'me' },
         loadComponent: () => import('./features/search/search').then((m) => m.SearchResults),
       },
+      // Every team of the installation, for a global administrator, who makes a team there
+      // (docs/adr/0023 D4 as amended 2026-10-10, docs/adr/0034 D2).
+      {
+        path: 'teams',
+        loadComponent: () => import('./features/home/all-teams').then((m) => m.AllTeams),
+      },
       {
         path: 't/:tenant',
         component: TenantScope,
         children: [
-          // The tenant's front page is its dashboard (docs/adr/0018 D6).
+          // The tenant's front page is its dashboard, its board, its tickets and its time report
+          // the dashboard's tabs (docs/adr/0018 D6 as amended 2026-10-10).
           {
             path: '',
             pathMatch: 'full',
@@ -74,6 +81,52 @@ export const routes: Routes = [
             path: 'tickets',
             loadComponent: () =>
               import('./features/tenant/tenant-tickets').then((m) => m.TenantTickets),
+          },
+          {
+            path: 'time',
+            loadComponent: () => import('./features/time/time-report').then((m) => m.TimeReport),
+          },
+          // The team's configuration: one dialog over its dashboard, a tab for each page, each
+          // page at its address (docs/adr/0023 D4 as amended 2026-10-10). A path of none of them
+          // goes on to the routes below.
+          {
+            path: '',
+            loadComponent: () => import('./features/tenant/team-config').then((m) => m.TeamConfig),
+            children: [
+              {
+                path: 'members',
+                loadComponent: () => import('./features/tenant/members').then((m) => m.Members),
+              },
+              {
+                path: 'accounts',
+                loadComponent: () => import('./features/tenant/accounts').then((m) => m.Accounts),
+              },
+              {
+                path: 'group-mappings',
+                loadComponent: () =>
+                  import('./features/tenant/group-mappings').then((m) => m.GroupMappings),
+              },
+              {
+                path: 'tokens',
+                loadComponent: () =>
+                  import('./features/tenant/tenant-tokens').then((m) => m.TenantTokens),
+              },
+              {
+                path: 'settings',
+                loadComponent: () =>
+                  import('./features/tenant/tenant-settings').then((m) => m.TenantSettings),
+              },
+              {
+                path: 'audit',
+                loadComponent: () => import('./features/tenant/audit').then((m) => m.Audit),
+              },
+              // The tenant's bin, mirroring GET …/deleted-tickets (docs/adr/0024 D1, docs/adr/0023 D4).
+              {
+                path: 'deleted-tickets',
+                loadComponent: () =>
+                  import('./features/tenant/deleted-tickets').then((m) => m.DeletedTickets),
+              },
+            ],
           },
           // A project's address without a view opens its board (docs/adr/0018 D1).
           { path: 'p/:project', pathMatch: 'full', redirectTo: 'p/:project/board' },
@@ -103,11 +156,6 @@ export const routes: Routes = [
               import('./features/project/project-import').then((m) => m.ProjectImport),
           },
           {
-            path: 'settings',
-            loadComponent: () =>
-              import('./features/tenant/tenant-settings').then((m) => m.TenantSettings),
-          },
-          {
             path: 'tickets/:key',
             loadComponent: () =>
               import('./features/ticket/ticket-detail').then((m) => m.TicketDetail),
@@ -117,38 +165,6 @@ export const routes: Routes = [
             path: 'search',
             data: { scope: 'team' },
             loadComponent: () => import('./features/search/search').then((m) => m.SearchResults),
-          },
-          {
-            path: 'members',
-            loadComponent: () => import('./features/tenant/members').then((m) => m.Members),
-          },
-          {
-            path: 'accounts',
-            loadComponent: () => import('./features/tenant/accounts').then((m) => m.Accounts),
-          },
-          {
-            path: 'audit',
-            loadComponent: () => import('./features/tenant/audit').then((m) => m.Audit),
-          },
-          {
-            path: 'tokens',
-            loadComponent: () =>
-              import('./features/tenant/tenant-tokens').then((m) => m.TenantTokens),
-          },
-          {
-            path: 'group-mappings',
-            loadComponent: () =>
-              import('./features/tenant/group-mappings').then((m) => m.GroupMappings),
-          },
-          {
-            path: 'time',
-            loadComponent: () => import('./features/time/time-report').then((m) => m.TimeReport),
-          },
-          // The tenant's bin, mirroring GET …/deleted-tickets (docs/adr/0024 D1, docs/adr/0023 D4).
-          {
-            path: 'deleted-tickets',
-            loadComponent: () =>
-              import('./features/tenant/deleted-tickets').then((m) => m.DeletedTickets),
           },
         ],
       },

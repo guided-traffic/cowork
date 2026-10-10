@@ -16,9 +16,9 @@ test('a project opens on its board', { tag: '@smoke' }, async ({ page, seed, pro
     page.getByTestId('cards-refinement').getByTestId(`card-${keyOf(project, 1)}`),
   ).toContainText('On the board');
 
-  // The sidebar's link to the project opens the board as well.
+  // The sidebar's link to the project, in its team's group, opens the board as well.
   await page.getByTestId('tab-backlog').click();
-  await page.getByTestId(`nav-project-${project}`).click();
+  await page.getByTestId(`nav-project-${tenant}-${project}`).click();
   await expect(page).toHaveURL(new RegExp(`/p/${project}/board$`));
 });
 

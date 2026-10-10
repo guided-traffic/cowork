@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
+import { provideRouter } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import { provideApiConfiguration } from '../../api/api-configuration';
 import { Problem, TimeReport as TimeReportBody } from '../../api/models';
@@ -51,10 +52,16 @@ describe('TimeReport', () => {
     TestBed.configureTestingModule({
       providers: [
         MessageService,
+        // The team's head links its tabs.
+        provideRouter([]),
         provideHttpClient(),
         provideHttpClientTesting(),
         provideApiConfiguration(''),
-        { provide: SessionService, useValue: { tenant } },
+        {
+          provide: SessionService,
+          // The team's head names the team (team-header.ts).
+          useValue: { tenant, oversight: signal(false), shown: signal(undefined) },
+        },
         { provide: Clock, useValue: { now } },
       ],
     });

@@ -58,6 +58,7 @@ const me = (username: string | null = 'ada'): Me => ({
       team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'acme', name: 'Acme Corp' },
       origins: [{ source: 'grant', role: 'admin' }],
+      can_create_projects: true,
     },
   ],
 });
@@ -150,7 +151,9 @@ describe('Accounts', () => {
     await fixture.whenStable();
   }
 
-  const host = (fixture: ComponentFixture<Accounts>) => fixture.nativeElement as HTMLElement;
+  // The page and its dialogs, which lie in the document's body (appendTo), beside the page.
+  const host = (fixture: ComponentFixture<Accounts>) =>
+    (fixture.nativeElement as HTMLElement).ownerDocument.body;
   const el = (fixture: ComponentFixture<Accounts>, testId: string) =>
     host(fixture).querySelector<HTMLElement>(`[data-testid="${testId}"]`);
   const row = (fixture: ComponentFixture<Accounts>, username: string) =>
@@ -465,7 +468,7 @@ describe('Accounts', () => {
       await settle(fixture);
 
       expect((el(fixture, 'secret-value') as HTMLInputElement).value).toBe('Zk7-temporary');
-      const host = fixture.nativeElement as HTMLElement;
+      const host = (fixture.nativeElement as HTMLElement).ownerDocument.body;
       expect(host.querySelector('.p-dialog-title')?.textContent).toContain(
         'Temporary password for sam',
       );

@@ -5,6 +5,19 @@ import { asAdmin as test, expect, expectScheme } from './support/fixtures';
 const rows = (page: Page) =>
   page.getByTestId('group-later').locator(`tr[data-testid^="row-${tenant}/"]`);
 
+/**
+ * Opens the bin: the team's gear in the sidebar, then the tab of the deleted tickets in the dialog of
+ * the team's configuration (docs/adr/0023 D4 as amended 2026-10-10).
+ */
+async function openTheBin(page: Page): Promise<void> {
+  await page.getByRole('link', { name: 'Configuration of End to end' }).click();
+  await page
+    .getByRole('dialog', { name: 'Configuration of End to end' })
+    .getByRole('link', { name: 'Deleted tickets' })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/t/${tenant}/deleted-tickets$`));
+}
+
 /** Deletes the ticket from its page, after its question, which lands on the project's backlog. */
 async function deleteFromItsPage(page: Page, short: string): Promise<void> {
   await page.goto(`/t/${tenant}/tickets/${short}`);
@@ -44,7 +57,7 @@ test(
     await expect(member.page.getByTestId('live-indicator')).toHaveAttribute('data-status', 'live');
 
     // Restored from the bin: back in the member's open backlog.
-    await page.getByRole('link', { name: 'Deleted tickets' }).click();
+    await openTheBin(page);
     const entry = page.getByTestId(`bin-${short}`);
     await expect(entry).toContainText('Filed by mistake');
     await entry.getByRole('button', { name: 'Restore' }).click();
@@ -53,7 +66,7 @@ test(
 
     // Deleted again, and purged after the two questions.
     await deleteFromItsPage(page, short);
-    await page.getByRole('link', { name: 'Deleted tickets' }).click();
+    await openTheBin(page);
     await entry.getByRole('button', { name: 'Purge' }).click();
     await page
       .getByRole('alertdialog', { name: `Purge ${short} now?` })

@@ -176,7 +176,13 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
         { provide: MembersService, useValue: { list: signal([]) } },
         {
           provide: SessionService,
-          useValue: { tenant, oversight, person: signal({ id: 'p-ada' }) },
+          useValue: {
+            tenant,
+            oversight,
+            person: signal({ id: 'p-ada' }),
+            // The team's head names the team (team-header.ts).
+            shown: signal({ slug: 'acme', name: 'Acme Corp', role: 'admin' }),
+          },
         },
         {
           provide: ProjectsService,

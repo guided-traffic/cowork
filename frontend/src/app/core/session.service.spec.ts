@@ -19,12 +19,14 @@ const asAdmin: Membership = {
   team: { slug: 'acme', name: 'Acme Corp' },
   tenant: { slug: 'acme', name: 'Acme Corp' },
   origins: [{ source: 'grant', role: 'admin' }],
+  can_create_projects: true,
 };
 const asMember: Membership = {
   role: 'member',
   team: { slug: 'globex', name: 'Globex' },
   tenant: { slug: 'globex', name: 'Globex' },
   origins: [{ source: 'grant', role: 'member' }],
+  can_create_projects: true,
 };
 
 /** Fails a request: without an answer at all (status 0), or with a problem of the status. */
@@ -144,7 +146,6 @@ describe('SessionService', () => {
       expect(service.memberships()).toEqual([]);
       expect(service.tenant()).toBeNull();
       expect(service.membership()).toBeUndefined();
-      expect(service.soleTenant()).toBeNull();
 
       request.flush(person([asAdmin]));
       await settle();
@@ -188,10 +189,6 @@ describe('SessionService', () => {
       expect(service.membership()).toBeUndefined();
     });
 
-    it('does not name a sole tenant when there are two', () => {
-      expect(service.soleTenant()).toBeNull();
-    });
-
     it('does not tell its dependents about entering the tenant it is in', () => {
       const seen: (string | null)[] = [];
       TestBed.runInInjectionContext(() => effect(() => seen.push(service.tenant())));
@@ -230,12 +227,12 @@ describe('SessionService', () => {
       team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'stale', name: 'Stale' },
       origins: [{ source: 'grant', role: 'member' }],
+      can_create_projects: true,
     };
     beforeEach(() => load(person([named])));
 
     it('takes the team from team', () => {
       expect(service.tenants()).toEqual([{ slug: 'acme', name: 'Acme Corp', role: 'member' }]);
-      expect(service.soleTenant()).toBe('acme');
 
       service.enter('acme');
       expect(service.membership()).toBe(named);
@@ -275,22 +272,6 @@ describe('SessionService', () => {
     const tenantsRequest = () =>
       http.expectOne((request) => request.method === 'GET' && request.url === '/api/v1/teams');
 
-    it("names no sole tenant before the installation's tenants are known", async () => {
-      await load(administrator([asAdmin]));
-
-      expect(service.soleTenant()).toBeNull();
-      tenantsRequest().flush({
-        items: [
-          { slug: 'acme', name: 'Acme Corp', role: 'admin' },
-          { slug: 'initech', name: 'Initech', role: null },
-        ],
-        next_cursor: null,
-      });
-      await settle();
-
-      expect(service.soleTenant()).toBeNull();
-    });
-
     it('lists every tenant, every page, the ones without a role among them, by slug', async () => {
       await load(administrator([asMember]));
       const first = tenantsRequest();
@@ -325,7 +306,6 @@ describe('SessionService', () => {
         next_cursor: null,
       });
       await settle();
-      expect(service.soleTenant()).toBe('acme');
 
       service.me.reload();
       await settle();
@@ -529,20 +509,11 @@ describe('SessionService', () => {
     });
   });
 
-  describe('with a single membership', () => {
-    beforeEach(() => load(person([asMember])));
-
-    it('names the sole tenant, which gets no switcher (docs/adr/0023 D4)', () => {
-      expect(service.soleTenant()).toBe('globex');
-    });
-  });
-
   describe('with no membership at all', () => {
     beforeEach(() => load(person([])));
 
-    it('names no sole tenant', () => {
+    it('has no membership', () => {
       expect(service.memberships()).toEqual([]);
-      expect(service.soleTenant()).toBeNull();
     });
   });
 
@@ -560,7 +531,6 @@ describe('SessionService', () => {
       expect(service.me.error()).toBeInstanceOf(HttpErrorResponse);
       expect(service.person()).toBeUndefined();
       expect(service.memberships()).toEqual([]);
-      expect(service.soleTenant()).toBeNull();
     });
 
     it('has no membership even in the tenant that is entered', () => {

@@ -19,6 +19,7 @@ const hans: Me = {
       team: { slug: 'acme', name: 'Acme' },
       tenant: { slug: 'acme', name: 'Acme' },
       origins: [{ source: 'grant', role: 'admin' }],
+      can_create_projects: true,
     },
   ],
 };

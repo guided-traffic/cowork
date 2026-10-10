@@ -30,12 +30,14 @@ const acme: Membership = {
   team: { name: 'Acme Corp', slug: 'acme' },
   tenant: { name: 'Acme Corp', slug: 'acme' },
   origins: [{ source: 'grant', role: 'admin' }],
+  can_create_projects: true,
 };
 const globex: Membership = {
   role: 'member',
   team: { name: 'Globex', slug: 'globex' },
   tenant: { name: 'Globex', slug: 'globex' },
   origins: [{ source: 'grant', role: 'member' }],
+  can_create_projects: true,
 };
 
 function person(globalAdmin: boolean, memberships: Membership[] = []): Me {
@@ -67,7 +69,6 @@ describe('Home', () => {
       memberships: WritableSignal<Membership[]>;
       tenants: Signal<OpenableTenant[]>;
       installation: { isLoading: WritableSignal<boolean>; hasValue: WritableSignal<boolean> };
-      soleTenant: WritableSignal<string | null>;
     };
     /** The tenants of the installation a global administrator holds no role in. */
     let roleless: WritableSignal<OpenableTenant[]>;
@@ -84,7 +85,6 @@ describe('Home', () => {
           ...roleless(),
         ]),
         installation: { isLoading: signal(false), hasValue: signal(true) },
-        soleTenant: signal<string | null>(null),
       };
       TestBed.configureTestingModule({
         providers: [
@@ -116,7 +116,6 @@ describe('Home', () => {
     // docs/adr/0018 D3, docs/adr/0023 D4 as amended 2026-10-05: the start page is "next for me".
     it('shows "next for me" to a person with one tenant, and goes nowhere', async () => {
       session.memberships.set([acme]);
-      session.soleTenant.set('acme');
 
       const page = await render();
 

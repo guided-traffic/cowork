@@ -1,12 +1,8 @@
 <section class="page">
-  <header class="head">
-    <div>
-      <h1>{{ session.shown()?.name ?? session.tenant() }}</h1>
-      @if (tiles()) {
-        <p class="muted" data-testid="open-count">{{ headline() }}</p>
-      }
-    </div>
-  </header>
+  <app-team-header />
+  @if (tiles()) {
+    <p class="muted headline" data-testid="open-count">{{ headline() }}</p>
+  }
 
   @if (!session.oversight()) {
     <form class="filters" ngNoForm (submit)="$event.preventDefault()" aria-label="Filters">

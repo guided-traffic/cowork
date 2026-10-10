@@ -1,9 +1,7 @@
 <section class="page">
-  <header class="head">
-    <div>
-      <h1>Board</h1>
-      <p class="muted">The current work of every project, a swimlane each</p>
-    </div>
+  <app-team-header />
+  <div class="head">
+    <p class="muted">The current work of every project, a swimlane each</p>
     <span class="spacer"></span>
     @if (!session.oversight()) {
       <span id="tenant-board-filter" class="sr-only">Projects</span>
@@ -32,7 +30,7 @@
         <small class="beyond muted" data-testid="board-beyond">Also filtered by {{ rest }}</small>
       }
     }
-  </header>
+  </div>
 
   @if (session.tenant(); as tenant) {
     @if (!session.oversight()) {

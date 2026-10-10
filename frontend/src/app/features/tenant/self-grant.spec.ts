@@ -189,6 +189,7 @@ describe('SelfGrant', () => {
       team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'acme', name: 'Acme Corp' },
       origins: [{ source: 'mapping', role: 'viewer' }],
+      can_create_projects: false,
     });
     const fixture = await render();
 
@@ -214,6 +215,7 @@ describe('SelfGrant', () => {
       team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'acme', name: 'Acme Corp' },
       origins: [{ source: 'grant', role: 'member' }],
+      can_create_projects: true,
     });
     const fixture = await render();
 

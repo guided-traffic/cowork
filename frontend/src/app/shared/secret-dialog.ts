@@ -34,6 +34,7 @@ import { InputText } from 'primeng/inputtext';
       [closable]="false"
       [closeOnEscape]="false"
       [dismissableMask]="false"
+      appendTo="body"
       [style]="{ width: '36rem' }"
       [header]="header()"
       data-testid="secret-dialog"

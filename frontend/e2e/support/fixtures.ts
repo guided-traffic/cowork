@@ -9,6 +9,8 @@ export interface Person {
   id: string;
   /** The name the page shows them by. */
   name: string;
+  /** The account's username, by which an administrator grants them a role in another team. */
+  username: string;
 }
 
 interface TestFixtures {
@@ -85,7 +87,7 @@ export async function newAccount(
     .finally(() => admin.dispose());
   const context = await newContext(browser);
   await signInWithNewPassword(context.request, baseURL, username, temporary, freshPassword());
-  return { page: await context.newPage(), id: account.id, name: account.display_name };
+  return { page: await context.newPage(), id: account.id, name: account.display_name, username };
 }
 
 /**

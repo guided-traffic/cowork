@@ -24,7 +24,8 @@ test(
     const both = `/t/${tenant}/tickets?project=${project}&project=${other}`;
     await page.goto(both);
     await expectScheme(page);
-    await expect(page.getByTestId('nav-tickets')).toHaveClass(/\bactive\b/);
+    // The list is a tab of the team's dashboard (docs/adr/0018 D6 as amended 2026-10-10).
+    await expect(page.getByTestId('team-tab-tickets')).toHaveAttribute('aria-current', 'page');
     await expect(urgentRow.getByTestId('row-project')).toHaveText(`Project ${project}`);
     await expect(calmRow.getByTestId('row-project')).toHaveText(`Project ${other}`);
     await expect(page.getByTestId('tickets-total')).toHaveText('2 tickets');

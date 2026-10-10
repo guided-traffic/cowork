@@ -125,6 +125,11 @@ function sessionOf(tenant: WritableSignal<string | null>, oversight: WritableSig
     oversight,
     workTenant: computed(() => (oversight() ? null : tenant())),
     person: signal({ id: 'p-ada' }),
+    // The team's head names the team (team-header.ts).
+    shown: computed(() => {
+      const slug = tenant();
+      return slug ? { slug, name: 'Acme Corp', role: 'admin' as const } : undefined;
+    }),
   };
 }
 

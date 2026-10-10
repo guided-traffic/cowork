@@ -29,6 +29,9 @@ test(
         .getByTestId('cards-refinement')
         .getByTestId(`card-${keyOf(other, neighbour.number)}`),
     ).toBeVisible();
+    // Both swimlanes in view, under the team's head: a card held at the edge of the content area
+    // would scroll it during the drag (the CDK's auto-scroll), and the drop would land elsewhere.
+    await page.getByTestId('lanes').evaluate((lanes) => lanes.scrollIntoView({ block: 'start' }));
 
     // Across the columns of its swimlane: the transition analysed → decided.
     await drag(

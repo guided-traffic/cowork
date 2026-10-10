@@ -1,14 +1,12 @@
 <section class="page">
-  <header class="head">
-    <div>
-      <h1>Tickets</h1>
-      <p class="muted">Every project's tickets, newest first</p>
-    </div>
+  <app-team-header />
+  <div class="head">
+    <p class="muted">Every project's tickets, newest first</p>
     <span class="spacer"></span>
     @if (!session.oversight() && summary(); as text) {
       <span class="muted tabular" data-testid="tickets-total">{{ text }}</span>
     }
-  </header>
+  </div>
 
   @if (!session.oversight()) {
     <div class="filters" role="group" aria-label="Filters" data-testid="tickets-filters">
