@@ -34,7 +34,8 @@ agent. The importer applies D7 as made concrete below
 ([`columns.go`](../../backend/internal/importer/columns.go) `confidential`).
 
 **Amended 2026-10-10 by the owner (~~not built~~ built the same day in the data layer and the API;
-the UI not built):** D5 — the one placeholder: a confidential ticket at
+~~the UI not built~~ *(2026-10-10: and in the UI, below)*):** D5 — the one placeholder: a
+confidential ticket at
 the other end of a relation — a parent, a child, a link end — that the reader may not see shows as
 `<team> [Confidential]`, the flag's own name, which needs no explaining; decided first for relations
 into another team, once relations cross teams ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3), then for every relation, inside a team as
@@ -47,7 +48,11 @@ assignee or its reporter, and no token outside its restriction —, and every re
 [ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md) writes `<team> [Confidential]`, and
 its frontmatter, like the export's, leaves such a parent out. A link whose other end is a
 placeholder is removed by its id. A placeholder never counts among a ticket's open prerequisites
-and never refuses its `done`.
+and never refuses its `done`. In the UI the same day: the detail page, the backlog's row and the
+board's card show such a ticket as `<team> [Confidential]` — its team's name and nothing else —
+for a parent, a child, a link end and a node of the prerequisite tree, in another team and in the
+reader's own; the parent chooser keeps such a parent shown by it, which the person may remove; and
+a link whose other end it is goes by its id.
 
 ## Context
 
@@ -108,7 +113,7 @@ unauthorised), the event stream ([ADR 0054](0054-server-sent-events-per-tenant-c
 D3: filtered like the project restriction), the export ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
 D4: omitted, with a count in the manifest "n confidential tickets not included"), the API
 and the MCP tools (`404`, [ADR 0023](0023-the-tenant-is-in-the-path.md) D5's reading).
-*(Amended 2026-10-10 by the owner, built the same day in the API:)* One surface shows a placeholder: the other end of a
+*(Amended 2026-10-10 by the owner, built the same day in the API and the UI:)* One surface shows a placeholder: the other end of a
 parent, a child or a link that the reader may not see — in another team ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3) or in the reader's
 own — is shown as `<team> [Confidential]`, its team's name and nothing else, not its key, not its
 title. Every other surface keeps D5: lists, boards, search, the dashboard's counts, the inbox and the

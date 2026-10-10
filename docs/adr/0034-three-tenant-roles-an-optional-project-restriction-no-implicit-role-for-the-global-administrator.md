@@ -79,7 +79,8 @@ No rule changes.
 ticket of it that a parent, a child or a link of a ticket they see names by its head, and that
 ticket counts among the open prerequisites of the ticket it blocks and refuses its `done`
 ([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D6, D7), since its state is in its
-head; every other surface keeps the predicate.
+head; every other surface keeps the predicate. The browser shows such a head without a link to the
+ticket, which the member may not open (2026-10-10).
 
 ## Context
 

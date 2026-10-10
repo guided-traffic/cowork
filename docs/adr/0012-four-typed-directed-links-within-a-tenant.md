@@ -22,7 +22,8 @@ to objection) stops a ticket from being closed over open prerequisites without a
 override.
 
 **Amended 2026-10-10 by the owner (~~not built~~ built the same day in the data layer and the API;
-the UI not built):** D2, D4, D6, D7 — links cross teams, under the
+~~the UI not built~~ *(2026-10-10: and in the UI, below)*):** D2, D4, D6, D7 — links cross teams,
+under the
 rules of a parent across teams
 ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2), once a tenant
 became a team inside an organisation's installation
@@ -65,7 +66,7 @@ export's links manifest's: each once, never to its own ticket, a `blocks` link t
 cycle among the imported tickets left out by the analysis and one through the project's tickets by
 D4's walk under the tenant's lock, each named in the report.
 *(2026-10-10.)* The amendment is built in the data layer and the API
-([migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql)); the UI is not. A link lives in its source's team, its target a
+([migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql)); ~~the UI is not~~ *(2026-10-10: the UI the same day, below)*. A link lives in its source's team, its target a
 ticket of any team; `PUT …/links/{type}/{other_team}/{other}` sets one by the other end's canonical
 key, the route by the short key stays the short form inside the team
 ([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D3), and a key
@@ -94,6 +95,19 @@ and D7's refusal read one rule: an open direct prerequisite counts, and refuses 
 caller reads its state in a head, of any team, and a placeholder neither counts nor refuses — so a
 prerequisite of the caller's own team in a project restricted from them, hidden before, now counts
 by its head.
+*(2026-10-10.)* The UI: the link field offers the open tickets of the ticket's project from its
+button and, once the person types, the tickets of every team of theirs that the person-level search
+finds ([ADR 0023](0023-the-tenant-is-in-the-path.md) D2), and takes a key typed — canonical, or the
+short form inside the team ([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md)
+D3) —, sending the canonical key; the detail page reads `…/relations` and `…/prerequisite-tree` and
+shows each link end and each node by its head, a link to it only where the person may open it, the
+placeholder `<team> [Confidential]` where they may not see it, and a node of the person's own team
+they read with its assignee and its stage; it removes a link by its id from its source — this
+ticket for an outgoing link, a placeholder's included, the other ticket for an incoming one the
+person reads. *(Made concrete by the implementer, open to the owner's objection:)* an incoming link
+from a ticket the person may not open, or may not see, is offered no removal: its source is a
+ticket the person cannot write, whose team removes it. The activity and the inbox name a settled
+prerequisite of another team by its head (D5).
 
 ## Context
 
@@ -124,7 +138,7 @@ here"), never a second row.
 
 **D2 — ~~Links stay inside the tenant and may cross projects.~~ ~~A link whose two ends are in
 different tenants is refused by the server, not hidden by the UI.~~** *(Amended 2026-10-10 by the
-owner, built the same day in the API:)* **Links may cross projects and teams of the installation,
+owner, built the same day in the API and the UI:)* **Links may cross projects and teams of the installation,
 every type alike.** A
 link is set by a `member` or `admin` of the source's team who can read the target, and refused
 like a missing ticket where they cannot; the other end is shown to a person who holds no role in

@@ -44,7 +44,7 @@ one crossing, the relation between tickets of two teams, read as the other ticke
 ~~Nothing of the amendment is built.~~ *(2026-10-10:)* D1's expand is built, below, and so are D6's
 sidebar and the *Consequences*' "All teams" (the second paragraph below); the contract of D1 and
 ~~D3's crossing~~ are not. *(2026-10-10:)* D3's crossing is built in the data layer and the API,
-below; its UI is not.
+below; ~~its UI is not~~ *(2026-10-10: and in the UI, below)*.
 
 **Built** (2026-10-10): D1's expand. Every surface says team, and each name before stays readable
 for one release, deprecated, behaving as it did: the API's team family, `/api/v1/teams` and
@@ -85,7 +85,8 @@ with one membership that one, and a global administrator reaches every team of t
 through "All teams" in the person menu, the UI route `/teams`
 ([ADR 0023](0023-the-tenant-is-in-the-path.md) D4, where what was built is named).
 
-**Built** (2026-10-10): D3's crossing, in the data layer and the API; the UI is not. A ticket's
+**Built** (2026-10-10): D3's crossing, in the data layer and the API; ~~the UI is not~~ *(2026-10-10:
+the UI the same day, below)*. A ticket's
 parent, its children and its links may be tickets of another project or team
 ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2,
 [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2), and every other end is shown
@@ -109,6 +110,26 @@ other end `404 not_found` "no such ticket" —, so no answer tells that a ticket
 read exists. The integration tier proves the head's fields alone in every byte of the answers,
 the placeholder, and the uniform miss body for body
 ([`api_relations_test.go`](../../backend/test/integration/api_relations_test.go)).
+
+**Built** (2026-10-10): D3's crossing in the UI. The parent chooser and the link field offer the
+tickets the person reads across their teams — the person-level search once they type
+([ADR 0023](0023-the-tenant-is-in-the-path.md) D2), the open tickets of the ticket's project before
+— and send canonical keys
+([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2,
+[ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2). The detail page shows the
+parent, the children, the link ends and the nodes of the prerequisite tree, the backlog's row and
+the board's card the parent, as the person sees each: a ticket of another team by its team's name
+and its head, a link to it only where the person may open it (`readable`), and
+`<team> [Confidential]` for one they may not see, in another team or their own
+([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D5). A parent's derived progress is the server's value, fetched again on the event of the kind
+`derived`
+([ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
+D3); the page says no more of a child of another team than its head. The end-to-end tier walks it
+with two identities: a member of both teams picks a ticket of the one as the parent of a ticket of
+the other through the chooser's search, and a member of the other alone sees its head unlinked and
+a confidential parent as its placeholder
+([`relations.spec.ts`](../../frontend/e2e/relations.spec.ts)).
 
 ## Context
 
@@ -148,7 +169,8 @@ two tenants' rows. ~~Exactly one kind of cross-tenant result exists:~~ The **per
 — "next for me", "assigned to me", "open decisions", the inbox — are unions over the tenants the
 person belongs to, each part computed under that tenant's own rules. A ticket changes tenant only
 by export and import, and the audit record of both ends says so. *(Amended 2026-10-10 by the
-owner, ~~not built~~ built the same day in the data layer and the API, the UI outstanding:)* **A
+owner, ~~not built~~ built the same day in the data layer and the API, ~~the UI outstanding~~ and
+in the UI:)* **A
 ticket's parent, its children and its links may be tickets of another team
 of the installation** ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md)
 D2, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2). Across the boundary a person

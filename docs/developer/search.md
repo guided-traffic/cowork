@@ -86,7 +86,10 @@ where it was found (`foundIn`) and the snippet, each part by interpolation, the 
 which the page scrolls to once that part has loaded (`linkedPart` in
 [`ticket-detail.ts`](../../frontend/src/app/features/ticket/ticket-detail.ts)). The team's results
 offer *Search all your teams* to a person with more than one. A search is a snapshot: the page does
-not follow the event stream.
+not follow the event stream. The parent chooser and the link field of a ticket read the first page
+of `GET /api/v1/me/search` too, twenty hits, for what the person types (`TicketsService.search`):
+the tickets of every team of theirs they may relate a ticket to
+([frontend.md](frontend.md#relations-across-teams)).
 
 ## Tests
 

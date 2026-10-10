@@ -49,7 +49,8 @@ crossing `refresh_derived` sends the notification itself, entity `ticket`, actio
 an id `uuidv7()` makes for it — not an audit row's —, the parent's team, project, key and version,
 which the change does not move, and the confidential rule's inputs; the stream sends it as
 `ticket.changed` of the kind `derived`. Its version is the one the client holds, so a client that
-refetches only a newer version must refetch on this kind; the UI does not yet. A parent of the
+refetches only a newer version must refetch on this kind, as the UI's `TicketsService` does
+([frontend.md](frontend.md#how-a-change-reaches-the-screen)). A parent of the
 writer's own team gets no notification of its own: the child's act is published there
 ([ADR 0054] D2 as made concrete 2026-10-10).
 

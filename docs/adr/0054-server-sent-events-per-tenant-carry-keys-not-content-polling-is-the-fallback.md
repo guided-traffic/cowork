@@ -185,7 +185,8 @@ derived stages a change of a child of another team moved
 ([ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
 D3) is announced on its own team's streams as `ticket.changed` of the kind `derived`, with its
 version, which the change does not move; the change is no act, so the event's id is made for the
-event and names no act, and D3 filters it like any ticket's event.
+event and names no act, and D3 filters it like any ticket's event. The browser fetches a ticket it
+holds again on that kind, whatever version the event names (2026-10-10).
 
 **D3 — Visibility is enforced at the stream.** Each event carries the project; a
 subscription knows the person's visible projects (computed at connect, recomputed on

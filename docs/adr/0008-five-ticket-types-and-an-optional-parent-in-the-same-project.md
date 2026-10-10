@@ -20,10 +20,12 @@ not become a parent with its findings as children: a repository's ticket file na
 no rule says which files are a family's, so the importer guesses none and reads a parent only from
 a `parent:` key, which an export writes. Whether it should recognise a family is open to the owner; until then the
 person sets the parents after the import. *(2026-10-04.)* The browser chooses the parent,
-on filing and on the detail page, among the project's open tickets.
+on filing and on the detail page, among the project's open tickets *(2026-10-10: and, once the
+person types, among the open tickets of every team of theirs, below)*.
 
 **Amended 2026-10-10 by the owner (~~not built~~ built the same day in the data layer and the API;
-the browser's offer of a parent in another project or team not built):** D2 — a parent may be a
+~~the browser's offer of a parent in another project or team not built~~ *(2026-10-10: and in the
+browser, below)*):** D2 — a parent may be a
 ticket of another project of the team or of another team of the installation, under the rules D2
 now states; the answer that a tenant is a team inside an organisation's installation
 ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1, D3) made the
@@ -36,7 +38,19 @@ canonical key of any team, or a short key of any project of the child's team
 `Ticket.parent_head` its head; the setter's sight of the parent is read in the write's own
 transaction (`readable_ticket`), so nothing changes between the check and the write; and the
 cycle walk, `parent_chain_reaches`, crosses teams. Both reads and the walk are crossings of
-[ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7.
+[ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7. Built in the
+browser the same day: the parent chooser, on filing and on the detail page, offers the open tickets
+of the ticket's project before the person types, and once they type the open tickets of every team
+of theirs that the person-level search finds for the words or the key
+([ADR 0023](0023-the-tenant-is-in-the-path.md) D2,
+[ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)), each with its
+team where it is of another, and sends the canonical key. The detail page shows the parent by its
+head — its team, key, title, type and state, a link to it only where the person may open it, and
+`<team> [Confidential]` for one they may not see, which they may still remove — and lists the
+children, a page at a time, each by its head; the backlog's row and the board's card name a parent
+of another project or team by its head. *(Made concrete by the implementer, open to the owner's
+objection:)* the chooser offers open tickets alone, as it did inside the project, so the browser
+sets no closed ticket as a parent; the compact cards of the board's *Next* name no parent.
 
 ## Context
 
@@ -61,7 +75,8 @@ the case where the question *is* the work.
 installation.** The relation is a nullable column, not a link. Cycles are refused at write time;
 depth is not bounded. ~~A parent in another project or another tenant is not a parent: a
 dependency across projects is a `blocks` link (the links record), never a hierarchy.~~
-*(Amended 2026-10-10 by the owner, built the same day in the API, the browser's offer outstanding:)*
+*(Amended 2026-10-10 by the owner, built the same day in the API, ~~the browser's offer
+outstanding~~ and in the browser:)*
 Setting the parent is a write on the child: a
 `member` or `admin` of the child's team may set it to a ticket they can read — at least a `viewer`
 of the parent's team, the parent visible to them, a confidential one included. A parent the person

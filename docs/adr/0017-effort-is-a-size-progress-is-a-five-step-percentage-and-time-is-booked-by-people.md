@@ -53,7 +53,9 @@ ancestors across teams, the deepest first, derives each stage from the children 
 `tickets_crossing_guard` holds it to; no version moves and no act is recorded. A parent of another
 team whose values changed is told on its team's streams as `ticket.changed` of the kind `derived`
 ([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
-D2), with an id made for the event, since the change is no act.
+D2), with an id made for the event, since the change is no act. The browser fetches a parent it
+holds again on that kind, whose version it holds already, and the parent's page loads its children
+again (2026-10-10).
 
 ## Context
 
