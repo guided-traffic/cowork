@@ -21,7 +21,6 @@ import { keepShown, refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
 import { AgentMark } from '../../shared/agent-mark';
 import { StateBadge } from '../../shared/badges';
-import { settledPrerequisite } from '../../shared/ticket-head';
 import { ago, Clock, count } from '../../shared/time';
 import { changesExistence } from '../../core/event-stream.service';
 import { reloadOn, shortKey, ticketRoute } from './person-list';
@@ -67,11 +66,9 @@ export function happening(entry: InboxEntry): string {
     case 'state_changed':
       return typeof state === 'string' ? `moved it to ${state}` : 'changed its state';
     case 'blocker_closed': {
-      // A prerequisite of another team, by its head as it settled (docs/adr/0012 D5).
-      const settled =
-        entry.act.action === 'prerequisite_settled' ? settledPrerequisite(entry.act.after) : null;
-      if (settled) {
-        return `closed ${settled.name}, which blocks it${settled.state ? `, as ${settled.state}` : ''}`;
+      // A prerequisite of another team, which the act names by no key (docs/adr/0012 D5).
+      if (entry.act.action === 'prerequisite_settled') {
+        return 'closed a ticket of another team that blocks it';
       }
       const blocker = entry.blocker ? shortKey(entry.blocker.key) : 'a ticket';
       return `closed ${blocker}, which blocks it${typeof state === 'string' ? `, as ${state}` : ''}`;

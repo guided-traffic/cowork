@@ -43,6 +43,22 @@ export interface TicketPage {
   versions?: ReadonlyMap<string, number>;
 }
 
+/**
+ * Whether an act of a ticket changed what the ticket shows although it names the version the cache
+ * holds: its derived stages moved because a child changed (`derived`, docs/adr/0017 D3,
+ * docs/adr/0054 D2), a child was detached from it (`detached`), or — for a ticket that has a
+ * parent — the parent detached it, which records `updated` on it and leaves its version
+ * (docs/adr/0008 D2 as amended again 2026-10-10). A ticket without a parent has no such `updated`:
+ * the event of a write of its own, whose answer the cache holds, fetches nothing.
+ */
+export function changesWithoutVersion(kind: string, held: Ticket): boolean {
+  return (
+    kind === 'derived' ||
+    kind === 'detached' ||
+    (kind === 'updated' && (held.parent !== null || held.parent_head !== null))
+  );
+}
+
 /** `acme/VKO-12` → `{ team: 'acme', key: 'VKO-12' }`, the parameters of the ticket resolver. */
 export function splitKey(key: string): { team: string; key: string } {
   const slash = key.indexOf('/');
@@ -307,13 +323,12 @@ export class TicketsService {
     const held = this.cache.value(event.key);
     // A ticket's version counts its own fields only (docs/adr/0050 D1): a newer one is a change;
     // a link changes its open prerequisites without one, and a stake its score (docs/adr/0013
-    // D3); a question or a comment changes nothing the ticket itself shows. The kind `derived`
-    // says that a parent's derived stages moved because a child of another tenant changed: the
-    // version it names is the one the cache holds (docs/adr/0017 D3, docs/adr/0054 D2).
+    // D3); a question or a comment changes nothing the ticket itself shows. Some changes of a
+    // ticket move no version at all ({@link changesWithoutVersion}).
     const stale =
       held !== undefined &&
       (event.name === 'ticket.changed'
-        ? held.version < event.version || event.kind === 'derived'
+        ? held.version < event.version || changesWithoutVersion(event.kind, held)
         : event.name === 'link.changed' || event.name === 'interest.changed');
     if (stale) {
       this.refetch(event.key);

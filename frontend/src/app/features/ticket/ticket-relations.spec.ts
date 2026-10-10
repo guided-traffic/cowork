@@ -78,9 +78,15 @@ describe('TicketRelations', () => {
       ...overrides,
     };
   }
-  const child = (key: string): Relation => ({ kind: 'child', link: null, head: head(key) });
+  const child = (key: string): Relation => ({
+    kind: 'child',
+    id: `handle-${key.replace(/[^A-Za-z0-9]/g, '')}`,
+    link: null,
+    head: head(key),
+  });
   const linked = (key: string): Relation => ({
     kind: 'link',
+    id: `l-${key}`,
     link: {
       id: `l-${key}`,
       type: 'blocks',
@@ -371,6 +377,24 @@ describe('TicketRelations', () => {
       events.next(ticketEvent('ticket.changed', 'acme/COW-12', 'derived'));
 
       expect(reloaded(spies)).toEqual(['children']);
+    });
+
+    // docs/adr/0008 D2 as amended again 2026-10-10: a child left the ticket from its side.
+    it('reload the children and the activity alone on the ticket’s own detached event', () => {
+      const spies = spyOnReloads();
+
+      events.next(ticketEvent('ticket.changed', 'acme/COW-12', 'detached'));
+
+      expect(reloaded(spies).sort()).toEqual(['activity', 'children']);
+    });
+
+    it('reload the links or the children when the page asks, after a removal', () => {
+      const spies = spyOnReloads();
+
+      relations.reloadLinks();
+      expect(reloaded(spies)).toEqual(['links']);
+      relations.reloadChildren();
+      expect(reloaded(spies).sort()).toEqual(['children', 'links']);
     });
 
     it.each(['created', 'updated', 'restored'])(

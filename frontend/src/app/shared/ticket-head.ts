@@ -90,20 +90,6 @@ export function parentChip(head: TicketHead, here: string | null): ParentChip {
   return { text, route, label: `Parent ${text}`, tip };
 }
 
-/**
- * The prerequisite a `prerequisite_settled` act names (docs/adr/0012 D5): a ticket of another team
- * that blocked the act's ticket and reached done or dropped, by its team and short key — or
- * `<team> [Confidential]` where it is confidential — and the state it reached; null where the act
- * carries none.
- */
-export function settledPrerequisite(after: unknown): { name: string; state: string | null } | null {
-  const head = (after as { prerequisite?: TicketHead } | null)?.prerequisite;
-  if (!head?.team || (!head.placeholder && typeof head.key !== 'string')) {
-    return null;
-  }
-  return { name: headName(head, null), state: head.placeholder ? null : head.state };
-}
-
 /** A ticket the person reads, of the team `team`, as its head. */
 export function headOfTicket(ticket: Ticket, team: TeamRef): TicketHead {
   return {

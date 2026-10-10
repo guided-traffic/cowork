@@ -218,12 +218,30 @@
           } @else if (relations.children.hasValue()) {
             @for (child of relations.children.value()?.items ?? []; track $index) {
               <div class="link" [attr.data-testid]="'child-' + $index">
-                <span class="link-target">
-                  <app-head-key [head]="child.head" [here]="session.tenant()" />
-                  @if (child.head.state; as state) {
-                    <app-state [value]="state" />
+                <div class="link-head">
+                  <span class="link-target">
+                    <app-head-key [head]="child.head" [here]="session.tenant()" />
+                    @if (child.head.state; as state) {
+                      <app-state [value]="state" />
+                    }
+                  </span>
+                  @if (writes() && child.id; as handle) {
+                    <button
+                      pButton
+                      type="button"
+                      [text]="true"
+                      [rounded]="true"
+                      size="small"
+                      severity="secondary"
+                      [attr.data-testid]="'remove-child-' + $index"
+                      [iconOnly]="true"
+                      (click)="removeChild(handle)"
+                      aria-label="Remove this child"
+                    >
+                      <i class="pi pi-times"></i>
+                    </button>
                   }
-                </span>
+                </div>
                 @if (child.head.title !== null) {
                   <span class="small">{{ child.head.title }}</span>
                 }
@@ -260,7 +278,7 @@
                 <div class="link" [attr.data-testid]="'link-' + link.id">
                   <div class="link-head">
                     <span class="muted small">{{ link.name }}</span>
-                    @if (sourceOf(relation); as source) {
+                    @if (writes()) {
                       <button
                         pButton
                         type="button"
@@ -270,7 +288,7 @@
                         severity="secondary"
                         [attr.data-testid]="'unlink-' + link.id"
                         [iconOnly]="true"
-                        (click)="unlink(source, link.id)"
+                        (click)="unlink(link.id)"
                         aria-label="Remove this link"
                       >
                         <i class="pi pi-times"></i>

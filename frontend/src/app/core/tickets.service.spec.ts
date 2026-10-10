@@ -961,6 +961,57 @@ describe('TicketsService', () => {
       expect(service.cache.etag(key)).toBe('"5"');
     });
 
+    // docs/adr/0008 D2 as amended again 2026-10-10: a detach moves neither ticket's version.
+    it('refetches a cached parent on the kind detached at the version it holds', async () => {
+      stream.next({ ...changed('ticket.changed', key, 5), kind: 'detached' });
+
+      http.expectOne(ticketUrl(key)).flush(ticket(key, 5, { progress_derived: false }));
+      await settle();
+
+      expect(service.cache.value(key)?.progress_derived).toBe(false);
+    });
+
+    it('refetches a cached ticket that has a parent on the kind updated at the version it holds: its parent detached it', async () => {
+      const child = 'acme/VKO-30';
+      service.cache.put(child, ticket(child, 4, { parent: 'acme/VKO-1' }));
+
+      stream.next({ ...changed('ticket.changed', child, 4), kind: 'updated' });
+
+      http.expectOne(ticketUrl(child)).flush(ticket(child, 4, { parent: null }));
+      await settle();
+      expect(service.cache.value(child)?.parent).toBeNull();
+    });
+
+    it('refetches one whose parent it may not see, a placeholder, on the kind updated as well', async () => {
+      const child = 'acme/VKO-31';
+      service.cache.put(
+        child,
+        ticket(child, 4, {
+          parent: null,
+          parent_head: {
+            team: { slug: 'globex', name: 'Globex' },
+            key: null,
+            title: null,
+            type: null,
+            state: null,
+            placeholder: true,
+            readable: false,
+          },
+        }),
+      );
+
+      stream.next({ ...changed('ticket.changed', child, 4), kind: 'updated' });
+
+      http.expectOne(ticketUrl(child)).flush(ticket(child, 4));
+      await settle();
+    });
+
+    it('fetches nothing on the kind updated at the version held of a ticket without a parent: the answer of its own write is in the cache', () => {
+      stream.next({ ...changed('ticket.changed', key, 5), kind: 'updated' });
+
+      http.expectNone(ticketUrl(key));
+    });
+
     it('does not fetch a ticket that is not cached on the kind derived', () => {
       stream.next({ ...changed('ticket.changed', 'acme/VKO-99', 1), kind: 'derived' });
 

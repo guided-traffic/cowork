@@ -15,7 +15,6 @@ import {
   ofAnotherTeam,
   parentChip,
   placeholderText,
-  settledPrerequisite,
   shortKeyOf,
   TicketChoice,
 } from './ticket-head';
@@ -134,28 +133,6 @@ describe('parentChip', () => {
       label: 'Parent Globex [Confidential]',
       tip: 'Its parent is confidential: you may not see it',
     });
-  });
-});
-
-describe('settledPrerequisite (docs/adr/0012 D5)', () => {
-  it('names the prerequisite of another team by its team and key, with the state it reached', () => {
-    expect(settledPrerequisite({ prerequisite: { ...stranger, state: 'done' } })).toEqual({
-      name: 'Globex · API-7',
-      state: 'done',
-    });
-  });
-
-  it('names a confidential one by its placeholder, without a state', () => {
-    expect(settledPrerequisite({ prerequisite: confidential })).toEqual({
-      name: 'Globex [Confidential]',
-      state: null,
-    });
-  });
-
-  it('names none where the act carries none', () => {
-    expect(settledPrerequisite(null)).toBeNull();
-    expect(settledPrerequisite({ state: 'done' })).toBeNull();
-    expect(settledPrerequisite({ prerequisite: { team: stranger.team, key: 7 } })).toBeNull();
   });
 });
 

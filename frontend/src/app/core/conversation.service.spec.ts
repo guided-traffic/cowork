@@ -241,13 +241,57 @@ describe('Conversation', () => {
       await done;
     });
 
-    it('deletes it at the address of the source, a ticket of another team included', async () => {
+    it('deletes it at the address of the ticket it is given, either end of the link', async () => {
       const done = conversation.unlink('globex/API-7', 'l-2');
 
       http
         .expectOne('/api/v1/teams/globex/projects/API/tickets/7/links/l-2')
         .flush('', { status: 204, statusText: 'No Content' });
       await done;
+    });
+
+    it('rejects with the 404 of a link gone already', async () => {
+      const outcome = conversation.unlink(key, 'l-9').then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+      http
+        .expectOne(`${base}/links/l-9`)
+        .flush(
+          { type: 'about:blank', title: 'Not found', status: 404, code: 'not_found' },
+          { status: 404, statusText: 'Not Found' },
+        );
+
+      expect(((await outcome) as HttpErrorResponse).status).toBe(404);
+    });
+  });
+
+  // docs/adr/0008 D2 as amended again 2026-10-10: the parent's side ends a parent relation.
+  describe('removeChild', () => {
+    it('deletes the child of the ticket by the handle its relation carries', async () => {
+      const done = conversation.removeChild(key, 'sealed_handle-1');
+
+      const sent = http.expectOne(`${base}/children/sealed_handle-1`);
+      expect(sent.request.method).toBe('DELETE');
+      sent.flush('', { status: 204, statusText: 'No Content' });
+      await done;
+    });
+
+    it('rejects with the 404 of a child gone already', async () => {
+      const outcome = conversation.removeChild(key, 'gone').then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+      http
+        .expectOne(`${base}/children/gone`)
+        .flush(
+          { type: 'about:blank', title: 'Not found', status: 404, code: 'not_found' },
+          { status: 404, statusText: 'Not Found' },
+        );
+
+      expect(((await outcome) as HttpErrorResponse).status).toBe(404);
     });
   });
 

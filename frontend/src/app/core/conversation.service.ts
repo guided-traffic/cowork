@@ -10,6 +10,7 @@ import { updateQuestion } from '../api/fn/questions/update-question';
 import { withdrawQuestion } from '../api/fn/questions/withdraw-question';
 import { linkTicketTo } from '../api/fn/tickets/link-ticket-to';
 import { removeInterest } from '../api/fn/tickets/remove-interest';
+import { removeTicketChild } from '../api/fn/tickets/remove-ticket-child';
 import { removeTicketLink } from '../api/fn/tickets/remove-ticket-link';
 import { setInterest } from '../api/fn/tickets/set-interest';
 import {
@@ -123,12 +124,22 @@ export class Conversation {
   }
 
   /**
-   * Removes a link by its id from its source, `source` the source's canonical key — the way that
-   * reaches a link whose other end the person may not see, which shows no key (docs/adr/0065 D5).
-   * A write on the source, whatever the person reads of the other end (docs/adr/0012 D2).
+   * Removes a link of the ticket `key` by the link's id — the ticket either end of it, its source or
+   * its target, whatever team keeps the link and whatever the person reads of the other end
+   * (docs/adr/0012 D2 as amended again 2026-10-10); the id reaches a link whose other end shows no
+   * key (docs/adr/0065 D5). A link that is gone already is `404` "no such link".
    */
-  unlink(source: string, link: string): Promise<unknown> {
-    return this.api.invoke(removeTicketLink, { ...routeOf(source), link });
+  unlink(key: string, link: string): Promise<unknown> {
+    return this.api.invoke(removeTicketLink, { ...routeOf(key), link });
+  }
+
+  /**
+   * Detaches a child of any project or team from the ticket `key`, its parent, by the id its
+   * relation carries — an opaque handle (docs/adr/0008 D2 as amended again 2026-10-10). A child
+   * that is gone already is `404` "no such child".
+   */
+  removeChild(key: string, child: string): Promise<unknown> {
+    return this.api.invoke(removeTicketChild, { ...routeOf(key), child });
   }
 
   setInterest(key: string, weight: InterestWeight, note: string): Promise<unknown> {

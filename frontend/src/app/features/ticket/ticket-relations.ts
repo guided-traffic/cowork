@@ -80,14 +80,15 @@ function shows(part: ResourceRef<{ items: Relation[] } | undefined>, key: string
  * do. The links, the children and the tree show the tickets at their other ends of any project or
  * team, each as the reader sees it (docs/adr/0005 D3): the tree loads again on a link of the ticket
  * and on any change of a ticket it shows, the links and the children on a change of a ticket they
- * show, the children as well on an act that may have made a ticket a child of this one, and on the
- * ticket's own `derived` — a child of another team moved its stages (docs/adr/0017 D3). The
- * rendered body loads again when the ticket's version moves ({@link version}, which the page sets
- * from the cache), and on a `ticket.changed` that moves no version, an upload — whose image the
- * body may show (docs/adr/0016 D7). A part that is loading when its event arrives loads once more afterwards
- * (`refresh`), and a part that loads again and fails keeps what it shows ({@link keepShown}). Each
- * list part keeps the weak `ETag` of its last answer and is answered `304` while it is unchanged
- * (docs/adr/0054 D7). Provided by the page, so it lives exactly as long as the page.
+ * show, the children as well on an act that may have made a ticket a child of this one or ended
+ * that, and on the ticket's own `derived` — a child moved its stages (docs/adr/0017 D3) — and
+ * `detached` (docs/adr/0008 D2). The rendered body loads again when the ticket's version moves
+ * ({@link version}, which the page sets from the cache), and on a `ticket.changed` that moves no
+ * version, an upload — whose image the body may show (docs/adr/0016 D7). A part that is loading
+ * when its event arrives loads once more afterwards (`refresh`), and a part that loads again and
+ * fails keeps what it shows ({@link keepShown}). Each list part keeps the weak `ETag` of its last
+ * answer and is answered `304` while it is unchanged (docs/adr/0054 D7). Provided by the page, so it
+ * lives exactly as long as the page.
  */
 @Injectable()
 export class TicketRelations {
@@ -203,9 +204,16 @@ export class TicketRelations {
       return;
     }
     if (event.name === 'ticket.changed' && event.kind === 'derived') {
-      // A child of another team moved the ticket's stages (docs/adr/0017 D3), which the cache
-      // fetches again; the child's head may have changed with it. No act: the activity stays.
+      // A child moved the ticket's stages (docs/adr/0017 D3), which the cache fetches again; the
+      // child's head may have changed with it. No act: the activity stays.
       refresh(this.children, this.injector);
+      return;
+    }
+    if (event.name === 'ticket.changed' && event.kind === 'detached') {
+      // A child left the ticket from its side, or from the child's side across teams
+      // (docs/adr/0008 D2): the act is the ticket's, its fields and files are as they were.
+      refresh(this.children, this.injector);
+      refresh(this.activity, this.injector);
       return;
     }
     if (event.name === 'comment.changed') {
@@ -272,5 +280,17 @@ export class TicketRelations {
   /** After the person booked or corrected time: no event says so. */
   reloadTime(): void {
     refresh(this.time, this.injector);
+  }
+
+  /**
+   * After the person removed a link or a child, or found it gone: the page shows it at once
+   * rather than waiting for the event, which a polling fallback brings late.
+   */
+  reloadLinks(): void {
+    refresh(this.links, this.injector);
+  }
+
+  reloadChildren(): void {
+    refresh(this.children, this.injector);
   }
 }
