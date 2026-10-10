@@ -513,7 +513,17 @@ func (w *Writer) RecordElsewhere(ctx context.Context, far FarEnd, events ...Even
 		return err
 	}
 	kept := w.events
-	w.events = make([]Event, 0, len(events))
+	w.events = elsewhere(far, system, events)
+	err = w.writeEvents(ctx, far.team, w.caller, Idempotency{}, false)
+	w.flushed = w.flushed || err == nil
+	w.events = kept
+	return err
+}
+
+// elsewhere are the acts as the far team's record holds them: each at the far
+// ticket, and a system actor's where the caller is none there.
+func elsewhere(far FarEnd, system string, events []Event) []Event {
+	out := make([]Event, 0, len(events))
 	for _, e := range events {
 		e.TicketID, e.TicketKey = far.ticket, far.key
 		if e.EntityID == uuid.Nil && e.EntityType == entityTicket {
@@ -522,12 +532,9 @@ func (w *Writer) RecordElsewhere(ctx context.Context, far FarEnd, events ...Even
 		if e.System == "" {
 			e.System = system
 		}
-		w.events = append(w.events, e)
+		out = append(out, e)
 	}
-	err = w.writeEvents(ctx, far.team, w.caller, Idempotency{}, false)
-	w.flushed = w.flushed || err == nil
-	w.events = kept
-	return err
+	return out
 }
 
 // The system actors of an act in another team's record whose caller holds no

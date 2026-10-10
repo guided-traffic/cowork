@@ -185,8 +185,9 @@ func catalogCrossingProblems(language string, definer bool, source string, confi
 	if !catalogEnd.MatchString(statements[last]) || last < 1 {
 		return append(problems, "the body does not end in END")
 	}
-	if !catalogRestore.MatchString(statements[last-1]) && !(catalogReturn.MatchString(statements[last-1]) && last >= 2 &&
-		catalogRestore.MatchString(statements[last-2])) {
+	restored := catalogRestore.MatchString(statements[last-1])
+	returnsRestored := catalogReturn.MatchString(statements[last-1]) && last >= 2 && catalogRestore.MatchString(statements[last-2])
+	if !restored && !returnsRestored {
 		problems = append(problems, "the body ends without restoring app.crossing")
 	}
 	return problems
