@@ -357,7 +357,9 @@ A project's open tickets have a manual order, the rank ([ADR 0014] D1, D2); the 
 - **A key** is `tickets.rank`, `text COLLATE "C"` (migration `000017_ticket_rank`): a base-62
   fraction over `0-9A-Za-z`, whose ASCII order the `C` collation compares, 1 to 128 characters,
   never ending in `0` — a `CHECK` and `domain.ValidRank`. A key belongs to one ticket of its
-  project (the unique index `tickets_by_rank`). A done or dropped ticket has none (a key the
+  project (the unique index `tickets_by_rank_key`, partial over the tickets that hold one since
+  migration 49, so that a change of the rank locks no key — [data-access.md](data-access.md#advisory-locks)).
+  A done or dropped ticket has none (a key the
   previous release left on one is read as none, below). A key is computed over tickets the
   caller may not see, so no answer shows one — not a ticket (`ticketView`), not an act, not a
   cursor ([security/tenancy.md](../security/tenancy.md#h-3), H-3); what a client reads of the

@@ -544,6 +544,18 @@ it before it writes a ticket row, so they cannot deadlock over it
 ([domain.md](domain.md#rank)). It is a row of its own so that filing never waits for a change
 of the project's settings.
 
+**A ticket row an update locks.** PostgreSQL locks a row an `UPDATE` changes a key column of
+`FOR UPDATE`, and counts as a key every column a unique index that is not partial covers; every
+other `UPDATE` locks `FOR NO KEY UPDATE`, which the `FOR KEY SHARE` of a foreign key's check on the
+same row does not wait for. The rank's unique index is partial since migration 49,
+`tickets_by_rank_key … WHERE rank IS NOT NULL`, so a done, a drop, a reopen and a move — which
+change the rank — lock their ticket `FOR NO KEY UPDATE`. Before, they locked it `FOR UPDATE`, and
+closing a parent and, at once, a child it blocks deadlocked: the child's transaction held its row
+and waited on the parent's to derive its progress, while the parent's held its own and waited on the
+child's to insert the notifications that reference it
+(`TestClosingAParentAndTheChildItBlocksAtOnceFinishesBoth`). A deletion of a ticket row — the purge's
+— still locks it `FOR UPDATE`.
+
 ## The login and the sessions
 
 Four groups of store code run outside `Mutate`, by design, and each is small

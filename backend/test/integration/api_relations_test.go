@@ -659,6 +659,52 @@ func TestAParentSetTwiceAtOnceIsSetOnce(t *testing.T) {
 	require.NoError(t, ctx.Err())
 }
 
+// Closing a parent and its child at once, where the parent also blocks the
+// child, finishes both — across teams and inside one. The child's done moves
+// its rank and so locks its row; the parent's done tells the child's watchers,
+// whose notifications reference that row; the child's refresh of its parent
+// waits on the parent's row. Before the rank's unique index left the cleared
+// rank out, the child's row was locked as for a change of its key, the
+// notifications' reference waited on it, and one of the two failed as a
+// deadlock (docs/adr/0014 D2: the rank is unique among the ranked tickets).
+func TestClosingAParentAndTheChildItBlocksAtOnceFinishesBoth(t *testing.T) {
+	e := newRelEnv(t)
+	memberA, both, adminA, adminB := caller{Token: e.tk.MemberA}, caller{Token: e.tk.Both}, caller{Token: e.tk.AdminA},
+		caller{Token: e.tkAdminB}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	done := func(c caller, team string, tk apigen.Ticket, override bool) func() int {
+		body := apigen.Transition{From: apigen.TicketStateFiled, To: apigen.TicketStateDone, Note: ptr("verified")}
+		if override {
+			body.OverridePrerequisites, body.Reason = ptr(true), ptr("closed with its parent")
+		}
+		return func() int {
+			res, err := e.s.client(t, c).TransitionTicketWithResponse(ctx, team, tk.Project, tk.Number, &apigen.TransitionTicketParams{}, body)
+			if err != nil {
+				return 0
+			}
+			return res.StatusCode()
+		}
+	}
+	for round := range 12 {
+		for _, across := range []bool{true, false} {
+			team, project, reporter := e.SlugA, "ALPHA", adminA
+			if across {
+				team, project, reporter = e.SlugB, "BETA", adminB
+			}
+			parent := e.fileIn(t, memberA, e.SlugA, "ALPHA", task(fmt.Sprintf("parent %d %t", round, across)))
+			child := e.fileIn(t, reporter, team, project, task(fmt.Sprintf("child %d %t", round, across)))
+			res := e.patchIn(t, both, team, child, apigen.TicketPatch{Parent: nullable.NewNullableWithValue(parent.Key)})
+			require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
+			link := e.s.do(t, both, http.MethodPut, ticketPathOf(e.SlugA, parent)+"/links/blocks/"+team+"/"+shortOf(child), nil)
+			require.Equal(t, http.StatusCreated, link.StatusCode)
+			codes := simultaneously(done(both, team, child, true), done(memberA, e.SlugA, parent, false))
+			assert.Equal(t, []int{http.StatusOK, http.StatusOK}, codes, "round %d, across teams %t", round, across)
+		}
+	}
+	require.NoError(t, ctx.Err())
+}
+
 // done is refused over an open prerequisite in another team whose state the
 // closer reads in its head, unless a person overrides with a reason; an agent
 // cannot; a placeholder neither shows nor refuses (docs/adr/0012 D7 as
