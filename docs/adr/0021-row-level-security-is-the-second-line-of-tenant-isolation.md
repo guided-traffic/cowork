@@ -270,7 +270,16 @@ needs a cross-tenant view, the policy of the tables concerned is amended
 (`OR tenant_id = ANY (current_setting('app.shared_tenants')::uuid[])`, or a dedicated
 policy for a dedicated role), in the same migration that changes the schema, with this record
 amended to name the view and its reason. Row-level security constrains the forgotten filter,
-never the deliberate one.
+never the deliberate one. *(Amended 2026-10-10 by the owner, not built:)* The first widening is
+the relation between teams of [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3, and it widens by two things, not by a policy over whole
+tables: one read of another team's ticket head — the team's name, the key, the title, the type, the
+state, or the confidential placeholder — for a ticket a relation of the caller's ticket names, and
+one write of a parent's derived progress columns from a child in another team
+([ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
+D3). Which of this record's mechanisms carries them — a dedicated policy for a dedicated role, or a
+function that takes the other team's context for that one read or write — is the build's to choose
+and to name here; neither is a join of two teams' rows in a query a handler writes, and D1's forced
+policies stay on every table.
 
 **D8 — A global administrator works inside one tenant at a time.** The administrator's
 requests set `app.tenant_id` like anyone's; there is no context in which one query sees two

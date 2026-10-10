@@ -257,7 +257,13 @@ A bulk need beyond import is a question of its own.
 
 **D9 — Links that leave the archive are warnings, not guesses.** A `blocks` or `found-in`
 whose target key is not in the archive and not already in the project is reported and
-omitted; the person adds it after the import if it belongs.
+omitted; the person adds it after the import if it belongs. *(Made concrete 2026-10-10 on the
+recommendation, open to the owner's objection, not built:)* a parent or a link into another team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3) is exported by its key and nothing else, never the other ticket's head; the import
+resolves such a key under [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2's rule — the importing person must be able to read the other
+ticket — and reports it as not set where they cannot, as an unresolved parent is reported today;
+nothing in an import refuses
+([ADR 0063](0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md)).
 
 ## Consequences
 

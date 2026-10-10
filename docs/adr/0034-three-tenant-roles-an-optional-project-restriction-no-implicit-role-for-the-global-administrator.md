@@ -165,7 +165,11 @@ wrapper of ADR 0027 D2 knows the person and their tenant role; every generated q
 tickets and their children includes `project is unrestricted OR person is on its list OR
 person is tenant admin`, and the person-level unions, the search, the dashboard and the
 notification fan-out go through the same queries. There is no code path to a ticket that does
-not pass the predicate.
+not pass the predicate. *(Made concrete 2026-10-10 on the recommendation, open to the owner's
+objection, not built:)* at the other end of a parent, a child or a link of a ticket the person sees,
+a ticket of a project restricted from them is shown by its head, as to a person outside the team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3) — a member is never shown less than an outsider; every other surface keeps the
+predicate.
 
 **D5 — Time visibility is a tenant setting.** `timeVisibleToMembers` (default off): on, a
 `member` sees every time entry of the tenant's projects they may see; off, only their own.

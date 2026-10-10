@@ -33,6 +33,12 @@ count; `TestTheExportFollowsItsReader` reads it as a member, an administrator, a
 agent. The importer applies D7 as made concrete below
 ([`columns.go`](../../backend/internal/importer/columns.go) `confidential`).
 
+**Amended 2026-10-10 by the owner (not built):** D5 — the one placeholder: a confidential ticket at
+the other end of a relation — a parent, a child, a link end — that the reader may not see shows as
+`<team> [Confidential]`, the flag's own name, which needs no explaining; decided first for relations
+into another team, once relations cross teams ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3), then for every relation, inside a team as
+well, so that a member of a team is never shown less than an outsider.
+
 ## Context
 
 In the Markdown backlogs an open security finding is kept out of the repository by a
@@ -84,12 +90,20 @@ not pass it.
 boards, dashboard tiles (the `security: live` count excludes what the viewer may not see),
 search ([ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md)),
 the person-level unions, the prerequisite tree ([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md)
-D6: a confidential node and its subtree are absent, with no placeholder), notifications
+D6: a confidential node and its subtree are absent, ~~with no placeholder~~ *(2026-10-10, not
+built: the node shows as the placeholder below, its subtree absent)*), notifications
 ([ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md): no inbox line reaches the
 unauthorised), the event stream ([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
 D3: filtered like the project restriction), the export ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
 D4: omitted, with a count in the manifest "n confidential tickets not included"), the API
 and the MCP tools (`404`, [ADR 0023](0023-the-tenant-is-in-the-path.md) D5's reading).
+*(Amended 2026-10-10 by the owner, not built:)* One surface shows a placeholder: the other end of a
+parent, a child or a link that the reader may not see — in another team ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3) or in the reader's
+own — is shown as `<team> [Confidential]`, its team's name and nothing else, not its key, not its
+title. Every other surface keeps D5: lists, boards, search, the dashboard's counts, the inbox and the
+stream; in the prerequisite tree the node is the placeholder and its subtree stays absent. What the
+placeholder reveals is that a related ticket exists and is confidential, to the reader of the ticket
+it is related to; a member is never shown less than an outsider.
 
 **D6 — No agent sets or lifts the flag directly.** Both are administration acts on the
 hard-off list of [ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)

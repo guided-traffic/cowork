@@ -58,6 +58,10 @@ Children:
    - `cowork-mcp` in a live Claude Code session, 2.1.251 or later, as
      [docs/operations/claude-code.md](../operations/claude-code.md) describes it — the session start,
      the tools, the hooks with the model switch, the agent mark in the UI.
+   - what the first walk through the UI under `make dev` found is filed: T87 (the sidebar lists every
+     team with its projects, a team's configuration behind a gear, the version alone in the footer),
+     T88 (a ticket's parent, children and links across projects and teams) and T89 (a tenant is a
+     team, and is called one).
 2. **The owner's cut-over**, against his installation — by his hand or by his agent with
    `cowork-mcp import`, which imports what it can and reports what it left out — in the order
    the plan had it — none of it is code of this repository, and nothing here touches another

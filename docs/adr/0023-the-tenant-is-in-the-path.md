@@ -47,6 +47,13 @@ mirrors a project's import, `POST …/projects/{KEY}/imports` and `GET …/impor
 `/t/{slug}/p/{KEY}/imports` and `/t/{slug}/p/{KEY}/imports/{import}`, two routes D4 did not list
 ([`app.routes.ts`](../../frontend/src/app/app.routes.ts)).
 
+**Amended 2026-10-10 by the owner (not built)**, after a walk through the UI before use, and with
+[ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1's tenant that is a team: D1 — the family is `/api/v1/teams/{slug}/…`, the old one served
+beside it for a release; D2 — `projects` joins the person-level lists; D4 — the sidebar lists every
+team of the person with its projects on every page, a team's configuration is one dialog behind a
+gear, and the top bar loses the tenant switcher and the team's name to the sidebar and to "All
+teams". The rules this replaces are marked in place.
+
 ## Context
 
 The tenant has to reach three places on every request: the membership check, the
@@ -60,14 +67,23 @@ tenant arrives (ADR 0005 D6).
 
 ## Decision
 
-**D1 — Every tenant-bound resource lives under `/api/v1/tenants/{slug}/…`.** Projects under
+**D1 — Every tenant-bound resource lives under `/api/v1/tenants/{slug}/…`** *(amended
+2026-10-10 by the owner, not built: under `/api/v1/teams/{slug}/…`, the tenant being a team, [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md)
+D1; the family `/api/v1/tenants/{slug}/…` stays served beside it for one release, deprecated, and
+goes in the next, as `urgency` went beside `horizon`
+([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md),
+[ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D7))*. Projects under
 `…/projects/{KEY}`, tickets under `…/projects/{KEY}/tickets/{number}`, and the ticket's
 comments, questions, links, interest, attachments, time entries and transitions under the
 ticket. The slug is the tenant's slug of ADR 0005 D4; the project key and the number are
 those of ADR 0007 D1.
 
 **D2 — The person-level lists live under `/api/v1/me/…`:** `next`, `assigned`, `decisions`,
-`inbox`, `search`. These are the only routes whose response spans tenants; they are built as
+`inbox`, `search` *(amended 2026-10-10 by the owner, not built: and `projects`, every project of
+every team of the person, each naming its team, which the sidebar of D4 lists; the current team's
+stay live through its event stream, the others are read again when the tab regains focus, when the
+person enters a team and when their memberships change)*. These are the only routes whose response
+spans tenants; they are built as
 one iteration per tenant (ADR 0021 D5), and every item names its tenant. An optional
 `?tenant=<slug>` narrows a `/me` list to one tenant.
 
@@ -86,8 +102,25 @@ sent to `/t/{slug}` on login and~~ sees no tenant switcher (ADR 0005 D6); the UR
 the slug. *(Amended 2026-10-05:)* **The start page `/` is "next for me"** for every person with a
 membership, whether they belong to one tenant or to many: what they could take up next across
 their tenants ([ADR 0018](0018-the-views-of-the-first-release.md) D3). For a person with one
-membership the top bar names the tenant and leads to `/t/{slug}`; a person with none chooses among
-the tenants they may open, as before.
+membership ~~the top bar names the tenant and leads to `/t/{slug}`~~; a person with none chooses
+among the tenants they may open, as before. *(Amended 2026-10-10 by the owner, not built:)*
+**The sidebar is for the daily work.** Below the person-level lists it shows every team the person
+is a member of, one below the other, on every page — the person-level pages included —, each as its
+name, a small gear beside it, and its projects, each project opening its board; the team's name
+opens `/t/{slug}`, the dashboard that sums up the team, which carries the team's board, its ticket
+list and its time report as tabs ([ADR 0018](0018-the-views-of-the-first-release.md)). A team in
+which a global administrator holds no role
+([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2) gets no group. **The gear opens one dialog of the team's configuration**, large, with a tab for
+each page the person's role shows today — members, accounts, group mappings, tokens, settings, the
+audit record, the deleted tickets; each tab keeps its address (`/t/{slug}/members`, `…/accounts`,
+`…/group-mappings`, `…/tokens`, `…/settings`, `…/audit`, `…/deleted-tickets`), which shows the dialog
+on that tab over the team's dashboard, so a reload, the back button and a bookmark keep working and
+the pages' services keep taking their team from the route; closing returns to the page before, or
+to the dashboard. **The top bar carries no tenant switcher and no team name**: a global
+administrator reaches every team of the installation through "All teams" in the person menu, a page
+of its own, which also makes a new team ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D5). `/t/{slug}` keeps its path — its `t` reads as
+team.
 
 **D5 — The membership check runs before any handler under `/tenants/{slug}/`, and an unknown
 slug and a missing membership answer identically with `404`.** A tenant's existence is not
@@ -103,7 +136,8 @@ tenant-bound route; the single-tenant installation uses the same paths as every 
 - Every log line, bookmark, chat link and commit trailer carries the tenant; a token valid in
   several tenants is never ambiguous.
 - Paths are long. The owner accepted the same for the key (ADR 0007).
-- The OpenAPI document (its own record) has three top-level path families: `/tenants/{slug}`,
+- The OpenAPI document (its own record) has three top-level path families: `/tenants/{slug}`
+  *(2026-10-10, not built: `/teams/{slug}`, the old family deprecated for a release)*,
   `/me`, `/tickets/{slug}/{key}`.
 - The frontend's route table is fixed by D4; the catalog's URL-scheme question is answered by
   this record.
@@ -122,8 +156,9 @@ tenant-bound route; the single-tenant installation uses the same paths as every 
 ## Residual risks
 
 - D5's identical `404` for "no such tenant" and "not a member" makes a mistyped slug look
-  like a permission problem to the person who mistyped it; the UI's tenant switcher lists the
-  person's tenants, which is the remedy.
+  like a permission problem to the person who mistyped it; ~~the UI's tenant switcher lists the
+  person's tenants, which is the remedy~~ *(2026-10-10: the sidebar lists the person's teams)*,
+  which is the remedy.
 - D3's resolver is a second way to reach a ticket; caches and ETags (the API record) have to
   treat the two routes as one resource.
 

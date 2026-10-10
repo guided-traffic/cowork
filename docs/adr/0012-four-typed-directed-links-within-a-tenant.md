@@ -21,6 +21,14 @@ type is added. D6 makes the transitive closure a view, D7 (proposed with the ame
 to objection) stops a ticket from being closed over open prerequisites without a recorded
 override.
 
+**Amended 2026-10-10 by the owner (not built):** D2, D4, D6, D7 — links cross teams, under the
+rules of a parent across teams
+([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2), once a tenant
+became a team inside an organisation's installation
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1, D3): "a ticket of
+one team needs a change in another" is what `blocks` means, and one rule for every relation is the
+simpler one to hold. The title's "within a tenant" is the rule before.
+
 **Partly built** (phase 2, 2026-10-02): D1–D5 and D7 — `ticket_links` (migration 9) with the
 reverse names read from either end, links across projects and never across tenants (by the
 API and by the schema's composite keys), an act on both tickets, no self link, the `blocks`
@@ -82,16 +90,23 @@ nothing crosses a tenant ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-
 The reverse of a directed link is a view ("requires" / "blocked by", "duplicated by", "found
 here"), never a second row.
 
-**D2 — Links stay inside the tenant and may cross projects.** A link whose two ends are in
-different tenants is refused by the server, not hidden by the UI.
+**D2 — ~~Links stay inside the tenant and may cross projects.~~ ~~A link whose two ends are in
+different tenants is refused by the server, not hidden by the UI.~~** *(Amended 2026-10-10 by the
+owner, not built:)* **Links may cross projects and teams of the installation, every type alike.** A
+link is set by a `member` or `admin` of the source's team who can read the target, and refused
+like a missing ticket where they cannot; the other end is shown to a person who holds no role in
+its team, or to whom its project is restricted, by its head only — the team's name, the key, the
+title, the type and the state — or as `<team> [Confidential]`
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3).
 
 **D3 — A link is a recorded act.** It carries who created it and when; creating and removing
 a link is a timeline entry on both tickets. Links to a `done` or `dropped` ticket are kept and
 shown with that state.
 
 **D4 — Integrity rules.** No link from a ticket to itself; `blocks` may not form a cycle
-(checked at write time over the `blocks` graph of the tenant); one link of one type between
-the same two tickets in the same direction.
+(checked at write time over the `blocks` graph ~~of the tenant~~ *(2026-10-10, not built: across
+the teams it reaches, under a lock that spans them)*); one link of one type between the same two
+tickets in the same direction.
 
 **D5 — No link sets a state.** A ticket whose `blocks` source is open shows a hint; the
 `blocked` state is set by a person with a reason (ADR 0009 D2), and leaving it is a person's
@@ -108,14 +123,17 @@ dependents of a ticket, at `…/prerequisites` read upward. ~~The ticket card sh
 open prerequisites;~~ *(Amended 2026-10-03:)* the ticket card shows the count of the open
 tickets that block it directly and that the reader can see, computed per read — the tickets
 D7 would refuse `done` over —; the detail page shows the tree. A prerequisite in another project is
-shown with its project; the tree never crosses a tenant.
+shown with its project; ~~the tree never crosses a tenant~~ *(amended 2026-10-10, not built:)* a
+prerequisite in another team is shown with its team, by its head only — key, title, type and state,
+no assignee and no progress — to a person who holds no role there.
 
 **D7 — `done` over open prerequisites is refused unless a person overrides it with a reason**
 *(added 2026-10-01, proposed)*. A transition to `done` on a ticket whose direct `blocks`
 sources are not `done` or `dropped` is refused with the list of them; a person may repeat the
 transition with an explicit override and a reason, which the activity list records as
 "closed over open prerequisites". An agent cannot override. `dropped` is never refused by a
-prerequisite. *(Amended 2026-10-06 by the owner:)* An agent may remove a `blocks` link, an open
+prerequisite. *(2026-10-10, not built:)* A prerequisite in another team counts like one of the
+own team whenever the closer reads its state in its head. *(Amended 2026-10-06 by the owner:)* An agent may remove a `blocks` link, an open
 one into a ticket it is about to close included, and the owner accepts that an agent with `close`
 steps around the override that way: it removes the links of the open prerequisites and closes,
 two acts of its own, each recorded on both tickets and marked as the agent's. The refusal holds

@@ -42,6 +42,10 @@ stages in the export. The bars on the board's cards and the detail's three slide
 views' ([ADR 0018](0018-the-views-of-the-first-release.md)). *(2026-10-04.)* In the browser the
 author corrects an entry over its version and reads its earlier values (D7).
 
+**Amended 2026-10-10 by the owner (not built):** D3 — the derived progress counts a parent's
+children in other teams too, once a ticket's children may live there
+([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2, [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3).
+
 ## Context
 
 `effort` is already a column with the sizes `XS`, `S`, `M`, `L`
@@ -71,7 +75,13 @@ but `dropped`. A ticket that existed before the stages keeps its `progress` as
 implementation, has refinement full from `decided` on, and review full when it is `done`.
 
 **D3 — A ticket with children shows the progress derived from them and does not take a
-manual value.** The derivation is the mean of the children's progress weighted by their
+manual value.** *(Amended 2026-10-10 by the owner, not built: every child counts, a child in
+another team included. The child's transaction writes the parent's derived columns in the parent's
+team through one function of the data layer that writes those columns and nothing else, no version
+([ADR 0050](0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md)
+D1) and no act, and the parent's team hears of it as of any change of the derived values
+([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7). The parent's
+readers can read the other team's progress as part of the aggregate, which the owner accepts.)* The derivation is the mean of the children's progress weighted by their
 effort (`XS` 1, `S` 2, `M` 3, `L` 5); a child in `dropped` is excluded; a child in `done`
 counts as 100. When the last child is removed the parent's own value becomes editable again
 and starts at the last derived value. *(Made concrete 2026-10-02: the mean is rounded to the

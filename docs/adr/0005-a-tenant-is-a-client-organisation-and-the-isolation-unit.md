@@ -34,6 +34,15 @@ taking its part out at once ([`api/inbox.go`](../../backend/internal/api/inbox.g
 `personTenants`); ~~"next for me" is not built.~~ *(2026-10-05:)* and "next for me", built the
 same way ([`api/mylists.go`](../../backend/internal/api/mylists.go)).
 
+**Amended 2026-10-10 by the owner (not built)**, after a walk through the UI before use: an
+installation is rolled out per organisation, and a tenant is a **team** inside it that lists the
+team's projects — two teams of one installation are, for example, Sutorbank and Guided-Traffic, and
+a ticket of one can need a change in the other. D1 is restated for it and names the word; D3 gains
+one crossing, the relation between tickets of two teams, read as the other ticket's head; D6 and the
+*Consequences* lose the tenant switcher to the sidebar of
+[ADR 0023](0023-the-tenant-is-in-the-path.md) D4. The rules this replaces are marked in place.
+Nothing of the amendment is built.
+
 ## Context
 
 [ADR 0004](0004-cowork-is-a-team-product.md) makes cowork a team product: several people per
@@ -47,20 +56,43 @@ on the people who have one tenant.
 
 ## Decision
 
-**D1 — A tenant is a client or an organisation, and it is the unit of isolation.** Every
-project, ticket, comment, link, open question, membership, notification and audit record
-belongs to exactly one tenant, by a `tenant_id` that is never null.
+**D1 — ~~A tenant is a client or an organisation, and it is the unit of isolation.~~** *(Amended
+2026-10-10 by the owner, not built:)* **An installation is an organisation's; a tenant is a team
+inside it, and it is the unit of isolation between teams.** The isolation between organisations is
+the installation. Every surface a person, an agent or an operator reads calls a tenant a **team** —
+the UI, the API's paths, parameters, properties and problem texts, `cowork-mcp` and its plugin, the
+configuration's variables, the chart's values, the metrics' label, the export archive and the
+documentation; the names before stay readable for one release, deprecated, as `urgency` stayed
+beside `horizon` ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md),
+[ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D7). The database keeps its
+names — `tenants`, `tenant_id`, `app.tenant_id`, `app_tenant_id()` — which nobody but the code
+reads, and which [ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)
+D3 would let change only over two releases of their own. Every project, ticket, comment, link, open
+question, membership, notification and audit record belongs to exactly one tenant, by a `tenant_id`
+that is never null.
 
 **D2 — A person may belong to any number of tenants.** Membership is a row (person, tenant,
 role). The owner belongs to every client's tenant; a client's people belong to theirs. The
 owner's own work is a tenant like any other, with no special standing in the data model.
 
-**D3 — Nothing crosses the boundary.** No link between tickets of different tenants, no move
-of a ticket between tenants, no query that joins two tenants' rows. Exactly one kind of
-cross-tenant result exists: the **person-level lists** — "next for me", "assigned to me",
-"open decisions", the inbox — which are unions over the tenants the person belongs to, each
-part computed under that tenant's own rules. A ticket changes tenant only by export and
-import, and the audit record of both ends says so.
+**D3 — Nothing crosses the boundary** *(amended 2026-10-10: but one relation)*. ~~No link
+between tickets of different tenants,~~ no move of a ticket between tenants, no query that joins
+two tenants' rows. ~~Exactly one kind of cross-tenant result exists:~~ The **person-level lists**
+— "next for me", "assigned to me", "open decisions", the inbox — are unions over the tenants the
+person belongs to, each part computed under that tenant's own rules. A ticket changes tenant only
+by export and import, and the audit record of both ends says so. *(Amended 2026-10-10 by the
+owner, not built:)* **A ticket's parent, its children and its links may be tickets of another team
+of the installation** ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md)
+D2, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2). Across the boundary a person
+who holds no role in the other team reads only the other ticket's **head** — the team's name, the
+key, the title, the type and the state —, and a ticket confidential to them shows as
+`<team> [Confidential]` ([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D5); its body, comments, questions, attachments, links, time, people and numbers stay behind the
+membership. One write crosses as well: a parent's derived progress counts its children in other
+teams ([ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
+D3). Both crossings are functions of the data layer, each reading or writing that one thing
+([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7), never a join of
+two teams' rows in a query a handler writes.
 
 **D4 — The slug is the public, immutable identifier of a tenant; the name is editable.** The
 slug appears in URLs, in the API path and in the repository binding of the workflow plan; a
@@ -79,7 +111,7 @@ D7); a slug that is taken answers `409 tenant_slug_taken`, and a slug is never r
 **D6 — One tenant is the common installation, and it gets no special mode.** The data model
 and the API always carry the tenant; there is no flag that turns tenancy off and no second
 code path. A person with exactly one membership lands in that tenant and sees no tenant
-switcher; an installation grows from one tenant to several by creating them, without a
+switcher *(2026-10-10: nobody does — the sidebar lists every team of the person, ADR 0023 D4)*; an installation grows from one tenant to several by creating them, without a
 migration or a reconfiguration. How the first tenant and the first administrator come to
 exist on a fresh installation is one decision, taken in the identity block of the catalog.
 
@@ -90,14 +122,18 @@ exist on a fresh installation is one decision, taken in the identity block of th
   policy is used is the tenancy question of the catalog; this record makes the answer easy.
 - The API path carries the tenant slug; the alternative (a header) has lost most of its
   appeal, since a person with several memberships would otherwise switch context by header.
-- The UI has a tenant switcher that is invisible to the person with one membership, and a
-  membership list per tenant. The single-tenant installation sees neither tenancy nor slug
+- ~~The UI has a tenant switcher that is invisible to the person with one membership, and a
+  membership list per tenant.~~ *(2026-10-10:)* The UI's sidebar lists every team of the person
+  with its projects, and a global administrator reaches the other teams through "All teams"
+  ([ADR 0023](0023-the-tenant-is-in-the-path.md) D4). The single-tenant installation sees neither tenancy nor slug
   except in the URL.
 - The person-level lists (D3) are the one place where rows of several tenants meet in one
   response. They have to be built as a union of per-tenant queries under the same rules, and
   tested so that a revoked membership drops its part at once.
-- A finding that concerns two clients is two tickets, one per tenant, possibly linked by
-  nothing. Accepted: that is what "no mixing" means.
+- ~~A finding that concerns two clients is two tickets, one per tenant, possibly linked by
+  nothing. Accepted: that is what "no mixing" means.~~ *(2026-10-10:)* Work that concerns two
+  teams is a ticket in each, related as parent and child or linked (D3); two organisations are two
+  installations, between which nothing relates.
 - Tests of the boundary need two tenants and two identities in the API tier and in the
   end-to-end tier.
 
@@ -121,6 +157,12 @@ exist on a fresh installation is one decision, taken in the identity block of th
   over all tenants.
 - Nothing beyond the `tenants` table is built; every claim above is a rule for what will be
   built, not a description of code.
+- *(2026-10-10, not built:)* D3's crossing puts the heads of team A's tickets before people of team
+  B who hold no role in A — every reader of a related ticket, viewers and their agents' tokens
+  included —, and a parent's derived progress lets A's readers read B's children's progress as part
+  of an aggregate. The owner accepts it for teams of one organisation. It is bounded by who may set
+  a relation (ADR 0008 D2: only a person who can read both ends) and by what a head holds; whether
+  the bounds hold is for the build's tests to show.
 
 ## References
 

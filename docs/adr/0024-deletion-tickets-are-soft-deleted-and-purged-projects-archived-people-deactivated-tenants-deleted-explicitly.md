@@ -91,7 +91,10 @@ administrator may purge earlier with a second confirmation. **The audit rows sur
 purge**: they keep the ticket's key, the actor and the act, with the content fields emptied.
 *(Added 2026-10-06, decided by the implementer in building and accepted by the owner that day:)* a
 purged ticket's children become roots, and a ticket blocked on it waits on its key as an external
-reference from then on, an act recorded on that ticket.
+reference from then on, an act recorded on that ticket. *(Made concrete 2026-10-10 on the
+recommendation, open to the owner's objection, not built:)* the same holds across teams
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3): its children in another team become roots and its links into another team go, each
+change recorded in the audit record of the team it changes.
 
 **D3 — Soft deletion is an application filter, not a policy.** Row-level security
 ([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md)) stays the
@@ -110,7 +113,8 @@ and the deletion is immediate and complete:** every row of the tenant, every att
 object under its prefix ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
 D2), every notification that referenced it. The audit rows of the tenant are deleted with
 it, after one final audit row in the installation-level record names the tenant, the
-administrator and the time. The slug is not reused.
+administrator and the time. The slug is not reused. *(2026-10-10, not built:)* Every relation from
+another team into it ends as D2's purge ends it, recorded in that other team's audit record.
 
 **D7 — Who may, and what warns.** Delete, restore and purge are tenant-administrator acts;
 tenant deletion is a global administrator's. An agent never deletes anything. Deleting a

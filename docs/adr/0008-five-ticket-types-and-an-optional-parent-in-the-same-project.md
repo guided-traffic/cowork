@@ -20,6 +20,12 @@ a `parent:` key, which an export writes. Whether it should recognise a family is
 person sets the parents after the import. *(2026-10-04.)* The browser chooses the parent,
 on filing and on the detail page, among the project's open tickets.
 
+**Amended 2026-10-10 by the owner (not built):** D2 — a parent may be a ticket of another project
+of the team or of another team of the installation, under the rules D2 now states; the answer that
+a tenant is a team inside an organisation's installation
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1, D3) made the
+bound to the project too narrow, since a ticket of one team can need a change in another.
+
 ## Context
 
 The Markdown tickets cowork will import come in three shapes: a defect analysed to its root
@@ -38,10 +44,25 @@ repository: an ADR); `question` is a ticket whose outcome is an answer from a na
 The open-question entity inside a ticket (its own record) is not this: a `question` ticket is
 the case where the question *is* the work.
 
-**D2 — A ticket may have one parent, which is a ticket of the same project.** The relation
-is a nullable column, not a link. Cycles are refused at write time; depth is not bounded.
-A parent in another project or another tenant is not a parent: a dependency across projects
-is a `blocks` link (the links record), never a hierarchy.
+**D2 — A ticket may have one parent, ~~which is a ticket of the same project~~** *(amended
+2026-10-10, not built:)* **a ticket of any project of its team or of another team of the
+installation.** The relation is a nullable column, not a link. Cycles are refused at write time;
+depth is not bounded. ~~A parent in another project or another tenant is not a parent: a
+dependency across projects is a `blocks` link (the links record), never a hierarchy.~~
+*(Amended 2026-10-10 by the owner, not built:)* Setting the parent is a write on the child: a
+`member` or `admin` of the child's team may set it to a ticket they can read — at least a `viewer`
+of the parent's team, the parent visible to them, a confidential one included. A parent the person
+cannot read is refused exactly like one that does not exist, because ticket numbers are a sequence
+per project ([ADR 0022](0022-uuidv7-everywhere-sequences-only-for-ticket-numbers.md)) and any key
+taken would let a person try `SUT-1`, `SUT-2`, … and read the heads. Removing it is a write on the
+child alone. The API names the parent by its canonical key
+([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md)); the browser
+offers the tickets the person can read across their teams. A person who holds no role in the other
+end's team sees it by its head only — or as `<team> [Confidential]` —
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3), and so does a
+member to whom the other end's project is restricted
+([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D4). The cycle check walks the parents across teams under a lock that spans the teams involved.
 
 **D3 — A parent is a view, not a type.** Any ticket of any type may have children. There is
 no `epic`; a ticket with children is shown with its children, its progress is derived from
