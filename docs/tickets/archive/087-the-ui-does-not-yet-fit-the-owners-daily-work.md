@@ -1,7 +1,7 @@
 ---
 id: T87
 title: the UI does not yet fit the owners daily work — what the owner found walking through it before use
-state: decided
+state: done
 severity: medium      # the owner works around it every day; nothing breaks
 security: none
 threat:
@@ -10,7 +10,8 @@ effort: M
 filed-from: the owners walk through the UI under make dev, 2026-10-10
 opened: 2026-10-10
 decided: 2026-10-10
-done:
+done: 2026-10-10
+shipped: 0.16.0 — every team of the person with its projects in the sidebar, a team configuration as one dialog behind a gear, the team board, list and time as tabs of the dashboard, GET /api/v1/me/projects, All teams with New team, the version alone in the footer
 ---
 
 ## Current state
