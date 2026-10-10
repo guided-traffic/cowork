@@ -6,6 +6,7 @@ import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
 import { configTabs, isOpenedFromPage, openedFromPage } from './config-tabs';
 import { TenantDashboard } from './dashboard';
+import { SelfGrant } from './self-grant';
 
 /**
  * A team's configuration (docs/adr/0023 D4 as amended 2026-10-10): one large dialog over the
@@ -16,12 +17,14 @@ import { TenantDashboard } from './dashboard';
  * the address rather than adding one, so the back button and closing return to the page before the
  * dialog: closing goes back in the history when a link opened it ({@link openedFromPage}), and to
  * the team's dashboard when its address was opened directly. A page's own dialogs — a confirmation,
- * a form — lie over it, appended to the document's body.
+ * a form — lie over it, appended to the document's body. For a global administrator who only
+ * oversees the team, the offer to grant themselves a role (`SelfGrant`), which `TenantScope` shows
+ * above the dashboard under the dialog, stands above the tab as well (docs/adr/0034 D2).
  */
 @Component({
   selector: 'app-team-config',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Dialog, RouterLink, RouterLinkActive, RouterOutlet, TenantDashboard],
+  imports: [Dialog, RouterLink, RouterLinkActive, RouterOutlet, SelfGrant, TenantDashboard],
   template: `
     <app-tenant-dashboard />
     <p-dialog
@@ -49,7 +52,13 @@ import { TenantDashboard } from './dashboard';
           >
         }
       </nav>
-      <div class="pane"><router-outlet /></div>
+      <div class="pane">
+        <!-- The offer TenantScope shows above the dashboard lies under the dialog: here too. -->
+        @if (oversight()) {
+          <div class="offer"><app-self-grant /></div>
+        }
+        <router-outlet />
+      </div>
     </p-dialog>
   `,
   styles: `
@@ -85,6 +94,9 @@ import { TenantDashboard } from './dashboard';
       min-height: 0;
       overflow-y: auto;
     }
+    .offer {
+      padding: 1.25rem 2rem 0;
+    }
     /*
      * The page's own heading says what its tab says: it stays for a screen reader and for the
      * focus a page gives it, out of sight. A page keeps its padding and its width.
@@ -115,6 +127,8 @@ export class TeamConfig {
   protected readonly tabs = computed(() =>
     configTabs(this.tenantInfo.isAdmin(), this.session.oversight()),
   );
+  /** A global administrator without a role here: the offer to grant themselves one, above the tab. */
+  protected readonly oversight = this.session.oversight;
   /** Whether a link of this application opened the dialog over a page, which closing returns to. */
   private readonly fromPage = isOpenedFromPage(this.location.getState());
   /** The state each tab carries on, so that closing still knows where it came from. */

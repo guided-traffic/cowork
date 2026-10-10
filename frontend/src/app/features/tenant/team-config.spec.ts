@@ -8,6 +8,7 @@ import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
 import { configTabs, gearTab, isOpenedFromPage, openedFromPage } from './config-tabs';
 import { TenantDashboard } from './dashboard';
+import { SelfGrant } from './self-grant';
 import { TeamConfig } from './team-config';
 
 describe('configTabs', () => {
@@ -74,6 +75,10 @@ class SettingsPage {}
 @Component({ template: '<p data-testid="elsewhere">another page</p>' })
 class Elsewhere {}
 
+/** The offer of a grant stands in as itself: its own spec is self-grant.spec.ts. */
+@Component({ selector: 'app-self-grant', template: '<p data-testid="offer">grant yourself a role</p>' })
+class Offer {}
+
 describe('TeamConfig', () => {
   let tenant: WritableSignal<string | null>;
   let oversight: WritableSignal<boolean>;
@@ -118,8 +123,8 @@ describe('TeamConfig', () => {
       ],
     });
     TestBed.overrideComponent(TeamConfig, {
-      remove: { imports: [TenantDashboard] },
-      add: { imports: [Dashboard] },
+      remove: { imports: [TenantDashboard, SelfGrant] },
+      add: { imports: [Dashboard, Offer] },
     });
   });
 
@@ -198,6 +203,29 @@ describe('TeamConfig', () => {
     await open('/t/acme/members');
 
     expect(tabs().map(([label]) => label)).toEqual(['Members', 'Group mappings', 'Settings']);
+  });
+
+  // docs/adr/0034 D2: the offer above the dashboard lies under the dialog, so it stands in it too.
+  it('offers a global administrator who only oversees the team a role above the tab', async () => {
+    admin.set(false);
+    oversight.set(true);
+
+    await open('/t/acme/members');
+
+    const pane = dialog()?.querySelector('.pane');
+    const offer = pane?.querySelector('[data-testid="offer"]');
+    const page = pane?.querySelector('[data-testid="members"]');
+    expect(offer).not.toBeNull();
+    expect(page).not.toBeNull();
+    expect(offer?.compareDocumentPosition(page as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it('offers a member of the team no role in its dialog', async () => {
+    admin.set(false);
+
+    await open('/t/acme/members');
+
+    expect(dialog()?.querySelector('[data-testid="offer"]')).toBeNull();
   });
 
   it('keeps the page heading for a screen reader, out of sight, since the tab says it', async () => {

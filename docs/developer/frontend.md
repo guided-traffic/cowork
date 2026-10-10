@@ -221,7 +221,9 @@ team's head shows its name and, beside it, the gear of its configuration
 work, and no tab of it; the members show without the addresses and without controls, the group
 mappings without their select, their removal and *New mapping*, the settings disabled. Above every page of
 such a team `TenantScope` shows [`SelfGrant`](../../frontend/src/app/features/tenant/self-grant.ts),
-loaded with `@defer`: that the person has no role here and sees the administration only, a select of
+loaded with `@defer` — and the dialog of the team's configuration shows it again above its tab, because
+the dialog covers the page under it, each offer's heading an id of its own —: that the person has no
+role here and sees the administration only, a select of
 the role — `admin` first — and *Grant yourself a role*, which asks first through
 [`ConfirmDialog`](../../frontend/src/app/shared/confirm-dialog.ts), naming the team and the role
 and saying that the team sees the grant in its audit record. The grant is `MembersService.setGrant`
@@ -369,6 +371,8 @@ itself, unfiltered — its inputs come from no address there —, and the dialog
 (`session.tenant()`, which `TenantScope` sets), and keep their filters, their paging, the
 restoration and the purge. Their own heading says what the tab says, so the dialog keeps it for a
 screen reader and the focus a page gives it, out of sight (`.page > h1`, `.page > .head > h1`).
+Under `oversight` the pane holds `SelfGrant` above the tab, the offer `TenantScope` shows above the
+dashboard the dialog covers ([a global administrator without a role](#where-state-lives)).
 
 The dialog is `min(96rem, calc(100vw - 3rem))` wide and `calc(100vh - 3rem)` high, headed
 *Configuration of <team>*, its cross *Close the configuration*; the tabs stand above a pane that

@@ -18,6 +18,9 @@ import { SessionService } from '../../core/session.service';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { roles } from './roles';
 
+/** How many offers the page has made: each names its section by a heading of its own id. */
+let offers = 0;
+
 /** What the confirmation says of the grant, the tenant and the role named in it. */
 export function selfGrantQuestion(tenant: string, role: Role): string {
   return (
@@ -28,7 +31,8 @@ export function selfGrantQuestion(tenant: string, role: Role): string {
 
 /**
  * What a global administrator is offered in a tenant in which they do not hold `admin`
- * (docs/adr/0034 D2). Without a role there — above every page of the tenant — that they see its
+ * (docs/adr/0034 D2). Without a role there — above every page of the tenant, and above the tab of the
+ * dialog of its configuration, which lies over the page (`TeamConfig`) — that they see its
  * administration, the members, the group mappings, the settings, and none of its work; with a lower
  * role — on the members page — the role they hold. Either way *Grant yourself a role*, with the
  * role chosen beside it, `admin` unless they pick another above the one they hold, and the act asks
@@ -44,17 +48,17 @@ export function selfGrantQuestion(tenant: string, role: Role): string {
   providers: [ConfirmationService],
   template: `
     <app-confirm-dialog />
-    <section class="self-grant" aria-labelledby="self-grant-title" data-testid="self-grant">
+    <section class="self-grant" [attr.aria-labelledby]="titleId" data-testid="self-grant">
       <i class="pi pi-shield mark" aria-hidden="true"></i>
       <div class="text">
         @if (held(); as role) {
-          <h2 id="self-grant-title">You hold the role {{ role }} in {{ name() }}</h2>
+          <h2 [id]="titleId">You hold the role {{ role }} in {{ name() }}</h2>
           <p class="muted">
             As a global administrator you may raise your own grant here, to administer this team or
             to do more of its work: the team sees the change in its audit record.
           </p>
         } @else {
-          <h2 id="self-grant-title">You have no role in {{ name() }}</h2>
+          <h2 [id]="titleId">You have no role in {{ name() }}</h2>
           <p class="muted">
             As a global administrator you see this team's members, group mappings and settings, and
             none of its projects, tickets or time. To work in it or administer it, grant yourself a
@@ -132,6 +136,11 @@ export function selfGrantQuestion(tenant: string, role: Role): string {
   `,
 })
 export class SelfGrant {
+  /**
+   * The heading's id, one per offer: a team the person only oversees shows one above its dashboard
+   * and another in the dialog of its configuration, which lies over it.
+   */
+  protected readonly titleId = `self-grant-title-${++offers}`;
   private readonly session = inject(SessionService);
   private readonly members = inject(MembersService);
   private readonly problems = inject(ProblemService);
