@@ -504,15 +504,15 @@ helm-template: ## Render the chart with every values file under deploy/helm/cowo
 	@for f in migrations-job local-admin; do \
 	  out=$$(helm template cowork $(HELM_CHART) -f $(HELM_CHART)/ci/$$f-values.yaml) || exit 1; \
 	  for pair in BOOTSTRAP_TEAM_SLUG:BOOTSTRAP_TENANT_SLUG BOOTSTRAP_TEAM_NAME:BOOTSTRAP_TENANT_NAME ATTACHMENT_TEAM_QUOTA:ATTACHMENT_TENANT_QUOTA; do \
-	    now=$$(printf '%s\n' "$$out" | grep -A1 "name: COWORK_$${pair%%:*}$$" | sed -n 's/^ *value: //p'); \
-	    before=$$(printf '%s\n' "$$out" | grep -A1 "name: COWORK_$${pair##*:}$$" | sed -n 's/^ *value: //p'); \
+	    now=$$(printf '%s\n' "$$out" | grep -A1 "name: COWORK_$${pair%%:*}$$" | sed -n 's/^ *value: //p' || true); \
+	    before=$$(printf '%s\n' "$$out" | grep -A1 "name: COWORK_$${pair##*:}$$" | sed -n 's/^ *value: //p' || true); \
 	    [ -n "$$now" ] && [ "$$now" = "$$before" ] || \
 	    { echo "ci/$$f-values.yaml must render COWORK_$${pair%%:*} and COWORK_$${pair##*:}, with the same value: an image rollback reads the name before (docs/adr/0005 D1, docs/adr/0028 D4)"; exit 1; }; \
 	  done; \
 	done
 	@echo "helm template with a value under both names, the two different: refused"
 	@for set in bootstrap.team.slug=other backend.config.attachmentTeamQuota=1; do \
-	  err=$$(helm template cowork $(HELM_CHART) -f $(HELM_CHART)/ci/migrations-job-values.yaml --set $$set 2>&1 >/dev/null); \
+	  err=$$(helm template cowork $(HELM_CHART) -f $(HELM_CHART)/ci/migrations-job-values.yaml --set $$set 2>&1 >/dev/null || true); \
 	  printf '%s\n' "$$err" | grep -q "$${set%%=*} and .* are both set and differ" || \
 	  { echo "$${set%%=*} beside a different value under its name before must fail the render (docs/adr/0005 D1)"; exit 1; }; \
 	done
