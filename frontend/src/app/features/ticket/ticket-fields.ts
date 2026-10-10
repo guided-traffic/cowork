@@ -71,7 +71,8 @@ const horizons: Horizon[] = ['now', 'release', 'next', 'later', 'icebox'];
  * note first, and one that lowers a stage of a ticket done by its stages reopens it and asks for
  * the reason first (docs/adr/0009 D5), both in {@link MoveDialog}. The horizon is set here as on
  * the backlog, with the reason a person may add afterwards (docs/adr/0010 D3); the parent is chosen
- * from the project's open tickets (docs/adr/0008 D2); a tenant administrator sets and lifts the
+ * among the tickets the person reads across their teams and shown by its head (docs/adr/0008 D2,
+ * docs/adr/0005 D3, {@link ParentPicker}); a tenant administrator sets and lifts the
  * confidential flag (docs/adr/0065). Every editor here — the threat, the stage dialog, the
  * horizon's reason, the confidential dialog — belongs to the ticket it was opened on and closes when
  * the page turns to another, without writing.

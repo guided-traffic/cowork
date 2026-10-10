@@ -109,6 +109,23 @@ func (c cursorCodec) sealPosition(position string) string {
 	return base64.RawURLEncoding.EncodeToString(c.sealer.Seal(nonce, nonce, plain, nil))
 }
 
+// sealedPosition is the position of a cursor whose position sealPosition
+// sealed, checked against its operation and its scope; "" without a cursor.
+func (c cursorCodec) sealedPosition(op, scope string, cursor *string) (string, *problem.Error) {
+	if cursor == nil {
+		return "", nil
+	}
+	sealed, perr := c.decode(op, scope, *cursor)
+	if perr != nil {
+		return "", perr
+	}
+	position, ok := c.openPosition(sealed)
+	if !ok {
+		return "", invalidCursor()
+	}
+	return position, nil
+}
+
 // openPosition returns the position sealPosition sealed; false for anything
 // it did not seal under this server key.
 func (c cursorCodec) openPosition(sealed string) (string, bool) {

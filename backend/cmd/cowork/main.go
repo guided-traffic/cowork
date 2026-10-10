@@ -538,10 +538,12 @@ func runJobs(ctx context.Context, db *store.DB, objects *storage.Client, logger 
 }
 
 // checkDatabase refuses a runtime role that could bypass row-level security
-// (docs/adr/0021 D2) and a schema the binary cannot serve: a dirty one, or one
-// with pending migrations (docs/adr/0057 D3). A schema ahead of the binary is
-// served: an image rollback over a newer schema is safe because no migration
-// removes what the previous release reads (docs/adr/0028).
+// (docs/adr/0021 D2), a schema the binary cannot serve: a dirty one, or one
+// with pending migrations (docs/adr/0057 D3), and crossings between teams that
+// are not the owner role's alone (docs/adr/0021 D7, store.CheckCrossing). A
+// schema ahead of the binary is served: an image rollback over a newer schema
+// is safe because no migration removes what the previous release reads
+// (docs/adr/0028).
 func checkDatabase(ctx context.Context, db *store.DB, logger *slog.Logger) error {
 	if err := db.CheckRuntimeRole(ctx); err != nil {
 		return err
@@ -563,7 +565,7 @@ func checkDatabase(ctx context.Context, db *store.DB, logger *slog.Logger) error
 	if state.Ahead() {
 		logger.Warn("database schema is ahead of this binary; serving it", "database", state.Version, "binary", state.Embedded)
 	}
-	return nil
+	return db.CheckCrossing(ctx)
 }
 
 func migrateDatabase(ctx context.Context, cfg config.Config, logger *slog.Logger) error {

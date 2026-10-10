@@ -9,13 +9,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/internal/importer"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/store"
-	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 	"github.com/guided-traffic/cowork/backend/internal/store/writeq"
 )
 
@@ -36,15 +36,17 @@ type execution struct {
 	existing map[uuid.UUID]int32
 	files    map[int32]*importer.FileReport
 	parents  map[uuid.UUID]bool
-	locked   bool
+	// far are the tickets of other teams the plan names, where the acts on
+	// them are recorded (docs/adr/0012 D3).
+	far map[uuid.UUID]store.FarEnd
 }
 
 // execute writes the plan, the sequence advanced past its highest number,
 // and the job's end with the report of what it created.
 func (s *Server) execute(ctx context.Context, w *store.Writer, t tenantScope, p project, job uuid.UUID, now time.Time,
-	tg importer.Target, result *importer.Result) error {
+	tg importer.Target, far map[uuid.UUID]store.FarEnd, result *importer.Result) error {
 	ex := &execution{w: w, t: t, p: p, job: job, caller: principal(ctx), ids: map[int32]uuid.UUID{},
-		existing: map[uuid.UUID]int32{}, files: map[int32]*importer.FileReport{}, parents: map[uuid.UUID]bool{}}
+		existing: map[uuid.UUID]int32{}, files: map[int32]*importer.FileReport{}, parents: map[uuid.UUID]bool{}, far: far}
 	for n, id := range tg.Existing {
 		ex.existing[id] = n
 	}
@@ -62,10 +64,12 @@ func (s *Server) execute(ctx context.Context, w *store.Writer, t tenantScope, p 
 			return fmt.Errorf("import %s: %w", pt.Path, err)
 		}
 	}
+	parents := make([]*uuid.UUID, 0, len(ex.parents))
 	for id := range ex.parents {
-		if err := refreshProgress(ctx, w, t, &id); err != nil {
-			return err
-		}
+		parents = append(parents, &id)
+	}
+	if err := refreshProgress(ctx, w, parents...); err != nil {
+		return err
 	}
 	for _, l := range result.Plan.Links {
 		if err := ex.link(ctx, l); err != nil {
@@ -236,42 +240,47 @@ func (ex *execution) questions(ctx context.Context, ticket uuid.UUID, pt *import
 }
 
 // link creates one link, with its act on both tickets; a blocks link the
-// tenant's graph would close a cycle with — through the project's tickets,
-// which the analysis does not walk — is omitted, and the report says so
-// (docs/adr/0012 D4).
+// installation's graph would close a cycle with — through tickets the upload
+// does not bring, of any team, which the analysis does not walk — is omitted,
+// and the report says so (docs/adr/0012 D4). The execution took the graph's
+// lock before anything else it locked.
 func (ex *execution) link(ctx context.Context, l importer.PlannedLink) error {
 	source, target := ex.ref(l.Source), ex.ref(l.Target)
 	if l.Type == domain.LinkBlocks {
-		if !ex.locked {
-			if err := ex.w.LockBlocks(ctx); err != nil {
-				return err
-			}
-			ex.locked = true
-		}
-		cycle, err := ex.w.BlocksPathExists(ctx, readq.BlocksPathExistsParams{TenantID: ex.t.ID, FromID: target, ToID: source})
+		cycle, err := ex.w.BlocksReach(ctx, target, source)
 		if err != nil {
-			return fmt.Errorf("walk the blocks graph: %w", err)
+			return err
 		}
 		if cycle {
 			ex.omitted(l)
 			return nil
 		}
 	}
-	if l.Type == domain.LinkRelatesTo && bytes.Compare(source[:], target[:]) > 0 {
+	_, sourceFar := ex.far[source]
+	_, targetFar := ex.far[target]
+	// relates-to is stored once: inside the team the smaller id first, with a
+	// ticket of another team from the import's end (docs/adr/0012 D1, D2).
+	if l.Type == domain.LinkRelatesTo && !sourceFar && !targetFar && bytes.Compare(source[:], target[:]) > 0 {
 		source, target = target, source
 		l.Source, l.Target = l.Target, l.Source
 	}
 	ins, err := ex.w.InsertLink(ctx, writeq.InsertLinkParams{TenantID: ex.t.ID, Type: l.Type, SourceID: source, TargetID: target,
 		CreatedBy: ex.caller.PersonID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// A writer outside the import stored the same link meanwhile: it
+		// stands, with its own acts.
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("insert the link: %w", err)
 	}
-	return ex.linkActs(l, ins.ID, source, target)
+	return ex.linkActs(ctx, l, ins.ID, source, target)
 }
 
-// linkActs records the link on both its tickets (docs/adr/0012 D3): quiet on
+// linkActs records the link on both its tickets (docs/adr/0012 D3) — on a
+// ticket of another team in that team's record —: quiet on
 // a ticket the import creates, published on the project's.
-func (ex *execution) linkActs(l importer.PlannedLink, id, source, target uuid.UUID) error {
+func (ex *execution) linkActs(ctx context.Context, l importer.PlannedLink, id, source, target uuid.UUID) error {
 	sourceKey, targetKey := ex.refKey(l.Source), ex.refKey(l.Target)
 	if sourceKey == "" || targetKey == "" {
 		return errNoTicket
@@ -282,17 +291,30 @@ func (ex *execution) linkActs(l importer.PlannedLink, id, source, target uuid.UU
 		key           string
 		created       bool
 	}{{source, target, sourceKey, l.Source.Number != 0}, {target, source, targetKey, l.Target.Number != 0}} {
-		ex.w.Record(store.Event{EntityType: entityLink, EntityID: id, TicketID: end.ticket, TicketKey: end.key,
-			Action: actionLinked, After: payload, Refs: []uuid.UUID{end.other}, Quiet: end.created})
+		ev := store.Event{EntityType: entityLink, EntityID: id, TicketID: end.ticket, TicketKey: end.key,
+			Action: actionLinked, After: payload, Refs: []uuid.UUID{end.other}, Quiet: end.created}
+		if far, ok := ex.far[end.ticket]; ok {
+			// The act on a ticket of another team is in its own team's record,
+			// published on its streams.
+			if err := ex.w.RecordElsewhere(ctx, far, ev); err != nil {
+				return err
+			}
+			continue
+		}
+		ex.w.Record(ev)
 	}
 	return nil
 }
 
-// refKey is the key of a planned ticket: one the execution creates, or the
-// project's by its number; "" for neither.
+// refKey is the key of a planned ticket: one the execution creates, the
+// project's by its number, or one of another project or team by the key the
+// upload names it by; "" for none.
 func (ex *execution) refKey(r importer.Ref) string {
 	if r.Number != 0 {
 		return ex.key(r.Number)
+	}
+	if r.Key != "" {
+		return r.Key
 	}
 	if n, ok := ex.existing[r.ID]; ok {
 		return ex.key(n)

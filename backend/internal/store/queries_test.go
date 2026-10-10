@@ -96,6 +96,6 @@ func TestTicketListLeavesTheDeletedOut(t *testing.T) {
 	b := &queryBuilder{}
 	b.live()
 	assert.Contains(t, b.conds, "t.deleted_at IS NULL")
-	assert.Contains(t, openBlocker, "bs.deleted_at IS NULL")
+	assert.Contains(t, openBlocker, "open_prerequisite_targets()", "the blocked filter reads migration 47's crossing, which leaves the deleted out")
 	assert.Equal(t, strings.Count(ticketSelect+ticketFrom, "JOIN tickets"), strings.Count(ticketSelect+ticketFrom, "deleted_at IS NULL"))
 }

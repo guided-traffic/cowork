@@ -251,8 +251,39 @@ OtherTicketKey:
   name: other
   in: path
   required: true
-  description: The other end's key, <PROJECT>-<number>; a link never leaves the tenant (docs/adr/0012 D2)
+  description: |
+    The other end's short key, <PROJECT>-<number>: a ticket of the team in the path, or with
+    `other_team` of that team (docs/adr/0007 D3, docs/adr/0012 D2)
   schema: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$'}
+OtherTeamSlug:
+  name: other_team
+  in: path
+  required: true
+  description: The team of the other end, any team of the installation (docs/adr/0005 D3, docs/adr/0012 D2)
+  schema: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
+LinkID:
+  name: link
+  in: path
+  required: true
+  description: A link's id, as a relation of the ticket names it (docs/adr/0012 D1)
+  schema: {type: string, format: uuid}
+ChildRelation:
+  name: child
+  in: path
+  required: true
+  description: |
+    The `id` of a child's relation, as `…/relations` gives it: an opaque handle that names the child
+    of this ticket without showing the child's id (docs/adr/0008 D2)
+  schema: {type: string, minLength: 1, maxLength: 512, pattern: '^[A-Za-z0-9_-]+$'}
+RelationKinds:
+  name: kind
+  in: query
+  description: The kinds of relation to list, repeatable; every kind when left out
+  schema:
+    type: array
+    items: {type: string, enum: [parent, child, link]}
+  style: form
+  explode: true
 FilterBlocked:
   name: blocked
   in: query

@@ -106,13 +106,13 @@ func (w *Writer) applyMapped(ctx context.Context, tenantID, person uuid.UUID, cu
 			return fmt.Errorf("derive a membership: %w", err)
 		}
 		act.EntityID, act.Action = id, "created"
-		act.After = map[string]any{fieldUser: person, fieldRole: want, "source": sourceMapping}
+		act.After = map[string]any{fieldUser: person, fieldRole: want, fieldSource: sourceMapping}
 	case want == "":
 		if err := w.DeleteMembership(ctx, cur.ID); err != nil {
 			return fmt.Errorf("remove a derived membership: %w", err)
 		}
 		act.EntityID, act.Action = cur.ID, "deleted"
-		act.Before = map[string]any{fieldUser: person, fieldRole: cur.Role, "source": sourceMapping}
+		act.Before = map[string]any{fieldUser: person, fieldRole: cur.Role, fieldSource: sourceMapping}
 	case cur.Role != want:
 		if err := w.SetMembershipRole(ctx, writeq.SetMembershipRoleParams{Role: want, ID: cur.ID}); err != nil {
 			return fmt.Errorf("change a derived membership: %w", err)

@@ -89,8 +89,14 @@ path that is not clean (`TestTheLoopback`). A search of "every
 team" looks through the turn's team alone (`Session.Teams`), the page tools open nothing of
 another team, and the model is told it works in that team. `TestTheChatStaysInItsTeam` has the
 model ask for a ticket of the person's other team and search everything: neither answer carries the
-ticket, and nothing of it reaches the provider. A turn therefore sends one team's text, and no other
-team's rides along.
+ticket, and nothing of it reaches the provider. A turn therefore sends one team's text — and the
+heads of the tickets of other teams a relation of the team's tickets names: since a parent, a child,
+a link and a prerequisite may be tickets of another team
+([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3 as amended
+2026-10-10), the team's answers carry such a ticket by its team, key, title, type and state, or as
+`<team> [Confidential]`, and the provider reads them. `TestTheChatStaysInItsTeam` relates a ticket of
+the turn's team to one of the other team and holds that its head reaches the provider and its body,
+its assignee and its id never do ([tenancy.md, H-111](tenancy.md#h-111)).
 
 Inside the team, the tool calls see what the person sees and nothing more: they are the person's
 requests, held to the boundary, the role, the project restriction and the confidential predicate
@@ -247,6 +253,8 @@ its own retention and terms, for every team of the installation; no team's admin
 asked, and nothing checks where a provider runs. Mitigation: the operator's choice of providers — a
 hosted provider belongs in `chat.providers` only where every team's data, confidential findings
 included, may go to it ([docs/operations/chat.md](../operations/chat.md#adding-a-hosted-provider)).
+Since the relations between teams a turn of one team sends the heads of related tickets of other
+teams as well ([tenancy.md, H-111](tenancy.md#h-111)).
 
 <a id="h-38"></a>
 ### H-38 — A model steered by injected text does at once whatever the chosen capabilities allow

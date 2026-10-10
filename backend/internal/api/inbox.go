@@ -194,7 +194,9 @@ func inboxEntryView(r inboxRow, visible map[uuid.UUID]bool) apigen.InboxEntry {
 		Ticket:  apigen.TicketRef{Key: domain.FullKey(slug, n.ProjectKey, n.Number), Title: n.Title, State: apigen.TicketState(n.State)},
 		Blocker: nullableOf[apigen.TicketRef](nil), Withdrawn: n.Withdrawn, Read: n.ReadAt != nil, CreatedAt: n.CreatedAt,
 	}
-	if n.Reason == store.NoticeBlockerClosed {
+	// A prerequisite of another team is named by the act's refs alone; the
+	// blocked ticket's relations show it by its head (docs/adr/0012 D5).
+	if n.Reason == store.NoticeBlockerClosed && n.Action != actionPrerequisiteSettled {
 		v.Blocker = nullableOf(&apigen.TicketRef{Key: domain.FullKey(slug, n.ActProjectKey, n.ActNumber), Title: n.ActTitle,
 			State: apigen.TicketState(n.ActState)})
 	}

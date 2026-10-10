@@ -110,18 +110,128 @@ func TestNothingCascadesIntoTheAuditRecord(t *testing.T) {
 // A function that runs with its owner's rights is the one privileged code path
 // of the schema (docs/adr/0026 D3): it resolves names on a path it fixes, so no
 // object a caller creates stands in for one it names, and nobody but the
-// runtime role may call it.
+// runtime role may call it. And it sets app.crossing as its first statement —
+// a crossing its kind, every other one the empty value — so that a value its
+// caller left never reaches the owner role's crossing policies inside it
+// (docs/adr/0021 D7 as made concrete 2026-10-10): a SET clause cannot carry a
+// custom setting for an owner role that is no superuser, so the body does, and
+// a crossing restores the value it found before each of its exits.
 func TestEverySecurityDefinerFunctionIsFencedIn(t *testing.T) {
-	definer := regexp.MustCompile(`(?s)CREATE (?:OR REPLACE )?FUNCTION (\w+)\(([^)]*)\)[^$]*?SECURITY DEFINER`)
 	all := allMigrations(t)
-	found := definer.FindAllStringSubmatch(all, -1)
-	require.NotEmpty(t, found, "the purge's function is expected")
-	for _, m := range found {
-		name := m[1]
+	definers := securityDefiners(t, all)
+	require.NotEmpty(t, definers, "the purge's function is expected")
+	for name, body := range definers {
 		assert.Contains(t, all, "ALTER FUNCTION "+name+"(", "%s fixes no search_path", name)
 		assert.Regexp(t, `ALTER FUNCTION `+name+`\([^)]*\) SET search_path = %I, pg_temp`, all, "%s: pg_temp must come last", name)
 		assert.Contains(t, all, "REVOKE ALL ON FUNCTION "+name+"(", "%s is not revoked from PUBLIC", name)
+		kind, ok := crossingKind(body)
+		if !assert.True(t, ok, "%s: its first statement sets app.crossing — its kind, or '' for a function that crosses nothing", name) {
+			continue
+		}
+		if kind == "" {
+			continue
+		}
+		assert.Contains(t, body, crossingPrevious, "%s keeps the value it found in prev", name)
+		statements := bodyStatements(body)
+		for i, s := range statements {
+			if returns(s) {
+				assert.True(t, i > 0 && statements[i-1] == crossingRestore, "%s: a return without restoring app.crossing first: %q", name, s)
+			}
+		}
+		require.NotEmpty(t, statements, name)
+		last := len(statements) - 1
+		assert.True(t, statements[last-1] == crossingRestore || (returns(statements[last-1]) && statements[last-2] == crossingRestore),
+			"%s ends without restoring app.crossing", name)
 	}
+	assert.NotRegexp(t, `(?i)\bSET\s+app\.crossing\b`, all, "no SET clause names app.crossing: the function's body sets it")
+}
+
+// The statements a crossing function sets and restores app.crossing with.
+const (
+	crossingPrevious = "prev text := NULLIF(current_setting('app.crossing', true), '');"
+	crossingRestore  = "PERFORM set_config('app.crossing', coalesce(prev, ''), true)"
+)
+
+var (
+	definerPattern = regexp.MustCompile(`(?s)CREATE (?:OR REPLACE )?FUNCTION (\w+)\(([^)]*)\)(.*?)AS \$\$(.*?)\$\$;`)
+	crossingFirst  = regexp.MustCompile(`^PERFORM set_config\('app\.crossing', '(\w*)', true\)$`)
+)
+
+// securityDefiners are the SECURITY DEFINER functions of the migrations, each
+// by its last definition — a later CREATE OR REPLACE replaces the body.
+func securityDefiners(t *testing.T, all string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for _, m := range definerPattern.FindAllStringSubmatch(all, -1) {
+		if strings.Contains(m[3], "SECURITY DEFINER") {
+			out[m[1]] = m[4]
+		} else {
+			delete(out, m[1])
+		}
+	}
+	return out
+}
+
+// crossingKind is the kind of crossing a function's first statement sets, ""
+// for a function that crosses nothing; false when its first statement sets no
+// crossing.
+func crossingKind(body string) (string, bool) {
+	statements := bodyStatements(body)
+	if len(statements) == 0 {
+		return "", false
+	}
+	m := crossingFirst.FindStringSubmatch(statements[0])
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// bodyStatements are the statements of a PL/pgSQL body after its BEGIN, each
+// with its whitespace collapsed; the last is the body's END.
+func bodyStatements(body string) []string {
+	begin := regexp.MustCompile(`(?m)^BEGIN$`).FindStringIndex(body)
+	if begin == nil {
+		return nil
+	}
+	var out []string
+	for _, s := range strings.Split(body[begin[1]:], ";") {
+		if s = strings.Join(strings.Fields(s), " "); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// returns reports whether a statement leaves the function: a RETURN, not a
+// RETURN QUERY or a RETURN NEXT, which add rows and go on.
+func returns(statement string) bool {
+	return statement == "RETURN" || (strings.HasPrefix(statement, "RETURN ") &&
+		!strings.HasPrefix(statement, "RETURN QUERY") && !strings.HasPrefix(statement, "RETURN NEXT"))
+}
+
+// The crossing policies bind the owner role alone — the role that runs the
+// migration and owns the crossing functions — and admit a crossing only by the
+// kind a function set in app.crossing; no other policy names the setting, so
+// the runtime role's queries are never widened (docs/adr/0021 D7 as made
+// concrete 2026-10-10). DB.CheckCrossing counts them at the start of serve.
+func TestTheCrossingPoliciesNameTheOwnerAlone(t *testing.T) {
+	crossing := regexp.MustCompile(`(?s)EXECUTE format\('CREATE POLICY (\w+) ON (\w+) FOR (\w+) TO %I '\s*'(.*?)', (\w+)\);`)
+	found := 0
+	for name, body := range migrationBodies(t) {
+		for _, m := range crossing.FindAllStringSubmatch(body, -1) {
+			found++
+			assert.Contains(t, m[1], "_crossing_", "%s: the policy %s of a crossing says so in its name", name, m[1])
+			assert.Contains(t, m[4], "app_crossing()", "%s: %s admits a crossing by its kind", name, m[1])
+			assert.Equal(t, "owner_role", m[5], "%s: %s is the owner role's", name, m[1])
+			assert.Contains(t, body, "owner_role text := current_user;", "%s: the owner role is the role that runs the migration", name)
+		}
+		for _, stmt := range regexp.MustCompile(`(?ms)^(?:CREATE|ALTER) POLICY .*?;`).FindAllString(body, -1) {
+			assert.NotContains(t, stmt, "app_crossing()", "%s: only the owner role's crossing policies read app.crossing: %s", name, stmt)
+			assert.NotContains(t, stmt, "_crossing_", "%s: a crossing policy is created for the owner role alone: %s", name, stmt)
+		}
+	}
+	assert.Equal(t, crossingPolicies, found, "DB.CheckCrossing counts the crossing policies the migrations create")
 }
 
 func migrationBodies(t *testing.T) map[string]string {

@@ -220,7 +220,7 @@ func TestStagesWithoutChildrenAreTheTicketsOwn(t *testing.T) {
 	detached := in(domain.StateInProgress, stages(10, 40, 5), left(80, 20)).row
 	assert.False(t, hasChildren(detached))
 	assert.Equal(t, domain.Stages{Refinement: 10, Implementation: 40, Review: 5}, stagesOf(detached))
-	v := ticketView(tenantScope{ID: uuid.New(), Slug: "acme"}, detached, time.Time{})
+	v := ticketView(tenantScope{ID: uuid.New(), Slug: "acme"}, shown{row: detached}, time.Time{})
 	assert.Equal(t, []int{10, 40, 5}, []int{v.ProgressRefinement, v.Progress, v.ProgressReview})
 
 	full := in(domain.StateReview, stages(100, 100, 100), left(50, 0)).row
@@ -245,12 +245,12 @@ func TestDoneByHandWhateverTheFlagSays(t *testing.T) {
 		"its last child left after it closed": in(domain.StateDone, stages(100, 40, 100)),
 		"a parent":                            in(domain.StateDone, stages(100, 100, 100), children(80, 60, 40)),
 	} {
-		assert.True(t, ticketView(ts, tc.row, time.Time{}).DoneByHand, name)
+		assert.True(t, ticketView(ts, shown{row: tc.row}, time.Time{}).DoneByHand, name)
 		mv, perr := checkTransition(person, tc, withdraw)
 		require.Nil(t, perr, name)
 		assert.Equal(t, domain.MoveWithdraw, mv, name)
 	}
-	assert.False(t, ticketView(ts, in(domain.StateDone, stages(100, 100, 100)).row, time.Time{}).DoneByHand, "full and without children: by its stages")
+	assert.False(t, ticketView(ts, shown{row: in(domain.StateDone, stages(100, 100, 100)).row}, time.Time{}).DoneByHand, "full and without children: by its stages")
 
 	lower := 35
 	ch := ticketChange{}
@@ -340,14 +340,14 @@ func TestHorizonInputs(t *testing.T) {
 func TestTicketViewShowsTheStages(t *testing.T) {
 	ts := tenantScope{ID: uuid.New(), Slug: "acme"}
 	leaf := in(domain.StateDone, doneBy(true, domain.StateBlocked), stages(100, 40, 0)).row
-	v := ticketView(ts, leaf, time.Time{})
+	v := ticketView(ts, shown{row: leaf}, time.Time{})
 	assert.Equal(t, []int{100, 40, 0}, []int{v.ProgressRefinement, v.Progress, v.ProgressReview}, "done by hand leaves the stages")
 	assert.True(t, v.DoneByHand)
 	assert.Equal(t, apigen.TicketStateBlocked, v.DoneFrom.MustGet())
 	assert.False(t, v.ProgressDerived)
 
 	parent := in(domain.StateReview, stages(0, 0, 0), children(100, 55, 10)).row
-	v = ticketView(ts, parent, time.Time{})
+	v = ticketView(ts, shown{row: parent}, time.Time{})
 	assert.Equal(t, []int{100, 55, 10}, []int{v.ProgressRefinement, v.Progress, v.ProgressReview})
 	assert.True(t, v.ProgressDerived)
 	assert.True(t, v.DoneFrom.IsNull(), "done_from only while done")
@@ -356,7 +356,7 @@ func TestTicketViewShowsTheStages(t *testing.T) {
 	now := domain.UrgencyNow
 	at := leaf.CreatedAt
 	leaf.UrgencyOverride, leaf.UrgencyOverrideAt, leaf.OpenPrerequisites = &now, &at, 2
-	v = ticketView(ts, leaf, time.Time{})
+	v = ticketView(ts, shown{row: leaf}, time.Time{})
 	assert.True(t, v.HorizonSet.MustGet().Reason.IsNull(), "a horizon set without a reason")
 	assert.Equal(t, 2, v.OpenPrerequisites)
 }
@@ -366,7 +366,7 @@ func TestTicketViewAnswersTheHorizon(t *testing.T) {
 	ts := tenantScope{ID: uuid.New(), Slug: "acme"}
 	row := in(domain.StateFiled).row
 	row.UrgencyDerived, row.UrgencyRule = domain.UrgencyDefault, domain.UrgencyRuleDefault
-	v := ticketView(ts, row, time.Time{})
+	v := ticketView(ts, shown{row: row}, time.Time{})
 	assert.Equal(t, apigen.Horizon("later"), v.Horizon, "a ticket nobody placed stands in later")
 	assert.True(t, v.HorizonSet.IsNull())
 
@@ -374,7 +374,7 @@ func TestTicketViewAnswersTheHorizon(t *testing.T) {
 	at := time.Date(2026, 10, 5, 9, 0, 0, 0, time.UTC)
 	row.UrgencyOverride, row.UrgencyOverrideAt, row.UrgencyOverrideBy, row.UrgencyOverrideReason = &next, &at, &by, &reason
 	row.UrgencyOverrideByUsername, row.UrgencyOverrideByName = ptr("ada"), ptr("Ada Lovelace")
-	v = ticketView(ts, row, time.Time{})
+	v = ticketView(ts, shown{row: row}, time.Time{})
 	assert.Equal(t, apigen.Horizon("next"), v.Horizon)
 	set := v.HorizonSet.MustGet()
 	assert.Equal(t, apigen.Horizon("next"), set.Value)
@@ -384,7 +384,7 @@ func TestTicketViewAnswersTheHorizon(t *testing.T) {
 	assert.Equal(t, at, set.At)
 
 	row.UrgencyOverrideByUsername, row.UrgencyOverrideByName = nil, nil
-	gone := ticketView(ts, row, time.Time{}).HorizonSet.MustGet().By.MustGet()
+	gone := ticketView(ts, shown{row: row}, time.Time{}).HorizonSet.MustGet().By.MustGet()
 	assert.Equal(t, apigen.Person{Id: by, Username: nullableOf[string](nil)}, gone,
 		"a person the caller can no longer read keeps the id alone")
 }

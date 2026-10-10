@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import {
   afterNextRender,
   ChangeDetectionStrategy,
@@ -16,7 +17,7 @@ import { ConfirmationService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
 import { Skeleton } from 'primeng/skeleton';
 import { Tooltip } from 'primeng/tooltip';
-import { Activity, Attachment, Interest, Link } from '../../api/models';
+import { Activity, Attachment, Interest } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { ProblemService, ProblemView } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
@@ -25,6 +26,7 @@ import { AgentMark } from '../../shared/agent-mark';
 import { SecurityBadge, SeverityBadge, StateBadge, TypeIcon } from '../../shared/badges';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { RenderedText } from '../../shared/rendered-text';
+import { HeadKey } from '../../shared/ticket-head';
 import { ago, Clock, dateTime } from '../../shared/time';
 import { CommentItem } from './comment-item';
 import {
@@ -49,12 +51,25 @@ import { TicketTitle } from './ticket-title';
  * project's rank by the score is the project's act, which the activity of every ticket it moved
  * shows (docs/adr/0014 D3, docs/adr/0015 D1). An act on the horizon is recorded as `overridden`,
  * its name before (docs/adr/0010 D1), and reads as what it did: a horizon set, or the ticket
- * returned to `later`.
+ * returned to `later`. A prerequisite of another team that settled is named by no key, as its act
+ * names none (docs/adr/0012 D5); a child detached by its key where the reader sees it.
  */
 export function describe(activity: Activity): string {
   const who = activity.actor?.display_name ?? activity.actor_system ?? 'cowork';
   if (activity.entity_type === 'project' && activity.action === 'ranked') {
     return `${who} sorted the backlog by score`;
+  }
+  if (activity.action === 'prerequisite_settled') {
+    // docs/adr/0012 D5: a ticket of another team that blocks this one reached done or dropped; the
+    // act names it in its refs alone, so no reader of this team's record learns which.
+    return `${who} closed a ticket of another team that blocks it`;
+  }
+  if (activity.action === 'detached') {
+    // docs/adr/0008 D2: a child left the ticket; its key where the reader sees the child.
+    const child = (activity.before as Record<string, unknown> | null)?.['child'];
+    return typeof child === 'string'
+      ? `${who} detached the child ${child.slice(child.indexOf('/') + 1)}`
+      : `${who} detached a child`;
   }
   if (activity.action === 'overridden') {
     const horizon = (activity.after as Record<string, unknown> | null)?.['urgency_override'];
@@ -83,7 +98,9 @@ const notFound: ProblemView = {
 
 /**
  * One ticket (docs/adr/0018 D2): its title and body to edit, its fields, its moves, its
- * prerequisite tree, its questions with the answer form, links, interest, comments and activity.
+ * prerequisite tree, its questions with the answer form, children, links, interest, comments and
+ * activity; a parent, a child or a link end of another project or team by its head
+ * (docs/adr/0005 D3).
  * Everything on it follows the event stream. The page is reused when the path names another
  * ticket: a question the page asks goes then, and so does every editor and dialog of its parts,
  * each of which belongs to the ticket it was opened on.
@@ -101,6 +118,7 @@ const notFound: ProblemView = {
     CommentItem,
     ConfirmDialog,
     EditQuestion,
+    HeadKey,
     InterestControl,
     LinkAdder,
     PrerequisiteTree,
@@ -195,6 +213,14 @@ export class TicketDetail {
   });
   /** A tenant administrator withdraws any comment (docs/adr/0015 D3). */
   protected readonly administers = computed(() => this.session.membership()?.role === 'admin');
+  /**
+   * A member or an administrator writes the ticket, and so removes any of its relations
+   * (docs/adr/0008 D2, docs/adr/0012 D2 as amended again 2026-10-10); a viewer does not.
+   */
+  protected readonly writes = computed(() => {
+    const role = this.session.membership()?.role;
+    return role === 'admin' || role === 'member';
+  });
 
   constructor() {
     effect(() => this.relations.at.set(this.at()));
@@ -246,16 +272,48 @@ export class TicketDetail {
     return `Could not load this: ${problem.detail || problem.title}`;
   }
 
-  /** Removes a link from its source's side, whichever side this ticket is. */
-  protected unlink(link: Link): void {
+  /** One more page of the children (docs/adr/0048 D3). */
+  protected moreChildren(): void {
+    this.relations.childPages.update((pages) => pages + 1);
+  }
+
+  /**
+   * Removes a link of the ticket by its id — outgoing or incoming, whatever team keeps it and
+   * whatever the person reads of the other end (docs/adr/0012 D2 as amended again 2026-10-10).
+   */
+  protected unlink(link: string): void {
     const key = this.fullKey();
-    if (!key) {
-      return;
+    if (key) {
+      void this.removed(this.conversation.unlink(key, link), () => this.relations.reloadLinks());
     }
-    const [source, target] =
-      link.direction === 'outgoing' ? [key, link.ticket.key] : [link.ticket.key, key];
-    this.conversation
-      .unlink(source, link.type, target)
-      .catch((error: unknown) => this.problems.report(error));
+  }
+
+  /**
+   * Detaches a child of any project or team from the ticket by the handle its relation carries,
+   * whatever the person reads of the child (docs/adr/0008 D2 as amended again 2026-10-10).
+   */
+  protected removeChild(handle: string): void {
+    const key = this.fullKey();
+    if (key) {
+      void this.removed(this.conversation.removeChild(key, handle), () =>
+        this.relations.reloadChildren(),
+      );
+    }
+  }
+
+  /**
+   * A removal shows at once: the part loads again. A `404` says the relation is gone already —
+   * another person or the other end removed it meanwhile — which is no failure; anything else is.
+   */
+  private async removed(removal: Promise<unknown>, reload: () => void): Promise<void> {
+    try {
+      await removal;
+    } catch (error) {
+      if (!(error instanceof HttpErrorResponse && error.status === 404)) {
+        this.problems.report(error);
+        return;
+      }
+    }
+    reload();
   }
 }

@@ -18,14 +18,16 @@ import {
   CommentList,
   Interest,
   InterestList,
-  Link,
-  LinkList,
   Me,
+  PrerequisiteHeadTree,
   Problem,
   Question,
-  PrerequisiteTree,
   QuestionList,
+  Relation,
+  RelationLink,
+  RelationList,
   Ticket,
+  TicketHead,
   TicketBody as RenderedBody,
   TimeEntryList,
 } from '../../api/models';
@@ -78,6 +80,7 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     block: null,
     threat: null,
     parent: null,
+    parent_head: null,
     effort: 'M',
     progress: 40,
     progress_derived: false,
@@ -168,17 +171,53 @@ function activity(overrides: Partial<Activity> = {}): Activity {
   };
 }
 
-function link(overrides: Partial<Link> = {}): Link {
+/** The head of a ticket at the other end of a relation, which the reader reads (docs/adr/0005 D3). */
+function head(key = 'acme/COW-3', overrides: Partial<TicketHead> = {}): TicketHead {
   return {
+    team: {
+      slug: key.slice(0, key.indexOf('/')),
+      name: key.startsWith('acme/') ? 'Acme' : 'Globex',
+    },
+    key,
+    title: 'Rework the board',
+    type: 'feature',
+    state: 'filed',
+    placeholder: false,
+    readable: true,
+    ...overrides,
+  };
+}
+
+/** A ticket the reader may not see: the placeholder, its team alone (docs/adr/0065 D5). */
+function placeholder(slug = 'globex', name = 'Globex'): TicketHead {
+  return {
+    team: { slug, name },
+    key: null,
+    title: null,
+    type: null,
+    state: null,
+    placeholder: true,
+    readable: false,
+  };
+}
+
+/** A link of the ticket, read from it, and the ticket at its other end; its id is the link's. */
+function link(overrides: Partial<RelationLink> = {}, other: TicketHead = head()): Relation {
+  const shown: RelationLink = {
     id: 'l-1',
     type: 'blocks',
     direction: 'outgoing',
     name: 'blocks',
-    ticket: { key: 'acme/COW-3', state: 'filed', title: 'Rework the board' },
     created_by: ada,
     created_at: '2026-10-02T09:00:00Z',
     ...overrides,
   };
+  return { kind: 'link', id: shown.id, link: shown, head: other };
+}
+
+/** A child of the ticket, as the reader sees it, with the handle that removes it. */
+function child(other: TicketHead, handle = `handle-${other.key ?? 'confidential'}`): Relation {
+  return { kind: 'child', id: handle, link: null, head: other };
 }
 
 function interest(person: Interest['person'], weight: Interest['weight'], note = ''): Interest {
@@ -209,7 +248,7 @@ function list<T>(...items: T[]) {
   return { items, next_cursor: null };
 }
 
-const noTree: PrerequisiteTree = { items: [], next_cursor: null, open: 0 };
+const noTree: PrerequisiteHeadTree = { items: [], next_cursor: null, open: 0 };
 
 describe('describe', () => {
   it('names the person who acted', () => {
@@ -260,6 +299,33 @@ describe('describe', () => {
     );
   });
 
+  // docs/adr/0012 D5 as made concrete 2026-10-10: the act names the prerequisite in its refs alone.
+  it('says that a ticket of another team that blocks it was closed, naming none', () => {
+    expect(describeActivity(activity({ action: 'prerequisite_settled', after: null }))).toBe(
+      'Ada Lovelace closed a ticket of another team that blocks it',
+    );
+    expect(
+      describeActivity(
+        activity({
+          action: 'prerequisite_settled',
+          actor: null,
+          actor_system: 'system:relation',
+          redacted: true,
+        }),
+      ),
+    ).toBe('system:relation closed a ticket of another team that blocks it');
+  });
+
+  // docs/adr/0008 D2 as amended again 2026-10-10: a child left the ticket.
+  it('says that a child was detached, by its key where the reader sees it', () => {
+    expect(
+      describeActivity(activity({ action: 'detached', before: { child: 'acme/COW-20' } })),
+    ).toBe('Ada Lovelace detached the child COW-20');
+    expect(describeActivity(activity({ action: 'detached', before: null, redacted: true }))).toBe(
+      'Ada Lovelace detached a child',
+    );
+  });
+
   // docs/adr/0010 D1: the act on the horizon is recorded as overridden, its name before.
   it('says what an act on the horizon did, never overridden', () => {
     expect(
@@ -289,21 +355,23 @@ describe('TicketDetail', () => {
     comments: `${base}/comments?limit=200`,
     activity: `${base}/activity?order=desc&limit=100`,
     questions: `${base}/questions?limit=200`,
-    links: `${base}/links?limit=200`,
+    links: `${base}/relations?kind=link&limit=200`,
+    children: `${base}/relations?kind=child&limit=50`,
     interest: `${base}/interest?limit=200`,
     attachments: `${base}/attachments?limit=200`,
     time: `${base}/time-entries?limit=200`,
-    tree: `${base}/prerequisites?direction=down&limit=200`,
+    tree: `${base}/prerequisite-tree?direction=down&limit=200`,
     body: `${base}/body`,
   };
 
   /** What the API answers for the parts around a ticket; a part left out stays unanswered. */
   interface Answers {
-    tree?: PrerequisiteTree;
+    tree?: PrerequisiteHeadTree;
     comments?: CommentList;
     activity?: ActivityList;
     questions?: QuestionList;
-    links?: LinkList;
+    links?: RelationList;
+    children?: RelationList;
     interest?: InterestList;
     attachments?: AttachmentList;
     time?: TimeEntryList;
@@ -311,19 +379,22 @@ describe('TicketDetail', () => {
   }
 
   let tenant: WritableSignal<string | null>;
-  let role: WritableSignal<'admin' | 'member'>;
+  let role: WritableSignal<'admin' | 'member' | 'viewer'>;
   let person: WritableSignal<Me | undefined>;
   let cache: EntityCache<Ticket>;
   let loadError: WritableSignal<unknown>;
   let loaded: WritableSignal<string | undefined>;
   let shownKey: (() => string | undefined) | undefined;
   let http: HttpTestingController;
-  let conversation: { unlink: MockInstance<Conversation['unlink']> };
+  let conversation: {
+    unlink: MockInstance<Conversation['unlink']>;
+    removeChild: MockInstance<Conversation['removeChild']>;
+  };
   let update: MockInstance<TicketActions['update']>;
 
   beforeEach(() => {
     tenant = signal<string | null>('acme');
-    role = signal<'admin' | 'member'>('member');
+    role = signal<'admin' | 'member' | 'viewer'>('member');
     person = signal<Me | undefined>({
       ...ada,
       memberships: [],
@@ -335,7 +406,10 @@ describe('TicketDetail', () => {
     loadError = signal<unknown>(undefined);
     loaded = signal<string | undefined>(undefined);
     shownKey = undefined;
-    conversation = { unlink: vi.fn<Conversation['unlink']>().mockResolvedValue(undefined) };
+    conversation = {
+      unlink: vi.fn<Conversation['unlink']>().mockResolvedValue(undefined),
+      removeChild: vi.fn<Conversation['removeChild']>().mockResolvedValue(undefined),
+    };
     update = vi.fn<TicketActions['update']>().mockResolvedValue(ticket());
     TestBed.configureTestingModule({
       providers: [
@@ -439,11 +513,12 @@ describe('TicketDetail', () => {
         '/api/v1/teams/acme/projects/OPS/tickets/3/comments',
         '/api/v1/teams/acme/projects/OPS/tickets/3/activity',
         '/api/v1/teams/acme/projects/OPS/tickets/3/questions',
-        '/api/v1/teams/acme/projects/OPS/tickets/3/links',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/relations',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/relations',
         '/api/v1/teams/acme/projects/OPS/tickets/3/interest',
         '/api/v1/teams/acme/projects/OPS/tickets/3/attachments',
         '/api/v1/teams/acme/projects/OPS/tickets/3/time-entries',
-        '/api/v1/teams/acme/projects/OPS/tickets/3/prerequisites',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/prerequisite-tree',
       ]);
     });
 
@@ -938,7 +1013,7 @@ describe('TicketDetail', () => {
 
     it('shows a skeleton until the comments are loaded', async () => {
       show();
-      const { fixture, page } = await render('COW-12', { tree: noTree });
+      const { fixture, page } = await render('COW-12', { tree: noTree, children: list() });
       expect(page.querySelectorAll('p-skeleton')).toHaveLength(2);
       expect(page.textContent).not.toContain('No comments yet.');
 
@@ -1027,7 +1102,7 @@ describe('TicketDetail', () => {
 
     it('shows a skeleton until the activity is loaded', async () => {
       show();
-      const { fixture, page } = await render('COW-12', { tree: noTree });
+      const { fixture, page } = await render('COW-12', { tree: noTree, children: list() });
       expect(page.querySelectorAll('p-skeleton')).toHaveLength(2);
       expect(page.querySelector('.activity')).toBeNull();
 
@@ -1045,27 +1120,70 @@ describe('TicketDetail', () => {
       const { page } = await render('COW-12', {
         links: list(
           link({ id: 'l-1', name: 'blocks' }),
-          link({
-            id: 'l-2',
-            name: 'duplicated by',
-            ticket: { key: 'acme/COW-9', state: 'done', title: 'Flicker on the second board' },
-          }),
+          link(
+            { id: 'l-2', name: 'duplicated by', direction: 'incoming', type: 'duplicates' },
+            head('acme/COW-9', { state: 'done', title: 'Flicker on the second board' }),
+          ),
         ),
       });
 
-      const [first, second] = [...page.querySelectorAll('.link')] as HTMLElement[];
+      const [first, second] = [...page.querySelectorAll('[data-testid^="link-"]')] as HTMLElement[];
       expect(text(first, '.muted')).toBe('blocks');
-      expect(text(first, '.link-target .tabular')).toBe('acme/COW-3');
+      expect(text(first, '[data-testid="head-key"]')).toBe('COW-3');
+      expect(first.querySelector('[data-testid="head-key"]')?.getAttribute('href')).toBe(
+        '/t/acme/tickets/COW-3',
+      );
       expect(
         first.querySelector('.link-target app-state [data-state]')?.getAttribute('data-state'),
       ).toBe('filed');
       expect(text(first, '.small:last-child')).toBe('Rework the board');
       expect(text(second, '.muted')).toBe('duplicated by');
-      expect(text(second, '.link-target .tabular')).toBe('acme/COW-9');
+      expect(text(second, '[data-testid="head-key"]')).toBe('COW-9');
       expect(
         second.querySelector('.link-target app-state [data-state]')?.getAttribute('data-state'),
       ).toBe('done');
     });
+
+    // docs/adr/0012 D2, docs/adr/0005 D3 as amended 2026-10-10.
+    it('shows a link end of another team by its team and head, unlinked where the person may not open it', async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        links: list(
+          link(
+            { id: 'l-3', name: 'blocked by', direction: 'incoming' },
+            head('globex/API-7', { title: 'Send the SameSite attribute', readable: false }),
+          ),
+        ),
+      });
+
+      const shown = page.querySelector('[data-testid="link-l-3"]') as HTMLElement;
+      expect(text(shown, '[data-testid="head-team"]')).toBe('Globex');
+      expect(shown.querySelector('[data-testid="head-key"]')?.tagName).toBe('SPAN');
+      expect(shown.querySelector('a')).toBeNull();
+      expect(text(shown, ':scope > span.small')).toBe('Send the SameSite attribute');
+    });
+
+    // docs/adr/0065 D5 as amended 2026-10-10: in another team or in the reader's own.
+    it.each([
+      ['another team', 'globex', 'Globex'],
+      ['the reader’s own team', 'acme', 'Acme'],
+    ])(
+      'shows a link end the person may not see in %s as `<team> [Confidential]`',
+      async (_, slug, name) => {
+        show();
+
+        const { page } = await render('COW-12', {
+          links: list(link({ id: 'l-4', name: 'relates to' }, placeholder(slug, name))),
+        });
+
+        const shown = page.querySelector('[data-testid="link-l-4"]') as HTMLElement;
+        expect(text(shown, '[data-testid="head-placeholder"]')).toBe(`${name} [Confidential]`);
+        expect(shown.querySelector('[data-testid="head-key"]')).toBeNull();
+        expect(shown.querySelector('app-state')).toBeNull();
+        expect(text(shown, '.link-target')).toBe(`${name} [Confidential]`);
+      },
+    );
 
     it('says so when the ticket has no links', async () => {
       show();
@@ -1081,71 +1199,79 @@ describe('TicketDetail', () => {
       const { page } = await render();
 
       expect(page.textContent).not.toContain('No links.');
-      expect(page.querySelector('.link')).toBeNull();
+      expect(page.querySelector('[data-testid^="link-l"]')).toBeNull();
     });
 
-    describe('removing a link', () => {
+    describe('removing a link (docs/adr/0012 D2 as amended again 2026-10-10)', () => {
       const unlink = (page: HTMLElement, id: string) =>
         page.querySelector<HTMLButtonElement>(`[data-testid="unlink-${id}"]`);
 
-      it('offers to remove each link', async () => {
+      it('offers a writer of the ticket to remove every link, outgoing or incoming, of any team, the other end readable or not', async () => {
         show();
 
         const { page } = await render('COW-12', {
-          links: list(link({ id: 'l-1' }), link({ id: 'l-2' })),
+          links: list(
+            link({ id: 'l-1' }),
+            link({ id: 'l-2', direction: 'incoming' }, head('globex/API-7', { readable: false })),
+            link({ id: 'l-3', direction: 'incoming' }, placeholder()),
+            link({ id: 'l-4', direction: 'outgoing' }, placeholder('acme', 'Acme')),
+          ),
         });
 
         expect(unlink(page, 'l-1')?.getAttribute('aria-label')).toBe('Remove this link');
-        expect(unlink(page, 'l-2')).not.toBeNull();
+        for (const id of ['l-2', 'l-3', 'l-4']) {
+          expect(unlink(page, id), id).not.toBeNull();
+        }
       });
 
-      it('removes an outgoing link from this ticket, as its source', async () => {
+      it('offers a viewer no removal: a viewer writes no ticket', async () => {
+        role.set('viewer');
         show();
-        const { page } = await render('COW-12', {
-          links: list(
-            link({
-              id: 'l-1',
-              type: 'blocks',
-              direction: 'outgoing',
-              ticket: { key: 'acme/COW-3', state: 'filed', title: 'Rework the board' },
-            }),
-          ),
-        });
+
+        const { page } = await render('COW-12', { links: list(link({ id: 'l-1' })) });
+
+        expect(unlink(page, 'l-1')).toBeNull();
+      });
+
+      it.each([
+        ['an outgoing link', link({ id: 'l-1', direction: 'outgoing' })],
+        [
+          'an incoming link of another team',
+          link({ id: 'l-1', direction: 'incoming' }, head('globex/API-7', { readable: false })),
+        ],
+        [
+          'a link whose other end is a placeholder',
+          link({ id: 'l-1', direction: 'incoming' }, placeholder()),
+        ],
+      ])('removes %s by its id from this ticket, and shows the links anew', async (_, shown) => {
+        show();
+        const { fixture, page } = await render('COW-12', { links: list(shown) });
 
         unlink(page, 'l-1')?.click();
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
 
-        expect(conversation.unlink).toHaveBeenCalledExactlyOnceWith(
-          'acme/COW-12',
-          'blocks',
-          'acme/COW-3',
-        );
+        expect(conversation.unlink).toHaveBeenCalledExactlyOnceWith('acme/COW-12', 'l-1');
+        expect(http.match(urls.links)).toHaveLength(1);
       });
 
-      it('removes an incoming link from the other ticket, which is its source', async () => {
+      it('takes a link gone already for removed: no toast, the links anew', async () => {
+        conversation.unlink.mockRejectedValue(problem(404, 'Not found', 'no such link'));
+        const add = vi.spyOn(TestBed.inject(MessageService), 'add');
         show();
-        const { page } = await render('COW-12', {
-          links: list(
-            link({
-              id: 'l-1',
-              type: 'duplicates',
-              direction: 'incoming',
-              ticket: { key: 'acme/COW-9', state: 'done', title: 'Flicker on the second board' },
-            }),
-          ),
-        });
+        const { fixture, page } = await render('COW-12', { links: list(link({ id: 'l-1' })) });
 
         unlink(page, 'l-1')?.click();
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
 
-        expect(conversation.unlink).toHaveBeenCalledExactlyOnceWith(
-          'acme/COW-9',
-          'duplicates',
-          'acme/COW-12',
-        );
+        expect(add).not.toHaveBeenCalled();
+        expect(http.match(urls.links)).toHaveLength(1);
       });
 
-      it('toasts the problem when the link cannot be removed', async () => {
+      it('toasts any other problem of a removal, and leaves the links as they are', async () => {
         conversation.unlink.mockRejectedValue(
-          problem(409, 'The link is gone already', 'Somebody removed it a moment ago.'),
+          problem(403, 'Forbidden', 'A viewer writes no ticket.'),
         );
         const add = vi.spyOn(TestBed.inject(MessageService), 'add');
         show();
@@ -1155,12 +1281,164 @@ describe('TicketDetail', () => {
         await new Promise((resolve) => setTimeout(resolve));
 
         expect(add).toHaveBeenCalledExactlyOnceWith(
-          expect.objectContaining({
-            summary: 'The link is gone already',
-            detail: 'Somebody removed it a moment ago.',
-          }),
+          expect.objectContaining({ summary: 'Forbidden', detail: 'A viewer writes no ticket.' }),
         );
+        expect(http.match(urls.links)).toHaveLength(0);
       });
+    });
+  });
+
+  // docs/adr/0008 D2, docs/adr/0005 D3, docs/adr/0065 D5 as amended 2026-10-10.
+  describe('the children', () => {
+    const section = (page: HTMLElement) =>
+      page.querySelector('[data-testid="children"]') as HTMLElement;
+
+    it('shows each child by its key, state and title, of another team by its team and head', async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        children: list(
+          child(head('acme/COW-20', { title: 'Fix the first board', state: 'review' })),
+          child(head('globex/API-8', { title: 'Fix the API', readable: false })),
+        ),
+      });
+
+      const [own, other] = [...section(page).querySelectorAll('[data-testid^="child-"]')];
+      expect(own.querySelector('[data-testid="head-key"]')?.getAttribute('href')).toBe(
+        '/t/acme/tickets/COW-20',
+      );
+      expect(own.querySelector('[data-state]')?.getAttribute('data-state')).toBe('review');
+      expect(text(own as HTMLElement, '.small')).toBe('Fix the first board');
+      expect(text(other as HTMLElement, '[data-testid="head-team"]')).toBe('Globex');
+      expect(other.querySelector('[data-testid="head-key"]')?.tagName).toBe('SPAN');
+      expect(other.querySelector('a')).toBeNull();
+      expect(text(other as HTMLElement, '.small')).toBe('Fix the API');
+    });
+
+    it.each([
+      ['another team', 'globex', 'Globex'],
+      ['the reader’s own team', 'acme', 'Acme'],
+    ])(
+      'shows a child the person may not see in %s as `<team> [Confidential]` and nothing else',
+      async (_, slug, name) => {
+        show();
+
+        const { page } = await render('COW-12', { children: list(child(placeholder(slug, name))) });
+
+        const shown = section(page).querySelector('[data-testid="child-0"]') as HTMLElement;
+        expect(text(shown, '[data-testid="head-placeholder"]')).toBe(`${name} [Confidential]`);
+        expect(shown.textContent?.replace(/\s+/g, ' ').trim()).toBe(`${name} [Confidential]`);
+      },
+    );
+
+    it('says so when the ticket has no children, and shows a skeleton until they are loaded', async () => {
+      show();
+      const { fixture, page } = await render();
+      expect(section(page).querySelector('p-skeleton')).not.toBeNull();
+
+      await answer(fixture, { children: list() });
+
+      expect(section(page).textContent).toContain('No children.');
+      expect(section(page).querySelector('p-skeleton')).toBeNull();
+    });
+
+    describe('removing a child (docs/adr/0008 D2 as amended again 2026-10-10)', () => {
+      const remove = (page: HTMLElement, index: number) =>
+        page.querySelector<HTMLButtonElement>(`[data-testid="remove-child-${index}"]`);
+
+      it('offers a writer of the ticket to remove every child, of any team, readable or not, a placeholder too', async () => {
+        show();
+
+        const { page } = await render('COW-12', {
+          children: list(
+            child(head('acme/COW-20')),
+            child(head('globex/API-8', { readable: false })),
+            child(placeholder()),
+          ),
+        });
+
+        expect(remove(page, 0)?.getAttribute('aria-label')).toBe('Remove this child');
+        expect(remove(page, 1)).not.toBeNull();
+        expect(remove(page, 2)).not.toBeNull();
+      });
+
+      it('offers a viewer no removal', async () => {
+        role.set('viewer');
+        show();
+
+        const { page } = await render('COW-12', { children: list(child(head('acme/COW-20'))) });
+
+        expect(remove(page, 0)).toBeNull();
+      });
+
+      it('detaches the child by the handle its relation carries, and shows the children anew', async () => {
+        show();
+        const { fixture, page } = await render('COW-12', {
+          children: list(child(head('globex/API-8', { readable: false }), 'sealed-handle')),
+        });
+
+        remove(page, 0)?.click();
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
+
+        expect(conversation.removeChild).toHaveBeenCalledExactlyOnceWith(
+          'acme/COW-12',
+          'sealed-handle',
+        );
+        expect(http.match(urls.children)).toHaveLength(1);
+      });
+
+      it('takes a child gone already for removed: no toast, the children anew', async () => {
+        conversation.removeChild.mockRejectedValue(problem(404, 'Not found', 'no such child'));
+        const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+        show();
+        const { fixture, page } = await render('COW-12', {
+          children: list(child(head('acme/COW-20'))),
+        });
+
+        remove(page, 0)?.click();
+        await new Promise((resolve) => setTimeout(resolve));
+        fixture.detectChanges();
+
+        expect(add).not.toHaveBeenCalled();
+        expect(http.match(urls.children)).toHaveLength(1);
+      });
+
+      it('toasts any other problem of the removal', async () => {
+        conversation.removeChild.mockRejectedValue(problem(503, 'Unavailable', 'Try again.'));
+        const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+        show();
+        const { page } = await render('COW-12', { children: list(child(head('acme/COW-20'))) });
+
+        remove(page, 0)?.click();
+        await new Promise((resolve) => setTimeout(resolve));
+
+        expect(add).toHaveBeenCalledOnce();
+        expect(http.match(urls.children)).toHaveLength(0);
+      });
+    });
+
+    it('loads one more page of children on request, while there are more', async () => {
+      show();
+      const { fixture, page } = await render('COW-12', {
+        children: { items: [child(head('acme/COW-20'))], next_cursor: 'p2' },
+      });
+
+      const more = page.querySelector<HTMLButtonElement>('[data-testid="children-more"]');
+      expect(more?.textContent?.trim()).toBe('Load more');
+      more?.click();
+      fixture.detectChanges();
+      await answer(fixture, {
+        children: { items: [child(head('acme/COW-20'))], next_cursor: 'p2' },
+      });
+      for (const request of http.match(`${base}/relations?kind=child&cursor=p2&limit=50`)) {
+        request.flush(list(child(head('acme/COW-21'))));
+      }
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+
+      expect(section(page).querySelectorAll('[data-testid^="child-"]')).toHaveLength(2);
+      expect(page.querySelector('[data-testid="children-more"]')).toBeNull();
     });
   });
 
@@ -1245,7 +1523,7 @@ describe('TicketDetail', () => {
       expect(part(fixture, InterestControl).me()).toBeUndefined();
     });
 
-    it('shows the interest control and the cards for the files and the time beside the links', async () => {
+    it('shows the interest control, the children and the cards for the files and the time beside the links', async () => {
       show();
 
       const { page } = await render();
@@ -1253,7 +1531,7 @@ describe('TicketDetail', () => {
       const headings = [...page.querySelectorAll('aside.side h2')].map((heading) =>
         heading.textContent?.replace(/\s+/g, ' ').trim(),
       );
-      expect(headings).toEqual(['Interest', 'Links', 'Attachments', 'Time']);
+      expect(headings).toEqual(['Interest', 'Children', 'Links', 'Attachments', 'Time']);
     });
   });
 
@@ -1264,6 +1542,7 @@ describe('TicketDetail', () => {
       'activity',
       'interest',
       'links',
+      'children',
       'attachments',
       'time',
     ] as const;
@@ -1323,6 +1602,7 @@ describe('TicketDetail', () => {
         activity: list(),
         interest: list(),
         links: list(),
+        children: list(),
         attachments: list(),
         time: { items: [], next_cursor: null, total_minutes: 0 },
       });
@@ -1378,7 +1658,7 @@ describe('TicketDetail', () => {
 
     it('shows neither the skeleton nor the list of a failed part', async () => {
       show();
-      const { fixture, page } = await render('COW-12', { tree: noTree });
+      const { fixture, page } = await render('COW-12', { tree: noTree, children: list() });
 
       await fail(fixture, 'comments', unready);
       await fail(fixture, 'activity', unready);

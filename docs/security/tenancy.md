@@ -3,7 +3,8 @@
 How one team's data stays out of another team's reach, who belongs to a team and in which
 role — group mappings, grants, the last administrator — and who inside a team sees which project,
 ticket, act, event, notification and time entry, and what the person-level lists and stream gather
-across a person's teams, and what a search finds, as built on 2026-10-07, the person's projects on
+across a person's teams, what a search finds, and what of a ticket of another team a relation
+shows, as built on 2026-10-07 and, for the person's projects and the relations between teams, on
 2026-10-10. What a token or an agent may do with
 what it can see is [tokens.md](tokens.md); how a request reaches the backend at all, and where the
 database credentials live, is [trust-boundaries.md](trust-boundaries.md); where a person's groups
@@ -38,6 +39,14 @@ well, restrictive policies that hold them to whom they belong: a notification an
 their person, an import job and a consistency check's result to the team's administrators and
 the jobs that need them ([below](#row-level-security-forced-on-every-table)). Neither line stops a process that runs SQL of an
 attacker's choosing — see "A compromised serving process" at the end.
+
+One thing crosses the line on purpose: a ticket's parent, its children and its links may be tickets
+of another team, and the other end is shown by its head — the team's name, the key, the title, the
+type and the state — or as `<team> [Confidential]`
+([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3 as amended
+2026-10-10). No query of the runtime role crosses for it: functions of the owner role read and write
+what crosses, each one thing, under policies only the owner meets
+([below](#relations-between-teams-cross-through-the-owners-functions-alone)).
 
 ## The team is in the path, and a refusal looks like absence
 
@@ -105,8 +114,13 @@ requests and could reach every team the person belongs to; the loopback that sen
 every path outside the turn's team — the person's other teams and the `/api/v1/me` routes
 included — and a search of every team looks through the turn's alone
 ([`chat.Loopback`](../../backend/internal/chat/loopback.go); `TestTheChatStaysInItsTeam`). A turn
-therefore sends its provider one team's text, and nothing of another team reaches the provider
-through it ([chat.md](chat.md#a-turn-works-in-its-team)).
+therefore sends its provider one team's text — and the heads of the tickets of other teams that a
+relation of the team's tickets names, since a parent, a link or a prerequisite of another team
+stands in the turn's team's answers by its head or as the placeholder, never with its body, its
+assignee or its progress: the provider sees what the person reads
+([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md),
+[H-111](#h-111); [chat.md](chat.md#a-turn-works-in-its-team)). The loopback still refuses every path
+of another team, so the model cannot read further.
 
 ## A global administrator without a role
 
@@ -287,7 +301,8 @@ restricted`, refuses a change of `restricted` unless the caller is an administra
 filter is held by a trigger for the same reason ([below](#saved-filters-are-their-owners-and-a-shared-one-an-administrators-to-withdraw)).
 
 At the start of every transaction the store sets `app.tenant_id`, `app.user_id`,
-`app.restricted_project_id`, `app.job` and `app.session_hash` — the hash of the session cookie
+`app.restricted_tenant_id` and `app.restricted_project_id` — a token's restrictions —, `app.job`
+and `app.session_hash` — the hash of the session cookie
 a request presented, which is how a request finds its own session row — with
 `set_config(…, true)`, which dies with the
 transaction ([`store/tx.go`](../../backend/internal/store/tx.go) `setContext`). Three transactions
@@ -343,28 +358,119 @@ The runtime role is held by the policy either way — the force concerns the own
 which `TestEveryTableHasItsPolicyAndGrant` alone would not notice, and
 `TestRankMigrationKeepsNumberOrder` reads the force back after the run.
 
-## A row never points into another team
+## A row points into another team only as a relation
 
-A plain foreign key ignores row-level security, so a row of one team could name a parent of
+A plain foreign key ignores row-level security, so a row of one team could name a row of
 another. Every reference from one team-bound row to another is therefore a composite key
-that includes `tenant_id`: a project's access list and ticket counter to the project; a
-ticket to its project, to its parent — of the same project as well
-([ADR 0008](../adr/0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2)
-— and to the ticket a block waits on; both ends of a link; questions, comments, stakes, time
-entries and attachments to their ticket; a comment's revisions to the comment, a time
-entry's revisions to the entry, and a comment's attachment to a comment of the same ticket; a
-token's project restriction to a project of its team restriction; a repository binding to its
-project; a notification to its ticket; a pull-request link to its ticket; an acceptance of a lost
-file to its attachment; an import job to its project, and an imported ticket to its job (migrations
-3, 4, 8–14, 23, 30 and 41–43). The one plain key from a team-bound row is a notification's
-`audit_event_id`, to the audit record, whose rows carry their team.
-A link therefore never crosses a team, whatever the API does
-([ADR 0012](../adr/0012-four-typed-directed-links-within-a-tenant.md) D2).
+that includes `tenant_id` — a project's access list and ticket counter to the project; a
+ticket to its project and to the ticket a block waits on; a link to its source; questions,
+comments, stakes, time entries and attachments to their ticket; a comment's revisions to the
+comment, a time entry's revisions to the entry, and a comment's attachment to a comment of the same
+ticket; a token's project restriction to a project of its team restriction; a repository binding to
+its project; a notification to its ticket; a pull-request link to its ticket; an acceptance of a
+lost file to its attachment; an import job to its project, and an imported ticket to its job
+(migrations 3, 4, 8–14, 23, 30 and 41–43) — but two. Since
+[migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql) a ticket's parent and a link's target reference the ticket alone,
+because a parent and a link may be tickets of another team
+([ADR 0008](../adr/0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2,
+[ADR 0012](../adr/0012-four-typed-directed-links-within-a-tenant.md) D2, as amended 2026-10-10); a
+link lives in its source's team. Neither reference opens the other team to its reader: a query of
+the runtime role that follows one meets the forced policy of the other team's rows and finds
+nothing, and what a relation shows of the other end is read by the owner's functions alone
+([below](#relations-between-teams-cross-through-the-owners-functions-alone)). The API sets a parent
+or a link only to a ticket the setter reads, and answers every other key as one that names nothing.
+The other plain key from a team-bound row is a notification's `audit_event_id`, to the audit record,
+whose rows carry their team.
 
 References to persons are plain foreign keys, because a person is not team-bound. The API
 admits as assignee only a person who can see the ticket's project, and asks a question only
 of a person who can see the ticket. The audit record's `ticket_id` has no foreign key on
 purpose: an act outlives its ticket (ADR 0026).
+
+## Relations between teams cross through the owner's functions alone
+
+What a relation reads or changes of a ticket of another team passes through a **crossing**, a
+`SECURITY DEFINER` function of the owner role, and nothing else
+([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7 as built
+2026-10-10; [migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql), [`store/crossing.go`](../../backend/internal/store/crossing.go),
+[docs/developer/data-access.md](../developer/data-access.md#crossings-between-teams)). The runtime
+role is never widened: every forced policy holds its queries to the transaction's team as before, so
+a query a handler writes still reads one team and a forgotten filter still yields nothing of
+another.
+
+- **Five crossings, each one function or a few.** The head read — a ticket at the end of a
+  relation of a ticket the caller sees, with what the caller sees of it, and whether the caller
+  reads the ticket a key names; the cycle walks of the parents and of `blocks`, which answer yes or
+  no; the derived progress of a parent from its children of every team, which writes those columns
+  and nothing else; the address of an act in another team — its team, ticket and key, never shown
+  to the caller; and the end of the relations at a purge or a team's deletion, and of one relation
+  by a writer of either end
+  ([migration 52](../../backend/internal/store/migrations/000052_end_a_relation_from_either_end.up.sql)).
+- **The removal into another team** (`end_relation`) ends exactly one relation of a ticket of the
+  caller's team: a child of another team whose parent the ticket is, or a link another team keeps
+  onto it — the parent's side of a parent relation, the target's side of a link
+  ([ADR 0008](../adr/0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2,
+  [ADR 0012](../adr/0012-four-typed-directed-links-within-a-tenant.md) D2 as amended 2026-10-10). It
+  checks for itself what the API checked: the ticket is of the transaction's team, seen by the caller
+  and not deleted, the caller a `member` or `admin` of the team — a viewer ends nothing, whatever the
+  request layer decided —, and the row really is that ticket's relation; anything else answers no row
+  and changes nothing (`TestEndingOneRelationIsTheAnchorsAlone`). It clears the child's parent alone
+  and deletes the link row alone, under the purge's guard and policies, and the act in the other
+  team's record follows the rule below. The API names a child to it only by the id `…/relations`
+  gave, sealed with the server's key so that it shows no ticket id; a forged or foreign id names no
+  child of the ticket and answers as a missing one.
+- **Admitted only inside them.** Eight permissive policies `TO` the owner role on `tickets`,
+  `projects`, `tenants`, `project_access` and `ticket_links` admit a read, or one write, only while
+  the setting `app.crossing` names the kind of crossing; each crossing function sets it as its first
+  statement with `set_config` and restores what it found before it returns. A function's `SET`
+  clause cannot carry it: PostgreSQL refuses a custom setting there to an owner that is no superuser
+  without a superuser's `GRANT SET ON PARAMETER` (verified on PostgreSQL 18.6). A value a function
+  leaves behind reaches nothing: the policies bind the owner alone, code runs as the owner at run
+  time only inside `SECURITY DEFINER` functions, and every one of them — `purge_ticket_audit` too —
+  sets its own value first. The runtime role that sets `app.crossing` itself gains nothing
+  (`TestTheCrossingIsTheOwnersAlone`).
+- **What a crossing writes** is held to its columns by a trigger, `tickets_crossing_guard`: on a
+  ticket of another team than the writer's the three derived columns alone — never its own stages,
+  done by hand or `updated_at`, which its own team keeps —; on one of the writer's own team besides
+  the stages the derivation seeds, done by hand and `updated_at`; at a purge the parent alone
+  (`TestACrossingWritesOnlyItsColumns`, `TestAChildOfAnotherTeamNeverRewritesItsParentsOwnProgress`).
+- **An act in another team** — a link's act on its other end, the end of a relation at a purge, a
+  settled prerequisite — is written by the runtime role with the transaction bound to that team for
+  those statements alone (`Writer.RecordElsewhere`), under that team's own policies, at a far end
+  only a crossing hands out, whose row it holds against a purge until it commits — so the purge
+  empties the act with the rest —; a far end a purge holds already takes no act, the ticket being
+  gone when the purge commits, so no write waits on a purge
+  (`TestAnActOnATicketBeingPurgedWaitsOnNoPurge`); a unit test
+  refuses a binding of `app.tenant_id` anywhere else and `app.crossing` in any Go or query file
+  (`TestOnlyTheCrossingFunctionsCross`). Such an act names the ticket of the caller's team in its
+  refs, so the activity of the other team withholds its payload, and stores no head of it — a
+  settled prerequisite's act stores none at all —; a caller who holds no role in the other team is
+  recorded as `system:relation`, or `system:ticket-purge` inside a purge, never with their name,
+  token or agent mark.
+- **The start-up check.** `cowork serve` refuses a database whose crossing policies name another role
+  than the owner of the tables, or whose crossing functions are not that owner's
+  (`DB.CheckCrossing`, `TestServeRefusesACrossingOfAnotherOwner`): a change of ownership past the
+  migrations would leave the heads absent and the cycle walks blind to other teams.
+
+**What the caller sees of the other end** (`ticket_sight`), decided per ticket by every crossing that
+returns one, which a unit test holds to it (`TestEveryCrossingFunctionDecidesSight`):
+
+| Sight | When | Shown |
+|---|---|---|
+| readable | a member of its team, any role, whose project is open to them, and — confidential — its team's administrator, its assignee or its reporter | its head with `readable: true` — the person may open the ticket itself —; of the caller's own team its assignee and progress where a surface shows them |
+| head | a person who holds no role in its team, a member to whom its project is restricted, a token outside its team or project restriction | the team's name, the key, the title, the type and the state, nothing more |
+| placeholder | a confidential ticket the caller is not admitted to, in another team or their own | `<team> [Confidential]` |
+| absent | a deleted ticket | nothing, as a missing one |
+
+A key the caller cannot read answers as one that names nothing, whatever the reason — no such team,
+project or number, a team they hold no role in, a token outside its restriction, a restricted
+project, a deleted ticket, a confidential one they are not admitted to: a parent `400
+validation_failed` "no such ticket" at `/parent`, a link's other end `404 not_found` "no such
+ticket", the bodies equal but their `request_id` and, for a link, their `instance`
+(`TestAnUnreadableKeyAnswersAsAMissingOne`). Numbers are a sequence per
+project, so an answer that told the two apart would let anyone try `SUT-1`, `SUT-2`, … and learn which
+tickets exist. Every head function asks besides whether the caller holds a role in the transaction's
+team (`app_is_member()`). What the heads reveal to whom is [H-111](#h-111).
 
 ## Visibility inside a team
 
@@ -403,7 +509,6 @@ Among the exemptions, each with its reason written in its query file:
 |---|---|
 | `GetWrittenTicket` | a write's answer rereads the row it wrote; a reassignment can take a confidential ticket out of its writer's sight in the same transaction |
 | `TicketFacts` | the publication of a committed act; each event stream filters (below) |
-| `ParentChainContains`, `BlocksPathExists` | integrity walks that answer yes or no (H-3) |
 | `CanSeeProject` | whether another person — an assignee — sees what the caller reads |
 | `ListWatchers` | whom an act tells: the watchers of a ticket, each then held to their own sight of it by `person_sees_ticket` ([the person-level lists](#the-person-level-lists-are-unions-one-team-at-a-time)) |
 | `ProjectKeyTaken` | whether a project key is taken (H-3) |
@@ -412,6 +517,7 @@ Among the exemptions, each with its reason written in its query file:
 | `GetScoreInputs` | the inputs of the score of a ticket the writer read through the predicate in the same transaction, read again after its write |
 | `TenantAttachmentUsage`, `ListCheckedAttachments` | the team's stored bytes, and the files of the team whose bytes are missing, for its administrators, who see every ticket ([attachments.md](attachments.md#the-consistency-check)) |
 | `ImportNumbersTaken` | whether a number exists in the project, as its unique key holds it ([import-and-export.md](import-and-export.md#what-an-import-creates)) |
+| `LinkEndKey` | the key of the other end, in the team, of a link the caller removes, whatever they see of it: the removal is an act on both tickets |
 | `ExportHiddenConfidential` | the count of the confidential tickets an export leaves out ([import-and-export.md](import-and-export.md#h-74) H-74) |
 | `GetPurgedTicket`, `DeletePurgedTicket` and the acts of the purge | the purge of a deleted ticket, which an administrator or the job named |
 
@@ -419,11 +525,15 @@ Among the exemptions, each with its reason written in its query file:
 past the caller's predicate: `CanSeeTicket` (the person a question is asked of) and the recipients of a
 notification read through it.
 
-Where the predicate hides a related ticket, the visible one shows less rather than more: a
-parent or a ticket a block waits on that the caller cannot see is left out of the ticket's
-`parent` and `block.ticket` (the block's kind and reason remain), a link whose other end is
-hidden is absent from the list, and the `blocked` filter, the prerequisites of the done act and
-a ticket's `open_prerequisites` count only the blockers the caller sees. The team's dashboard
+Where the predicate hides a related ticket, the visible one shows less rather than more: a ticket
+a block waits on that the caller cannot see is left out of `block.ticket` (the block's kind and
+reason remain), and a link whose other end is hidden is absent from the deprecated list. A parent,
+a child, a link and a prerequisite are relations: the caller who cannot read the other end sees its
+head or the placeholder — `parent` is `null` for a placeholder, `parent_head` names its team alone —
+([above](#relations-between-teams-cross-through-the-owners-functions-alone)). The `blocked` filter,
+the prerequisites of the done act and a ticket's `open_prerequisites` count the open blockers whose
+state the caller reads in a head — one in a project restricted from them included, never a
+placeholder. The team's dashboard
 counts, names and measures only what the caller sees, and no deleted ticket, every one of its
 queries under the predicate and the deletion filter
 — a median of lead time or the oldest blocked ticket moves for nobody who cannot see the ticket
@@ -941,19 +1051,21 @@ built; guarding the database credentials, the volumes and the backups is the ope
 A rule that must hold for the whole team cannot ask only what its caller sees, and a rule
 that asks only what its caller sees lets a hidden ticket slip by. Both kinds exist:
 
-- The parent cycle refusal walks the ancestors past the predicate (`ticket_ancestor_or_self`):
-  whether a re-parenting is refused with `409 parent_cycle` can depend on a confidential
-  ancestor in the same project.
-- The `blocks` cycle refusal walks the team's whole `blocks` graph past the predicate
-  (`blocks_path_exists`): `409 link_cycle` can depend on confidential tickets and on tickets
-  of restricted projects.
+- The parent cycle refusal walks the ancestors past the predicate and across teams
+  (`parent_chain_reaches`): whether a re-parenting is refused with `409 parent_cycle` can depend on
+  a confidential ancestor in any project, and on ancestors in teams the caller holds no role in
+  ([H-111](#h-111)).
+- The `blocks` cycle refusal walks the whole `blocks` graph of the installation past the predicate
+  (`blocks_reach`): `409 link_cycle` can depend on confidential tickets, on tickets of restricted
+  projects and on tickets of other teams.
 - The done act — by hand, or the `PATCH` that fills the last progress stage — is refused only
-  by the open prerequisites the closer can see (`ListOpenPrerequisites`): a ticket can be
-  closed over an open prerequisite its closer cannot see, without an override and without a
-  mention in the act, and its `open_prerequisites` reads 0 to that closer.
+  by the open prerequisites whose state the closer reads in a head (`open_prerequisite_heads`): a
+  ticket can be closed over an open prerequisite that is a placeholder to its closer — a
+  confidential one they are not admitted to, in any team —, without an override and without a
+  mention in the act, and its `open_prerequisites` leaves that one out.
 - Each derived progress stage is the effort-weighted mean of the same stage of every child not
-  dropped and not deleted, confidential ones included (`ticket_derived_stage`), and a parent whose children are
-  all done shows 100 in each.
+  dropped and not deleted, of any team, confidential ones included (`refresh_derived`), and a parent
+  whose children are all done shows 100 in each.
 - A new project's key is refused as taken whether or not the caller can see the project that
   holds it (`ProjectKeyTaken`).
 - A filing, a reopen and a move in the rank compute their key over every ticket of the project
@@ -1139,6 +1251,50 @@ at every run until the newer release runs again — read in 0.8.0's `PurgeDelete
 Rolled back from 0.11.0 to 0.10.0, the purge knows no import job, and a purged ticket's text stays in
 the report of the import that created it ([import-and-export.md](import-and-export.md#h-73) H-73).
 Mitigation: run the newer release again before a purge is due, or purge nothing while rolled back.
+
+<a id="h-111"></a>
+### H-111 — A team's ticket heads reach every reader of a related ticket in another team — the owner's accepted trade-off
+
+Accepted by the owner on 2026-10-10 for teams of one organisation
+([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3, Residual
+risks), live as soon as a ticket of team A is a parent, a child, a link end or a prerequisite of a
+ticket of team B. Every reader of B's ticket — a viewer, a token restricted to B and the agent behind
+it, the chat's provider in a turn of B ([chat.md](chat.md#h-37) H-37) — reads A's ticket by its head:
+team A's name, the key, the title, the type and the state, and its changes of state as they come.
+A parent in B whose child is A's shows a derived progress that A's child moves, and the `derived`
+event tells B's streams when it moved. A cross-team `409 parent_cycle` or `409 link_cycle` tells the
+setter that a path runs through tickets of teams they hold no role in. A placeholder tells that a
+related ticket exists and is confidential to them, and its team. What the head does not show stays
+behind A's membership: the body, comments, questions, attachments, links, time, people and numbers.
+The exposure is bounded by who may set a relation — only a member who reads both ends
+([ADR 0008](../adr/0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2) — and by
+what a head holds (`TestAParentInAnotherTeamShowsItsHeadOnly`, `TestTheChatStaysInItsTeam`).
+Mitigation: none in cowork beyond those bounds; a team that must keep its titles from another
+relates nothing to it, and its members remove any relation that touches its tickets — a child of
+another team from under its parent, a link another team keeps onto its ticket — from their own
+ticket, whether or not they read the other end, the act recorded in both teams' records
+([ADR 0008](../adr/0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2,
+[ADR 0012](../adr/0012-four-typed-directed-links-within-a-tenant.md) D2 as amended 2026-10-10;
+`TestAWriterOfEitherEndRemovesARelationAcrossTeams`). A viewer of A who is a member of B may still
+set one, and it shows A's heads to B until a writer of A removes it. A link set from B records
+`linked` on A's ticket in A's record ([ADR 0012](../adr/0012-four-typed-directed-links-within-a-tenant.md)
+D3); a parent set from B records nothing in A's record — A learns of it from the child among its
+parent's relations and from the derived progress.
+
+<a id="h-112"></a>
+### H-112 — A writer of the release before walks one team, derives one team and ends relations without acts
+
+Dormant until two releases write at once — a rolling update over migration 47 — or an image is rolled
+back by one release ([upgrade.md](../operations/upgrade.md#rolling-back)). The release before walks the
+parents and the `blocks` links within one team (`ticket_ancestor_or_self`, `blocks_path_exists`) under
+its per-project and per-team locks, which do not exclude this release's lock of the installation's
+graphs: a cycle through another team is not refused by it, and one writer of each release can close a
+cycle inside one team between them. It derives a parent's progress from the parent's own team
+(`ticket_derived_stage`), so a change it writes drops other teams' children from the derived value
+until this release derives the parent again. Its purge ends the relations into other teams through
+the foreign keys' actions — a child elsewhere made a root, a link to the ticket deleted — with no act
+in the other team's record. Mitigation: relate nothing across teams while the release before writes,
+and run this release again; a cycle closed meanwhile stays until a person removes one of its edges.
 
 ### The owner credential in the serving process
 

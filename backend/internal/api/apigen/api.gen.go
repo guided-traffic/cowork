@@ -58,49 +58,51 @@ func (e AttachmentContentType) Valid() bool {
 
 // Defines values for AuditAction.
 const (
-	AuditActionAccepted           AuditAction = "accepted"
-	AuditActionAnswered           AuditAction = "answered"
-	AuditActionArchived           AuditAction = "archived"
-	AuditActionAsked              AuditAction = "asked"
-	AuditActionAssigned           AuditAction = "assigned"
-	AuditActionBooked             AuditAction = "booked"
-	AuditActionClosed             AuditAction = "closed"
-	AuditActionCommented          AuditAction = "commented"
-	AuditActionConfidentialLifted AuditAction = "confidential_lifted"
-	AuditActionConfidentialSet    AuditAction = "confidential_set"
-	AuditActionCreated            AuditAction = "created"
-	AuditActionDeactivated        AuditAction = "deactivated"
-	AuditActionDeleted            AuditAction = "deleted"
-	AuditActionDownloaded         AuditAction = "downloaded"
-	AuditActionEdited             AuditAction = "edited"
-	AuditActionExpired            AuditAction = "expired"
-	AuditActionExported           AuditAction = "exported"
-	AuditActionImported           AuditAction = "imported"
-	AuditActionInterest           AuditAction = "interest"
-	AuditActionLinked             AuditAction = "linked"
-	AuditActionLocked             AuditAction = "locked"
-	AuditActionLoggedIn           AuditAction = "logged_in"
-	AuditActionLoggedOut          AuditAction = "logged_out"
-	AuditActionLoginFailed        AuditAction = "login_failed"
-	AuditActionMerged             AuditAction = "merged"
-	AuditActionOverridden         AuditAction = "overridden"
-	AuditActionPasswordChanged    AuditAction = "password_changed"
-	AuditActionPasswordReset      AuditAction = "password_reset"
-	AuditActionPurged             AuditAction = "purged"
-	AuditActionRanked             AuditAction = "ranked"
-	AuditActionReactivated        AuditAction = "reactivated"
-	AuditActionRead               AuditAction = "read"
-	AuditActionRefused            AuditAction = "refused"
-	AuditActionReopened           AuditAction = "reopened"
-	AuditActionRestored           AuditAction = "restored"
-	AuditActionRevoked            AuditAction = "revoked"
-	AuditActionTransitioned       AuditAction = "transitioned"
-	AuditActionUnlinked           AuditAction = "unlinked"
-	AuditActionUnlocked           AuditAction = "unlocked"
-	AuditActionUpdated            AuditAction = "updated"
-	AuditActionUploaded           AuditAction = "uploaded"
-	AuditActionVoided             AuditAction = "voided"
-	AuditActionWithdrawn          AuditAction = "withdrawn"
+	AuditActionAccepted            AuditAction = "accepted"
+	AuditActionAnswered            AuditAction = "answered"
+	AuditActionArchived            AuditAction = "archived"
+	AuditActionAsked               AuditAction = "asked"
+	AuditActionAssigned            AuditAction = "assigned"
+	AuditActionBooked              AuditAction = "booked"
+	AuditActionClosed              AuditAction = "closed"
+	AuditActionCommented           AuditAction = "commented"
+	AuditActionConfidentialLifted  AuditAction = "confidential_lifted"
+	AuditActionConfidentialSet     AuditAction = "confidential_set"
+	AuditActionCreated             AuditAction = "created"
+	AuditActionDeactivated         AuditAction = "deactivated"
+	AuditActionDeleted             AuditAction = "deleted"
+	AuditActionDetached            AuditAction = "detached"
+	AuditActionDownloaded          AuditAction = "downloaded"
+	AuditActionEdited              AuditAction = "edited"
+	AuditActionExpired             AuditAction = "expired"
+	AuditActionExported            AuditAction = "exported"
+	AuditActionImported            AuditAction = "imported"
+	AuditActionInterest            AuditAction = "interest"
+	AuditActionLinked              AuditAction = "linked"
+	AuditActionLocked              AuditAction = "locked"
+	AuditActionLoggedIn            AuditAction = "logged_in"
+	AuditActionLoggedOut           AuditAction = "logged_out"
+	AuditActionLoginFailed         AuditAction = "login_failed"
+	AuditActionMerged              AuditAction = "merged"
+	AuditActionOverridden          AuditAction = "overridden"
+	AuditActionPasswordChanged     AuditAction = "password_changed"
+	AuditActionPasswordReset       AuditAction = "password_reset"
+	AuditActionPrerequisiteSettled AuditAction = "prerequisite_settled"
+	AuditActionPurged              AuditAction = "purged"
+	AuditActionRanked              AuditAction = "ranked"
+	AuditActionReactivated         AuditAction = "reactivated"
+	AuditActionRead                AuditAction = "read"
+	AuditActionRefused             AuditAction = "refused"
+	AuditActionReopened            AuditAction = "reopened"
+	AuditActionRestored            AuditAction = "restored"
+	AuditActionRevoked             AuditAction = "revoked"
+	AuditActionTransitioned        AuditAction = "transitioned"
+	AuditActionUnlinked            AuditAction = "unlinked"
+	AuditActionUnlocked            AuditAction = "unlocked"
+	AuditActionUpdated             AuditAction = "updated"
+	AuditActionUploaded            AuditAction = "uploaded"
+	AuditActionVoided              AuditAction = "voided"
+	AuditActionWithdrawn           AuditAction = "withdrawn"
 )
 
 // Valid indicates whether the value is a known member of the AuditAction enum.
@@ -132,6 +134,8 @@ func (e AuditAction) Valid() bool {
 		return true
 	case AuditActionDeleted:
 		return true
+	case AuditActionDetached:
+		return true
 	case AuditActionDownloaded:
 		return true
 	case AuditActionEdited:
@@ -161,6 +165,8 @@ func (e AuditAction) Valid() bool {
 	case AuditActionPasswordChanged:
 		return true
 	case AuditActionPasswordReset:
+		return true
+	case AuditActionPrerequisiteSettled:
 		return true
 	case AuditActionPurged:
 		return true
@@ -866,6 +872,45 @@ func (e QuestionStatus) Valid() bool {
 	}
 }
 
+// Defines values for RelationKind.
+const (
+	RelationKindChild  RelationKind = "child"
+	RelationKindLink   RelationKind = "link"
+	RelationKindParent RelationKind = "parent"
+)
+
+// Valid indicates whether the value is a known member of the RelationKind enum.
+func (e RelationKind) Valid() bool {
+	switch e {
+	case RelationKindChild:
+		return true
+	case RelationKindLink:
+		return true
+	case RelationKindParent:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for RelationLinkDirection.
+const (
+	RelationLinkDirectionIncoming RelationLinkDirection = "incoming"
+	RelationLinkDirectionOutgoing RelationLinkDirection = "outgoing"
+)
+
+// Valid indicates whether the value is a known member of the RelationLinkDirection enum.
+func (e RelationLinkDirection) Valid() bool {
+	switch e {
+	case RelationLinkDirectionIncoming:
+		return true
+	case RelationLinkDirectionOutgoing:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RepositoryLookupStatus.
 const (
 	RepositoryLookupStatusAmbiguous RepositoryLookupStatus = "ambiguous"
@@ -1346,6 +1391,24 @@ func (e ListCommentsParamsOrder) Valid() bool {
 	}
 }
 
+// Defines values for ListPrerequisiteTreeParamsDirection.
+const (
+	ListPrerequisiteTreeParamsDirectionDown ListPrerequisiteTreeParamsDirection = "down"
+	ListPrerequisiteTreeParamsDirectionUp   ListPrerequisiteTreeParamsDirection = "up"
+)
+
+// Valid indicates whether the value is a known member of the ListPrerequisiteTreeParamsDirection enum.
+func (e ListPrerequisiteTreeParamsDirection) Valid() bool {
+	switch e {
+	case ListPrerequisiteTreeParamsDirectionDown:
+		return true
+	case ListPrerequisiteTreeParamsDirectionUp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListPrerequisitesParamsDirection.
 const (
 	ListPrerequisitesParamsDirectionDown ListPrerequisitesParamsDirection = "down"
@@ -1358,6 +1421,27 @@ func (e ListPrerequisitesParamsDirection) Valid() bool {
 	case ListPrerequisitesParamsDirectionDown:
 		return true
 	case ListPrerequisitesParamsDirectionUp:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListTicketRelationsParamsKind.
+const (
+	ListTicketRelationsParamsKindChild  ListTicketRelationsParamsKind = "child"
+	ListTicketRelationsParamsKindLink   ListTicketRelationsParamsKind = "link"
+	ListTicketRelationsParamsKindParent ListTicketRelationsParamsKind = "parent"
+)
+
+// Valid indicates whether the value is a known member of the ListTicketRelationsParamsKind enum.
+func (e ListTicketRelationsParamsKind) Valid() bool {
+	switch e {
+	case ListTicketRelationsParamsKindChild:
+		return true
+	case ListTicketRelationsParamsKindLink:
+		return true
+	case ListTicketRelationsParamsKindParent:
 		return true
 	default:
 		return false
@@ -1499,6 +1583,13 @@ type AccountPasswordReset struct {
 
 // Activity defines model for Activity.
 type Activity struct {
+	// Action `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
+	// reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
+	// redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
+	// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5).
+	// `detached` is recorded on a parent when a child leaves it from the parent's side, or from the
+	// child's side where the parent is of another team, naming the child in its refs
+	// (docs/adr/0008 D2 as amended 2026-10-10)
 	Action      AuditAction               `json:"action"`
 	Actor       nullable.Nullable[Person] `json:"actor"`
 	ActorSystem nullable.Nullable[string] `json:"actor_system"`
@@ -1621,11 +1712,24 @@ type AttachmentUsage struct {
 	UsedBytes int64 `json:"used_bytes"`
 }
 
-// AuditAction defines model for AuditAction.
+// AuditAction `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
+// reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
+// redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
+// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5).
+// `detached` is recorded on a parent when a child leaves it from the parent's side, or from the
+// child's side where the parent is of another team, naming the child in its refs
+// (docs/adr/0008 D2 as amended 2026-10-10)
 type AuditAction string
 
 // AuditEvent defines model for AuditEvent.
 type AuditEvent struct {
+	// Action `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
+	// reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
+	// redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
+	// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5).
+	// `detached` is recorded on a parent when a child leaves it from the parent's side, or from the
+	// child's side where the parent is of another team, naming the child in its refs
+	// (docs/adr/0008 D2 as amended 2026-10-10)
 	Action AuditAction `json:"action"`
 
 	// Actor A person, or a system actor such as system:idempotency-expiry
@@ -2626,7 +2730,8 @@ type ImportFile struct {
 	// outcome, and `reason` says why each was left out
 	Outcome ImportOutcome `json:"outcome"`
 
-	// Parent The key of the parent in the project
+	// Parent The parent's canonical key: a ticket of the upload or the project, or of another project or team
+	// the importing person reads (docs/adr/0008 D2, docs/adr/0051 D9)
 	Parent nullable.Nullable[string] `json:"parent"`
 
 	// Path The file's path in the upload, `/`-separated
@@ -2684,7 +2789,8 @@ type ImportLink struct {
 	// Direction Outgoing when this file's ticket is the link's source
 	Direction ImportLinkDirection `json:"direction"`
 
-	// Key The other end's key in the project
+	// Key The other end's canonical key: a ticket of the upload or the project, or of another project or
+	// team the importing person reads (docs/adr/0012 D2, docs/adr/0051 D9)
 	Key string `json:"key"`
 
 	// Source Where the import read the link
@@ -2761,7 +2867,9 @@ type ImportSummary struct {
 type InboxEntry struct {
 	Act Activity `json:"act"`
 
-	// Blocker For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is now; null otherwise
+	// Blocker For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is
+	// now; null for a ticket of another team, which the act names in its refs alone and the ticket's
+	// relations show by its head (docs/adr/0012 D5); null otherwise
 	Blocker   nullable.Nullable[TicketRef] `json:"blocker"`
 	CreatedAt time.Time                    `json:"created_at"`
 	Id        openapi_types.UUID           `json:"id"`
@@ -3089,6 +3197,15 @@ type MyTicketList struct {
 	NextCursor nullable.Nullable[string] `json:"next_cursor"`
 }
 
+// NodeProgress The three progress stages as the ticket shows them (docs/adr/0017 D2, D3)
+type NodeProgress struct {
+	// Derived The stages are derived from the ticket's children
+	Derived        bool `json:"derived"`
+	Implementation int  `json:"implementation"`
+	Refinement     int  `json:"refinement"`
+	Review         int  `json:"review"`
+}
+
 // OrphanRemoval What a confirmed removal of the orphans did, object by object
 type OrphanRemoval struct {
 	// Failed Objects whose removal failed; the log names each, and the next check lists them again
@@ -3136,6 +3253,49 @@ type Person struct {
 	// Username A local account's username as it is stored, without the `local:` that names the identity
 	// (docs/adr/0032 D1, docs/adr/0033 D2); null for a person of the identity provider
 	Username nullable.Nullable[string] `json:"username,omitempty"`
+}
+
+// PrerequisiteHeadNode A ticket of a prerequisite tree, or of its upward reading, across teams (docs/adr/0012 D6 as
+// amended 2026-10-10), by its head. The walk goes on only from a ticket the reader reads: a head
+// and a placeholder are leaves, what lies behind them stays behind their team's membership
+// (docs/adr/0005 D3, docs/adr/0065 D5).
+type PrerequisiteHeadNode struct {
+	// Assignee The assignee, of a ticket of the reader's own team they read; null otherwise and without one
+	Assignee nullable.Nullable[Person] `json:"assignee"`
+
+	// BlockedFrom The state a blocked ticket came from, of a ticket the reader reads; null unless it is blocked,
+	// and for a head or a placeholder, a head being the five fields of TicketHead alone
+	BlockedFrom nullable.Nullable[TicketState] `json:"blocked_from"`
+
+	// Depth 1 for a ticket next to the one asked about — blocking it, or blocked by it read upward
+	Depth int `json:"depth"`
+
+	// Head A ticket at the other end of a relation — a parent, a child, a link — as the reader sees it
+	// (docs/adr/0005 D3, docs/adr/0065 D5): its team, and its key, title, type and state, which is all
+	// a reader who holds no role in its team, or to whom its project is restricted, reads of it
+	// (docs/adr/0034 D4). A ticket the reader may not see is the placeholder, `<team> [Confidential]`:
+	// its team and nothing else, the key, the title, the type and the state null — in another team
+	// or in the reader's own.
+	Head TicketHead `json:"head"`
+
+	// Progress The stages, of a ticket of the reader's own team they read; null otherwise
+	Progress nullable.Nullable[NodeProgress] `json:"progress"`
+
+	// Repeated The ticket stands in the tree in full under another ticket; here it is shown without what lies behind it
+	Repeated bool `json:"repeated"`
+
+	// Settled Done or dropped (docs/adr/0012 D6); null for a placeholder, whose state the reader may not read
+	Settled nullable.Nullable[bool] `json:"settled"`
+}
+
+// PrerequisiteHeadTree defines model for PrerequisiteHeadTree.
+type PrerequisiteHeadTree struct {
+	Items      []PrerequisiteHeadNode    `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+
+	// Open The open tickets of the whole tree whose state the reader reads, each counted once, on every
+	// page; a placeholder is never counted
+	Open int `json:"open"`
 }
 
 // PrerequisiteNode A ticket of a prerequisite tree, or of its upward reading, the dependents (docs/adr/0012 D6)
@@ -3392,6 +3552,59 @@ type QuestionPatch struct {
 
 // QuestionStatus docs/adr/0011 D2
 type QuestionStatus string
+
+// Relation A relation of a ticket — its parent, a child, a link in either direction — and the ticket at its
+// other end as the reader sees it, of any project or team (docs/adr/0005 D3, docs/adr/0008 D2,
+// docs/adr/0012 D2)
+type Relation struct {
+	// Head A ticket at the other end of a relation — a parent, a child, a link — as the reader sees it
+	// (docs/adr/0005 D3, docs/adr/0065 D5): its team, and its key, title, type and state, which is all
+	// a reader who holds no role in its team, or to whom its project is restricted, reads of it
+	// (docs/adr/0034 D4). A ticket the reader may not see is the placeholder, `<team> [Confidential]`:
+	// its team and nothing else, the key, the title, the type and the state null — in another team
+	// or in the reader's own.
+	Head TicketHead `json:"head"`
+
+	// Id The relation's id, by which a writer of the ticket removes it (docs/adr/0008 D2,
+	// docs/adr/0012 D2 as amended 2026-10-10): a link's id, which `DELETE …/links/{link}` takes;
+	// for a child an opaque handle, which `DELETE …/children/{child}` takes and which shows no id
+	// of the child; null for the parent, which the update of `parent` removes
+	Id   nullable.Nullable[string] `json:"id"`
+	Kind RelationKind              `json:"kind"`
+
+	// Link The link of a relation of the kind `link`; null for a parent and a child
+	Link nullable.Nullable[RelationLink] `json:"link"`
+}
+
+// RelationKind defines model for Relation.Kind.
+type RelationKind string
+
+// RelationLink The link of a relation of the kind `link`, read from the ticket asked about (docs/adr/0012 D1)
+type RelationLink struct {
+	CreatedAt time.Time `json:"created_at"`
+	CreatedBy Person    `json:"created_by"`
+
+	// Direction Outgoing when the ticket asked about is the link's source
+	Direction RelationLinkDirection `json:"direction"`
+
+	// Id The link's id, which `DELETE …/links/{link}` removes it by
+	Id openapi_types.UUID `json:"id"`
+
+	// Name The link read from the ticket asked about: blocks, blocked by, relates to, duplicates, duplicated by, found in, found here
+	Name string `json:"name"`
+
+	// Type docs/adr/0012 D1
+	Type LinkType `json:"type"`
+}
+
+// RelationLinkDirection Outgoing when the ticket asked about is the link's source
+type RelationLinkDirection string
+
+// RelationList defines model for RelationList.
+type RelationList struct {
+	Items      []Relation                `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
 
 // Repository defines model for Repository.
 type Repository struct {
@@ -3746,13 +3959,19 @@ type Ticket struct {
 	Key    string `json:"key"`
 	Number int    `json:"number"`
 
-	// OpenPrerequisites The open tickets that block this one and that the caller can see (docs/adr/0012 D7,
-	// docs/adr/0018 D1); a ticket the caller cannot see is never counted
+	// OpenPrerequisites The open tickets of any team that block this one and whose state the caller reads in a head
+	// (docs/adr/0012 D6, D7, docs/adr/0018 D1) — the tickets done is refused over; a ticket the
+	// caller may not see, a placeholder, is never counted
 	OpenPrerequisites int       `json:"open_prerequisites"`
 	OpenedAt          time.Time `json:"opened_at"`
 
-	// Parent The parent's key
+	// Parent The parent's canonical key, a ticket of any project or team (docs/adr/0008 D2); null without
+	// a parent, and for a parent the reader may not see — `parent_head` is its placeholder then
 	Parent nullable.Nullable[string] `json:"parent"`
+
+	// ParentHead The parent as the reader sees it (docs/adr/0005 D3): its head, the placeholder where the
+	// reader may not see it, null without a parent
+	ParentHead nullable.Nullable[TicketHead] `json:"parent_head"`
 
 	// Progress The implementation stage, the work of in-progress; derived from the children while there are any
 	// (docs/adr/0017 D2, D3). Done leaves it as it is.
@@ -3836,7 +4055,9 @@ type TicketCreate struct {
 	// Horizon The horizon the ticket is filed into; later when left out (docs/adr/0010 D3)
 	Horizon *Horizon `json:"horizon,omitempty"`
 
-	// Parent A ticket key of the same project, short or full
+	// Parent The parent's key: canonical, a ticket of any team of the installation, or short, a ticket of
+	// this team in any project (docs/adr/0007 D3, docs/adr/0008 D2). A key the caller does not read
+	// is refused exactly as one that does not exist: 400 `validation_failed` at `/parent`
 	Parent   *string       `json:"parent,omitempty"`
 	Security SecurityClass `json:"security"`
 	Severity Severity      `json:"severity"`
@@ -3845,6 +4066,27 @@ type TicketCreate struct {
 
 	// Type docs/adr/0008 D1
 	Type TicketType `json:"type"`
+}
+
+// TicketHead A ticket at the other end of a relation — a parent, a child, a link — as the reader sees it
+// (docs/adr/0005 D3, docs/adr/0065 D5): its team, and its key, title, type and state, which is all
+// a reader who holds no role in its team, or to whom its project is restricted, reads of it
+// (docs/adr/0034 D4). A ticket the reader may not see is the placeholder, `<team> [Confidential]`:
+// its team and nothing else, the key, the title, the type and the state null — in another team
+// or in the reader's own.
+type TicketHead struct {
+	// Key The canonical key, <team>/<PROJECT>-<number>; null for the placeholder
+	Key nullable.Nullable[string] `json:"key"`
+
+	// Placeholder The reader may not see the ticket; it shows as `<team> [Confidential]`
+	Placeholder bool `json:"placeholder"`
+
+	// Readable The reader reads the ticket and may open it; a head they may not open is false
+	Readable bool                           `json:"readable"`
+	State    nullable.Nullable[TicketState] `json:"state"`
+	Team     TeamRef                        `json:"team"`
+	Title    nullable.Nullable[string]      `json:"title"`
+	Type     nullable.Nullable[TicketType]  `json:"type"`
 }
 
 // TicketList defines model for TicketList.
@@ -3875,7 +4117,9 @@ type TicketPatch struct {
 	// never an agent's (docs/adr/0012 D7)
 	OverridePrerequisites *bool `json:"override_prerequisites,omitempty"`
 
-	// Parent A ticket key of the same project; null makes the ticket a root
+	// Parent The parent's key as a filing takes it — canonical, any team; short, this team, any project —, a
+	// ticket the caller reads; null makes the ticket a root, whatever the reader sees of the parent
+	// it had (docs/adr/0008 D2)
 	Parent nullable.Nullable[string] `json:"parent,omitempty"`
 
 	// Progress The implementation stage (docs/adr/0017 D2)
@@ -4187,6 +4431,9 @@ type WipLimits struct {
 // AttachmentID defines model for AttachmentID.
 type AttachmentID = openapi_types.UUID
 
+// ChildRelation defines model for ChildRelation.
+type ChildRelation = string
+
 // CommentID defines model for CommentID.
 type CommentID = openapi_types.UUID
 
@@ -4265,6 +4512,9 @@ type IncludeVoided = bool
 // Limit defines model for Limit.
 type Limit = int
 
+// LinkID defines model for LinkID.
+type LinkID = openapi_types.UUID
+
 // MeProject defines model for MeProject.
 type MeProject = string
 
@@ -4282,6 +4532,9 @@ type OpenedBefore = time.Time
 
 // Order defines model for Order.
 type Order string
+
+// OtherTeamSlug defines model for OtherTeamSlug.
+type OtherTeamSlug = string
 
 // OtherTicketKey defines model for OtherTicketKey.
 type OtherTicketKey = string
@@ -4312,6 +4565,9 @@ type Query = string
 
 // QuestionNumber defines model for QuestionNumber.
 type QuestionNumber = int
+
+// RelationKinds defines model for RelationKinds.
+type RelationKinds = []string
 
 // RepositoryID defines model for RepositoryID.
 type RepositoryID = openapi_types.UUID
@@ -5026,6 +5282,24 @@ type ListTicketLinksParams struct {
 	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
 }
 
+// ListPrerequisiteTreeParams defines parameters for ListPrerequisiteTree.
+type ListPrerequisiteTreeParams struct {
+	// Direction down for the prerequisites, the default; up for the dependents
+	Direction *ListPrerequisiteTreeParamsDirection `form:"direction,omitempty" json:"direction,omitempty"`
+
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
+}
+
+// ListPrerequisiteTreeParamsDirection defines parameters for ListPrerequisiteTree.
+type ListPrerequisiteTreeParamsDirection string
+
 // ListPrerequisitesParams defines parameters for ListPrerequisites.
 type ListPrerequisitesParams struct {
 	// Direction down for the prerequisites, the default; up for the dependents
@@ -5076,6 +5350,24 @@ type AnswerQuestionParams struct {
 	// without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
 	IfMatch *IfMatch `json:"If-Match,omitempty"`
 }
+
+// ListTicketRelationsParams defines parameters for ListTicketRelations.
+type ListTicketRelationsParams struct {
+	// Kind The kinds of relation to list, repeatable; every kind when left out
+	Kind *RelationKinds `form:"kind,omitempty" json:"kind,omitempty"`
+
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
+}
+
+// ListTicketRelationsParamsKind defines parameters for ListTicketRelations.
+type ListTicketRelationsParamsKind string
 
 // ListTicketTimeParams defines parameters for ListTicketTime.
 type ListTicketTimeParams struct {
@@ -6955,12 +7247,19 @@ type ClientInterface interface {
 
 	// UpdateTicketWithBody Change a ticket's fields
 	//
-	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-	// new assignee is 403 `session_required` — admitting a person takes a browser session
-	// (docs/adr/0035 D5).
+	// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+	// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+	// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+	// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+	// that takes the ticket away from a parent of another team — clearing it or setting another —
+	// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+	// 2026-10-10).
+	//
+	// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+	// confidential ticket — or one the change makes confidential — only to its own person or to
+	// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+	// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+	// takes a browser session (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -6984,12 +7283,19 @@ type ClientInterface interface {
 
 	// UpdateTicket Change a ticket's fields
 	//
-	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-	// new assignee is 403 `session_required` — admitting a person takes a browser session
-	// (docs/adr/0035 D5).
+	// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+	// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+	// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+	// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+	// that takes the ticket away from a parent of another team — clearing it or setting another —
+	// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+	// 2026-10-10).
+	//
+	// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+	// confidential ticket — or one the change makes confidential — only to its own person or to
+	// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+	// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+	// takes a browser session (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -7094,6 +7400,22 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/body (the `ReplaceTicketBody` operationId).
 	ReplaceTicketBody(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ReplaceTicketBodyParams, body ReplaceTicketBodyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveTicketChild Remove a child of this ticket, of any project or team, by the id of the relation
+	//
+	// The parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a
+	// writer of this ticket detaches a child of any project or team from it, whatever they read of
+	// the child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The
+	// child's side ends it by the update of its `parent`. The child's parent alone changes, its
+	// version stays — an update of the child read before is refused with `412`, the parent being
+	// part of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived
+	// again. A relation that is no child of this ticket, or none, answers exactly as a missing one,
+	// `404` "no such child", and removes nothing. The act `updated` is recorded on the child — in
+	// its own team's record, as `system:relation` where the caller holds no role in that team — and
+	// `detached` on this ticket.
+	//
+	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child} (the `RemoveTicketChild` operationId).
+	RemoveTicketChild(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListComments The ticket's comment thread
 	//
@@ -7278,27 +7600,80 @@ type ClientInterface interface {
 	// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/interest (the `SetInterest` operationId).
 	SetInterest(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, body SetInterestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListTicketLinks The ticket's links in both directions
+	// ListTicketLinks The ticket's links in both directions, inside its team
 	//
-	// Each link read from this ticket, under its reverse name when the ticket is the target
-	// (docs/adr/0012 D1). A link whose other end the caller cannot see is absent.
+	// Deprecated, replaced by `…/relations?kind=link`, which shows every link, the ends of other
+	// teams and those the caller may not see included, by their heads; kept in /api/v1 for one
+	// release, behaving as it did, and removed in a later one (docs/adr/0046 D7). Each link read
+	// from this ticket, under its reverse name when the ticket is the target (docs/adr/0012 D1). A
+	// link whose other end the caller cannot see, or is a ticket of another team, is absent.
 	//
 	// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/links (the `ListTicketLinks` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListTicketLinks(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListTicketLinksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveTicketLink Remove a link of this ticket, either end of it, by the link's id
+	//
+	// The way to remove a link whose other end the caller may not see — a placeholder shows no key
+	// (docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must
+	// be the link's source or its target, whatever the caller reads of the other end and whatever
+	// team keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this
+	// ticket, or none, answers exactly as a missing one, `404` "no such link", and removes nothing.
+	// The act is recorded on both tickets, the other end's in its own team's record — as
+	// `system:relation` where the caller holds no role in that team.
+	//
+	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link} (the `RemoveTicketLink` operationId).
+	RemoveTicketLink(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, link LinkID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UnlinkTicketFrom Remove a link to a ticket of any team by its canonical key
+	//
+	// A write on this ticket, either end of the link — its source or its target —, whatever the
+	// caller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket
+	// removes a link another team keeps to it as well. The link is found among this ticket's
+	// relations by the other end's key, so a key the caller sees as a head removes its link.
+	// Idempotent: no such link — or a key that names none — answers 204 as well. An end the caller
+	// may not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is
+	// recorded on both tickets, the other end's in its own team's record — as `system:relation`
+	// where the caller holds no role in that team.
+	//
+	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other} (the `UnlinkTicketFrom` operationId).
+	UnlinkTicketFrom(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LinkTicketTo Link this ticket, as the source, to a ticket of any team by its canonical key
+	//
+	// `other_team` and `other` are the other end's canonical key, <team>/<PROJECT>-<number>, a ticket
+	// of any team of the installation (docs/adr/0012 D2 as amended 2026-10-10). Set by a `member` or
+	// `admin` of this ticket's team with `write` scope, in the agent baseline (docs/adr/0043 D2), who
+	// reads the other ticket — at least a `viewer` of its team, its project open to them, a
+	// confidential one only when admitted. One they do not read answers exactly as one that does not
+	// exist, 404 `not_found` "no such ticket", so that trying keys tells nothing (docs/adr/0008 D2).
+	// Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second act for
+	// an existing one — a `relates-to` made from the other end included. An act on both tickets, the
+	// other end's in its own team's record (docs/adr/0012 D3). A `blocks` link that would close a
+	// cycle through any team is 409 `link_cycle` (D4).
+	//
+	// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other} (the `LinkTicketTo` operationId).
+	LinkTicketTo(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UnlinkTickets Remove a link
 	//
-	// Idempotent; removing a link that does not exist answers 204 as well.
+	// Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in
+	// the path, either end of the link — its source or its target —, whatever the caller reads of
+	// the other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.
 	//
 	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other} (the `UnlinkTickets` operationId).
 	UnlinkTickets(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// LinkTickets Link this ticket, as the source, to another ticket of the team
 	//
-	// Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second
-	// act for an existing one. A member's act with `write` scope, in the agent baseline
-	// (docs/adr/0043 D2). A `blocks` link that would close a cycle is 409 `link_cycle`
-	// (docs/adr/0012 D4); `relates-to` is symmetric and stored once.
+	// The short form inside the team (docs/adr/0007 D3); `…/links/{type}/{other_team}/{other}`
+	// links to a ticket of any team. Idempotent by its address (docs/adr/0045 D1): 201 for a new
+	// link, 200 without a second act for an existing one. A member's act with `write` scope on this
+	// ticket, in the agent baseline (docs/adr/0043 D2), who reads the other ticket: one they do not
+	// read is the 404 of one that does not exist (docs/adr/0012 D2). A `blocks` link that would close
+	// a cycle, through any team, is 409 `link_cycle` (docs/adr/0012 D4); `relates-to` is symmetric
+	// and stored once.
 	//
 	// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other} (the `LinkTickets` operationId).
 	LinkTickets(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7314,8 +7689,26 @@ type ClientInterface interface {
 	// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/markdown (the `ExportTicket` operationId).
 	ExportTicket(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// ListPrerequisites The ticket's prerequisite tree, or read upward its dependents
+	// ListPrerequisiteTree The ticket's prerequisite tree across teams, or read upward its dependents, by heads
 	//
+	// docs/adr/0012 D6 as amended 2026-10-10. `direction=down`, the default: the tickets that block
+	// this one, what blocks those, and so on; `direction=up`: its dependents. Every node is a head of
+	// any project or team, as the caller sees it. The walk goes on only from a ticket the caller
+	// reads: a head and a placeholder are leaves, and what lies behind them stays behind their
+	// team's membership (docs/adr/0005 D3, docs/adr/0065 D5). A node of the caller's own team they
+	// read shows its assignee and its progress; any other node neither. To a depth of eight, depth
+	// first, siblings in the order they were filed; a ticket under two others stands in full once and
+	// `repeated` elsewhere. `open` counts the open tickets of the whole tree whose state the caller
+	// reads, each once, never a placeholder.
+	//
+	// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisite-tree (the `ListPrerequisiteTree` operationId).
+	ListPrerequisiteTree(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListPrerequisiteTreeParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListPrerequisites The ticket's prerequisite tree inside its team, or read upward its dependents
+	//
+	// Deprecated, replaced by `…/prerequisite-tree`, whose nodes are heads of any team; kept in
+	// /api/v1 for one release, behaving as it did — a ticket of another team is absent with what lies
+	// behind it —, and removed in a later one (docs/adr/0046 D7).
 	// docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what
 	// blocks those, and so on — what has to be done before it can be finished. `direction=up`:
 	// its dependents, the tickets it blocks and what those block. To a depth of eight, depth
@@ -7327,6 +7720,8 @@ type ClientInterface interface {
 	// on every page; the done and dropped ones are `settled`.
 	//
 	// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisites (the `ListPrerequisites` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListPrerequisites(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListQuestions The ticket's questions by number
@@ -7447,6 +7842,19 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/rank (the `MoveTicketRank` operationId).
 	MoveTicketRank(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, body MoveTicketRankJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListTicketRelations The ticket's parent, children and links, of any project or team, by their heads
+	//
+	// Every relation of the ticket (docs/adr/0005 D3, docs/adr/0008 D2, docs/adr/0012 D2): its parent,
+	// its children and its links in both directions, each other end of any project or team shown as
+	// the caller sees it — readable, by its head where the caller holds no role in its team or its
+	// project is restricted from them (docs/adr/0034 D4), and as the placeholder `<team>
+	// [Confidential]` where they may not see it, in another team or their own (docs/adr/0065 D5). A
+	// deleted other end is absent. The parent first, then the children in the order they were filed,
+	// then the links in the order they were made.
+	//
+	// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/relations (the `ListTicketRelations` operationId).
+	ListTicketRelations(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListTicketRelationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListTicketTime The ticket's time entries the caller may see, and their sum
 	//
@@ -10287,12 +10695,19 @@ func (c *Client) GetTicket(ctx context.Context, team TeamSlug, project ProjectKe
 
 // UpdateTicketWithBody Change a ticket's fields
 //
-// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-// makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-// new assignee is 403 `session_required` — admitting a person takes a browser session
-// (docs/adr/0035 D5).
+// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+// that takes the ticket away from a parent of another team — clearing it or setting another —
+// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+// 2026-10-10).
+//
+// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+// confidential ticket — or one the change makes confidential — only to its own person or to
+// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+// takes a browser session (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -10326,12 +10741,19 @@ func (c *Client) UpdateTicketWithBody(ctx context.Context, team TeamSlug, projec
 
 // UpdateTicket Change a ticket's fields
 //
-// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-// makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-// new assignee is 403 `session_required` — admitting a person takes a browser session
-// (docs/adr/0035 D5).
+// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+// that takes the ticket away from a parent of another team — clearing it or setting another —
+// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+// 2026-10-10).
+//
+// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+// confidential ticket — or one the change makes confidential — only to its own person or to
+// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+// takes a browser session (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -10517,6 +10939,32 @@ func (c *Client) ReplaceTicketBodyWithBody(ctx context.Context, team TeamSlug, p
 // Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/body (the `ReplaceTicketBody` operationId).
 func (c *Client) ReplaceTicketBody(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ReplaceTicketBodyParams, body ReplaceTicketBodyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReplaceTicketBodyRequest(c.Server, team, project, number, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveTicketChild Remove a child of this ticket, of any project or team, by the id of the relation
+//
+// The parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a
+// writer of this ticket detaches a child of any project or team from it, whatever they read of
+// the child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The
+// child's side ends it by the update of its `parent`. The child's parent alone changes, its
+// version stays — an update of the child read before is refused with `412`, the parent being
+// part of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived
+// again. A relation that is no child of this ticket, or none, answers exactly as a missing one,
+// `404` "no such child", and removes nothing. The act `updated` is recorded on the child — in
+// its own team's record, as `system:relation` where the caller holds no role in that team — and
+// `detached` on this ticket.
+//
+// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child} (the `RemoveTicketChild` operationId).
+func (c *Client) RemoveTicketChild(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveTicketChildRequest(c.Server, team, project, number, child)
 	if err != nil {
 		return nil, err
 	}
@@ -10880,12 +11328,16 @@ func (c *Client) SetInterest(ctx context.Context, team TeamSlug, project Project
 	return c.Client.Do(req)
 }
 
-// ListTicketLinks The ticket's links in both directions
+// ListTicketLinks The ticket's links in both directions, inside its team
 //
-// Each link read from this ticket, under its reverse name when the ticket is the target
-// (docs/adr/0012 D1). A link whose other end the caller cannot see is absent.
+// Deprecated, replaced by `…/relations?kind=link`, which shows every link, the ends of other
+// teams and those the caller may not see included, by their heads; kept in /api/v1 for one
+// release, behaving as it did, and removed in a later one (docs/adr/0046 D7). Each link read
+// from this ticket, under its reverse name when the ticket is the target (docs/adr/0012 D1). A
+// link whose other end the caller cannot see, or is a ticket of another team, is absent.
 //
 // Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/links (the `ListTicketLinks` operationId).
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *Client) ListTicketLinks(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListTicketLinksParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListTicketLinksRequest(c.Server, team, project, number, params)
 	if err != nil {
@@ -10898,9 +11350,84 @@ func (c *Client) ListTicketLinks(ctx context.Context, team TeamSlug, project Pro
 	return c.Client.Do(req)
 }
 
+// RemoveTicketLink Remove a link of this ticket, either end of it, by the link's id
+//
+// The way to remove a link whose other end the caller may not see — a placeholder shows no key
+// (docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must
+// be the link's source or its target, whatever the caller reads of the other end and whatever
+// team keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this
+// ticket, or none, answers exactly as a missing one, `404` "no such link", and removes nothing.
+// The act is recorded on both tickets, the other end's in its own team's record — as
+// `system:relation` where the caller holds no role in that team.
+//
+// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link} (the `RemoveTicketLink` operationId).
+func (c *Client) RemoveTicketLink(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, link LinkID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveTicketLinkRequest(c.Server, team, project, number, link)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// UnlinkTicketFrom Remove a link to a ticket of any team by its canonical key
+//
+// A write on this ticket, either end of the link — its source or its target —, whatever the
+// caller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket
+// removes a link another team keeps to it as well. The link is found among this ticket's
+// relations by the other end's key, so a key the caller sees as a head removes its link.
+// Idempotent: no such link — or a key that names none — answers 204 as well. An end the caller
+// may not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is
+// recorded on both tickets, the other end's in its own team's record — as `system:relation`
+// where the caller holds no role in that team.
+//
+// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other} (the `UnlinkTicketFrom` operationId).
+func (c *Client) UnlinkTicketFrom(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUnlinkTicketFromRequest(c.Server, team, project, number, pType, otherTeam, other)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// LinkTicketTo Link this ticket, as the source, to a ticket of any team by its canonical key
+//
+// `other_team` and `other` are the other end's canonical key, <team>/<PROJECT>-<number>, a ticket
+// of any team of the installation (docs/adr/0012 D2 as amended 2026-10-10). Set by a `member` or
+// `admin` of this ticket's team with `write` scope, in the agent baseline (docs/adr/0043 D2), who
+// reads the other ticket — at least a `viewer` of its team, its project open to them, a
+// confidential one only when admitted. One they do not read answers exactly as one that does not
+// exist, 404 `not_found` "no such ticket", so that trying keys tells nothing (docs/adr/0008 D2).
+// Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second act for
+// an existing one — a `relates-to` made from the other end included. An act on both tickets, the
+// other end's in its own team's record (docs/adr/0012 D3). A `blocks` link that would close a
+// cycle through any team is 409 `link_cycle` (D4).
+//
+// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other} (the `LinkTicketTo` operationId).
+func (c *Client) LinkTicketTo(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLinkTicketToRequest(c.Server, team, project, number, pType, otherTeam, other)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // UnlinkTickets Remove a link
 //
-// Idempotent; removing a link that does not exist answers 204 as well.
+// Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in
+// the path, either end of the link — its source or its target —, whatever the caller reads of
+// the other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.
 //
 // Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other} (the `UnlinkTickets` operationId).
 func (c *Client) UnlinkTickets(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -10917,10 +11444,13 @@ func (c *Client) UnlinkTickets(ctx context.Context, team TeamSlug, project Proje
 
 // LinkTickets Link this ticket, as the source, to another ticket of the team
 //
-// Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second
-// act for an existing one. A member's act with `write` scope, in the agent baseline
-// (docs/adr/0043 D2). A `blocks` link that would close a cycle is 409 `link_cycle`
-// (docs/adr/0012 D4); `relates-to` is symmetric and stored once.
+// The short form inside the team (docs/adr/0007 D3); `…/links/{type}/{other_team}/{other}`
+// links to a ticket of any team. Idempotent by its address (docs/adr/0045 D1): 201 for a new
+// link, 200 without a second act for an existing one. A member's act with `write` scope on this
+// ticket, in the agent baseline (docs/adr/0043 D2), who reads the other ticket: one they do not
+// read is the 404 of one that does not exist (docs/adr/0012 D2). A `blocks` link that would close
+// a cycle, through any team, is 409 `link_cycle` (docs/adr/0012 D4); `relates-to` is symmetric
+// and stored once.
 //
 // Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other} (the `LinkTickets` operationId).
 func (c *Client) LinkTickets(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -10956,8 +11486,36 @@ func (c *Client) ExportTicket(ctx context.Context, team TeamSlug, project Projec
 	return c.Client.Do(req)
 }
 
-// ListPrerequisites The ticket's prerequisite tree, or read upward its dependents
+// ListPrerequisiteTree The ticket's prerequisite tree across teams, or read upward its dependents, by heads
 //
+// docs/adr/0012 D6 as amended 2026-10-10. `direction=down`, the default: the tickets that block
+// this one, what blocks those, and so on; `direction=up`: its dependents. Every node is a head of
+// any project or team, as the caller sees it. The walk goes on only from a ticket the caller
+// reads: a head and a placeholder are leaves, and what lies behind them stays behind their
+// team's membership (docs/adr/0005 D3, docs/adr/0065 D5). A node of the caller's own team they
+// read shows its assignee and its progress; any other node neither. To a depth of eight, depth
+// first, siblings in the order they were filed; a ticket under two others stands in full once and
+// `repeated` elsewhere. `open` counts the open tickets of the whole tree whose state the caller
+// reads, each once, never a placeholder.
+//
+// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisite-tree (the `ListPrerequisiteTree` operationId).
+func (c *Client) ListPrerequisiteTree(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListPrerequisiteTreeParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListPrerequisiteTreeRequest(c.Server, team, project, number, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListPrerequisites The ticket's prerequisite tree inside its team, or read upward its dependents
+//
+// Deprecated, replaced by `…/prerequisite-tree`, whose nodes are heads of any team; kept in
+// /api/v1 for one release, behaving as it did — a ticket of another team is absent with what lies
+// behind it —, and removed in a later one (docs/adr/0046 D7).
 // docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what
 // blocks those, and so on — what has to be done before it can be finished. `direction=up`:
 // its dependents, the tickets it blocks and what those block. To a depth of eight, depth
@@ -10969,6 +11527,7 @@ func (c *Client) ExportTicket(ctx context.Context, team TeamSlug, project Projec
 // on every page; the done and dropped ones are `settled`.
 //
 // Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisites (the `ListPrerequisites` operationId).
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *Client) ListPrerequisites(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListPrerequisitesRequest(c.Server, team, project, number, params)
 	if err != nil {
@@ -11200,6 +11759,29 @@ func (c *Client) MoveTicketRankWithBody(ctx context.Context, team TeamSlug, proj
 // Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/rank (the `MoveTicketRank` operationId).
 func (c *Client) MoveTicketRank(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, body MoveTicketRankJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewMoveTicketRankRequest(c.Server, team, project, number, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListTicketRelations The ticket's parent, children and links, of any project or team, by their heads
+//
+// Every relation of the ticket (docs/adr/0005 D3, docs/adr/0008 D2, docs/adr/0012 D2): its parent,
+// its children and its links in both directions, each other end of any project or team shown as
+// the caller sees it — readable, by its head where the caller holds no role in its team or its
+// project is restricted from them (docs/adr/0034 D4), and as the placeholder `<team>
+// [Confidential]` where they may not see it, in another team or their own (docs/adr/0065 D5). A
+// deleted other end is absent. The parent first, then the children in the order they were filed,
+// then the links in the order they were made.
+//
+// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/relations (the `ListTicketRelations` operationId).
+func (c *Client) ListTicketRelations(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListTicketRelationsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListTicketRelationsRequest(c.Server, team, project, number, params)
 	if err != nil {
 		return nil, err
 	}
@@ -17320,6 +17902,61 @@ func NewReplaceTicketBodyRequestWithBody(server string, team TeamSlug, project P
 	return req, nil
 }
 
+// NewRemoveTicketChildRequest constructs an http.Request for the RemoveTicketChild method
+func NewRemoveTicketChildRequest(server string, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "team", team, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam3 string
+
+	pathParam3, err = runtime.StyleParamWithOptions("simple", false, "child", child, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/teams/%s/projects/%s/tickets/%s/children/%s", pathParam0, pathParam1, pathParam2, pathParam3)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListCommentsRequest constructs an http.Request for the ListComments method
 func NewListCommentsRequest(server string, team TeamSlug, project ProjectKey, number TicketNumber, params *ListCommentsParams) (*http.Request, error) {
 	var err error
@@ -18349,6 +18986,199 @@ func NewListTicketLinksRequest(server string, team TeamSlug, project ProjectKey,
 	return req, nil
 }
 
+// NewRemoveTicketLinkRequest constructs an http.Request for the RemoveTicketLink method
+func NewRemoveTicketLinkRequest(server string, team TeamSlug, project ProjectKey, number TicketNumber, link LinkID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "team", team, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam3 string
+
+	pathParam3, err = runtime.StyleParamWithOptions("simple", false, "link", link, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/teams/%s/projects/%s/tickets/%s/links/%s", pathParam0, pathParam1, pathParam2, pathParam3)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUnlinkTicketFromRequest constructs an http.Request for the UnlinkTicketFrom method
+func NewUnlinkTicketFromRequest(server string, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "team", team, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam3 string
+
+	pathParam3, err = runtime.StyleParamWithOptions("simple", false, "type", pType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam4 string
+
+	pathParam4, err = runtime.StyleParamWithOptions("simple", false, "other_team", otherTeam, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam5 string
+
+	pathParam5, err = runtime.StyleParamWithOptions("simple", false, "other", other, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/teams/%s/projects/%s/tickets/%s/links/%s/%s/%s", pathParam0, pathParam1, pathParam2, pathParam3, pathParam4, pathParam5)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewLinkTicketToRequest constructs an http.Request for the LinkTicketTo method
+func NewLinkTicketToRequest(server string, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "team", team, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam3 string
+
+	pathParam3, err = runtime.StyleParamWithOptions("simple", false, "type", pType, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam4 string
+
+	pathParam4, err = runtime.StyleParamWithOptions("simple", false, "other_team", otherTeam, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam5 string
+
+	pathParam5, err = runtime.StyleParamWithOptions("simple", false, "other", other, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/teams/%s/projects/%s/tickets/%s/links/%s/%s/%s", pathParam0, pathParam1, pathParam2, pathParam3, pathParam4, pathParam5)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewUnlinkTicketsRequest constructs an http.Request for the UnlinkTickets method
 func NewUnlinkTicketsRequest(server string, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, other OtherTicketKey) (*http.Request, error) {
 	var err error
@@ -18516,6 +19346,120 @@ func NewExportTicketRequest(server string, team TeamSlug, project ProjectKey, nu
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
 	if err != nil {
 		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListPrerequisiteTreeRequest constructs an http.Request for the ListPrerequisiteTree method
+func NewListPrerequisiteTreeRequest(server string, team TeamSlug, project ProjectKey, number TicketNumber, params *ListPrerequisiteTreeParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "team", team, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/teams/%s/projects/%s/tickets/%s/prerequisite-tree", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Direction != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "direction", *params.Direction, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
 	}
 
 	return req, nil
@@ -19146,6 +20090,120 @@ func NewMoveTicketRankRequestWithBody(server string, team TeamSlug, project Proj
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListTicketRelationsRequest constructs an http.Request for the ListTicketRelations method
+func NewListTicketRelationsRequest(server string, team TeamSlug, project ProjectKey, number TicketNumber, params *ListTicketRelationsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "team", team, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/teams/%s/projects/%s/tickets/%s/relations", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Kind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "kind", *params.Kind, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "array", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
 
 	return req, nil
 }
@@ -22503,12 +23561,19 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateTicketWithBodyWithResponse Change a ticket's fields
 	//
-	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-	// new assignee is 403 `session_required` — admitting a person takes a browser session
-	// (docs/adr/0035 D5).
+	// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+	// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+	// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+	// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+	// that takes the ticket away from a parent of another team — clearing it or setting another —
+	// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+	// 2026-10-10).
+	//
+	// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+	// confidential ticket — or one the change makes confidential — only to its own person or to
+	// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+	// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+	// takes a browser session (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -22532,12 +23597,19 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateTicketWithResponse Change a ticket's fields
 	//
-	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-	// new assignee is 403 `session_required` — admitting a person takes a browser session
-	// (docs/adr/0035 D5).
+	// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+	// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+	// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+	// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+	// that takes the ticket away from a parent of another team — clearing it or setting another —
+	// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+	// 2026-10-10).
+	//
+	// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+	// confidential ticket — or one the change makes confidential — only to its own person or to
+	// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+	// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+	// takes a browser session (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -22652,6 +23724,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/body (the `ReplaceTicketBody` operationId).
 	ReplaceTicketBodyWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ReplaceTicketBodyParams, body ReplaceTicketBodyJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceTicketBodyResponse, error)
+
+	// RemoveTicketChildWithResponse Remove a child of this ticket, of any project or team, by the id of the relation
+	//
+	// The parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a
+	// writer of this ticket detaches a child of any project or team from it, whatever they read of
+	// the child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The
+	// child's side ends it by the update of its `parent`. The child's parent alone changes, its
+	// version stays — an update of the child read before is refused with `412`, the parent being
+	// part of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived
+	// again. A relation that is no child of this ticket, or none, answers exactly as a missing one,
+	// `404` "no such child", and removes nothing. The act `updated` is recorded on the child — in
+	// its own team's record, as `system:relation` where the caller holds no role in that team — and
+	// `detached` on this ticket.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child} (the `RemoveTicketChild` operationId).
+	RemoveTicketChildWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation, reqEditors ...RequestEditorFn) (*RemoveTicketChildResponse, error)
 
 	// ListCommentsWithResponse The ticket's comment thread
 	//
@@ -22850,19 +23940,75 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/interest (the `SetInterest` operationId).
 	SetInterestWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, body SetInterestJSONRequestBody, reqEditors ...RequestEditorFn) (*SetInterestResponse, error)
 
-	// ListTicketLinksWithResponse The ticket's links in both directions
+	// ListTicketLinksWithResponse The ticket's links in both directions, inside its team
 	//
-	// Each link read from this ticket, under its reverse name when the ticket is the target
-	// (docs/adr/0012 D1). A link whose other end the caller cannot see is absent.
+	// Deprecated, replaced by `…/relations?kind=link`, which shows every link, the ends of other
+	// teams and those the caller may not see included, by their heads; kept in /api/v1 for one
+	// release, behaving as it did, and removed in a later one (docs/adr/0046 D7). Each link read
+	// from this ticket, under its reverse name when the ticket is the target (docs/adr/0012 D1). A
+	// link whose other end the caller cannot see, or is a ticket of another team, is absent.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/links (the `ListTicketLinks` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListTicketLinksWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListTicketLinksParams, reqEditors ...RequestEditorFn) (*ListTicketLinksResponse, error)
+
+	// RemoveTicketLinkWithResponse Remove a link of this ticket, either end of it, by the link's id
+	//
+	// The way to remove a link whose other end the caller may not see — a placeholder shows no key
+	// (docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must
+	// be the link's source or its target, whatever the caller reads of the other end and whatever
+	// team keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this
+	// ticket, or none, answers exactly as a missing one, `404` "no such link", and removes nothing.
+	// The act is recorded on both tickets, the other end's in its own team's record — as
+	// `system:relation` where the caller holds no role in that team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link} (the `RemoveTicketLink` operationId).
+	RemoveTicketLinkWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, link LinkID, reqEditors ...RequestEditorFn) (*RemoveTicketLinkResponse, error)
+
+	// UnlinkTicketFromWithResponse Remove a link to a ticket of any team by its canonical key
+	//
+	// A write on this ticket, either end of the link — its source or its target —, whatever the
+	// caller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket
+	// removes a link another team keeps to it as well. The link is found among this ticket's
+	// relations by the other end's key, so a key the caller sees as a head removes its link.
+	// Idempotent: no such link — or a key that names none — answers 204 as well. An end the caller
+	// may not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is
+	// recorded on both tickets, the other end's in its own team's record — as `system:relation`
+	// where the caller holds no role in that team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other} (the `UnlinkTicketFrom` operationId).
+	UnlinkTicketFromWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey, reqEditors ...RequestEditorFn) (*UnlinkTicketFromResponse, error)
+
+	// LinkTicketToWithResponse Link this ticket, as the source, to a ticket of any team by its canonical key
+	//
+	// `other_team` and `other` are the other end's canonical key, <team>/<PROJECT>-<number>, a ticket
+	// of any team of the installation (docs/adr/0012 D2 as amended 2026-10-10). Set by a `member` or
+	// `admin` of this ticket's team with `write` scope, in the agent baseline (docs/adr/0043 D2), who
+	// reads the other ticket — at least a `viewer` of its team, its project open to them, a
+	// confidential one only when admitted. One they do not read answers exactly as one that does not
+	// exist, 404 `not_found` "no such ticket", so that trying keys tells nothing (docs/adr/0008 D2).
+	// Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second act for
+	// an existing one — a `relates-to` made from the other end included. An act on both tickets, the
+	// other end's in its own team's record (docs/adr/0012 D3). A `blocks` link that would close a
+	// cycle through any team is 409 `link_cycle` (D4).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other} (the `LinkTicketTo` operationId).
+	LinkTicketToWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey, reqEditors ...RequestEditorFn) (*LinkTicketToResponse, error)
 
 	// UnlinkTicketsWithResponse Remove a link
 	//
-	// Idempotent; removing a link that does not exist answers 204 as well.
+	// Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in
+	// the path, either end of the link — its source or its target —, whatever the caller reads of
+	// the other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -22871,10 +24017,13 @@ type ClientWithResponsesInterface interface {
 
 	// LinkTicketsWithResponse Link this ticket, as the source, to another ticket of the team
 	//
-	// Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second
-	// act for an existing one. A member's act with `write` scope, in the agent baseline
-	// (docs/adr/0043 D2). A `blocks` link that would close a cycle is 409 `link_cycle`
-	// (docs/adr/0012 D4); `relates-to` is symmetric and stored once.
+	// The short form inside the team (docs/adr/0007 D3); `…/links/{type}/{other_team}/{other}`
+	// links to a ticket of any team. Idempotent by its address (docs/adr/0045 D1): 201 for a new
+	// link, 200 without a second act for an existing one. A member's act with `write` scope on this
+	// ticket, in the agent baseline (docs/adr/0043 D2), who reads the other ticket: one they do not
+	// read is the 404 of one that does not exist (docs/adr/0012 D2). A `blocks` link that would close
+	// a cycle, through any team, is 409 `link_cycle` (docs/adr/0012 D4); `relates-to` is symmetric
+	// and stored once.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -22894,8 +24043,28 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/markdown (the `ExportTicket` operationId).
 	ExportTicketWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, reqEditors ...RequestEditorFn) (*ExportTicketResponse, error)
 
-	// ListPrerequisitesWithResponse The ticket's prerequisite tree, or read upward its dependents
+	// ListPrerequisiteTreeWithResponse The ticket's prerequisite tree across teams, or read upward its dependents, by heads
 	//
+	// docs/adr/0012 D6 as amended 2026-10-10. `direction=down`, the default: the tickets that block
+	// this one, what blocks those, and so on; `direction=up`: its dependents. Every node is a head of
+	// any project or team, as the caller sees it. The walk goes on only from a ticket the caller
+	// reads: a head and a placeholder are leaves, and what lies behind them stays behind their
+	// team's membership (docs/adr/0005 D3, docs/adr/0065 D5). A node of the caller's own team they
+	// read shows its assignee and its progress; any other node neither. To a depth of eight, depth
+	// first, siblings in the order they were filed; a ticket under two others stands in full once and
+	// `repeated` elsewhere. `open` counts the open tickets of the whole tree whose state the caller
+	// reads, each once, never a placeholder.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisite-tree (the `ListPrerequisiteTree` operationId).
+	ListPrerequisiteTreeWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListPrerequisiteTreeParams, reqEditors ...RequestEditorFn) (*ListPrerequisiteTreeResponse, error)
+
+	// ListPrerequisitesWithResponse The ticket's prerequisite tree inside its team, or read upward its dependents
+	//
+	// Deprecated, replaced by `…/prerequisite-tree`, whose nodes are heads of any team; kept in
+	// /api/v1 for one release, behaving as it did — a ticket of another team is absent with what lies
+	// behind it —, and removed in a later one (docs/adr/0046 D7).
 	// docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what
 	// blocks those, and so on — what has to be done before it can be finished. `direction=up`:
 	// its dependents, the tickets it blocks and what those block. To a depth of eight, depth
@@ -22909,6 +24078,8 @@ type ClientWithResponsesInterface interface {
 	// Returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisites (the `ListPrerequisites` operationId).
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListPrerequisitesWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams, reqEditors ...RequestEditorFn) (*ListPrerequisitesResponse, error)
 
 	// ListQuestionsWithResponse The ticket's questions by number
@@ -23035,6 +24206,21 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/rank (the `MoveTicketRank` operationId).
 	MoveTicketRankWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, body MoveTicketRankJSONRequestBody, reqEditors ...RequestEditorFn) (*MoveTicketRankResponse, error)
+
+	// ListTicketRelationsWithResponse The ticket's parent, children and links, of any project or team, by their heads
+	//
+	// Every relation of the ticket (docs/adr/0005 D3, docs/adr/0008 D2, docs/adr/0012 D2): its parent,
+	// its children and its links in both directions, each other end of any project or team shown as
+	// the caller sees it — readable, by its head where the caller holds no role in its team or its
+	// project is restricted from them (docs/adr/0034 D4), and as the placeholder `<team>
+	// [Confidential]` where they may not see it, in another team or their own (docs/adr/0065 D5). A
+	// deleted other end is absent. The parent first, then the children in the order they were filed,
+	// then the links in the order they were made.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/relations (the `ListTicketRelations` operationId).
+	ListTicketRelationsWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListTicketRelationsParams, reqEditors ...RequestEditorFn) (*ListTicketRelationsResponse, error)
 
 	// ListTicketTimeWithResponse The ticket's time entries the caller may see, and their sum
 	//
@@ -28351,6 +29537,54 @@ func (r ReplaceTicketBodyResponse) ContentType() string {
 	return ""
 }
 
+// RemoveTicketChildResponseDefaultHeaders the declared response headers of an HTTP default response for RemoveTicketChild
+type RemoveTicketChildResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type RemoveTicketChildResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *RemoveTicketChildResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RemoveTicketChildResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveTicketChildResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveTicketChildResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveTicketChildResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveTicketChildResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListCommentsResponse200Headers the declared response headers of an HTTP 200 response for ListComments
 type ListCommentsResponse200Headers struct {
 	ETag *string
@@ -29144,6 +30378,164 @@ func (r ListTicketLinksResponse) ContentType() string {
 	return ""
 }
 
+// RemoveTicketLinkResponseDefaultHeaders the declared response headers of an HTTP default response for RemoveTicketLink
+type RemoveTicketLinkResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type RemoveTicketLinkResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *RemoveTicketLinkResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RemoveTicketLinkResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveTicketLinkResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveTicketLinkResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveTicketLinkResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveTicketLinkResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// UnlinkTicketFromResponseDefaultHeaders the declared response headers of an HTTP default response for UnlinkTicketFrom
+type UnlinkTicketFromResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type UnlinkTicketFromResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *UnlinkTicketFromResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UnlinkTicketFromResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r UnlinkTicketFromResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r UnlinkTicketFromResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UnlinkTicketFromResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r UnlinkTicketFromResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// LinkTicketToResponseDefaultHeaders the declared response headers of an HTTP default response for LinkTicketTo
+type LinkTicketToResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type LinkTicketToResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *Relation
+	// JSON201 the response for an HTTP 201 `application/json` response
+	JSON201 *Relation
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *LinkTicketToResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r LinkTicketToResponse) GetJSON200() *Relation {
+	return r.JSON200
+}
+
+// GetJSON201 returns the response for an HTTP 201 `application/json` response
+func (r LinkTicketToResponse) GetJSON201() *Relation {
+	return r.JSON201
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LinkTicketToResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r LinkTicketToResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r LinkTicketToResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LinkTicketToResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r LinkTicketToResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // UnlinkTicketsResponseDefaultHeaders the declared response headers of an HTTP default response for UnlinkTickets
 type UnlinkTicketsResponseDefaultHeaders struct {
 	XRequestId *string
@@ -29303,6 +30695,75 @@ func (r ExportTicketResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ExportTicketResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListPrerequisiteTreeResponse200Headers the declared response headers of an HTTP 200 response for ListPrerequisiteTree
+type ListPrerequisiteTreeResponse200Headers struct {
+	ETag *string
+}
+
+// ListPrerequisiteTreeResponse304Headers the declared response headers of an HTTP 304 response for ListPrerequisiteTree
+type ListPrerequisiteTreeResponse304Headers struct {
+	ETag *string
+}
+
+// ListPrerequisiteTreeResponseDefaultHeaders the declared response headers of an HTTP default response for ListPrerequisiteTree
+type ListPrerequisiteTreeResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListPrerequisiteTreeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *PrerequisiteHeadTree
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListPrerequisiteTreeResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListPrerequisiteTreeResponse304Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListPrerequisiteTreeResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListPrerequisiteTreeResponse) GetJSON200() *PrerequisiteHeadTree {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListPrerequisiteTreeResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListPrerequisiteTreeResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListPrerequisiteTreeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListPrerequisiteTreeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListPrerequisiteTreeResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -29814,6 +31275,75 @@ func (r MoveTicketRankResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r MoveTicketRankResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListTicketRelationsResponse200Headers the declared response headers of an HTTP 200 response for ListTicketRelations
+type ListTicketRelationsResponse200Headers struct {
+	ETag *string
+}
+
+// ListTicketRelationsResponse304Headers the declared response headers of an HTTP 304 response for ListTicketRelations
+type ListTicketRelationsResponse304Headers struct {
+	ETag *string
+}
+
+// ListTicketRelationsResponseDefaultHeaders the declared response headers of an HTTP default response for ListTicketRelations
+type ListTicketRelationsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListTicketRelationsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RelationList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListTicketRelationsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListTicketRelationsResponse304Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListTicketRelationsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListTicketRelationsResponse) GetJSON200() *RelationList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListTicketRelationsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListTicketRelationsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListTicketRelationsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListTicketRelationsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListTicketRelationsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -33184,12 +34714,19 @@ func (c *ClientWithResponses) GetTicketWithResponse(ctx context.Context, team Te
 
 // UpdateTicketWithBodyWithResponse Change a ticket's fields
 //
-// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-// makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-// new assignee is 403 `session_required` — admitting a person takes a browser session
-// (docs/adr/0035 D5).
+// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+// that takes the ticket away from a parent of another team — clearing it or setting another —
+// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+// 2026-10-10).
+//
+// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+// confidential ticket — or one the change makes confidential — only to its own person or to
+// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+// takes a browser session (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -33219,12 +34756,19 @@ func (c *ClientWithResponses) UpdateTicketWithBodyWithResponse(ctx context.Conte
 
 // UpdateTicketWithResponse Change a ticket's fields
 //
-// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-// makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-// new assignee is 403 `session_required` — admitting a person takes a browser session
-// (docs/adr/0035 D5).
+// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+// that takes the ticket away from a parent of another team — clearing it or setting another —
+// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+// 2026-10-10).
+//
+// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+// confidential ticket — or one the change makes confidential — only to its own person or to
+// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+// takes a browser session (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -33392,6 +34936,30 @@ func (c *ClientWithResponses) ReplaceTicketBodyWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseReplaceTicketBodyResponse(rsp)
+}
+
+// RemoveTicketChildWithResponse Remove a child of this ticket, of any project or team, by the id of the relation
+//
+// The parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a
+// writer of this ticket detaches a child of any project or team from it, whatever they read of
+// the child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The
+// child's side ends it by the update of its `parent`. The child's parent alone changes, its
+// version stays — an update of the child read before is refused with `412`, the parent being
+// part of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived
+// again. A relation that is no child of this ticket, or none, answers exactly as a missing one,
+// `404` "no such child", and removes nothing. The act `updated` is recorded on the child — in
+// its own team's record, as `system:relation` where the caller holds no role in that team — and
+// `detached` on this ticket.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child} (the `RemoveTicketChild` operationId).
+func (c *ClientWithResponses) RemoveTicketChildWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation, reqEditors ...RequestEditorFn) (*RemoveTicketChildResponse, error) {
+	rsp, err := c.RemoveTicketChild(ctx, team, project, number, child, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveTicketChildResponse(rsp)
 }
 
 // ListCommentsWithResponse The ticket's comment thread
@@ -33693,14 +35261,19 @@ func (c *ClientWithResponses) SetInterestWithResponse(ctx context.Context, team 
 	return ParseSetInterestResponse(rsp)
 }
 
-// ListTicketLinksWithResponse The ticket's links in both directions
+// ListTicketLinksWithResponse The ticket's links in both directions, inside its team
 //
-// Each link read from this ticket, under its reverse name when the ticket is the target
-// (docs/adr/0012 D1). A link whose other end the caller cannot see is absent.
+// Deprecated, replaced by `…/relations?kind=link`, which shows every link, the ends of other
+// teams and those the caller may not see included, by their heads; kept in /api/v1 for one
+// release, behaving as it did, and removed in a later one (docs/adr/0046 D7). Each link read
+// from this ticket, under its reverse name when the ticket is the target (docs/adr/0012 D1). A
+// link whose other end the caller cannot see, or is a ticket of another team, is absent.
 //
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/links (the `ListTicketLinks` operationId).
+//
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *ClientWithResponses) ListTicketLinksWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListTicketLinksParams, reqEditors ...RequestEditorFn) (*ListTicketLinksResponse, error) {
 	rsp, err := c.ListTicketLinks(ctx, team, project, number, params, reqEditors...)
 	if err != nil {
@@ -33709,9 +35282,78 @@ func (c *ClientWithResponses) ListTicketLinksWithResponse(ctx context.Context, t
 	return ParseListTicketLinksResponse(rsp)
 }
 
+// RemoveTicketLinkWithResponse Remove a link of this ticket, either end of it, by the link's id
+//
+// The way to remove a link whose other end the caller may not see — a placeholder shows no key
+// (docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must
+// be the link's source or its target, whatever the caller reads of the other end and whatever
+// team keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this
+// ticket, or none, answers exactly as a missing one, `404` "no such link", and removes nothing.
+// The act is recorded on both tickets, the other end's in its own team's record — as
+// `system:relation` where the caller holds no role in that team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link} (the `RemoveTicketLink` operationId).
+func (c *ClientWithResponses) RemoveTicketLinkWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, link LinkID, reqEditors ...RequestEditorFn) (*RemoveTicketLinkResponse, error) {
+	rsp, err := c.RemoveTicketLink(ctx, team, project, number, link, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveTicketLinkResponse(rsp)
+}
+
+// UnlinkTicketFromWithResponse Remove a link to a ticket of any team by its canonical key
+//
+// A write on this ticket, either end of the link — its source or its target —, whatever the
+// caller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket
+// removes a link another team keeps to it as well. The link is found among this ticket's
+// relations by the other end's key, so a key the caller sees as a head removes its link.
+// Idempotent: no such link — or a key that names none — answers 204 as well. An end the caller
+// may not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is
+// recorded on both tickets, the other end's in its own team's record — as `system:relation`
+// where the caller holds no role in that team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other} (the `UnlinkTicketFrom` operationId).
+func (c *ClientWithResponses) UnlinkTicketFromWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey, reqEditors ...RequestEditorFn) (*UnlinkTicketFromResponse, error) {
+	rsp, err := c.UnlinkTicketFrom(ctx, team, project, number, pType, otherTeam, other, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUnlinkTicketFromResponse(rsp)
+}
+
+// LinkTicketToWithResponse Link this ticket, as the source, to a ticket of any team by its canonical key
+//
+// `other_team` and `other` are the other end's canonical key, <team>/<PROJECT>-<number>, a ticket
+// of any team of the installation (docs/adr/0012 D2 as amended 2026-10-10). Set by a `member` or
+// `admin` of this ticket's team with `write` scope, in the agent baseline (docs/adr/0043 D2), who
+// reads the other ticket — at least a `viewer` of its team, its project open to them, a
+// confidential one only when admitted. One they do not read answers exactly as one that does not
+// exist, 404 `not_found` "no such ticket", so that trying keys tells nothing (docs/adr/0008 D2).
+// Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second act for
+// an existing one — a `relates-to` made from the other end included. An act on both tickets, the
+// other end's in its own team's record (docs/adr/0012 D3). A `blocks` link that would close a
+// cycle through any team is 409 `link_cycle` (D4).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other} (the `LinkTicketTo` operationId).
+func (c *ClientWithResponses) LinkTicketToWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey, reqEditors ...RequestEditorFn) (*LinkTicketToResponse, error) {
+	rsp, err := c.LinkTicketTo(ctx, team, project, number, pType, otherTeam, other, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLinkTicketToResponse(rsp)
+}
+
 // UnlinkTicketsWithResponse Remove a link
 //
-// Idempotent; removing a link that does not exist answers 204 as well.
+// Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in
+// the path, either end of the link — its source or its target —, whatever the caller reads of
+// the other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -33726,10 +35368,13 @@ func (c *ClientWithResponses) UnlinkTicketsWithResponse(ctx context.Context, tea
 
 // LinkTicketsWithResponse Link this ticket, as the source, to another ticket of the team
 //
-// Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second
-// act for an existing one. A member's act with `write` scope, in the agent baseline
-// (docs/adr/0043 D2). A `blocks` link that would close a cycle is 409 `link_cycle`
-// (docs/adr/0012 D4); `relates-to` is symmetric and stored once.
+// The short form inside the team (docs/adr/0007 D3); `…/links/{type}/{other_team}/{other}`
+// links to a ticket of any team. Idempotent by its address (docs/adr/0045 D1): 201 for a new
+// link, 200 without a second act for an existing one. A member's act with `write` scope on this
+// ticket, in the agent baseline (docs/adr/0043 D2), who reads the other ticket: one they do not
+// read is the 404 of one that does not exist (docs/adr/0012 D2). A `blocks` link that would close
+// a cycle, through any team, is 409 `link_cycle` (docs/adr/0012 D4); `relates-to` is symmetric
+// and stored once.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -33761,8 +35406,34 @@ func (c *ClientWithResponses) ExportTicketWithResponse(ctx context.Context, team
 	return ParseExportTicketResponse(rsp)
 }
 
-// ListPrerequisitesWithResponse The ticket's prerequisite tree, or read upward its dependents
+// ListPrerequisiteTreeWithResponse The ticket's prerequisite tree across teams, or read upward its dependents, by heads
 //
+// docs/adr/0012 D6 as amended 2026-10-10. `direction=down`, the default: the tickets that block
+// this one, what blocks those, and so on; `direction=up`: its dependents. Every node is a head of
+// any project or team, as the caller sees it. The walk goes on only from a ticket the caller
+// reads: a head and a placeholder are leaves, and what lies behind them stays behind their
+// team's membership (docs/adr/0005 D3, docs/adr/0065 D5). A node of the caller's own team they
+// read shows its assignee and its progress; any other node neither. To a depth of eight, depth
+// first, siblings in the order they were filed; a ticket under two others stands in full once and
+// `repeated` elsewhere. `open` counts the open tickets of the whole tree whose state the caller
+// reads, each once, never a placeholder.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisite-tree (the `ListPrerequisiteTree` operationId).
+func (c *ClientWithResponses) ListPrerequisiteTreeWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListPrerequisiteTreeParams, reqEditors ...RequestEditorFn) (*ListPrerequisiteTreeResponse, error) {
+	rsp, err := c.ListPrerequisiteTree(ctx, team, project, number, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListPrerequisiteTreeResponse(rsp)
+}
+
+// ListPrerequisitesWithResponse The ticket's prerequisite tree inside its team, or read upward its dependents
+//
+// Deprecated, replaced by `…/prerequisite-tree`, whose nodes are heads of any team; kept in
+// /api/v1 for one release, behaving as it did — a ticket of another team is absent with what lies
+// behind it —, and removed in a later one (docs/adr/0046 D7).
 // docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what
 // blocks those, and so on — what has to be done before it can be finished. `direction=up`:
 // its dependents, the tickets it blocks and what those block. To a depth of eight, depth
@@ -33776,6 +35447,8 @@ func (c *ClientWithResponses) ExportTicketWithResponse(ctx context.Context, team
 // Returns a wrapper object for the known response body format(s).
 //
 // Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisites (the `ListPrerequisites` operationId).
+//
+// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 func (c *ClientWithResponses) ListPrerequisitesWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListPrerequisitesParams, reqEditors ...RequestEditorFn) (*ListPrerequisitesResponse, error) {
 	rsp, err := c.ListPrerequisites(ctx, team, project, number, params, reqEditors...)
 	if err != nil {
@@ -33973,6 +35646,27 @@ func (c *ClientWithResponses) MoveTicketRankWithResponse(ctx context.Context, te
 		return nil, err
 	}
 	return ParseMoveTicketRankResponse(rsp)
+}
+
+// ListTicketRelationsWithResponse The ticket's parent, children and links, of any project or team, by their heads
+//
+// Every relation of the ticket (docs/adr/0005 D3, docs/adr/0008 D2, docs/adr/0012 D2): its parent,
+// its children and its links in both directions, each other end of any project or team shown as
+// the caller sees it — readable, by its head where the caller holds no role in its team or its
+// project is restricted from them (docs/adr/0034 D4), and as the placeholder `<team>
+// [Confidential]` where they may not see it, in another team or their own (docs/adr/0065 D5). A
+// deleted other end is absent. The parent first, then the children in the order they were filed,
+// then the links in the order they were made.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/relations (the `ListTicketRelations` operationId).
+func (c *ClientWithResponses) ListTicketRelationsWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListTicketRelationsParams, reqEditors ...RequestEditorFn) (*ListTicketRelationsResponse, error) {
+	rsp, err := c.ListTicketRelations(ctx, team, project, number, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListTicketRelationsResponse(rsp)
 }
 
 // ListTicketTimeWithResponse The ticket's time entries the caller may see, and their sum
@@ -39022,6 +40716,48 @@ func ParseReplaceTicketBodyResponse(rsp *http.Response) (*ReplaceTicketBodyRespo
 	return response, nil
 }
 
+// ParseRemoveTicketChildResponse parses an HTTP response from a RemoveTicketChildWithResponse call
+func ParseRemoveTicketChildResponse(rsp *http.Response) (*RemoveTicketChildResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveTicketChildResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers RemoveTicketChildResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListCommentsResponse parses an HTTP response from a ListCommentsWithResponse call
 func ParseListCommentsResponse(rsp *http.Response) (*ListCommentsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -39752,6 +41488,143 @@ func ParseListTicketLinksResponse(rsp *http.Response) (*ListTicketLinksResponse,
 	return response, nil
 }
 
+// ParseRemoveTicketLinkResponse parses an HTTP response from a RemoveTicketLinkWithResponse call
+func ParseRemoveTicketLinkResponse(rsp *http.Response) (*RemoveTicketLinkResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveTicketLinkResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers RemoveTicketLinkResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseUnlinkTicketFromResponse parses an HTTP response from a UnlinkTicketFromWithResponse call
+func ParseUnlinkTicketFromResponse(rsp *http.Response) (*UnlinkTicketFromResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UnlinkTicketFromResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers UnlinkTicketFromResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseLinkTicketToResponse parses an HTTP response from a LinkTicketToWithResponse call
+func ParseLinkTicketToResponse(rsp *http.Response) (*LinkTicketToResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LinkTicketToResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Relation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest Relation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers LinkTicketToResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseUnlinkTicketsResponse parses an HTTP response from a UnlinkTicketsWithResponse call
 func ParseUnlinkTicketsResponse(rsp *http.Response) (*UnlinkTicketsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -39883,6 +41756,75 @@ func ParseExportTicketResponse(rsp *http.Response) (*ExportTicketResponse, error
 		response.Headers200 = &headers
 	case true:
 		var headers ExportTicketResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListPrerequisiteTreeResponse parses an HTTP response from a ListPrerequisiteTreeWithResponse call
+func ParseListPrerequisiteTreeResponse(rsp *http.Response) (*ListPrerequisiteTreeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListPrerequisiteTreeResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PrerequisiteHeadTree
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListPrerequisiteTreeResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListPrerequisiteTreeResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
+	case true:
+		var headers ListPrerequisiteTreeResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -40364,6 +42306,75 @@ func ParseMoveTicketRankResponse(rsp *http.Response) (*MoveTicketRankResponse, e
 		response.Headers200 = &headers
 	case true:
 		var headers MoveTicketRankResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListTicketRelationsResponse parses an HTTP response from a ListTicketRelationsWithResponse call
+func ParseListTicketRelationsResponse(rsp *http.Response) (*ListTicketRelationsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListTicketRelationsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RelationList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListTicketRelationsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListTicketRelationsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
+	case true:
+		var headers ListTicketRelationsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -41758,6 +43769,9 @@ type ServerInterface interface {
 	// ReplaceTicketBody Replace the ticket's body
 	// (PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/body)
 	ReplaceTicketBody(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ReplaceTicketBodyParams)
+	// RemoveTicketChild Remove a child of this ticket, of any project or team, by the id of the relation
+	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child})
+	RemoveTicketChild(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation)
 	// ListComments The ticket's comment thread
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/comments)
 	ListComments(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ListCommentsParams)
@@ -41794,9 +43808,20 @@ type ServerInterface interface {
 	// SetInterest Set the caller's own stake
 	// (PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/interest)
 	SetInterest(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber)
-	// ListTicketLinks The ticket's links in both directions
+	// ListTicketLinks The ticket's links in both directions, inside its team
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/links)
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListTicketLinks(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ListTicketLinksParams)
+	// RemoveTicketLink Remove a link of this ticket, either end of it, by the link's id
+	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link})
+	RemoveTicketLink(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, link LinkID)
+	// UnlinkTicketFrom Remove a link to a ticket of any team by its canonical key
+	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other})
+	UnlinkTicketFrom(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey)
+	// LinkTicketTo Link this ticket, as the source, to a ticket of any team by its canonical key
+	// (PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other})
+	LinkTicketTo(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey)
 	// UnlinkTickets Remove a link
 	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other})
 	UnlinkTickets(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, other OtherTicketKey)
@@ -41806,8 +43831,13 @@ type ServerInterface interface {
 	// ExportTicket The canonical Markdown of the ticket
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/markdown)
 	ExportTicket(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber)
-	// ListPrerequisites The ticket's prerequisite tree, or read upward its dependents
+	// ListPrerequisiteTree The ticket's prerequisite tree across teams, or read upward its dependents, by heads
+	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisite-tree)
+	ListPrerequisiteTree(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ListPrerequisiteTreeParams)
+	// ListPrerequisites The ticket's prerequisite tree inside its team, or read upward its dependents
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisites)
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListPrerequisites(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ListPrerequisitesParams)
 	// ListQuestions The ticket's questions by number
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/questions)
@@ -41830,6 +43860,9 @@ type ServerInterface interface {
 	// MoveTicketRank Place the ticket directly after or before another ticket of its project
 	// (PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/rank)
 	MoveTicketRank(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber)
+	// ListTicketRelations The ticket's parent, children and links, of any project or team, by their heads
+	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/relations)
+	ListTicketRelations(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ListTicketRelationsParams)
 	// ListTicketTime The ticket's time entries the caller may see, and their sum
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries)
 	ListTicketTime(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ListTicketTimeParams)
@@ -46531,6 +48564,59 @@ func (siw *ServerInterfaceWrapper) ReplaceTicketBody(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// RemoveTicketChild operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTicketChild(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "team" -------------
+	var team TeamSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "team", r.PathValue("team"), &team, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "team", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "child" -------------
+	var child ChildRelation
+
+	err = runtime.BindStyledParameterWithOptions("simple", "child", r.PathValue("child"), &child, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "child", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTicketChild(w, r, team, project, number, child)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListComments operation middleware
 func (siw *ServerInterfaceWrapper) ListComments(w http.ResponseWriter, r *http.Request) {
 
@@ -47456,6 +49542,201 @@ func (siw *ServerInterfaceWrapper) ListTicketLinks(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// RemoveTicketLink operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTicketLink(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "team" -------------
+	var team TeamSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "team", r.PathValue("team"), &team, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "team", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "link" -------------
+	var link LinkID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "link", r.PathValue("link"), &link, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "link", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTicketLink(w, r, team, project, number, link)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UnlinkTicketFrom operation middleware
+func (siw *ServerInterfaceWrapper) UnlinkTicketFrom(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "team" -------------
+	var team TeamSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "team", r.PathValue("team"), &team, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "team", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "type" -------------
+	var pType PathLinkType
+
+	err = runtime.BindStyledParameterWithOptions("simple", "type", r.PathValue("type"), &pType, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "other_team" -------------
+	var otherTeam OtherTeamSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "other_team", r.PathValue("other_team"), &otherTeam, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "other_team", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "other" -------------
+	var other OtherTicketKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "other", r.PathValue("other"), &other, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "other", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnlinkTicketFrom(w, r, team, project, number, pType, otherTeam, other)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LinkTicketTo operation middleware
+func (siw *ServerInterfaceWrapper) LinkTicketTo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "team" -------------
+	var team TeamSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "team", r.PathValue("team"), &team, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "team", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "type" -------------
+	var pType PathLinkType
+
+	err = runtime.BindStyledParameterWithOptions("simple", "type", r.PathValue("type"), &pType, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "other_team" -------------
+	var otherTeam OtherTeamSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "other_team", r.PathValue("other_team"), &otherTeam, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "other_team", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "other" -------------
+	var other OtherTicketKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "other", r.PathValue("other"), &other, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "other", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LinkTicketTo(w, r, team, project, number, pType, otherTeam, other)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UnlinkTickets operation middleware
 func (siw *ServerInterfaceWrapper) UnlinkTickets(w http.ResponseWriter, r *http.Request) {
 
@@ -47615,6 +49896,113 @@ func (siw *ServerInterfaceWrapper) ExportTicket(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ExportTicket(w, r, team, project, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPrerequisiteTree operation middleware
+func (siw *ServerInterfaceWrapper) ListPrerequisiteTree(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "team" -------------
+	var team TeamSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "team", r.PathValue("team"), &team, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "team", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPrerequisiteTreeParams
+
+	// ------------- Optional query parameter "direction" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "direction", r.URL.Query(), &params.Direction, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "direction"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "direction", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPrerequisiteTree(w, r, team, project, number, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -48188,6 +50576,113 @@ func (siw *ServerInterfaceWrapper) MoveTicketRank(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MoveTicketRank(w, r, team, project, number)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListTicketRelations operation middleware
+func (siw *ServerInterfaceWrapper) ListTicketRelations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "team" -------------
+	var team TeamSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "team", r.PathValue("team"), &team, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "team", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTicketRelationsParams
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTicketRelations(w, r, team, project, number, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -49950,6 +52445,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/attachments/{attachment}/content", wrapper.DownloadAttachment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/body", wrapper.GetTicketBody)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/body", wrapper.ReplaceTicketBody)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child}", wrapper.RemoveTicketChild)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments", wrapper.ListComments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments", wrapper.AddComment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments/{comment}", wrapper.GetComment)
@@ -49963,9 +52459,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/interest", wrapper.ListInterest)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/interest", wrapper.SetInterest)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/links", wrapper.ListTicketLinks)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link}", wrapper.RemoveTicketLink)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}", wrapper.UnlinkTicketFrom)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}", wrapper.LinkTicketTo)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}", wrapper.UnlinkTickets)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}", wrapper.LinkTickets)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/markdown", wrapper.ExportTicket)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisite-tree", wrapper.ListPrerequisiteTree)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisites", wrapper.ListPrerequisites)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/questions", wrapper.ListQuestions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/questions", wrapper.AskQuestion)
@@ -49974,6 +52474,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/questions/{question}/answer", wrapper.AnswerQuestion)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/questions/{question}/withdrawal", wrapper.WithdrawQuestion)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/rank", wrapper.MoveTicketRank)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/relations", wrapper.ListTicketRelations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries", wrapper.ListTicketTime)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries", wrapper.BookTime)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries/{entry}", wrapper.GetTimeEntry)
@@ -54327,6 +56828,46 @@ func (response ReplaceTicketBodydefaultApplicationProblemPlusJSONResponse) Visit
 	return err
 }
 
+type RemoveTicketChildRequestObject struct {
+	Team    TeamSlug      `json:"team"`
+	Project ProjectKey    `json:"project"`
+	Number  TicketNumber  `json:"number"`
+	Child   ChildRelation `json:"child"`
+}
+
+type RemoveTicketChildResponseObject interface {
+	VisitRemoveTicketChildResponse(w http.ResponseWriter) error
+}
+
+type RemoveTicketChild204Response struct {
+}
+
+func (response RemoveTicketChild204Response) VisitRemoveTicketChildResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveTicketChilddefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RemoveTicketChilddefaultApplicationProblemPlusJSONResponse) VisitRemoveTicketChildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListCommentsRequestObject struct {
 	Team    TeamSlug     `json:"team"`
 	Project ProjectKey   `json:"project"`
@@ -55068,6 +57609,150 @@ func (response ListTicketLinksdefaultApplicationProblemPlusJSONResponse) VisitLi
 	return err
 }
 
+type RemoveTicketLinkRequestObject struct {
+	Team    TeamSlug     `json:"team"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+	Link    LinkID       `json:"link"`
+}
+
+type RemoveTicketLinkResponseObject interface {
+	VisitRemoveTicketLinkResponse(w http.ResponseWriter) error
+}
+
+type RemoveTicketLink204Response struct {
+}
+
+func (response RemoveTicketLink204Response) VisitRemoveTicketLinkResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveTicketLinkdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RemoveTicketLinkdefaultApplicationProblemPlusJSONResponse) VisitRemoveTicketLinkResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UnlinkTicketFromRequestObject struct {
+	Team      TeamSlug       `json:"team"`
+	Project   ProjectKey     `json:"project"`
+	Number    TicketNumber   `json:"number"`
+	Type      PathLinkType   `json:"type"`
+	OtherTeam OtherTeamSlug  `json:"other_team"`
+	Other     OtherTicketKey `json:"other"`
+}
+
+type UnlinkTicketFromResponseObject interface {
+	VisitUnlinkTicketFromResponse(w http.ResponseWriter) error
+}
+
+type UnlinkTicketFrom204Response struct {
+}
+
+func (response UnlinkTicketFrom204Response) VisitUnlinkTicketFromResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type UnlinkTicketFromdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response UnlinkTicketFromdefaultApplicationProblemPlusJSONResponse) VisitUnlinkTicketFromResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LinkTicketToRequestObject struct {
+	Team      TeamSlug       `json:"team"`
+	Project   ProjectKey     `json:"project"`
+	Number    TicketNumber   `json:"number"`
+	Type      PathLinkType   `json:"type"`
+	OtherTeam OtherTeamSlug  `json:"other_team"`
+	Other     OtherTicketKey `json:"other"`
+}
+
+type LinkTicketToResponseObject interface {
+	VisitLinkTicketToResponse(w http.ResponseWriter) error
+}
+
+type LinkTicketTo200JSONResponse Relation
+
+func (response LinkTicketTo200JSONResponse) VisitLinkTicketToResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LinkTicketTo201JSONResponse Relation
+
+func (response LinkTicketTo201JSONResponse) VisitLinkTicketToResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type LinkTicketTodefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response LinkTicketTodefaultApplicationProblemPlusJSONResponse) VisitLinkTicketToResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type UnlinkTicketsRequestObject struct {
 	Team    TeamSlug       `json:"team"`
 	Project ProjectKey     `json:"project"`
@@ -55215,6 +57900,72 @@ type ExportTicketdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ExportTicketdefaultApplicationProblemPlusJSONResponse) VisitExportTicketResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPrerequisiteTreeRequestObject struct {
+	Team    TeamSlug     `json:"team"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+	Params  ListPrerequisiteTreeParams
+}
+
+type ListPrerequisiteTreeResponseObject interface {
+	VisitListPrerequisiteTreeResponse(w http.ResponseWriter) error
+}
+
+type ListPrerequisiteTree200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListPrerequisiteTree200JSONResponse struct {
+	Body    PrerequisiteHeadTree
+	Headers ListPrerequisiteTree200ResponseHeaders
+}
+
+func (response ListPrerequisiteTree200JSONResponse) VisitListPrerequisiteTreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPrerequisiteTree304Response = NotModifiedResponse
+
+func (response ListPrerequisiteTree304Response) VisitListPrerequisiteTreeResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type ListPrerequisiteTreedefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListPrerequisiteTreedefaultApplicationProblemPlusJSONResponse) VisitListPrerequisiteTreeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -55692,6 +58443,72 @@ type MoveTicketRankdefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response MoveTicketRankdefaultApplicationProblemPlusJSONResponse) VisitMoveTicketRankResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTicketRelationsRequestObject struct {
+	Team    TeamSlug     `json:"team"`
+	Project ProjectKey   `json:"project"`
+	Number  TicketNumber `json:"number"`
+	Params  ListTicketRelationsParams
+}
+
+type ListTicketRelationsResponseObject interface {
+	VisitListTicketRelationsResponse(w http.ResponseWriter) error
+}
+
+type ListTicketRelations200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListTicketRelations200JSONResponse struct {
+	Body    RelationList
+	Headers ListTicketRelations200ResponseHeaders
+}
+
+func (response ListTicketRelations200JSONResponse) VisitListTicketRelationsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListTicketRelations304Response = NotModifiedResponse
+
+func (response ListTicketRelations304Response) VisitListTicketRelationsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type ListTicketRelationsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListTicketRelationsdefaultApplicationProblemPlusJSONResponse) VisitListTicketRelationsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -57069,6 +59886,9 @@ type StrictServerInterface interface {
 	// ReplaceTicketBody Replace the ticket's body
 	// (PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/body)
 	ReplaceTicketBody(ctx context.Context, request ReplaceTicketBodyRequestObject) (ReplaceTicketBodyResponseObject, error)
+	// RemoveTicketChild Remove a child of this ticket, of any project or team, by the id of the relation
+	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child})
+	RemoveTicketChild(ctx context.Context, request RemoveTicketChildRequestObject) (RemoveTicketChildResponseObject, error)
 	// ListComments The ticket's comment thread
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/comments)
 	ListComments(ctx context.Context, request ListCommentsRequestObject) (ListCommentsResponseObject, error)
@@ -57105,9 +59925,20 @@ type StrictServerInterface interface {
 	// SetInterest Set the caller's own stake
 	// (PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/interest)
 	SetInterest(ctx context.Context, request SetInterestRequestObject) (SetInterestResponseObject, error)
-	// ListTicketLinks The ticket's links in both directions
+	// ListTicketLinks The ticket's links in both directions, inside its team
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/links)
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListTicketLinks(ctx context.Context, request ListTicketLinksRequestObject) (ListTicketLinksResponseObject, error)
+	// RemoveTicketLink Remove a link of this ticket, either end of it, by the link's id
+	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link})
+	RemoveTicketLink(ctx context.Context, request RemoveTicketLinkRequestObject) (RemoveTicketLinkResponseObject, error)
+	// UnlinkTicketFrom Remove a link to a ticket of any team by its canonical key
+	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other})
+	UnlinkTicketFrom(ctx context.Context, request UnlinkTicketFromRequestObject) (UnlinkTicketFromResponseObject, error)
+	// LinkTicketTo Link this ticket, as the source, to a ticket of any team by its canonical key
+	// (PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other})
+	LinkTicketTo(ctx context.Context, request LinkTicketToRequestObject) (LinkTicketToResponseObject, error)
 	// UnlinkTickets Remove a link
 	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other})
 	UnlinkTickets(ctx context.Context, request UnlinkTicketsRequestObject) (UnlinkTicketsResponseObject, error)
@@ -57117,8 +59948,13 @@ type StrictServerInterface interface {
 	// ExportTicket The canonical Markdown of the ticket
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/markdown)
 	ExportTicket(ctx context.Context, request ExportTicketRequestObject) (ExportTicketResponseObject, error)
-	// ListPrerequisites The ticket's prerequisite tree, or read upward its dependents
+	// ListPrerequisiteTree The ticket's prerequisite tree across teams, or read upward its dependents, by heads
+	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisite-tree)
+	ListPrerequisiteTree(ctx context.Context, request ListPrerequisiteTreeRequestObject) (ListPrerequisiteTreeResponseObject, error)
+	// ListPrerequisites The ticket's prerequisite tree inside its team, or read upward its dependents
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisites)
+	//
+	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListPrerequisites(ctx context.Context, request ListPrerequisitesRequestObject) (ListPrerequisitesResponseObject, error)
 	// ListQuestions The ticket's questions by number
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/questions)
@@ -57141,6 +59977,9 @@ type StrictServerInterface interface {
 	// MoveTicketRank Place the ticket directly after or before another ticket of its project
 	// (PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/rank)
 	MoveTicketRank(ctx context.Context, request MoveTicketRankRequestObject) (MoveTicketRankResponseObject, error)
+	// ListTicketRelations The ticket's parent, children and links, of any project or team, by their heads
+	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/relations)
+	ListTicketRelations(ctx context.Context, request ListTicketRelationsRequestObject) (ListTicketRelationsResponseObject, error)
 	// ListTicketTime The ticket's time entries the caller may see, and their sum
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries)
 	ListTicketTime(ctx context.Context, request ListTicketTimeRequestObject) (ListTicketTimeResponseObject, error)
@@ -59670,6 +62509,35 @@ func (sh *strictHandler) ReplaceTicketBody(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// RemoveTicketChild operation middleware
+func (sh *strictHandler) RemoveTicketChild(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation) {
+	var request RemoveTicketChildRequestObject
+
+	request.Team = team
+	request.Project = project
+	request.Number = number
+	request.Child = child
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveTicketChild(ctx, request.(RemoveTicketChildRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveTicketChild")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveTicketChildResponseObject); ok {
+		if err := validResponse.VisitRemoveTicketChildResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListComments operation middleware
 func (sh *strictHandler) ListComments(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ListCommentsParams) {
 	var request ListCommentsRequestObject
@@ -60082,6 +62950,97 @@ func (sh *strictHandler) ListTicketLinks(w http.ResponseWriter, r *http.Request,
 	}
 }
 
+// RemoveTicketLink operation middleware
+func (sh *strictHandler) RemoveTicketLink(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, link LinkID) {
+	var request RemoveTicketLinkRequestObject
+
+	request.Team = team
+	request.Project = project
+	request.Number = number
+	request.Link = link
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveTicketLink(ctx, request.(RemoveTicketLinkRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveTicketLink")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveTicketLinkResponseObject); ok {
+		if err := validResponse.VisitRemoveTicketLinkResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UnlinkTicketFrom operation middleware
+func (sh *strictHandler) UnlinkTicketFrom(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey) {
+	var request UnlinkTicketFromRequestObject
+
+	request.Team = team
+	request.Project = project
+	request.Number = number
+	request.Type = pType
+	request.OtherTeam = otherTeam
+	request.Other = other
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UnlinkTicketFrom(ctx, request.(UnlinkTicketFromRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UnlinkTicketFrom")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UnlinkTicketFromResponseObject); ok {
+		if err := validResponse.VisitUnlinkTicketFromResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// LinkTicketTo operation middleware
+func (sh *strictHandler) LinkTicketTo(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey) {
+	var request LinkTicketToRequestObject
+
+	request.Team = team
+	request.Project = project
+	request.Number = number
+	request.Type = pType
+	request.OtherTeam = otherTeam
+	request.Other = other
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.LinkTicketTo(ctx, request.(LinkTicketToRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "LinkTicketTo")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(LinkTicketToResponseObject); ok {
+		if err := validResponse.VisitLinkTicketToResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // UnlinkTickets operation middleware
 func (sh *strictHandler) UnlinkTickets(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, other OtherTicketKey) {
 	var request UnlinkTicketsRequestObject
@@ -60163,6 +63122,35 @@ func (sh *strictHandler) ExportTicket(w http.ResponseWriter, r *http.Request, te
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ExportTicketResponseObject); ok {
 		if err := validResponse.VisitExportTicketResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPrerequisiteTree operation middleware
+func (sh *strictHandler) ListPrerequisiteTree(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ListPrerequisiteTreeParams) {
+	var request ListPrerequisiteTreeRequestObject
+
+	request.Team = team
+	request.Project = project
+	request.Number = number
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPrerequisiteTree(ctx, request.(ListPrerequisiteTreeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPrerequisiteTree")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListPrerequisiteTreeResponseObject); ok {
+		if err := validResponse.VisitListPrerequisiteTreeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -60424,6 +63412,35 @@ func (sh *strictHandler) MoveTicketRank(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(MoveTicketRankResponseObject); ok {
 		if err := validResponse.VisitMoveTicketRankResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListTicketRelations operation middleware
+func (sh *strictHandler) ListTicketRelations(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ListTicketRelationsParams) {
+	var request ListTicketRelationsRequestObject
+
+	request.Team = team
+	request.Project = project
+	request.Number = number
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListTicketRelations(ctx, request.(ListTicketRelationsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListTicketRelations")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListTicketRelationsResponseObject); ok {
+		if err := validResponse.VisitListTicketRelationsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

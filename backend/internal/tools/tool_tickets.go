@@ -222,7 +222,7 @@ func searchEveryTeam(ctx context.Context, s *Session, q ticketQuery) ([]apigen.T
 
 type linkSpec struct {
 	Type      string `json:"type" jsonschema:"blocks, relates-to, duplicates or found-in"`
-	Key       string `json:"key" jsonschema:"the other ticket, in the same team"`
+	Key       string `json:"key" jsonschema:"the other ticket, team/PROJECT-n of any team, or PROJECT-n in the bound team"`
 	Direction string `json:"direction,omitempty" jsonschema:"outgoing (the default): the new ticket <type> key; incoming: key <type> the new ticket, so a prerequisite is {type: blocks, key, direction: incoming}"`
 }
 
@@ -235,7 +235,7 @@ type fileTicketInput struct {
 	Security string     `json:"security" jsonschema:"live, boundary, hardening or none; live and boundary make the ticket confidential"`
 	Threat   string     `json:"threat,omitempty" jsonschema:"required unless security is none: what the finding threatens"`
 	Effort   string     `json:"effort" jsonschema:"a size, not a time"`
-	Parent   string     `json:"parent,omitempty" jsonschema:"a ticket of the same project this one is part of"`
+	Parent   string     `json:"parent,omitempty" jsonschema:"the ticket this one is part of: team/PROJECT-n of any team, or PROJECT-n of the bound team in any project"`
 	Links    []linkSpec `json:"links,omitempty" jsonschema:"links to make once the ticket exists"`
 	Horizon  string     `json:"horizon,omitempty" jsonschema:"the horizon to file it into; later when left out"`
 	After    string     `json:"after,omitempty" jsonschema:"a ticket of that horizon in the same project to place it directly after; at the end of the horizon when after and before are left out"`
@@ -250,7 +250,7 @@ func fileTicketTool() Tool {
 			"token may do (docs/adr/0043 D2). " + horizonMeaning + " Without a horizon the ticket is later; without a " +
 			"place it lands at the end of its horizon. A live or boundary security finding becomes confidential: only the " +
 			"team's administrators, its assignee and its reporter see it.",
-		Operations: []string{"createTicket", "linkTickets"},
+		Operations: []string{"createTicket", "linkTicketTo"},
 		limits: limitsOf("An agent needs set-horizon to file into a horizon other than later, and rank to name a place. "+
 			refusalNote, capSetHorizon, capRank),
 	}, func(s *jsonschema.Schema) {
@@ -325,12 +325,13 @@ func runFileTicket(ctx context.Context, s *Session, in fileTicketInput) (string,
 	return out.String(), nil
 }
 
-// putLink makes a link, idempotent by its address (docs/adr/0045 D1).
+// putLink makes a link from source to a ticket of any team by its canonical
+// key, idempotent by its address (docs/adr/0045 D1, docs/adr/0012 D2): the
+// person sets it in the source's team and must read the target; one they do
+// not read is refused as a key that names nothing.
 func putLink(ctx context.Context, s *Session, source ticketRef, typ string, target ticketRef) error {
-	if source.Tenant != target.Tenant {
-		return usage("a link stays inside one team: %s and %s are in two", source.Full(), target.Full())
-	}
-	res, err := s.API.LinkTicketsWithResponse(ctx, source.Tenant, source.Project, int(source.Number), apigen.LinkType(typ), target.Short())
+	res, err := s.API.LinkTicketToWithResponse(ctx, source.Tenant, source.Project, int(source.Number), apigen.LinkType(typ),
+		target.Tenant, target.Short())
 	return check(res, err, http.StatusOK, http.StatusCreated)
 }
 
@@ -433,15 +434,17 @@ func runComment(ctx context.Context, s *Session, in commentInput) (string, error
 type linkInput struct {
 	Key      string `json:"key" jsonschema:"the source"`
 	Type     string `json:"type" jsonschema:"blocks: the source must be done before the other can close; relates-to; duplicates; found-in"`
-	OtherKey string `json:"other_key" jsonschema:"the target, in the same team"`
+	OtherKey string `json:"other_key" jsonschema:"the target, of any team the person reads a ticket of"`
 }
 
 func linkTool() Tool {
 	return define(Tool{
-		Name:        "link",
-		Description: "Link two tickets of a team: key <type> other_key. An existing link is success. A blocks link that would close a cycle is refused (409 link_cycle).",
-		Operations:  []string{"linkTickets"},
-		limits:      limitsOf(refusalNote),
+		Name: "link",
+		Description: "Link two tickets, of one team or two: key <type> other_key, the link set in key's team by a person who " +
+			"reads other_key — a key they do not read is refused as one that names nothing. An existing link is success. A " +
+			"blocks link that would close a cycle, through any team, is refused (409 link_cycle).",
+		Operations: []string{"linkTicketTo"},
+		limits:     limitsOf(refusalNote),
 	}, func(s *jsonschema.Schema) {
 		enum(s, "type", linkTypes...)
 	}, func(ctx context.Context, s *Session, in linkInput) (string, error) {

@@ -147,6 +147,14 @@ handler.
   `NewSession` binds the tools to the page's project or to the team, confines a search of every
   team to the turn's (`Session.Teams`), and names the person (`Session.Person`, so
   `open_question` asks `me` without `/api/v1/me`).
+- **What crosses anyway** since the relations across teams
+  ([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3 as amended 2026-10-10):
+  an answer of the turn's team carries the other end of a relation as the person sees it — a ticket
+  of another team by its head (team, key, title, type, state) or as `<team> [Confidential]` —, so
+  `get_ticket` shows a parent's key and a link's or a prerequisite's head to the provider, never
+  their body, assignee or progress; the loopback still refuses every path of another team, so the
+  model cannot read further. `TestTheChatStaysInItsTeam` holds that only the head reaches the stub
+  ([docs/security/tenancy.md](../security/tenancy.md), H-111).
 
 `HandlerDoer` keeps the whole answer in memory before the tool reads it; the bounds are the API's —
 the page size, the body of a ticket — and the clip of what the model reads.

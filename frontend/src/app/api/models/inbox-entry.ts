@@ -9,7 +9,9 @@ export interface InboxEntry {
   act: Activity;
 
   /**
-   * For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is now; null otherwise
+   * For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is
+   * now; null for a ticket of another team, which the act names in its refs alone and the ticket's
+   * relations show by its head (docs/adr/0012 D5); null otherwise
    */
   blocker: (TicketRef | null);
   created_at: string;

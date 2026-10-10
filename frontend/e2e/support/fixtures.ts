@@ -9,7 +9,7 @@ export interface Person {
   id: string;
   /** The name the page shows them by. */
   name: string;
-  /** The account's username, by which an administrator grants them a role in another team. */
+  /** The local account's username, by which an administrator grants them a role in another team. */
   username: string;
 }
 

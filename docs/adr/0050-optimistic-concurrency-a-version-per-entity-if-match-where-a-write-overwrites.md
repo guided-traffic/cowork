@@ -20,7 +20,9 @@ made concrete 2026-10-05 (D1: the score of
 project's rank by the score counts for every ticket it moves, a rebalancing of the rank's keys does
 not). A value cowork derives from another entity — the urgency re-derived when a link or
 another ticket changes, a parent's progress derived from its children — falls under D1's own
-reason: counting it would fail an edit on a concurrent change elsewhere.
+reason: counting it would fail an edit on a concurrent change elsewhere. *(Made concrete 2026-10-10
+by the implementer, open to the owner's objection:)* D1 — a child's parent cleared from the parent's
+side does not count either.
 
 **Built** (phase 2, 2026-10-02): D1–D5 for tickets, comments, questions, projects, tenants and
 time entries; the rank's moves since 2026-10-03. D6's clients and D7's UI arrive with them;
@@ -59,7 +61,21 @@ comes with another ticket's write ([ADR 0014](0014-rank-is-the-decision-score-is
 D2).)* *(Made concrete 2026-10-05: the score of ADR 0014 D4 does not count — it is derived, and a
 stake, an entity of its own, moves it —; a sort of the project's rank by the score counts for
 every ticket it moves, as a move does; a rebalancing of the rank's keys, which keeps every
-ticket's place, does not.)*
+ticket's place, does not.)* *(Made concrete 2026-10-10 by the implementer, open to the owner's
+objection:)* a child's parent cleared from the parent's side — the removal of a relation by a
+writer of the parent ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md)
+D2 as amended again 2026-10-10), the purge of the parent
+([ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
+D2) — does not count: it is a write on the parent, and in another team the crossing that performs
+it may write the parent column alone. So the version alone no longer tells whether the parent a
+patch read still stands, and the patch's compare-and-set covers the parent as it read it beside the
+version: a patch that raced such a removal — read before it, written after it — is refused with
+`412` instead of writing the parent back, which a patch that does not touch the parent would have
+done, and instead of recording a removal that had happened already. The `412` of a lost
+compare-and-set carries the version and the sent fields as they stand after the write that won
+(D5), read again through the visibility predicate as the patch read the ticket first — a ticket that
+write took out of the caller's sight answers `404` —, where it carried the values the patch had
+read.
 
 **D2 — The version is the strong `ETag`.** Every `GET` of an entity, including
 `…/markdown` and `…/context` ([ADR 0044](0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)),

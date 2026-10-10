@@ -715,7 +715,16 @@ AuditAction:
     interest, ranked, overridden, asked, answered, booked, voided, locked, uploaded, downloaded,
     exported, deleted, restored, purged, revoked, refused, archived, confidential_set,
     confidential_lifted, expired, logged_in, logged_out, login_failed, unlocked, password_changed,
-    password_reset, deactivated, reactivated, read, merged, closed, reopened, accepted, imported]
+    password_reset, deactivated, reactivated, read, merged, closed, reopened, accepted, imported,
+    prerequisite_settled, detached]
+  description: |
+    `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
+    reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
+    redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
+    holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5).
+    `detached` is recorded on a parent when a child leaves it from the parent's side, or from the
+    child's side where the parent is of another team, naming the child in its refs
+    (docs/adr/0008 D2 as amended 2026-10-10)
 AuditEvent:
   type: object
   required: [id, created_at, actor, entity_type, action]
@@ -1201,8 +1210,8 @@ Ticket:
   type: object
   required: [id, key, project, number, type, title, body, state, block, severity, security, threat,
     horizon, horizon_set, effort, progress, progress_refinement, progress_review, progress_derived, parent,
-    reporter, reporter_agent, reporter_token, assignee, confidential, opened_at, decided_at, done_at, done_from,
-    done_by_hand, open_prerequisites, score, score_version, version, created_at, updated_at]
+    parent_head, reporter, reporter_agent, reporter_token, assignee, confidential, opened_at, decided_at, done_at,
+    done_from, done_by_hand, open_prerequisites, score, score_version, version, created_at, updated_at]
   properties:
     id: {type: string, format: uuid}
     key:
@@ -1254,7 +1263,18 @@ Ticket:
     progress_derived:
       type: boolean
       description: The three stages are derived from the children and take no manual value; such a ticket is never done by them
-    parent: {type: [string, 'null'], description: The parent's key}
+    parent:
+      type: [string, 'null']
+      description: |
+        The parent's canonical key, a ticket of any project or team (docs/adr/0008 D2); null without
+        a parent, and for a parent the reader may not see — `parent_head` is its placeholder then
+    parent_head:
+      description: |
+        The parent as the reader sees it (docs/adr/0005 D3): its head, the placeholder where the
+        reader may not see it, null without a parent
+      oneOf:
+        - $ref: '#/TicketHead'
+        - type: 'null'
     reporter:
       $ref: '#/Person'
     reporter_agent:
@@ -1289,8 +1309,9 @@ Ticket:
       type: integer
       minimum: 0
       description: |
-        The open tickets that block this one and that the caller can see (docs/adr/0012 D7,
-        docs/adr/0018 D1); a ticket the caller cannot see is never counted
+        The open tickets of any team that block this one and whose state the caller reads in a head
+        (docs/adr/0012 D6, D7, docs/adr/0018 D1) — the tickets done is refused over; a ticket the
+        caller may not see, a placeholder, is never counted
     score:
       type: [number, 'null']
       format: double
@@ -1339,6 +1360,14 @@ Ticket:
     progress_review: 0
     progress_derived: false
     parent: acme/WEB-40
+    parent_head:
+      team: {slug: acme, name: Acme}
+      key: acme/WEB-40
+      title: Every supported browser signs in
+      type: feature
+      state: in-progress
+      placeholder: false
+      readable: true
     reporter: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
     reporter_agent: claude-code/claude-sonnet-4-5/4702cb1b-f7d1-4411-8c82-572d24a19911
     reporter_token: {id: 01a0a40b-5040-78e5-8344-63ccb2705d84, name: Claude Code on the laptop}
@@ -1371,7 +1400,12 @@ TicketCreate:
     threat: {type: string, minLength: 1, maxLength: 2000}
     effort:
       $ref: '#/Effort'
-    parent: {type: string, description: 'A ticket key of the same project, short or full'}
+    parent:
+      type: string
+      description: |
+        The parent's key: canonical, a ticket of any team of the installation, or short, a ticket of
+        this team in any project (docs/adr/0007 D3, docs/adr/0008 D2). A key the caller does not read
+        is refused exactly as one that does not exist: 400 `validation_failed` at `/parent`
     assignee: {type: string, format: uuid, description: A member of the team}
     horizon:
       description: The horizon the ticket is filed into; later when left out (docs/adr/0010 D3)
@@ -1394,7 +1428,12 @@ TicketPatch:
     threat: {type: [string, 'null'], maxLength: 2000}
     effort:
       $ref: '#/Effort'
-    parent: {type: [string, 'null'], description: 'A ticket key of the same project; null makes the ticket a root'}
+    parent:
+      type: [string, 'null']
+      description: |
+        The parent's key as a filing takes it — canonical, any team; short, this team, any project —, a
+        ticket the caller reads; null makes the ticket a root, whatever the reader sees of the parent
+        it had (docs/adr/0008 D2)
     assignee: {type: [string, 'null'], format: uuid}
     progress:
       type: integer
@@ -2426,6 +2465,292 @@ PrerequisiteTree:
         repeated: false
     next_cursor: null
     open: 1
+TicketHead:
+  type: object
+  description: |
+    A ticket at the other end of a relation — a parent, a child, a link — as the reader sees it
+    (docs/adr/0005 D3, docs/adr/0065 D5): its team, and its key, title, type and state, which is all
+    a reader who holds no role in its team, or to whom its project is restricted, reads of it
+    (docs/adr/0034 D4). A ticket the reader may not see is the placeholder, `<team> [Confidential]`:
+    its team and nothing else, the key, the title, the type and the state null — in another team
+    or in the reader's own.
+  required: [team, key, title, type, state, placeholder, readable]
+  properties:
+    team:
+      $ref: '#/TeamRef'
+    key:
+      type: [string, 'null']
+      description: The canonical key, <team>/<PROJECT>-<number>; null for the placeholder
+    title: {type: [string, 'null']}
+    type:
+      oneOf:
+        - $ref: '#/TicketType'
+        - type: 'null'
+    state:
+      oneOf:
+        - $ref: '#/TicketState'
+        - type: 'null'
+    placeholder:
+      type: boolean
+      description: The reader may not see the ticket; it shows as `<team> [Confidential]`
+    readable:
+      type: boolean
+      description: The reader reads the ticket and may open it; a head they may not open is false
+  example:
+    team: {slug: globex, name: Globex}
+    key: globex/API-7
+    title: Send the SameSite attribute on the session cookie
+    type: task
+    state: in-progress
+    placeholder: false
+    readable: false
+RelationLink:
+  type: object
+  description: The link of a relation of the kind `link`, read from the ticket asked about (docs/adr/0012 D1)
+  required: [id, type, direction, name, created_by, created_at]
+  properties:
+    id:
+      type: string
+      format: uuid
+      description: The link's id, which `DELETE …/links/{link}` removes it by
+    type:
+      $ref: '#/LinkType'
+    direction:
+      type: string
+      enum: [outgoing, incoming]
+      description: Outgoing when the ticket asked about is the link's source
+    name:
+      type: string
+      description: 'The link read from the ticket asked about: blocks, blocked by, relates to, duplicates, duplicated by, found in, found here'
+    created_by:
+      $ref: '#/Person'
+    created_at: {type: string, format: date-time}
+Relation:
+  type: object
+  description: |
+    A relation of a ticket — its parent, a child, a link in either direction — and the ticket at its
+    other end as the reader sees it, of any project or team (docs/adr/0005 D3, docs/adr/0008 D2,
+    docs/adr/0012 D2)
+  required: [kind, id, link, head]
+  properties:
+    kind:
+      type: string
+      enum: [parent, child, link]
+    id:
+      type: [string, 'null']
+      description: |
+        The relation's id, by which a writer of the ticket removes it (docs/adr/0008 D2,
+        docs/adr/0012 D2 as amended 2026-10-10): a link's id, which `DELETE …/links/{link}` takes;
+        for a child an opaque handle, which `DELETE …/children/{child}` takes and which shows no id
+        of the child; null for the parent, which the update of `parent` removes
+    link:
+      description: The link of a relation of the kind `link`; null for a parent and a child
+      oneOf:
+        - $ref: '#/RelationLink'
+        - type: 'null'
+    head:
+      $ref: '#/TicketHead'
+  # globex/API-7 blocks acme/WEB-42, a ticket of another team the reader holds no role in.
+  example:
+    kind: link
+    id: 01a0f68e-5c40-7a3e-9b1d-4f2c8e6a7d10
+    link:
+      id: 01a0f68e-5c40-7a3e-9b1d-4f2c8e6a7d10
+      type: blocks
+      direction: incoming
+      name: blocked by
+      created_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+      created_at: '2026-10-01T08:22:00Z'
+    head:
+      team: {slug: globex, name: Globex}
+      key: globex/API-7
+      title: Send the SameSite attribute on the session cookie
+      type: task
+      state: in-progress
+      placeholder: false
+      readable: false
+RelationList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/Relation'
+    next_cursor:
+      type: [string, 'null']
+  # The relations of acme/WEB-42: its parent, a confidential child the reader may not see, the
+  # ticket of its own team and the ticket of another team that block it.
+  example:
+    items:
+      - kind: parent
+        id: null
+        link: null
+        head:
+          team: {slug: acme, name: Acme}
+          key: acme/WEB-40
+          title: Every supported browser signs in
+          type: feature
+          state: in-progress
+          placeholder: false
+          readable: true
+      - kind: child
+        id: 7l4WbIVeBm2dJt0Hc1qXr9Fk8aZuYe3PoS6gNvAwLnM5Ri2TfUjEs0Dy1Kx4Qh7Gp8Cz9Bm3Va6Lw5Hn2Jr4Ys7Tq0
+        link: null
+        head:
+          team: {slug: acme, name: Acme}
+          key: null
+          title: null
+          type: null
+          state: null
+          placeholder: true
+          readable: false
+      - kind: link
+        id: 01a0f68c-8780-7b4f-be55-ff44fa945045
+        link:
+          id: 01a0f68c-8780-7b4f-be55-ff44fa945045
+          type: blocks
+          direction: incoming
+          name: blocked by
+          created_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+          created_at: '2026-10-01T08:20:00Z'
+        head:
+          team: {slug: acme, name: Acme}
+          key: acme/WEB-39
+          title: Log the sign-in failures with their reason
+          type: task
+          state: analysed
+          placeholder: false
+          readable: true
+      - kind: link
+        id: 01a0f68e-5c40-7a3e-9b1d-4f2c8e6a7d10
+        link:
+          id: 01a0f68e-5c40-7a3e-9b1d-4f2c8e6a7d10
+          type: blocks
+          direction: incoming
+          name: blocked by
+          created_by: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
+          created_at: '2026-10-01T08:22:00Z'
+        head:
+          team: {slug: globex, name: Globex}
+          key: globex/API-7
+          title: Send the SameSite attribute on the session cookie
+          type: task
+          state: in-progress
+          placeholder: false
+          readable: false
+    next_cursor: null
+NodeProgress:
+  type: object
+  description: The three progress stages as the ticket shows them (docs/adr/0017 D2, D3)
+  required: [implementation, refinement, review, derived]
+  properties:
+    implementation: {type: integer, minimum: 0, maximum: 100}
+    refinement: {type: integer, minimum: 0, maximum: 100}
+    review: {type: integer, minimum: 0, maximum: 100}
+    derived: {type: boolean, description: The stages are derived from the ticket's children}
+PrerequisiteHeadNode:
+  type: object
+  description: |
+    A ticket of a prerequisite tree, or of its upward reading, across teams (docs/adr/0012 D6 as
+    amended 2026-10-10), by its head. The walk goes on only from a ticket the reader reads: a head
+    and a placeholder are leaves, what lies behind them stays behind their team's membership
+    (docs/adr/0005 D3, docs/adr/0065 D5).
+  required: [depth, repeated, settled, blocked_from, head, assignee, progress]
+  properties:
+    depth:
+      type: integer
+      minimum: 1
+      maximum: 8
+      description: 1 for a ticket next to the one asked about — blocking it, or blocked by it read upward
+    repeated:
+      type: boolean
+      description: The ticket stands in the tree in full under another ticket; here it is shown without what lies behind it
+    settled:
+      type: [boolean, 'null']
+      description: Done or dropped (docs/adr/0012 D6); null for a placeholder, whose state the reader may not read
+    blocked_from:
+      description: |
+        The state a blocked ticket came from, of a ticket the reader reads; null unless it is blocked,
+        and for a head or a placeholder, a head being the five fields of TicketHead alone
+      oneOf:
+        - $ref: '#/TicketState'
+        - type: 'null'
+    head:
+      $ref: '#/TicketHead'
+    assignee:
+      description: The assignee, of a ticket of the reader's own team they read; null otherwise and without one
+      oneOf:
+        - $ref: '#/Person'
+        - type: 'null'
+    progress:
+      description: The stages, of a ticket of the reader's own team they read; null otherwise
+      oneOf:
+        - $ref: '#/NodeProgress'
+        - type: 'null'
+PrerequisiteHeadTree:
+  type: object
+  required: [items, next_cursor, open]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/PrerequisiteHeadNode'
+    next_cursor:
+      type: [string, 'null']
+    open:
+      type: integer
+      minimum: 0
+      description: |
+        The open tickets of the whole tree whose state the reader reads, each counted once, on every
+        page; a placeholder is never counted
+  # What blocks acme/WEB-42, its own team's tickets and one of another team.
+  example:
+    items:
+      - depth: 1
+        repeated: false
+        settled: true
+        blocked_from: null
+        head:
+          team: {slug: acme, name: Acme}
+          key: acme/WEB-41
+          title: Pick the SameSite mode of the session cookie
+          type: decision
+          state: done
+          placeholder: false
+          readable: true
+        assignee: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+        progress: {implementation: 100, refinement: 100, review: 100, derived: false}
+      - depth: 1
+        repeated: false
+        settled: false
+        blocked_from: null
+        head:
+          team: {slug: acme, name: Acme}
+          key: acme/WEB-39
+          title: Log the sign-in failures with their reason
+          type: task
+          state: analysed
+          placeholder: false
+          readable: true
+        assignee: {id: 019e165f-39c0-7937-931a-d0fa7735df32, username: sam, display_name: Sam Rivera}
+        progress: {implementation: 0, refinement: 40, review: 0, derived: false}
+      - depth: 1
+        repeated: false
+        settled: false
+        blocked_from: null
+        head:
+          team: {slug: globex, name: Globex}
+          key: globex/API-7
+          title: Send the SameSite attribute on the session cookie
+          type: task
+          state: in-progress
+          placeholder: false
+          readable: false
+        assignee: null
+        progress: null
+    next_cursor: null
+    open: 2
 TicketList:
   type: object
   required: [items, next_cursor]
@@ -3042,7 +3367,10 @@ InboxEntry:
     act:
       $ref: '#/Activity'
     blocker:
-      description: For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is now; null otherwise
+      description: |
+        For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is
+        now; null for a ticket of another team, which the act names in its refs alone and the ticket's
+        relations show by its head (docs/adr/0012 D5); null otherwise
       oneOf:
         - $ref: '#/TicketRef'
         - type: 'null'
@@ -3676,7 +4004,11 @@ ImportLink:
       type: string
       enum: [outgoing, incoming]
       description: Outgoing when this file's ticket is the link's source
-    key: {type: string, description: The other end's key in the project}
+    key:
+      type: string
+      description: |
+        The other end's canonical key: a ticket of the upload or the project, or of another project or
+        team the importing person reads (docs/adr/0012 D2, docs/adr/0051 D9)
     source:
       type: string
       enum: [blocked-by, filed-from, links.json]
@@ -3782,7 +4114,9 @@ ImportFile:
         - type: 'null'
     parent:
       type: [string, 'null']
-      description: The key of the parent in the project
+      description: |
+        The parent's canonical key: a ticket of the upload or the project, or of another project or team
+        the importing person reads (docs/adr/0008 D2, docs/adr/0051 D9)
     note:
       type: [string, 'null']
       description: |

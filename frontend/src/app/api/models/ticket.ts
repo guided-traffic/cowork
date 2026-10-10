@@ -8,6 +8,7 @@ import { HorizonSet } from '../models/horizon-set';
 import { Person } from '../models/person';
 import { SecurityClass } from '../models/security-class';
 import { Severity } from '../models/severity';
+import { TicketHead } from '../models/ticket-head';
 import { TicketState } from '../models/ticket-state';
 import { TicketType } from '../models/ticket-type';
 import { TokenMark } from '../models/token-mark';
@@ -54,16 +55,24 @@ export interface Ticket {
   number: number;
 
   /**
-   * The open tickets that block this one and that the caller can see (docs/adr/0012 D7,
-   * docs/adr/0018 D1); a ticket the caller cannot see is never counted
+   * The open tickets of any team that block this one and whose state the caller reads in a head
+   * (docs/adr/0012 D6, D7, docs/adr/0018 D1) — the tickets done is refused over; a ticket the
+   * caller may not see, a placeholder, is never counted
    */
   open_prerequisites: number;
   opened_at: string;
 
   /**
-   * The parent's key
+   * The parent's canonical key, a ticket of any project or team (docs/adr/0008 D2); null without
+   * a parent, and for a parent the reader may not see — `parent_head` is its placeholder then
    */
   parent: (string | null);
+
+  /**
+   * The parent as the reader sees it (docs/adr/0005 D3): its head, the placeholder where the
+   * reader may not see it, null without a parent
+   */
+  parent_head: (TicketHead | null);
 
   /**
    * The implementation stage, the work of in-progress; derived from the children while there are any

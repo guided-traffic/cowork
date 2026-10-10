@@ -2,6 +2,7 @@ package api
 
 import (
 	"archive/tar"
+	"cmp"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -206,7 +207,66 @@ func (a *exportArchive) gather(ctx context.Context, r *store.Reader, t tenantSco
 	if err := a.readLinks(ctx, r, t, projectID); err != nil {
 		return err
 	}
+	if err := a.readLinksElsewhere(ctx, r, t, projects); err != nil {
+		return err
+	}
 	return a.readAttachments(ctx, r, t, projectID)
+}
+
+// exportAnchors is how many tickets one read of their links into other teams
+// names at most.
+const exportAnchors = 500
+
+// readLinksElsewhere adds the links between the exported tickets and tickets
+// of other teams to the links manifest, in the export's snapshot: each by the
+// keys of its two ends and its type, the other end's key the only thing of it
+// the archive holds — never its head's text —, and none whose other end the
+// caller may not see (docs/adr/0051 D9 as made concrete 2026-10-10). A link
+// has one exported end, so each is listed once.
+func (a *exportArchive) readLinksElsewhere(ctx context.Context, r *store.Reader, t tenantScope, projects []exportProject) error {
+	var (
+		ids  []uuid.UUID
+		keys = map[uuid.UUID]string{}
+	)
+	for _, p := range projects {
+		after := ""
+		for {
+			list, err := r.ListTickets(ctx, exportFilter(p), store.TicketPage{Order: store.ByNumber, After: after, Limit: exportPage})
+			if err != nil {
+				return err
+			}
+			for _, row := range list.Rows {
+				ids, keys[row.ID] = append(ids, row.ID), ticketKey(t, row)
+			}
+			if len(list.Rows) < exportPage {
+				break
+			}
+			after = store.ByNumber.Position(list.Rows[len(list.Rows)-1])
+		}
+	}
+	var elsewhere []apigen.ExportLink
+	for start := 0; start < len(ids); start += exportAnchors {
+		rels, err := r.RelationHeads(ctx, ids[start:min(start+exportAnchors, len(ids))], store.RelationLink)
+		if err != nil {
+			return err
+		}
+		for _, rel := range rels {
+			if rel.Head.TeamSlug == t.Slug || rel.Head.Placeholder() || rel.Link == nil {
+				continue
+			}
+			l := apigen.ExportLink{Source: keys[rel.Anchor], Type: apigen.LinkType(rel.Link.Type), Target: rel.Head.Key()}
+			if !rel.Link.Outgoing {
+				l.Source, l.Target = l.Target, l.Source
+			}
+			elsewhere = append(elsewhere, l)
+		}
+	}
+	slices.SortFunc(elsewhere, func(x, y apigen.ExportLink) int {
+		return cmp.Or(strings.Compare(x.Source, y.Source), strings.Compare(string(x.Type), string(y.Type)),
+			strings.Compare(x.Target, y.Target))
+	})
+	a.links = append(a.links, elsewhere...)
+	return nil
 }
 
 // exportFilter is every ticket of the project the caller sees, done and
@@ -236,12 +296,16 @@ func documents(ctx context.Context, r *store.Reader, t tenantScope, tw *tar.Writ
 		if err != nil {
 			return err
 		}
-		for _, row := range list.Rows {
-			doc, err := exportDocument(ctx, r, t, ticketCtx{row: row})
+		shows, err := showingAll(ctx, r, list.Rows)
+		if err != nil {
+			return err
+		}
+		for _, st := range shows {
+			doc, err := exportDocument(ctx, r, t, st)
 			if err != nil {
 				return err
 			}
-			if err := writeEntry(tw, ticketKey(t, row)+".md", markdown.Render(doc), now); err != nil {
+			if err := writeEntry(tw, ticketKey(t, st.row)+".md", markdown.Render(doc), now); err != nil {
 				return err
 			}
 		}

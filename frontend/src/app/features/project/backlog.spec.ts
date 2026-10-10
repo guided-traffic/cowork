@@ -10,7 +10,15 @@ import { Select } from 'primeng/select';
 import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Tooltip } from 'primeng/tooltip';
 import type { Mock, MockInstance } from 'vitest';
-import { Horizon, Problem, Project, SavedFilter, Ticket, TicketState } from '../../api/models';
+import {
+  Horizon,
+  Problem,
+  Project,
+  SavedFilter,
+  Ticket,
+  TicketHead,
+  TicketState,
+} from '../../api/models';
 import { EntityCache } from '../../core/entity-cache';
 import { ImportsService } from '../../core/imports.service';
 import { MembersService } from '../../core/members.service';
@@ -31,8 +39,28 @@ const now = Date.parse('2026-10-03T12:00:00Z');
 const ada = { id: 'p1', display_name: 'Ada Lovelace', username: 'local:ada' };
 const sam = { id: 'p2', display_name: 'Sam Rivera', username: 'local:sam' };
 
-function ticket(number: number, overrides: Partial<Ticket> = {}): Ticket {
+/** The head of a parent the reader reads, by its canonical key (docs/adr/0005 D3). */
+function headOf(key: string, overrides: Partial<TicketHead> = {}): TicketHead {
   return {
+    team: {
+      slug: key.slice(0, key.indexOf('/')),
+      name: key.startsWith('acme/') ? 'Acme' : 'Globex',
+    },
+    key,
+    title: `Ticket ${key}`,
+    type: 'task',
+    state: 'filed',
+    placeholder: false,
+    readable: true,
+    ...overrides,
+  };
+}
+
+/** A ticket of the backlog; a parent comes with its head, as the API sends it. */
+function ticket(number: number, overrides: Partial<Ticket> = {}): Ticket {
+  const parent = overrides.parent ?? null;
+  return {
+    parent_head: parent === null ? null : headOf(parent),
     id: `t-${number}`,
     key: `acme/COW-${number}`,
     number,
@@ -48,7 +76,7 @@ function ticket(number: number, overrides: Partial<Ticket> = {}): Ticket {
     reporter: ada,
     block: null,
     threat: null,
-    parent: null,
+    parent,
     effort: 'M',
     progress: 0,
     progress_refinement: 0,
@@ -641,6 +669,77 @@ describe('Backlog', () => {
 
       expect(rowOf(page, 1)?.querySelector('.chip')).toBeNull();
     });
+
+    it('says the title of the parent in the tooltip of its chip', async () => {
+      load([ticket(2, { parent: 'acme/COW-1' })]);
+
+      const { fixture } = await render();
+
+      const chip = fixture.debugElement.query(By.css('[data-testid="parent-acme/COW-2"]'));
+      expect(chip.injector.get(Tooltip).content()).toBe('Its parent: Ticket acme/COW-1');
+    });
+
+    // docs/adr/0008 D2, docs/adr/0005 D3 as amended 2026-10-10.
+    it('names a parent of another team by its team and key, linked in that team where the reader opens it', async () => {
+      load([ticket(2, { parent: 'globex/API-7', parent_head: headOf('globex/API-7') })]);
+
+      const { page } = await render();
+
+      const chip = rowOf(page, 2)?.querySelector('.chip');
+      expect(chip?.textContent?.trim()).toBe('Globex · API-7');
+      expect(chip?.getAttribute('href')).toBe('/t/globex/tickets/API-7');
+      expect(chip?.getAttribute('aria-label')).toBe('Parent Globex · API-7');
+    });
+
+    it('names a parent the reader may not open by its head, unlinked, and says so in the tooltip', async () => {
+      load([
+        ticket(2, {
+          parent: 'globex/API-7',
+          parent_head: headOf('globex/API-7', { readable: false }),
+        }),
+      ]);
+
+      const { fixture, page } = await render();
+
+      const chip = rowOf(page, 2)?.querySelector('.chip');
+      expect(chip?.tagName).toBe('SPAN');
+      expect(chip?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Parent Globex · API-7');
+      expect(
+        fixture.debugElement
+          .query(By.css('[data-testid="parent-acme/COW-2"]'))
+          .injector.get(Tooltip)
+          .content(),
+      ).toBe('Its parent, which you cannot open: Ticket globex/API-7');
+    });
+
+    // docs/adr/0065 D5 as amended 2026-10-10: in another team or in the reader's own.
+    it.each([
+      ['another team', 'globex', 'Globex'],
+      ['the reader’s own team', 'acme', 'Acme'],
+    ])(
+      'names a parent the reader may not see in %s as `<team> [Confidential]`, unlinked',
+      async (_where, slug, name) => {
+        const placeholder: TicketHead = {
+          team: { slug, name },
+          key: null,
+          title: null,
+          type: null,
+          state: null,
+          placeholder: true,
+          readable: false,
+        };
+        load([ticket(2, { parent: null, parent_head: placeholder })]);
+
+        const { page } = await render();
+
+        const chip = rowOf(page, 2)?.querySelector('.chip');
+        expect(chip?.tagName).toBe('SPAN');
+        expect(chip?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+          `Parent ${name} [Confidential]`,
+        );
+        expect(chip?.querySelector('a')).toBeNull();
+      },
+    );
   });
 
   describe('loading the open tickets', () => {

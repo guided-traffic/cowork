@@ -22,30 +22,50 @@ const (
 	fieldRemoved  = "removed"
 )
 
-// The first keys of the locks that order concurrent writes: re-parentings
-// per project, "cowp", and blocks links per tenant, "cowb", which an
-// integrity walk checks; question numbers per ticket, "cowq"; the attachment
-// count per ticket, "cowa"; the attachment quota per tenant, "cowu".
+// The first keys of the locks that order concurrent writes: the
+// installation's graphs, "cowg", which an integrity walk checks; question
+// numbers per ticket, "cowq"; the attachment count per ticket, "cowa"; the
+// attachment quota per tenant, "cowu".
 const (
-	parentLockNamespace     int32 = 0x636f7770
-	blocksLockNamespace     int32 = 0x636f7762
+	graphLockNamespace      int32 = 0x636f7767
 	questionLockNamespace   int32 = 0x636f7771
 	attachmentLockNamespace int32 = 0x636f7761
 	quotaLockNamespace      int32 = 0x636f7775
 )
 
-// LockParents takes the project's re-parenting lock until the transaction
-// ends. The parent cycle walk that follows is a new statement and sees every
-// re-parenting committed before the lock was granted, so two concurrent ones
-// cannot close a cycle together (docs/adr/0008 D2).
-func (w *Writer) LockParents(ctx context.Context, projectID uuid.UUID) error {
-	return w.lock(ctx, parentLockNamespace, projectID, "re-parenting")
-}
+// Graph is one of the installation's two graphs of tickets whose cycles a
+// write refuses: the parents (docs/adr/0008 D2) and the blocks links
+// (docs/adr/0012 D4). Each crosses projects and teams, so each has one lock
+// for the whole installation, its second key.
+type Graph int32
 
-// LockBlocks takes the tenant's lock for new blocks links, for the same
-// reason over the blocks graph (docs/adr/0012 D4).
-func (w *Writer) LockBlocks(ctx context.Context) error {
-	return w.lock(ctx, blocksLockNamespace, w.TenantID, "blocks")
+// The two graphs, in the order a transaction that needs both takes them.
+const (
+	GraphParents Graph = 1
+	GraphBlocks  Graph = 2
+)
+
+// LockGraph takes the installation's lock of a graph until the transaction
+// ends. The cycle walk that follows is a new statement and sees every edge
+// committed before the lock was granted, so two concurrent writers cannot
+// close a cycle together, whatever teams the cycle runs through. The graph
+// locks are the first locks a transaction takes — the parents before the
+// blocks, both before the rank's row lock and any ticket row
+// (docs/developer/data-access.md#advisory-locks) —, so a transaction that
+// waits for one holds no other but the parents', and two writers never wait
+// on each other. Asking for the parents after the blocks is refused.
+func (w *Writer) LockGraph(ctx context.Context, g Graph) error {
+	if w.graphs&(1<<g) != 0 {
+		return nil
+	}
+	if g == GraphParents && w.graphs&(1<<GraphBlocks) != 0 {
+		return errors.New("store: the parents' lock is taken before the blocks' lock, never after it")
+	}
+	if _, err := w.tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1, $2)", graphLockNamespace, int32(g)); err != nil {
+		return fmt.Errorf("take the lock of the graph %d: %w", g, err)
+	}
+	w.graphs |= 1 << g
+	return nil
 }
 
 // LockQuestions takes the ticket's question lock, so two askers never take

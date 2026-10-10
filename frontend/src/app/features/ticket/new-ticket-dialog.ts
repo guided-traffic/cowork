@@ -32,8 +32,9 @@ const efforts: Effort[] = ['XS', 'S', 'M', 'L'];
 /**
  * Files a ticket in a project (docs/adr/0018 D1, the API's `createTicket`): the frontmatter
  * fields, the threat when the security class is not `none`, an assignee, a parent among the
- * project's open tickets (docs/adr/0008 D2) and the Markdown body. The server's field errors
- * appear beside their fields (docs/adr/0047 D2).
+ * tickets the person reads across their teams, sent by its canonical key (docs/adr/0008 D2,
+ * {@link ParentPicker}), and the Markdown body. The server's field errors appear beside their
+ * fields (docs/adr/0047 D2) — a parent the person cannot read as one that does not exist.
  */
 @Component({
   selector: 'app-new-ticket-dialog',

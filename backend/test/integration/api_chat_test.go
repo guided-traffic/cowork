@@ -400,35 +400,60 @@ func TestTheChatIsAPersonsInASession(t *testing.T) {
 }
 
 // docs/adr/0076: the chat works in its team only, whatever the model asks —
-// a ticket of the person's other team is never read for an outside provider;
-// and a page tool moves the person's page.
+// a ticket of the person's other team is never read for an outside provider,
+// and one related to a ticket of the turn's team reaches it by its head alone
+// (docs/adr/0005 D3); and a page tool moves the person's page.
 func TestTheChatStaysInItsTeam(t *testing.T) {
 	e := newChatEnv(t, llm.OpenAI)
 	both := e.s.browser(t)
 	both.mustLogin(e.names["both"], testPassword)
-	other, err := e.s.client(t, caller{Token: e.tk.MemberB}).CreateTicketWithResponse(e.ctx, e.SlugB, "BETA", &apigen.CreateTicketParams{},
-		task("A secret of team B"))
+	memberB := e.s.client(t, caller{Token: e.tk.MemberB})
+	other, err := memberB.CreateTicketWithResponse(e.ctx, e.SlugB, "BETA", &apigen.CreateTicketParams{}, task("A secret of team B"))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, other.StatusCode())
+	far, err := memberB.CreateTicketWithResponse(e.ctx, e.SlugB, "BETA", &apigen.CreateTicketParams{},
+		task("The far head of B", func(c *apigen.TicketCreate) {
+			c.Body = ptr("FAR-BODY-OF-B")
+			c.Assignee = &e.MemberB
+		}))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, far.StatusCode())
+	setter := e.s.client(t, caller{Token: e.tk.Both})
+	near, err := setter.CreateTicketWithResponse(e.ctx, e.SlugA, "ALPHA", &apigen.CreateTicketParams{},
+		task("A near child of A", func(c *apigen.TicketCreate) { c.Parent = ptr(far.JSON201.Key) }))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, near.StatusCode(), "%s", near.Body)
+	linked, err := setter.LinkTicketToWithResponse(e.ctx, e.SlugA, "ALPHA", near.JSON201.Number, apigen.LinkTypeRelatesTo,
+		e.SlugB, fmt.Sprintf("BETA-%d", far.JSON201.Number))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, linked.StatusCode(), "%s", linked.Body)
 	e.stub.Reply(stubllm.Reply{Calls: []stubllm.Call{
 		{ID: "c1", Name: "get_ticket", Arguments: fmt.Sprintf(`{"key": %q}`, other.JSON201.Key)},
 		{ID: "c2", Name: "search", Arguments: `{"query": "secret", "scope": "all"}`},
 		{ID: "c3", Name: "open_board", Arguments: `{}`},
+		{ID: "c4", Name: "get_ticket", Arguments: fmt.Sprintf(`{"key": %q}`, near.JSON201.Key)},
 	}}, stubllm.Reply{Text: "I can only work in this team."})
 
 	res, events := e.turn(t, both, uuid.New(), []apigen.ChatMessage{said("What is the secret of team B?")})
 	require.Equal(t, http.StatusOK, res.StatusCode)
-	assert.Equal(t, []string{"tool_call", "tool_result", "tool_call", "tool_result", "tool_call", "ui", "tool_result", "done"}, names(events))
+	assert.Equal(t, []string{"tool_call", "tool_result", "tool_call", "tool_result", "tool_call", "ui", "tool_result",
+		"tool_call", "tool_result", "done"}, names(events))
 	ui := eventData[apigen.ChatUiEvent](t, lastEvent(t, events, "ui"))
 	assert.Equal(t, apigen.ChatUiEvent{Action: apigen.ChatUiActionNavigate, Path: "/t/" + e.SlugA + "/p/ALPHA/board"}, ui)
 	for _, req := range e.stub.Requests()[1:] {
 		for _, m := range req.Messages {
 			assert.NotContains(t, m.Text, "A secret of team B", "nothing of team B reaches the provider")
+			for _, hidden := range []string{"FAR-BODY-OF-B", "member-b", e.MemberB.String(), far.JSON201.Id.String()} {
+				assert.NotContains(t, m.Text, hidden, "a related ticket of team B reaches the provider by its head alone")
+			}
 		}
 	}
 	done := eventData[apigen.ChatDoneEvent](t, lastEvent(t, events, "done"))
 	assert.Contains(t, *done.Messages[1].Text, "the chat works in the team "+e.SlugA)
 	assert.Contains(t, *done.Messages[2].Text, "No ticket in the teams this session works in, "+e.SlugA)
+	read := *done.Messages[4].Text
+	assert.Contains(t, read, "parent: "+far.JSON201.Key)
+	assert.Contains(t, read, far.JSON201.Key+" — The far head of B (filed)", "its canonical key, its title and its state")
 }
 
 // docs/adr/0076, docs/adr/0039 D2: a turn is bounded by its own limit, not the

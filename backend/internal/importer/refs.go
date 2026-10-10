@@ -37,7 +37,14 @@ func (a *analysis) resolve(v string) (*Ref, string) {
 	}
 	n, ok := a.u.referenceNumber(v, a.project)
 	if !ok {
-		return nil, v + " is a ticket of another project"
+		// A key of another project or another team names its ticket where the
+		// importing person reads it, as a parent and a link take it
+		// (docs/adr/0008 D2, docs/adr/0051 D9); any other answers as one that
+		// names nothing.
+		if ext, found := a.t.External[v]; found {
+			return &Ref{ID: ext.ID, Key: v}, ""
+		}
+		return nil, v + " is no ticket you can read"
 	}
 	if es := a.byNumber[n]; len(es) > 0 {
 		if len(es) == 1 && es[0].creates() {
@@ -88,7 +95,9 @@ func (a *analysis) waitsOnOf(e *entry) (string, string) {
 }
 
 // unresolvedBlock makes a block of kind ticket whose ticket nothing resolves
-// an error of the file (docs/adr/0009 D2).
+// an error of the file (docs/adr/0009 D2), and one that waits on a ticket of
+// another team: a block waits on a ticket of its own team, as the transition
+// to blocked takes it, whose row the block's key holds.
 func (a *analysis) unresolvedBlock(e *entry) bool {
 	b := e.plan.Block
 	if b == nil || b.Kind != domain.BlockTicket {
@@ -96,8 +105,12 @@ func (a *analysis) unresolvedBlock(e *entry) bool {
 	}
 	v, why := a.waitsOnOf(e)
 	if why == "" {
-		if _, why = a.resolve(v); why == "" {
-			return false
+		var ref *Ref
+		if ref, why = a.resolve(v); why == "" {
+			if !a.elsewhere(*ref) {
+				return false
+			}
+			why = v + " is a ticket of another team, and a block waits on a ticket of its own team"
 		}
 	}
 	e.f.fail(keyBlockedBy, e.f.line(keyBlockedBy), "the block cannot be imported: %s", why)
@@ -347,6 +360,7 @@ func (a *analysis) planLinks(candidates []linkPlan) []PlannedLink {
 	blocks := map[string][]string{}
 	out := make([]PlannedLink, 0, len(candidates))
 	for _, c := range candidates {
+		c = a.fromOwnTeam(c)
 		k := linkKey(c.PlannedLink)
 		s, t := refKey(c.Source), refKey(c.Target)
 		switch {
@@ -354,6 +368,10 @@ func (a *analysis) planLinks(candidates []linkPlan) []PlannedLink {
 			continue
 		case s == t:
 			c.from.f.warn(c.source, 0, "a link from the ticket to itself is omitted (docs/adr/0012 D4)")
+			continue
+		case a.elsewhere(c.Source):
+			c.from.f.warn(c.source, 0, "the %s link from %s to %s is omitted: its source is a ticket of another team, "+
+				"where a member sets it (docs/adr/0012 D2)", c.Type, a.refName(c.Source), a.refName(c.Target))
 			continue
 		case c.Type == domain.LinkBlocks && reaches(blocks, t, s):
 			c.from.f.warn(c.source, 0, "the blocks link from %s to %s is omitted: it would close a cycle (docs/adr/0012 D4)", a.refName(c.Source), a.refName(c.Target))
@@ -367,6 +385,23 @@ func (a *analysis) planLinks(candidates []linkPlan) []PlannedLink {
 		a.reportLink(c)
 	}
 	return out
+}
+
+// elsewhere reports whether a reference names a ticket of another team than
+// the one the import goes into.
+func (a *analysis) elsewhere(r Ref) bool {
+	k, err := domain.ParseTicketKey(r.Key)
+	return r.Key != "" && err == nil && k.Tenant != a.t.Tenant
+}
+
+// fromOwnTeam stores a relates-to with a ticket of another team from the
+// import's end: relates-to is symmetric, and a link lives in its source's team
+// (docs/adr/0012 D1, D2).
+func (a *analysis) fromOwnTeam(c linkPlan) linkPlan {
+	if c.Type == domain.LinkRelatesTo && a.elsewhere(c.Source) && !a.elsewhere(c.Target) {
+		c.Source, c.Target = c.Target, c.Source
+	}
+	return c
 }
 
 // reaches reports whether the blocks graph leads from one ticket to another.
@@ -388,10 +423,14 @@ func reaches(graph map[string][]string, from, to string) bool {
 	return false
 }
 
-// refName is the key a planned ticket gets or the project's ticket has.
+// refName is the key a planned ticket gets, the project's ticket has, or a
+// ticket of another project or team is named by.
 func (a *analysis) refName(r Ref) string {
 	if r.Number != 0 {
 		return a.t.Key(r.Number)
+	}
+	if r.Key != "" {
+		return r.Key
 	}
 	for n, id := range a.t.Existing {
 		if id == r.ID {

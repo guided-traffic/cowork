@@ -24,7 +24,15 @@ deletes another person's shared saved filter (D3: an eighth setting, `app.saved_
 the same day, migration 39), and on 2026-10-09 for the owner's answer recorded in
 [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D6 that every
 writer of a project imports into it (D6: the restrictive policies of `import_jobs` admit a job's
-maker beside the tenant's administrators; built the same day, migration 45).
+maker beside the tenant's administrators; built the same day, migration 45), and on 2026-10-10 for
+the relation between teams of [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md)
+D3 as amended that day (D7: the first widening, by the owner, its mechanism and its crossings built
+the same day, migration 47, and made concrete by the implementer, open to the owner's objection;
+D3: the ninth setting, `app.restricted_tenant_id`, and `app.crossing`, which no wrapper writes),
+and again on 2026-10-10 for the owner's answer that a writer of either end removes a relation
+across teams ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2,
+[ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2) (D7: the thirteenth crossing,
+`end_relation`, of the kind `purge`; built the same day, migration 52).
 Date: 2026-09-30.
 Decided by the owner as the answer to the catalog question "how
 is tenant isolation enforced?": application filtering **and** PostgreSQL row-level security,
@@ -55,7 +63,8 @@ table that an unfiltered query under one tenant sees nothing of another. ~~D5's 
 with the person-level lists~~ *(built 2026-10-04: the inbox, "assigned to me" and "open decisions"
 read each tenant of the person in a transaction of its own and merge the parts in Go; the cross-tenant
 search the same way on 2026-10-05, the person's projects of [ADR 0023](0023-the-tenant-is-in-the-path.md)
-D2 on 2026-10-10)*; D7 has not been used. Migrations 15 and 16 (phase 3, 2026-10-03)
+D2 on 2026-10-10)*; ~~D7 has not been used~~ *(2026-10-10: D7's first widening is
+built, migration 47, below)*. Migrations 15 and 16 (phase 3, 2026-10-03)
 add the policies of `sessions`, `local_accounts`, `login_attempts` and `login_locks`, widen those
 of `users`, `tenants`, `memberships` and `tokens`, and the unit test's list of named tables holds
 them. Migration 17 (2026-10-03) is the first that rewrites rows: it lifts and restores the force
@@ -95,6 +104,13 @@ deletion to the job `import-expiry`, a name `app.job` gains, which a permissive 
 the tenant to the dry runs of every tenant and to nothing else
 ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D6, D7;
 `TestTheImportJobPoliciesAdmitItsMakerAndTheAdministrators`).
+[Migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql) (2026-10-10) is D7's first widening: eight permissive policies for the
+owner role on `tickets`, `projects`, `tenants`, `project_access` and `ticket_links`, admitted only
+while `app.crossing` names a crossing; the twelve `SECURITY DEFINER` functions that name one; and
+the trigger `tickets_crossing_guard`. The integration tier proves on PostgreSQL 18 that the policies
+apply inside the functions and never to the runtime role, even when it sets `app.crossing` itself
+(`TestTheCrossingIsTheOwnersAlone`,
+[`store_crossing_test.go`](../../backend/test/integration/store_crossing_test.go)).
 
 ## Context
 
@@ -183,6 +199,15 @@ one saved filter a tenant administrator unshares — another person's,
 alone, read through `app_saved_filter_id()`: PostgreSQL holds an update's new row to the read
 policy, and an unshared filter of another person is one nobody but its owner reads, so the read
 policy of `saved_filters` admits the named filter to an administrator of the current tenant.
+*(Amended 2026-10-10 for D7's first widening, built the same day, migration 47:)* A ninth setting,
+`app.restricted_tenant_id`, carries a token's team restriction
+([ADR 0035](0035-personal-access-tokens.md) D2, D3) from
+`Caller.RestrictedTenantID`, read through `app_restricted_tenant_id()` by the sight of a ticket
+at the end of a relation: the request layer holds a restricted token to its team already, and the
+setting makes it read every other team's tickets by their heads alone. `app.crossing` names the
+crossing a `SECURITY DEFINER` function is running — `head`, `walk`, `derive`, `act` or `purge` —,
+read through `app_crossing()` by D7's policies; no wrapper writes it, only the crossing functions
+themselves.
 
 **D4 — Application queries still filter by tenant.** The policy is the second line, not the
 only one: every query on a tenant-bound table names `tenant_id` explicitly, both for the
@@ -280,7 +305,61 @@ one write of a parent's derived progress columns from a child in another team
 D3). Which of this record's mechanisms carries them — a dedicated policy for a dedicated role, or a
 function that takes the other team's context for that one read or write — is the build's to choose
 and to name here; neither is a join of two teams' rows in a query a handler writes, and D1's forced
-policies stay on every table.
+policies stay on every table. *(Built 2026-10-10, [migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql); the
+mechanism, and three crossings beside the two above, made concrete by the implementer, open to the
+owner's objection:)* **A dedicated policy for the owner role, admitted only inside the listed
+functions by a setting they fix.** The runtime role's queries are never widened: every forced
+policy holds them to the transaction's team as before, so a forgotten filter still yields nothing
+of another team, and an unset setting admits nothing. Eight permissive policies `TO` the owner
+role — the role that runs the migration, named as `current_user` when they are created — on
+`tickets`, `projects`, `tenants`, `project_access` and `ticket_links` admit a read, or one write,
+only while `app_crossing()` names its kind. Twelve *(2026-10-10, migration 52: thirteen)*
+`SECURITY DEFINER` functions in plpgsql, owned by
+the owner role and executable by the runtime role alone, are the only code that names one: each
+sets `app.crossing` with `set_config('app.crossing', '<kind>', true)` as its first statement and
+restores the value it found before every return. A function's `SET` clause cannot carry the
+setting: PostgreSQL refuses a custom setting there to a role that is not a superuser (SQLSTATE
+`42501`) unless a superuser grants `SET ON PARAMETER` on it, which no installation's owner role
+holds — verified on PostgreSQL 18.6 (`TestPostgreSQLRefusesTheCrossingInASetClause`). A missed
+restore leaks nothing: the crossing policies bind the owner role alone, code runs as the owner at
+run time only inside a `SECURITY DEFINER` function, and every such function sets its own value
+first — a crossing its kind, any other (`purge_ticket_audit`) the empty string —, so a value left
+behind reaches neither the runtime role's queries nor another function. The crossings are five:
+
+| Kind | Functions | Reads or writes |
+|---|---|---|
+| `head` | `relation_heads`, `readable_ticket`, `prerequisite_heads`, `open_prerequisite_count`, `open_prerequisite_targets`, `open_prerequisite_heads` | the head of a ticket at the end of a relation of a ticket the caller sees, with what the caller sees of it (`ticket_sight`), and whether the caller reads a ticket another team's key names — the read above |
+| `walk` | `parent_chain_reaches`, `blocks_reach` | yes or no: whether a new parent or a new `blocks` link closes a cycle through any team ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D4) |
+| `derive` | `refresh_derived` | a parent's derived progress from its children of every team — the write above |
+| `act` | `relations_elsewhere` | the team, the ticket and the key at the other end of each relation into another team: where the act is recorded that ADR 0012 D3 puts on both tickets of a link, and that [ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D2 puts in the record of the team a change changes |
+| `purge` | `end_relations_elsewhere`, `end_team_relations`, `end_relation` *(2026-10-10, migration 52)* | the end of a purged ticket's or a deleted team's relations into other teams: a child there made a root, a link to it deleted (ADR 0024 D2, D6); and the end of one relation of a ticket of the caller's team by a writer of it — a child in another team made a root, a link another team keeps onto it deleted ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2 as amended 2026-10-10) |
+
+The act in the other team is written by the runtime role, the transaction bound to that team for
+those statements alone and to its own again after them (`Writer.RecordElsewhere`), under that
+team's own policies; the far end it is written at comes only from a crossing. Every head function
+asks besides whether the caller holds a role in the transaction's team (`app_is_member()`), behind
+the request layer that admits nobody else. *(2026-10-10, migration 52:)* `end_relation` asks more:
+its anchor a ticket of the transaction's team the caller sees, the caller a `member` or `admin` of
+that team — a viewer ends nothing there, whatever the request layer decided —, and the row the
+anchor's own relation kept in another team, a child whose parent the anchor is or a link whose
+target it is; anything else answers no row and changes nothing (`TestEndingOneRelationIsTheAnchorsAlone`).
+A rule on columns stays a trigger (D6):
+`tickets_crossing_guard` holds what a writing crossing changes of a ticket to the derived progress —
+on a ticket of the writer's own team besides the stages it seeds, done by hand and `updated_at`
+(*2026-10-10, migration 48:* on another team's, the derived columns alone) —, and the purge's to the
+parent. Unit tests read
+the functions from the migrations — every `SECURITY DEFINER` function sets `app.crossing` first,
+every crossing restores it before each return, no `SET` clause names it, no other file calls
+`set_config('app.crossing'`, every crossing policy names the owner alone, every crossing that
+returns tickets decides their sight and leaves the deleted out
+([`policy_test.go`](../../backend/internal/store/policy_test.go),
+[`crossing_test.go`](../../backend/internal/store/crossing_test.go)) —, the integration tier reads
+the same rules off the functions the catalog holds after the migrations *(added 2026-10-10 after
+the security review: `TestEverySecurityDefinerInTheCatalogPinsTheCrossing`, which a function quoted,
+named or made `SECURITY DEFINER` otherwise than the file lint reads cannot pass)*, and `cowork serve` refuses
+a database whose crossing policies or functions are not the owner's (`DB.CheckCrossing`): a change of
+ownership past the migrations would leave policies that admit no function, the heads absent and
+the cycle walks blind to other teams.
 
 **D8 — A global administrator works inside one tenant at a time.** The administrator's
 requests set `app.tenant_id` like anyone's; there is no context in which one query sees two
@@ -331,6 +410,10 @@ policy, not a bypass.
 - `current_setting(…, true)` returns null when unset, and null compared to a uuid is false —
   the desired outcome — but a policy that is edited to use a different expression could
   change that; the unit test on the migration set checks the policy text.
+- *(Added 2026-10-10.)* One of D7's crossings runs once per row: every ticket a list, a board or a
+  single read shows calls `open_prerequisite_count`, a `SECURITY DEFINER` function, for its
+  `open_prerequisites`; the blocked filter reads `open_prerequisite_targets` once per list. Their
+  cost over a large team has not been measured.
 
 ## References
 
@@ -339,3 +422,4 @@ policy, not a bypass.
 - [ADR 0001](0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md) D5 — the migration run this record leaves as it is
 - [`backend/internal/store/migrations/000001_tenants.up.sql`](../../backend/internal/store/migrations/000001_tenants.up.sql) — the first table that gets its policy
 - [migrations 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql)–[22](../../backend/internal/store/migrations/000022_membership_administration.up.sql) — the identity provider's and the administration's policies
+- [migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql) and [`store/crossing.go`](../../backend/internal/store/crossing.go) — D7's crossings

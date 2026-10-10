@@ -6,8 +6,10 @@ import type {
   Comment,
   Effort,
   Horizon,
+  LinkType,
   Project,
   Question,
+  RelationList,
   SecurityClass,
   Severity,
   Ticket,
@@ -130,10 +132,18 @@ export class Session {
     return created.token;
   }
 
-  /** A grant of a role in a team to a person who exists, by username or address (docs/adr/0030 D3). */
-  async addMember(slug: string, person: string, role: 'viewer' | 'member' | 'admin'): Promise<void> {
+  /**
+   * Grants a person who exists a role in a team, by username or e-mail address — a manual grant,
+   * which takes a session (docs/adr/0030 D3, docs/adr/0035 D5): how a local account of one team
+   * joins a second.
+   */
+  async addMember(
+    slug: string,
+    person: string,
+    role: 'viewer' | 'member' | 'admin' = 'member',
+  ): Promise<void> {
     await ok(
-      `grant ${person} a role in ${slug}`,
+      `grant ${person} the role ${role} in ${slug}`,
       await this.context.post(`/api/v1/teams/${slug}/members`, {
         data: { person, role },
         headers: { 'Idempotency-Key': randomUUID() },
@@ -305,6 +315,55 @@ export class Seed {
       await this.context.put(this.path(project, `/tickets/${number}/body`), {
         data: { body },
         headers: { 'If-Match': etag },
+      }),
+    );
+  }
+
+  /**
+   * Sets the ticket's parent over the version just read (docs/adr/0050 D3): a canonical key of any
+   * team the token's person reads (docs/adr/0008 D2), or null for none.
+   */
+  async setParent(project: string, number: number, parent: string | null): Promise<Ticket> {
+    const etag = await etagOf(
+      `read ${project}-${number}`,
+      await this.context.get(this.path(project, `/tickets/${number}`)),
+    );
+    return ok(
+      `set the parent of ${project}-${number}`,
+      await this.context.patch(this.path(project, `/tickets/${number}`), {
+        data: { parent },
+        headers: { 'If-Match': etag },
+      }),
+    );
+  }
+
+  /**
+   * Links the ticket, as the source, to another by its canonical key, of any team the token's
+   * person reads (docs/adr/0012 D2).
+   */
+  async link(project: string, number: number, type: LinkType, other: string): Promise<void> {
+    const slash = other.indexOf('/');
+    await ok(
+      `link ${project}-${number} to ${other}`,
+      await this.context.put(
+        this.path(
+          project,
+          `/tickets/${number}/links/${type}/${other.slice(0, slash)}/${other.slice(slash + 1)}`,
+        ),
+      ),
+    );
+  }
+
+  /** The ticket's relations of one kind, each other end as the token's person sees it. */
+  async relations(
+    project: string,
+    number: number,
+    kind: 'parent' | 'child' | 'link',
+  ): Promise<RelationList> {
+    return ok(
+      `read the relations of ${project}-${number}`,
+      await this.context.get(this.path(project, `/tickets/${number}/relations`), {
+        params: { kind },
       }),
     );
   }

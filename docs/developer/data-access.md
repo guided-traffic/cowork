@@ -2,13 +2,13 @@
 
 How the backend reaches PostgreSQL: two roles, the transaction wrappers, the settings the
 policies read, the visibility predicates, the deletion filter and the lints that hold every query
-to them, the one place SQL is built at run time, the dashboard's queries, the advisory locks, the
+to them, the crossings between teams, the one place SQL is built at run time, the dashboard's queries, the advisory locks, the
 background jobs, the deletion and the purge of a ticket, the notifications an act writes, GitHub's
 deliveries, the consistency check's tables and the publication of acts. The package is [`backend/internal/store/`](../../backend/internal/store/); the decisions
 are [ADR 0027] (the wrappers), [ADR 0021] (row-level security, the roles), [ADR 0026] (the
 audit record), [ADR 0034] D4 with [ADR 0065] D4 (the visibility predicate), [ADR 0024] (deletion),
 [ADR 0031] (the sessions) and [ADR 0030] (the memberships the identity provider derives). Read
-against the tree on 2026-10-06.
+against the tree on 2026-10-06; the crossings between teams and the graph locks on 2026-10-10.
 
 ## Two database roles
 
@@ -89,8 +89,8 @@ write query.
 
 Who a transaction acts for is a `store.Caller` in the context
 ([`caller.go`](../../backend/internal/store/caller.go)), put there by the API pipeline after
-authentication: the person or a `system:<name>` actor, the token and its name, the token's project
-restriction, the agent mark, the agent's capabilities and the request id. The person is never a
+authentication: the person or a `system:<name>` actor, the token and its name, the token's team and
+project restrictions, the agent mark, the agent's capabilities and the request id. The person is never a
 call-site argument. `Mutate` refuses a context with neither or both of person and system actor.
 
 Outside the wrappers, deliberately: `LookupToken` and `LookupSession` (read one token or session
@@ -126,8 +126,10 @@ does the Go that hands it on (`InTenant`, `tenantID`, `Writer.LockTenant`;
 |---|---|---|
 | `app.tenant_id` | the wrapper's team | `app_tenant_id()`: every `tenant_isolation` policy, the policies of `tenants`, `memberships`, `users`, `audit_events`, the visibility functions |
 | `app.user_id` | `Caller.UserID` | `app_user_id()`: the person's own user row, memberships, teams, tokens, idempotency keys and installation-level audit rows; the visibility functions |
-| `app.restricted_project_id` | `Caller.RestrictedProjectID` | `app_restricted_project_id()` in `app_project_visible` |
-| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`); `consistency-check` for its job, and for the read-only transactions of `jobRead` that read its results across the teams — the schedule's and a scrape's | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30, 32, 41, 42, 43 and 46 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry`, `ticket-purge`, `github-webhook`, `github-delivery-expiry`, `consistency-check` and `import-expiry` for the rows those system actors keep (`app_job()`) — the two of migration 41 named by no code since GitHub's webhook was removed ([below](#github-webhooks-tables)) |
+| `app.restricted_project_id` | `Caller.RestrictedProjectID` | `app_restricted_project_id()` in `app_project_visible` and `ticket_sight` |
+| `app.restricted_tenant_id` | `Caller.RestrictedTenantID`, a token's team restriction (migration 47) | `app_restricted_tenant_id()` in `ticket_sight`: a token restricted to one team reads every other team's tickets by their heads ([below](#crossings-between-teams)) |
+| `app.crossing` | no wrapper: each crossing function sets its kind as its first statement and restores what it found; every other `SECURITY DEFINER` function empties it first (migration 47) | `app_crossing()`: the eight crossing policies of the owner role, and the trigger `tickets_crossing_guard` ([below](#crossings-between-teams)) |
+| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`); `team-deletion` for `DB.EndTeamRelations`, which `end_team_relations` demands; `consistency-check` for its job, and for the read-only transactions of `jobRead` that read its results across the teams — the schedule's and a scrape's | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30, 32, 41, 42, 43 and 46 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry`, `ticket-purge`, `github-webhook`, `github-delivery-expiry`, `consistency-check` and `import-expiry` for the rows those system actors keep (`app_job()`) — the two of migration 41 named by no code since GitHub's webhook was removed ([below](#github-webhooks-tables)) |
 | `app.token_hash` | `LookupToken`, the hex SHA-256 of the presented token | the `tokens` policy admits exactly that row |
 | `app.session_hash` | `LookupSession`, and `Caller.SessionHash` in every transaction of a session's request: the hex SHA-256 of the presented cookie; in the identity provider's transactions the session a login replaces or a refresh holds | `app_session_hash()`: the `sessions` policies admit exactly that row — to read it, to end it |
 | `app.person_lookup` | `FindPerson` only: the address or username an administrator adds a member by | `app_person_lookup()`: the `users` policy admits the persons it names to an administrator of the current team, and no other person of the installation (migration 20) |
@@ -307,7 +309,6 @@ the one on the ticket the query reads.
 |---|---|
 | `GetWrittenTicket` | the writer's reread of the row it wrote — a reassignment can take a confidential ticket out of the writer's sight, and the answer shows what the write left |
 | `TicketFacts` | the publication of a committed act; the streams filter |
-| `ParentChainContains`, `BlocksPathExists` | integrity walks that answer yes or no |
 | `CanSeeProject` | whether *another* person sees a project: the assignee |
 | `ListWatchers` | whom an act tells: the watchers of a ticket, each then held to their own sight of it by `NoticeRecipients` ([notifications](#notifications)) |
 | `ProjectKeyTaken` | a key's existence, unique in the team whether or not the caller sees its project |
@@ -317,6 +318,7 @@ the one on the ticket the query reads.
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket`, `ListRankKeys` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice, and a rebalancing spreads every key, so every ticket keeps its place ([domain.md](domain.md#rank)) |
 | `GetScoreInputs` | the inputs of the score of a ticket the caller read through the predicate in this transaction, read again after the write that changed one ([domain.md](domain.md#the-score)) |
 | `ImportNumbersTaken` | a number's existence in the project an import goes into, unique whether or not the caller sees the ticket that holds it — a deleted one's included, also exempt from the deletion filter ([import-and-export.md](import-and-export.md#the-dry-run)) |
+| `LinkEndKey` | the key of the other end, in the team, of a relation the caller removes — a link, or a child of the parent they write —, whatever they see of it: the removal is an act on both tickets; also exempt from the deletion filter, a link to a deleted ticket is removed with its act as well |
 | `ExportHiddenConfidential` | the count of the confidential tickets of the projects the caller sees that an export leaves out, which the manifest says ([ADR 0065](../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md) D5); it asks the predicate `IS NOT TRUE`, since it answers `NULL` for a ticket without an assignee |
 
 The search (`SearchTickets`, [search.md](search.md#the-query)) reads tickets in seven places — the
@@ -329,7 +331,10 @@ The SQL functions `ticket_ancestor_or_self`, `blocks_path_exists`, `ticket_deriv
 `person_sees_ticket` read the team's tickets past the predicate for the same reasons; row-level security still
 holds them to the team. Since migration 32, `ticket_derived_stage` leaves a deleted child out and
 `person_sees_ticket` answers no for a deleted ticket; the two integrity walks still step over
-deleted tickets, so that a restoration can never close a cycle.
+deleted tickets, so that a restoration can never close a cycle. Since migration 47 this release
+calls none of the first four: the walks and the derivation cross teams as crossings
+([below](#crossings-between-teams)), and the four stay for the release before, which a rollback
+runs ([ADR 0028] D3).
 
 **The deletion filter.** A deleted ticket answers like a missing one ([ADR 0024] D1, D3): beside
 every call of the visibility predicate on a ticket, the query says `<alias>.deleted_at IS NULL` — an
@@ -344,11 +349,126 @@ which a deleted ticket's file has its row and its object until the purge; `GetTi
 through the filter in the same transaction; and the rank keys of `LastRank`, `ListUnrankedTickets`,
 `NextRankedTicket`, `PreviousRankedTicket` and `ListRankKeys`, because a deleted ticket keeps its
 key, which its restoration brings back — a rebalancing spreads it with the others —, and no key may
-be handed out twice; and `ImportNumbersTaken`, because a deleted ticket keeps its number. The ticket's columns count `open_prerequisites` in a subquery with
-the predicate on every prerequisite, `GetWrittenTicket` included: a hidden one is never counted.
-The prerequisite tree (`ListPrerequisites`, `ListDependents`) is the one walk that returns
-tickets: it calls the predicate on every ticket it steps to, so it never passes a hidden one, and
-it keeps each link once per depth, never each path ([domain.md](domain.md#the-prerequisite-tree)).
+be handed out twice; and `ImportNumbersTaken`, because a deleted ticket keeps its number. The
+ticket's columns count `open_prerequisites` through the crossing `open_prerequisite_count`,
+`GetWrittenTicket` included: an open direct prerequisite of any team whose state the caller reads in
+a head, never a placeholder — one of the caller's own team in a project restricted from them counts
+by its head since migration 47. The deprecated tree (`ListPrerequisites`, `ListDependents`) is the
+one walk of the queries that returns tickets: it calls the predicate on every ticket it steps to, so
+it never passes a hidden one, and it keeps each link once per depth, never each path
+([domain.md](domain.md#the-prerequisite-tree)); the tree across teams is the crossing
+`prerequisite_heads`.
+
+## Crossings between teams
+
+A ticket's parent, its children and its links may be tickets of another team
+([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3 as amended
+2026-10-10). What a caller reads or changes of a ticket of another team passes through a
+**crossing**, a `SECURITY DEFINER` function of the owner role, and through nothing else
+([ADR 0021] D7; [migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql),
+[`store/crossing.go`](../../backend/internal/store/crossing.go)). No query of the runtime role is
+widened: every forced policy holds it to the transaction's team as before, so a query a handler
+writes still reads one team, and a forgotten filter still yields nothing of another.
+
+**How a crossing is admitted.** Eight permissive policies `TO` the owner role —
+`tickets_crossing_read`, `tickets_crossing_derive`, `tickets_crossing_detach`,
+`projects_crossing_read`, `tenants_crossing_read`, `project_access_crossing_read`,
+`ticket_links_crossing_read`, `ticket_links_crossing_delete` — admit a read, or one write, only while
+`app_crossing()` names a kind they serve; the migration creates them in a `DO` block for
+`current_user`, the owner. A crossing function is plpgsql: its `DECLARE` keeps the value it finds
+(`prev text := NULLIF(current_setting('app.crossing', true), '')`), its first statement is
+`PERFORM set_config('app.crossing', '<kind>', true)`, and it restores `prev` before every `RETURN`
+and at its end. Every other `SECURITY DEFINER` function, `purge_ticket_audit`, empties the setting
+first. A function's `SET` clause cannot carry it: PostgreSQL refuses a custom setting there to an
+owner that is not a superuser (SQLSTATE `42501`) unless a superuser grants `SET ON PARAMETER`, which
+no installation's owner role holds (`TestPostgreSQLRefusesTheCrossingInASetClause`, verified on
+PostgreSQL 18.6). A missed restore leaks nothing: the policies bind the owner role alone, code runs
+as the owner at run time only inside a `SECURITY DEFINER` function, and each sets its own value
+first; the runtime role gains nothing by setting `app.crossing` itself
+(`TestTheCrossingIsTheOwnersAlone`).
+
+| Kind | Function | Called by | Reads or writes |
+|---|---|---|---|
+| `head` | `relation_heads(anchors, kinds)` | `Reader.RelationHeads`, `Reader.ParentHeads` | the parent, the children and the links of tickets of the caller's team they see, each other end with its sight; an assignee only for a ticket of the caller's own team they read |
+| `head` | `readable_ticket(team, project, number)` | `Reader.ReadableTicket` | whether the caller reads the ticket a key names, of any team: a parent or a link's other end before it is set, in the write's own transaction |
+| `head` | `prerequisite_heads(root, up, depth, after, limit)` | `Reader.PrerequisiteHeads` | the prerequisite tree, or its mirror, across teams, by heads; the walk goes on only from a ticket the caller reads |
+| `head` | `open_prerequisite_count(ticket)` | the ticket select's `open_prerequisites` | the open direct prerequisites whose state the caller reads in a head |
+| `head` | `open_prerequisite_targets()` | the list builder's `Blocked` filter (`openBlocker`) | the tickets of the team such a prerequisite blocks, read once for a list |
+| `head` | `open_prerequisite_heads(ticket)` | `Reader.OpenPrerequisiteHeads` | those prerequisites by their heads: what refuses `done`, and what an override names |
+| `walk` | `parent_chain_reaches(candidate, ticket)` | `Writer.ParentChainReaches` | yes or no: a new parent closes a cycle, across teams; under the parents' graph lock |
+| `walk` | `blocks_reach(from, to)` | `Writer.BlocksReach` | yes or no: a new `blocks` link closes a cycle, across teams; under the blocks' graph lock |
+| `derive` | `refresh_derived(parents)` | `Writer.RefreshDerived`, every refresh of a parent | the derived stages of parents and their ancestors from their children of every team, the deepest first, no version and no act; a parent of the caller's own team also has its own stages seeded when its last child leaves, is marked done by hand when it gains one while done, and has its `updated_at` moved — a parent of another team gets the three derived columns alone (migration 48); every parent that changed is told on its team's streams as `ticket.changed` of the kind `derived` (migration 51, [publication](#publication)) |
+| `act` | `relations_elsewhere(ticket)` | `Reader.RelationsElsewhere` | every relation of a ticket of the team whose other end is a ticket of another team: that team, ticket and key, and its head as an outsider reads it — where an act is recorded, never shown to the caller |
+| `purge` | `end_relations_elsewhere(ticket)` | `Writer.PurgeTicket` | a purged ticket's children elsewhere made roots and the links another team keeps to it deleted; every far end answered for its act; only inside the purge of a deleted ticket of the team |
+| `purge` | `end_team_relations(team)` | `DB.EndTeamRelations` | every relation between a team and the others ended, both directions; only in a transaction named `team-deletion` with no team set; no route calls it |
+| `purge` | `end_relation(anchor, kind, other)` | `Writer.EndChildElsewhere`, `Writer.EndLinkElsewhere` | one relation of a ticket of the team into another team ended by a writer of it (migration 52): `child` — the ticket `other` of another team leaves `anchor` as its parent, its parent alone cleared —, `link` — the link `other` another team keeps onto `anchor` deleted —; only where `anchor` is a ticket of the transaction's team the caller sees, not deleted, the caller a `member` or `admin` of the team and the other end not deleted; it answers the far end for the act, and no row for anything else (`TestEndingOneRelationIsTheAnchorsAlone`) |
+
+The store calls the functions with pgx itself, not through sqlc: sqlc does not type the columns of a
+function that returns a table as they are — a placeholder's key and title are `NULL` —, so
+`crossing.go` scans them into its own types, and the query lints, which read the query files, do not
+see them; the lints below read the functions instead.
+
+**The sight.** `ticket_sight(team, project, confidential, assignee, reporter)`, a plain function the
+crossings call and nobody else executes, answers what the caller sees of a ticket at the other end of
+a relation: `placeholder` for a confidential ticket they are not admitted to — admitted is a member
+of its team who administers it or is its assignee or its reporter — and for a confidential one
+outside a token's restriction (`app.restricted_tenant_id`, `app.restricted_project_id`); `head` for
+any other ticket outside a token's restriction, of a team they hold no role in, or of a project
+restricted from them; `sees` otherwise. A deleted ticket answers like a missing one: every crossing
+that returns tickets leaves it out. Every head function asks besides `app_is_member()` — the caller
+holds a role in the transaction's team —, behind the boundary that admits nobody else; `end_relation`
+asks for a `member` or `admin` of it, so a viewer ends no relation there whatever a handler decided.
+
+**What a crossing writes.** The trigger `tickets_crossing_guard` refuses (SQLSTATE `42501`) an update
+of a ticket inside a crossing that changes more than its kind may: `derive` the three derived
+columns, and on a ticket of the transaction's own team the seeded stages, `done_by_hand` and
+`updated_at` besides; `purge` the `parent_id`. An act on a ticket of
+another team is no crossing's: `Writer.RecordElsewhere(ctx, far, events...)` binds the transaction to
+the far team — `set_config('app.tenant_id', …)` —, locks the far ticket's row `FOR KEY SHARE SKIP
+LOCKED` there (`holdFarTicket`), writes the audit rows, their notifications and their publication as the caller's
+acts, under that team's own policies, and binds it back. A caller who holds no role in the far team
+(`app_is_member()` there) is no actor in its record: the acts are `system:ticket-purge`'s inside a
+purge and `system:relation`'s otherwise (`actorElsewhere`, through `Event.System`), with no person,
+token or agent mark; every such act names the ticket of the caller's team in its refs. The lock makes a purge of the far ticket,
+whose deletion locks the row `FOR UPDATE`, wait for the transaction and empty its acts with the
+rest; a far ticket whose row a purge took away since the crossing named it records nothing, where
+its publication would have found no row (`TestAnActElsewhereHoldsItsTicketAgainstAPurge`). The lock
+waits on nobody: a far ticket a purge holds now records nothing either. The purge is the one lock on
+a ticket's row that `FOR KEY SHARE` waits for — `GetPurgedTicket` locks the row `FOR UPDATE` before
+the purge ends the ticket's relations, and its deletion; no update changes a ticket's key columns
+([below](#advisory-locks)) —, and a write that holds a row the purge ends — a child of the ticket, a
+link to it, a ticket it parents — and then waited on the ticket would close a circle with the purge,
+which waits on that row: a link of the team removed by its id from its source, a child clearing
+its parent, the close of a ticket that blocks the purged one and is its child, each answered
+`500 deadlock_detected` before (`TestAnActOnATicketBeingPurgedWaitsOnNoPurge`). A ticket being
+purged needs no act: it is gone when the purge commits. A purge that fails after it locked the row
+leaves the ticket in the bin without the act a write skipped meanwhile. A
+`FarEnd` has unexported fields, so only a crossing of the store makes one, and a handler cannot
+record into a team of its choosing.
+
+**The lints and the start-up check.** `TestEverySecurityDefinerFunctionIsFencedIn`
+([`policy_test.go`](../../backend/internal/store/policy_test.go)) reads every `SECURITY DEFINER`
+function of the migrations — its fixed `search_path`, its first statement setting `app.crossing` to
+its kind or `''`, a crossing's restore before every `RETURN` and at its end, no `SET` clause naming
+the setting —, and `TestTheCrossingPoliciesNameTheOwnerAlone` holds the eight policies to the owner.
+`TestOnlyTheCrossingFunctionsCross` ([`crossing_test.go`](../../backend/internal/store/crossing_test.go))
+refuses `app.crossing` in any Go or query file of the backend, and a binding of `app.tenant_id`
+outside `setContext`, `inTenant`, `flushIn` and `RecordElsewhere`; `TestEveryCrossingFunctionDecidesSight`
+requires every head function to call `ticket_sight(`, to leave the deleted out and to ask
+`app_is_member()`, every walk to answer yes or no, and every other crossing to be listed with what
+it returns. These read the migration files, and miss what they do not recognise — another quoting,
+lowercase, a schema-qualified name, a function an `ALTER FUNCTION` makes `SECURITY DEFINER` —, so
+the integration tier reads the functions the catalog holds after the migrations as well
+(`TestEverySecurityDefinerInTheCatalogPinsTheCrossing`,
+[`catalog_crossing_test.go`](../../backend/test/integration/catalog_crossing_test.go)): every
+`SECURITY DEFINER` function in `pg_proc` is plpgsql with `search_path=<schema>, pg_temp`, declares
+nothing that runs a query before its first statement, sets `app.crossing` first, and — a crossing —
+restores it right before every `RETURN` and at its end; no function's `proconfig` names
+`app.crossing`. `cowork serve` calls `DB.CheckCrossing` after `CheckRuntimeRole`
+([`roles.go`](../../backend/internal/store/roles.go)): every crossing policy must name the owner of
+`tickets` and nobody else, and every crossing function must be that owner's and run with its
+rights — a change of ownership past the migrations would leave policies that no function meets, the
+heads absent and the walks blind to other teams.
 
 ## The ticket list builder
 
@@ -413,8 +533,7 @@ outlive its work on an idle pooled connection ([ADR 0027] D5).
 | First key | Name | Taken by | Orders |
 |---|---|---|---|
 | `0x636f776b` | `cowk` | `RunJob`, `pg_try_advisory_xact_lock(ns, lockKey)` | one replica per job |
-| `0x636f7770` | `cowp` | `Writer.LockParents(projectID)` | re-parentings in a project, before the parent cycle walk |
-| `0x636f7762` | `cowb` | `Writer.LockBlocks()` | new `blocks` links in the team, before the cycle walk |
+| `0x636f7767` | `cowg` | `Writer.LockGraph(GraphParents)`, key `1`, and `Writer.LockGraph(GraphBlocks)`, key `2` — the installation's, `pg_advisory_xact_lock(ns, key)` | a new parent, before the parent cycle walk; a new `blocks` link — a link, a block that names a ticket, an import that may make one —, before the `blocks` cycle walk; both across every team ([crossings](#crossings-between-teams)) |
 | `0x636f7771` | `cowq` | `Writer.LockQuestions(ticketID)` | question numbers of a ticket |
 | `0x636f7761` | `cowa` | `Writer.LockAttachments(ticketID)` | uploads to a ticket, before the per-ticket count |
 | `0x636f7775` | `cowu` | `Writer.LockAttachmentQuota()`, where `COWORK_ATTACHMENT_TEAM_QUOTA` is set, before the ticket's attachment lock | the team's uploads, before the sum against its quota |
@@ -424,7 +543,19 @@ outlive its work on an idle pooled connection ([ADR 0027] D5).
 | `0x636f7774` | `cowt` | `Writer.LockTenant()`, first in an administrator's change of a grant (`PUT`, `DELETE …/grant`) or of a mapping (create, change, remove) and in the deactivation of an account (`PUT …/accounts/{username}/deactivation`) | the changes of who administers the team, before the `last_admin` check: the second of two concurrent changes sees the first committed |
 
 The writer locks are `pg_advisory_xact_lock(ns, hashtext(id::text))`
-([`jobs.go`](../../backend/internal/store/jobs.go)). The check that follows a lock is a new
+([`jobs.go`](../../backend/internal/store/jobs.go)), the graph locks `pg_advisory_xact_lock(ns, key)`
+with one key per graph. The graph locks replaced the per-project parent lock and the per-team
+`blocks` lock in migration 47's release, since both graphs cross projects and teams: a lock per team
+taken in a fixed order cannot hold a cycle the walk finds only as it goes, and four writers in a ring
+close one that none of them sees. They are the first locks a transaction takes — the parents' before
+the blocks', which `LockGraph` refuses the other way round —, before the rank's row lock and any
+ticket row: the transition to `blocked` takes the blocks' lock before it writes the ticket, and an
+import's execution before it inserts. A transaction waiting for one holds no other but the parents'
+lock, so two writers never wait on each other in a circle. The price is the import's: an execution
+that may make a `blocks` link (`Upload.MayLinkBlocks`) holds the installation's blocks lock for its
+whole run, up to `COWORK_REQUEST_TIMEOUT`, and every `blocks` link, block on a ticket and such
+import in any team waits for it — whether a link it makes touches an existing ticket is known only
+under the rank's row lock, too late to take the graph lock (ADR 0012, residual risks). The check that follows a lock is a new
 statement and sees every write committed before the lock was granted, so two concurrent writes
 cannot pass the check together. golang-migrate takes a single `bigint` key; the two-key space
 never meets it. A transaction that takes a team's lock and persons' locks takes the team's first
@@ -443,6 +574,18 @@ reopens — lock it `FOR UPDATE` (`LockProjectRank`) before they read a key, and
 it before it writes a ticket row, so they cannot deadlock over it
 ([domain.md](domain.md#rank)). It is a row of its own so that filing never waits for a change
 of the project's settings.
+
+**A ticket row an update locks.** PostgreSQL locks a row an `UPDATE` changes a key column of
+`FOR UPDATE`, and counts as a key every column a unique index that is not partial covers; every
+other `UPDATE` locks `FOR NO KEY UPDATE`, which the `FOR KEY SHARE` of a foreign key's check on the
+same row does not wait for. The rank's unique index is partial since migration 49,
+`tickets_by_rank_key … WHERE rank IS NOT NULL`, so a done, a drop, a reopen and a move — which
+change the rank — lock their ticket `FOR NO KEY UPDATE`. Before, they locked it `FOR UPDATE`, and
+closing a parent and, at once, a child it blocks deadlocked: the child's transaction held its row
+and waited on the parent's to derive its progress, while the parent's held its own and waited on the
+child's to insert the notifications that reference it
+(`TestClosingAParentAndTheChildItBlocksAtOnceFinishesBoth`). A deletion of a ticket row — the purge's
+— still locks it `FOR UPDATE`.
 
 ## The login and the sessions
 
@@ -564,7 +707,10 @@ installation-level act after them; it is not hourly: `runJobs` asks every hour w
 unit test reads every `RunJob` call of the backend and refuses a key two jobs share. Key `7` was
 the expiry of GitHub's deliveries, removed with the webhook; no job takes it. The import expiry, key `9` (`ExpireImportJobs`, [`store/imports.go`](../../backend/internal/store/imports.go)),
 deletes the dry runs past their twenty-four hours in every team with the files they hold and
-records one `expired` act on `import_jobs` when it removed any; an executed job stays.
+records one `expired` act on `import_jobs` when it removed any; an executed job stays. Key `10` is
+`DB.EndTeamRelations` (`system:team-deletion`), the end of every relation between a team and the
+others ([crossings](#crossings-between-teams)), which no schedule and no route runs while the
+deletion of a team is not built.
 `runJobs` in [`main.go`](../../backend/cmd/cowork/main.go)
 runs them at start and then every hour, on every replica; each lock lets one of them work. Its log
 lines name a job as the metrics do, by its system actor's name: `idempotency-expiry`,
@@ -597,7 +743,11 @@ A ticket is deleted into its team's bin and purged from it ([ADR 0024] D1–D3, 
   its time entries' revisions and entries, its stakes, its links and the pull requests GitHub's webhook of a release up to 0.12.0 linked to it; makes its children roots
   (`DetachChildren`, no version: their parent was hidden since the deletion); turns a block that
   waits on it into an external reference to its key (`ReleaseBlocksOn`, an `updated` act on each
-  such ticket with its version raised); and deletes the ticket. Its act `purged` counts what went —
+  such ticket with its version raised); ends its relations into other teams through the crossing
+  `end_relations_elsewhere` — a child there becomes a root, its version unchanged, with an `updated`
+  act whose reason is "the parent was purged" and which names no ticket; a link to or from it goes,
+  with an `unlinked` act on the other end, read from its side —, each act in the record of the team
+  it changes (`Writer.RecordElsewhere`); and deletes the ticket. Its act `purged` counts what went —
   never what it said — and carries `Published`, since the row is gone when the act is written. It
   returns the attachment ids, whose objects the caller removes **after the commit**
   (`api.RemovePurgedObjects`): a rollback would otherwise leave rows that name missing bytes, and a
@@ -613,8 +763,8 @@ A ticket is deleted into its team's bin and purged from it ([ADR 0024] D1–D3, 
 - **The audit rows** keep the key, the actor and the act; their `before`, `after`, `reason` and
   `note` are emptied ([ADR 0026] D3) by `purge_ticket_audit(ticket)`, a `SECURITY DEFINER` function
   owned by the owner role — the runtime role may not update an audit row — executable by the runtime
-  role alone, with its `search_path` fixed to the schema and `pg_temp` last
-  (`TestEverySecurityDefinerFunctionIsFencedIn`). It refuses outside the purge and for a ticket that
+  role alone, with its `search_path` fixed to the schema and `pg_temp` last, emptying `app.crossing`
+  first since migration 47 (`TestEverySecurityDefinerFunctionIsFencedIn`). It refuses outside the purge and for a ticket that
   is not deleted, and the policy `audit_purge` admits its update to the owner role in the purge of
   the current team only. The act of the purge is written by the wrapper in the same transaction,
   so both commit or neither does.
@@ -700,7 +850,12 @@ project, version and confidential facts (`TicketFacts`, which reads a deleted ti
 them from `Event.Published` for a purged one; a membership act sends the keys of its
 `MembershipChange` and its audience. Either way it calls `pg_notify('cowork_events', <json>)` in the same transaction;
 PostgreSQL delivers it at commit and never after a rollback ([ADR 0054] D4). `DB.Listen` holds
-one connection outside the pool on the channel. The rest is [events.md](events.md).
+one connection outside the pool on the channel. An act `RecordElsewhere` writes in another team is
+published like any act, on that team's streams. One notification is no act's: `refresh_derived`
+calls `pg_notify` itself for every parent whose derived stages it changed, of any team —
+`ticket.changed` of the kind `derived`, with an id `uuidv7()` makes for it, and the parent's
+project, version, confidential flag, assignee and reporter for the streams' filter — since the
+change records no act ([crossings](#crossings-between-teams)). The rest is [events.md](events.md).
 
 [ADR 0013]: ../adr/0013-interest-is-a-persons-weighted-reasoned-stake-in-a-ticket.md
 [ADR 0015]: ../adr/0015-comments-are-a-thread-and-activity-is-a-separate-list.md

@@ -35,6 +35,28 @@
 
 <p class="title" data-testid="card-title">{{ t.title }}</p>
 
+@if (!compact()) {
+  @if (parent(); as chip) {
+    @if (chip.route; as route) {
+      <a
+        class="parent"
+        [routerLink]="route"
+        (click)="$event.stopPropagation()"
+        [attr.aria-label]="chip.label"
+        [pTooltip]="chip.tip"
+        [showDelay]="400"
+        data-testid="card-parent"
+        ><i class="pi pi-sitemap" aria-hidden="true"></i>{{ chip.text }}</a
+      >
+    } @else {
+      <span class="parent" [pTooltip]="chip.tip" [showDelay]="400" data-testid="card-parent"
+        ><i class="pi pi-sitemap" aria-hidden="true"></i><span class="sr-only">Parent </span
+        >{{ chip.text }}</span
+      >
+    }
+  }
+}
+
 @if (compact()) {
   <div class="foot">
     <app-state [value]="t.state" />

@@ -329,6 +329,71 @@ func TestTheManifestNamesItsTeamByEitherName(t *testing.T) {
 	}
 }
 
+// docs/adr/0051 D9 as made concrete 2026-10-10: a key of another project or
+// another team names its ticket where the importing person reads it — a
+// parent, a link's target, a relates-to stored from the import's end —, and a
+// link whose source is a ticket of another team is reported and omitted: a
+// member of that team sets it there. A key the person does not read is
+// reported as not set, as one that names nothing.
+func TestAnalyzeExternalReferences(t *testing.T) {
+	tg := target()
+	tg.Project = "NEW"
+	ops, globex := uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7())
+	tg.External = map[string]External{"acme/OPS-1": {ID: ops, Team: "acme"}, "globex/API-7": {ID: globex, Team: "globex"}}
+	tickets := []markdown.Ticket{
+		vko(1, "Child of another project", func(tk *markdown.Ticket) { tk.Parent = "acme/OPS-1" }),
+		vko(2, "Child of another team", func(tk *markdown.Ticket) { tk.Parent = "globex/API-7" }),
+		vko(3, "Child of an unread key", func(tk *markdown.Ticket) { tk.Parent = "globex/API-8" }),
+		vko(4, "Waits on another team", func(tk *markdown.Ticket) {
+			tk.State, tk.BlockedBy, tk.BlockedReason, tk.BlockedFrom = "blocked", "ticket", "needs API-7", "in-progress"
+		}),
+		vko(5, "Waits on another project", func(tk *markdown.Ticket) {
+			tk.State, tk.BlockedBy, tk.BlockedReason, tk.BlockedFrom = "blocked", "ticket", "needs OPS-1", "in-progress"
+		}),
+	}
+	links := []manifestLink{
+		{Source: "acme/VKO-1", Type: "blocks", Target: "globex/API-7"},
+		{Source: "globex/API-7", Type: "blocks", Target: "acme/VKO-2"},
+		{Source: "globex/API-7", Type: "relates-to", Target: "acme/VKO-3"},
+		{Source: "globex/API-7", Type: "blocks", Target: "acme/VKO-4"},
+		{Source: "acme/OPS-1", Type: "blocks", Target: "acme/VKO-5"},
+	}
+	u := Read(exportUpload(t, tickets, links))
+	assert.Equal(t, []string{"acme/OPS-1", "globex/API-7", "globex/API-8"}, u.Needs("").External)
+	r := Analyze(u, tg, nil)
+
+	one, two, three := file(t, r, "acme/VKO-1.md"), file(t, r, "acme/VKO-2.md"), file(t, r, "acme/VKO-3.md")
+	assert.Equal(t, "acme/OPS-1", *one.Parent)
+	assert.Equal(t, "globex/API-7", *two.Parent)
+	assert.Nil(t, three.Parent)
+	assert.True(t, warned(three, "the parent is not set: globex/API-8 is no ticket you can read"))
+	assert.Contains(t, one.Links, LinkReport{Type: domain.LinkBlocks, Direction: directionOutgoing, Key: "globex/API-7", Source: sourceLinks})
+	assert.True(t, warned(two, "its source is a ticket of another team"))
+	assert.Contains(t, three.Links, LinkReport{Type: domain.LinkRelatesTo, Direction: directionOutgoing, Key: "globex/API-7", Source: sourceLinks},
+		"a relates-to with a ticket of another team is stored from the import's end")
+	// A block waits on a ticket of its own team (docs/adr/0009 D2): one that
+	// names a ticket of another team cannot be imported, as one that names
+	// nothing; a ticket of another project of the team is waited on.
+	four, five := file(t, r, "acme/VKO-4.md"), file(t, r, "acme/VKO-5.md")
+	assert.Equal(t, OutcomeError, four.Outcome)
+	assert.True(t, slices.ContainsFunc(four.Errors, func(m MessageReport) bool {
+		return strings.Contains(m.Message, "globex/API-7 is a ticket of another team")
+	}), "%+v", four.Errors)
+	assert.Equal(t, OutcomeCreate, five.Outcome)
+	assert.Equal(t, ptr("acme/OPS-1"), five.Block.Ticket)
+	var planned []PlannedLink
+	for _, l := range r.Plan.Links {
+		if l.Target.Key != "" || l.Source.Key != "" {
+			planned = append(planned, l)
+		}
+	}
+	assert.ElementsMatch(t, []PlannedLink{
+		{Type: domain.LinkBlocks, Source: Ref{Number: 1}, Target: Ref{ID: globex, Key: "globex/API-7"}},
+		{Type: domain.LinkRelatesTo, Source: Ref{Number: 3}, Target: Ref{ID: globex, Key: "globex/API-7"}},
+		{Type: domain.LinkBlocks, Source: Ref{ID: ops, Key: "acme/OPS-1"}, Target: Ref{Number: 5}},
+	}, planned)
+}
+
 func vko(n int, title string, change func(*markdown.Ticket)) markdown.Ticket {
 	tk := markdown.Ticket{Key: domain.FullKey("acme", "VKO", int32(n)), Title: title, Type: "task", State: "filed",
 		Severity: "low", Security: "none", Horizon: "later", Effort: "S"}
@@ -389,7 +454,7 @@ func TestAnalyzeAnExport(t *testing.T) {
 	child := file(t, r, "acme/VKO-2.md")
 	assert.Equal(t, "acme/NEW-1", *child.Parent)
 	assert.ElementsMatch(t, []LinkReport{{Type: domain.LinkRelatesTo, Direction: directionOutgoing, Key: "acme/NEW-9", Source: sourceLinks}}, child.Links)
-	assert.True(t, warned(child, "acme/OTHER-1 is a ticket of another project"))
+	assert.True(t, warned(child, "acme/OTHER-1 is no ticket you can read"))
 
 	waits := file(t, r, "acme/VKO-3.md")
 	assert.Equal(t, &BlockReport{Kind: domain.BlockTicket, Reason: "needs VKO-1", From: domain.StateInProgress, Ticket: ptr("acme/NEW-1")}, waits.Block)

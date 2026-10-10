@@ -114,6 +114,15 @@ describe('happening', () => {
       },
       'closed COW-2, which blocks it, as done',
     ],
+    // docs/adr/0012 D5 as made concrete 2026-10-10: the act names the prerequisite in its refs alone.
+    [
+      {
+        reason: 'blocker_closed',
+        act: act({ action: 'prerequisite_settled', after: null, redacted: true }),
+        blocker: null,
+      },
+      'closed a ticket of another team that blocks it',
+    ],
   ])('says what happened for %j', (overrides, said) => {
     expect(happening(entry('n1', 'acme/COW-1', overrides))).toBe(said);
   });

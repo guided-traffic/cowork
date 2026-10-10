@@ -85,10 +85,14 @@ which `lockedDryRun` reads from the job's `report` (`LockImportJob`).
    ([ADR 0051] D3).
 2. `Upload.Check` holds the corrections to the rules of `ImportCorrection`, each refusal `400` at
    its pointer, `/corrections/<i>/path`, `…/exclude`, `…/block`, `…/block/kind`, `…/block/from`.
-3. `lockRank` takes the project's counter row: a filing waits, and no number the analysis checks
-   can be taken meanwhile.
-4. The analysis again, with the corrections, against the project as it stands now and with the
-   dry run's assignees. A file that has an error or a conflict — a ticket filed after the dry run
+3. Where the upload may bring a `blocks` link — one in `links.json`, or a file's `blocked-by`
+   (`Upload.MayLinkBlocks`) —, the installation's lock of the `blocks` graph
+   (`LockGraph(GraphBlocks)`), before the rank's row lock and any ticket row
+   ([data-access.md](data-access.md#advisory-locks)); then `lockRank` takes the project's counter
+   row: a filing waits, and no number the analysis checks can be taken meanwhile.
+4. The analysis again, with the corrections, against the project as it stands now, with the
+   dry run's assignees, and with the keys of other projects and teams resolved again for the
+   importing person (`importExternal`). A file that has an error or a conflict — a ticket filed after the dry run
    with one of its numbers included — is left out of the plan, its `reason` saying why; nothing
    refuses the execution ([ADR 0051] D2 as amended 2026-10-09).
 5. `execute` ([`importwrite.go`](../../backend/internal/api/importwrite.go)) writes the plan:
@@ -106,12 +110,15 @@ which `lockedDryRun` reads from the job's `report` (`LockImportJob`).
    - the questions, `InsertImportedQuestion`, asked by the importer and, when answered or
      withdrawn, answered or withdrawn by the importer at the execution's time; each the act `asked`
      naming the job;
-   - the parents' derived stages, `refreshProgress` once per parent;
-   - the links: a `blocks` link takes the team's blocks lock once and is walked first
-     (`BlocksPathExists`); one that would close a cycle through the project's tickets — which the
+   - the parents' derived stages, `refreshProgress` once per parent, a parent of another project
+     or team included;
+   - the links: a `blocks` link is walked first (`BlocksReach`, across teams, under the lock of
+     step 3); one that would close a cycle through tickets the upload does not bring — which the
      analysis does not walk — is omitted and the file's report says so; `relates-to` is stored
-     with the smaller id first; `linked` on both tickets, `Quiet` on a ticket the import creates
-     and published on one of the project's;
+     inside the team with the smaller id first, with a ticket of another team from the import's
+     end; `linked` on both tickets, `Quiet` on a ticket the import creates, published on one of the
+     project's, and on a ticket of another team recorded in that team's record and published
+     there (`RecordElsewhere`);
    - `AdvanceTicketCounter` to the highest number when it is above the counter;
    - `Report.Executed`, `FinishImportJob` — the executed report replaces the dry run's, the files
      go —, and the act `imported` on the job, which carries `ProjectRank`.
@@ -211,14 +218,19 @@ in this order:
    the confidential flag by the rule of the source (below); the texts the plan does not rewrite held
    to the API's lengths (`lengths`): a threat, a block's reason and a dropped ticket's reason of
    2,000 characters, a done ticket's note of 10,000.
-4. **Settle**: a block of kind `ticket` whose ticket resolves to nothing, and a chain of parents or
-   of waited-on tickets that loops back, are errors — repeated until no file changes, since an
-   error takes a file out of what the others resolve to.
+4. **Settle**: a block of kind `ticket` whose ticket resolves to nothing or to a ticket of another
+   team — a block waits on a ticket of its own team, as the transition to `blocked` takes it —, and a
+   chain of parents or of waited-on tickets that loops back, are errors — repeated until no file
+   changes, since an error takes a file out of what the others resolve to.
 5. **References and the plan**: a reference resolves to a file the execution creates, else — when
    the upload does not bring its number — to the project's ticket of that number, else to nothing.
    `T<n>` names a repository's number; a full key names the upload's file of that key, or a number
-   of the project the upload's export files come from (`sourceProject`); a key of another project
-   resolves to nothing ([ADR 0051] D4, D9). Then the parent, the ticket a block waits on (the
+   of the project the upload's export files come from (`sourceProject`); a key of another project or
+   team names its ticket where the importing person reads it — `importExternal` reads each through
+   the crossing `readable_ticket` into `Target.External` —, and any other resolves to nothing, "<key>
+   is no ticket you can read" ([ADR 0051] D4, D9 as made concrete 2026-10-10). A link whose source
+   is a ticket of another team is omitted with a warning: setting it is a write on that ticket, a
+   member of its team's ([ADR 0012] D2). Then the parent, the ticket a block waits on (the
    file's own `blocked-by`, or the one `blocks` link of `links.json` that ends at the ticket), a
    repository's `blocked-by` and `filed-from`, and `links.json`. Each link once — `relates-to` once
    whichever end names it —, never one from a ticket to itself, never a `blocks` link that closes a
@@ -302,7 +314,10 @@ exports what in a short `InTenant` transaction and answer an `exportStream`, whi
   documents and of the confidential
   tickets left out, the time, the exporter as grammar v1 writes a person, the totals);
   `links.json` (`ExportLinks`: every link with an end in the project — or, for the team, every
-  link — whose two ends the caller sees, once); `attachments.json` (`ExportAttachments`: ticket,
+  link — whose two ends the caller sees, once; and every link between an exported ticket and a
+  ticket of another team, read through the crossing `relation_heads` in the same snapshot, by the
+  keys of its ends — the other end's key the only thing of it the archive holds —, one whose other
+  end is a placeholder left out, `readLinksElsewhere`); `attachments.json` (`ExportAttachments`: ticket,
   name, type, size and the path of the bytes, under `/api/v1/teams/…`, `attachmentContentURL`).
 - **The count of what it leaves out** is `ExportHiddenConfidential`, exempt from the predicate by
   name: the confidential tickets of the projects the caller sees that the caller cannot read. The
@@ -395,6 +410,7 @@ so a ticket file the importer cannot read fails the tier.
 [ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md
 [ADR 0011]: ../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md
 [ADR 0044]: ../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md
+[ADR 0012]: ../adr/0012-four-typed-directed-links-within-a-tenant.md
 [ADR 0051]: ../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md
 [ADR 0063]: ../adr/0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md
 [ADR 0064]: ../adr/0064-one-direction-import-and-export-no-synchronisation.md

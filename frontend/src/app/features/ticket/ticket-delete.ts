@@ -3,14 +3,15 @@ import { Router } from '@angular/router';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
 import { Tooltip } from 'primeng/tooltip';
-import { Ticket } from '../../api/models';
+import { Ticket, TicketHead } from '../../api/models';
 import { ProblemService } from '../../core/problem.service';
 import { routeOf, TicketActions } from '../../core/ticket-actions.service';
+import { headName } from '../../shared/ticket-head';
 
 /**
  * Deleting a ticket from its page (docs/adr/0024 D1, D7), offered to a tenant administrator: the
  * page asks first, naming the open tickets that wait on this one — a deletion does not refuse
- * over them — and saying that the ticket can be restored from the bin until it is purged. The
+ * over them; one of another team by its team and short key (docs/adr/0005 D3) — and saying that the ticket can be restored from the bin until it is purged. The
  * question is the page's, which closes it when the page shows another ticket. A deleted ticket
  * leaves the page for its project's backlog.
  */
@@ -53,7 +54,7 @@ export class TicketDelete {
     const ticket = this.ticket();
     const short = ticket.key.slice(ticket.key.indexOf('/') + 1);
     this.busy.set(true);
-    let dependents: string[];
+    let dependents: TicketHead[];
     try {
       dependents = await this.actions.dependents(ticket.key);
     } catch (error) {
@@ -66,7 +67,8 @@ export class TicketDelete {
       dependents.length === 0
         ? ''
         : ` ${dependents.length === 1 ? 'One open ticket waits' : `${dependents.length} open tickets wait`} on it: ` +
-          `${dependents.join(', ')}. They stop counting it as a prerequisite.`;
+          `${dependents.map((head) => headName(head, routeOf(ticket.key).team)).join(', ')}. ` +
+          'They stop counting it as a prerequisite.';
     this.confirm.confirm({
       header: `Delete ${short}?`,
       message:

@@ -42,8 +42,9 @@ one crossing, the relation between tickets of two teams, read as the other ticke
 *Consequences* lose the tenant switcher to the sidebar of
 [ADR 0023](0023-the-tenant-is-in-the-path.md) D4. The rules this replaces are marked in place.
 ~~Nothing of the amendment is built.~~ *(2026-10-10:)* D1's expand is built, below, and so are D6's
-sidebar and the *Consequences*' "All teams" (the second paragraph below); the contract of D1 and D3's
-crossing are not.
+sidebar and the *Consequences*' "All teams" (the second paragraph below); the contract of D1 and
+~~D3's crossing~~ are not. *(2026-10-10:)* D3's crossing is built in the data layer and the API,
+below; ~~its UI is not~~ *(2026-10-10: and in the UI, below)*.
 
 **Built** (2026-10-10): D1's expand. Every surface says team, and each name before stays readable
 for one release, deprecated, behaving as it did: the API's team family, `/api/v1/teams` and
@@ -84,6 +85,52 @@ with one membership that one, and a global administrator reaches every team of t
 through "All teams" in the person menu, the UI route `/teams`
 ([ADR 0023](0023-the-tenant-is-in-the-path.md) D4, where what was built is named).
 
+**Built** (2026-10-10): D3's crossing, in the data layer and the API; ~~the UI is not~~ *(2026-10-10:
+the UI the same day, below)*. A ticket's
+parent, its children and its links may be tickets of another project or team
+([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2,
+[ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2), and every other end is shown
+as the caller sees it — readable, by its head, or as `<team> [Confidential]` — through the
+crossings of [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7
+([migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql)). `Ticket.parent` is the parent's canonical key and
+`Ticket.parent_head` its head; `GET …/tickets/{number}/relations` and
+`GET …/tickets/{number}/prerequisite-tree` read the relations and the prerequisite tree across
+teams, while the reads before them, `…/links` and `…/prerequisites`, keep their meaning — the
+team's own ends the caller sees — and are deprecated
+([ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D7); `PUT` and
+`DELETE …/links/{type}/{other_team}/{other}` link a ticket of another team, and
+`DELETE …/links/{link}` removes a link by its id, whose other end may be a placeholder. *(Made
+concrete by the implementer, open to the owner's objection:)* a member of the other team reads a
+ticket by its head where its project is restricted from them, and a token restricted to one team
+reads the tickets of every other by their heads
+([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D4, [ADR 0035](0035-personal-access-tokens.md) D2, D3); and a key the person cannot read answers
+exactly as a missing one — a parent `400 validation_failed` "no such ticket" at `/parent`, a link's
+other end `404 not_found` "no such ticket" —, so no answer tells that a ticket the person may not
+read exists. The integration tier proves the head's fields alone in every byte of the answers,
+the placeholder, and the uniform miss body for body
+([`api_relations_test.go`](../../backend/test/integration/api_relations_test.go)).
+
+**Built** (2026-10-10): D3's crossing in the UI. The parent chooser and the link field offer the
+tickets the person reads across their teams — the person-level search once they type
+([ADR 0023](0023-the-tenant-is-in-the-path.md) D2), the open tickets of the ticket's project before
+— and send canonical keys
+([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2,
+[ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2). The detail page shows the
+parent, the children, the link ends and the nodes of the prerequisite tree, the backlog's row and
+the board's card the parent, as the person sees each: a ticket of another team by its team's name
+and its head, a link to it only where the person may open it (`readable`), and
+`<team> [Confidential]` for one they may not see, in another team or their own
+([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D5). A parent's derived progress is the server's value, fetched again on the event of the kind
+`derived`
+([ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
+D3); the page says no more of a child of another team than its head. The end-to-end tier walks it
+with two identities: a member of both teams picks a ticket of the one as the parent of a ticket of
+the other through the chooser's search, and a member of the other alone sees its head unlinked and
+a confidential parent as its placeholder
+([`relations.spec.ts`](../../frontend/e2e/relations.spec.ts)).
+
 ## Context
 
 [ADR 0004](0004-cowork-is-a-team-product.md) makes cowork a team product: several people per
@@ -122,7 +169,9 @@ two tenants' rows. ~~Exactly one kind of cross-tenant result exists:~~ The **per
 — "next for me", "assigned to me", "open decisions", the inbox — are unions over the tenants the
 person belongs to, each part computed under that tenant's own rules. A ticket changes tenant only
 by export and import, and the audit record of both ends says so. *(Amended 2026-10-10 by the
-owner, not built:)* **A ticket's parent, its children and its links may be tickets of another team
+owner, ~~not built~~ built the same day in the data layer and the API, ~~the UI outstanding~~ and
+in the UI:)* **A
+ticket's parent, its children and its links may be tickets of another team
 of the installation** ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md)
 D2, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2). Across the boundary a person
 who holds no role in the other team reads only the other ticket's **head** — the team's name, the
@@ -169,8 +218,10 @@ exist on a fresh installation is one decision, taken in the identity block of th
   ([ADR 0023](0023-the-tenant-is-in-the-path.md) D4). The single-tenant installation sees neither tenancy nor slug
   except in the URL.
 - The person-level lists (D3) are the one place where rows of several tenants meet in one
-  response. They have to be built as a union of per-tenant queries under the same rules, and
-  tested so that a revoked membership drops its part at once.
+  response *(2026-10-10: beside a relation's other end, a head of another team that the crossings
+  of [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7 read, never a
+  row a handler's query joins)*. They have to be built as a union of per-tenant queries under the
+  same rules, and tested so that a revoked membership drops its part at once.
 - ~~A finding that concerns two clients is two tickets, one per tenant, possibly linked by
   nothing. Accepted: that is what "no mixing" means.~~ *(2026-10-10:)* Work that concerns two
   teams is a ticket in each, related as parent and child or linked (D3); two organisations are two
@@ -198,12 +249,14 @@ exist on a fresh installation is one decision, taken in the identity block of th
   over all tenants.
 - Nothing beyond the `tenants` table is built; every claim above is a rule for what will be
   built, not a description of code.
-- *(2026-10-10, not built:)* D3's crossing puts the heads of team A's tickets before people of team
+- *(2026-10-10, ~~not built~~ built the same day:)* D3's crossing puts the heads of team A's tickets before people of team
   B who hold no role in A — every reader of a related ticket, viewers and their agents' tokens
   included —, and a parent's derived progress lets A's readers read B's children's progress as part
   of an aggregate. The owner accepts it for teams of one organisation. It is bounded by who may set
   a relation (ADR 0008 D2: only a person who can read both ends) and by what a head holds; whether
-  the bounds hold is for the build's tests to show.
+  the bounds hold is for the build's tests to show. *(2026-10-10:)* The integration tier shows both
+  for the API and for the chat's provider; the tenancy security page names what stays open
+  ([docs/security/tenancy.md](../security/tenancy.md), H-111, H-112).
 
 ## References
 

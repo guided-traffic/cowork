@@ -79,7 +79,7 @@ func (s *Server) MoveTicketRank(ctx context.Context, req apigen.MoveTicketRankRe
 	if perr != nil {
 		return nil, perr
 	}
-	var out store.TicketRow
+	var out shown
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
 		if err != nil {
@@ -95,13 +95,14 @@ func (s *Server) MoveTicketRank(ctx context.Context, req apigen.MoveTicketRankRe
 		if err != nil {
 			return err
 		}
-		out, err = moveRank(ctx, w, t, tc, other, target)
+		row, err := moveRank(ctx, w, t, tc, other, target)
+		out, err = showing(ctx, w.Reader, row, err)
 		return err
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.MoveTicketRank200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.MoveTicketRank200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.MoveTicketRank200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.MoveTicketRank200ResponseHeaders{ETag: etag(out.row.Version)}}, nil
 }
 
 // rankSelf refuses the ticket as its own neighbour.

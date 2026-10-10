@@ -28,8 +28,11 @@ INSERT INTO tickets (
 RETURNING id;
 
 -- name: UpdateTicketFields :one
--- The fields of PATCH, a compare-and-set on the version (docs/adr/0050 D1);
--- progress is the implementation stage (docs/adr/0017 D2).
+-- The fields of PATCH, a compare-and-set on the version (docs/adr/0050 D1)
+-- and on the parent as the patch read it: a child detached from its parent's
+-- side, or by a purge of the parent, keeps its version, and a patch read
+-- before would write the parent back; progress is the implementation stage
+-- (docs/adr/0017 D2).
 UPDATE tickets
 SET type = sqlc.arg(type), title = sqlc.arg(title), severity = sqlc.arg(severity),
     security = sqlc.arg(security), threat = sqlc.narg(threat), effort = sqlc.arg(effort),
@@ -38,6 +41,7 @@ SET type = sqlc.arg(type), title = sqlc.arg(title), severity = sqlc.arg(severity
     progress_review = sqlc.arg(progress_review), confidential = sqlc.arg(confidential),
     version = version + 1, updated_at = now()
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id) AND version = sqlc.arg(version)
+  AND parent_id IS NOT DISTINCT FROM sqlc.narg(read_parent_id)::uuid
 RETURNING version;
 
 -- name: UpdateTicketBody :one
@@ -77,24 +81,18 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        t.urgency_override_reason, t.urgency_override_by, ou.username AS urgency_override_by_username,
        ou.display_name AS urgency_override_by_name, t.urgency_override_at, t.effort, t.progress, t.progress_derived,
        t.progress_refinement, t.progress_refinement_derived, t.progress_review, t.progress_review_derived,
-       t.parent_id, pt.number AS parent_number,
+       t.parent_id,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
        t.confidential, t.rank, t.score_key, t.score_version, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
-       (SELECT count(*) FROM ticket_links pl
-        JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
-        WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
-          AND ps.state NOT IN ('done', 'dropped')
-          AND ps.deleted_at IS NULL AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+       open_prerequisite_count(t.id)::integer AS open_prerequisites,
        t.version, t.created_at, t.updated_at
 FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
 LEFT JOIN users au ON au.id = t.assignee_id
 LEFT JOIN users ou ON ou.id = t.urgency_override_by
-LEFT JOIN tickets pt ON pt.tenant_id = t.tenant_id AND pt.id = t.parent_id
-     AND pt.deleted_at IS NULL AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
 LEFT JOIN tickets bt ON bt.tenant_id = t.tenant_id AND bt.id = t.block_ticket_id
      AND bt.deleted_at IS NULL AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
 LEFT JOIN projects bp ON bp.tenant_id = bt.tenant_id AND bp.id = bt.project_id
@@ -135,37 +133,6 @@ UPDATE tickets
 SET done_by_hand = false, version = version + 1, updated_at = now()
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id) AND state = 'done' AND done_by_hand
 RETURNING version;
-
--- name: RefreshDerivedProgress :one
--- The ticket's derived stages after a change of its children
--- (docs/adr/0017 D3), progress_derived the implementation stage's. It leaves
--- the version alone (docs/adr/0050 D1); when the last child has left, each
--- stage's own value starts at the last derived one. A done ticket that gains
--- children is done by hand from then on: a parent is never done by its stages
--- (docs/adr/0009 D5). No row when nothing changed; else the parent, whose
--- stages read this one's.
-WITH d AS (SELECT ticket_derived_stage(sqlc.arg(tenant_id), sqlc.arg(id), 'refinement') AS refinement,
-                  ticket_derived_stage(sqlc.arg(tenant_id), sqlc.arg(id), 'implementation') AS implementation,
-                  ticket_derived_stage(sqlc.arg(tenant_id), sqlc.arg(id), 'review') AS review)
-UPDATE tickets t
-SET progress_derived = d.implementation,
-    progress_refinement_derived = d.refinement,
-    progress_review_derived = d.review,
-    progress = CASE WHEN d.implementation IS NULL THEN coalesce(t.progress_derived, t.progress) ELSE t.progress END,
-    progress_refinement = CASE WHEN d.refinement IS NULL
-                               THEN coalesce(t.progress_refinement_derived, t.progress_refinement)
-                               ELSE t.progress_refinement END,
-    progress_review = CASE WHEN d.review IS NULL
-                           THEN coalesce(t.progress_review_derived, t.progress_review)
-                           ELSE t.progress_review END,
-    done_by_hand = t.done_by_hand OR (t.state = 'done' AND d.implementation IS NOT NULL),
-    updated_at = now()
-FROM d
-WHERE t.tenant_id = sqlc.arg(tenant_id) AND t.id = sqlc.arg(id)
-  AND (t.progress_derived IS DISTINCT FROM d.implementation
-       OR t.progress_refinement_derived IS DISTINCT FROM d.refinement
-       OR t.progress_review_derived IS DISTINCT FROM d.review)
-RETURNING t.parent_id;
 
 -- name: TicketFacts :one
 -- What a published act carries of its ticket: the project, the version and

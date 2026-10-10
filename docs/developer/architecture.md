@@ -80,7 +80,10 @@ the person's token, like a script — no path to the database, nothing the API d
    pings it on every call.
 5. `checkDatabase` refuses a runtime role that could bypass row-level security, a dirty schema,
    and pending migrations (`pending migrations: N; run the migration job …`); a schema ahead of
-   the binary is served with a warning ([ADR 0057] D3, [ADR 0028]).
+   the binary is served with a warning ([ADR 0057] D3, [ADR 0028]). Last, `DB.CheckCrossing`
+   refuses crossings between teams that are not the owner role's alone — a crossing policy that
+   names another role, a crossing function missing or not the owner's
+   ([data-access.md](data-access.md#crossings-between-teams)).
 6. `discoverIssuer`, when `COWORK_OIDC_ISSUER` is set: `oidc.Discover` fetches the discovery
    document within thirty seconds through the issuer client — no redirect, at most 1 MiB — holds it
    to the rules — the issuer it names must be the configured string exactly, the authorization,

@@ -9,18 +9,22 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { AutoComplete } from 'primeng/autocomplete';
 import { ButtonDirective } from 'primeng/button';
-import { InputText } from 'primeng/inputtext';
 import { Select } from 'primeng/select';
 import { Textarea } from 'primeng/textarea';
-import { LinkType, Question, QuestionPatch, Ticket } from '../../api/models';
+import { LinkType, Question, QuestionPatch, Ticket, TicketHead } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { MembersService } from '../../core/members.service';
 import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
+import { routeOf } from '../../core/ticket-actions.service';
+import { splitKey, TicketsService } from '../../core/tickets.service';
 import { ConflictNote } from '../../shared/conflict-note';
 import { MentionList } from '../../shared/mention-list';
 import { Mentionable, mentionCandidates, mentionsIn } from '../../shared/mentions';
+import { headLabel, headOfHit, headOfTicket, TicketChoice } from '../../shared/ticket-head';
+import { searchDelay } from './parent-picker';
 
 /**
  * A field of a form that belongs to its ticket: the page is reused when its path names another
@@ -437,14 +441,43 @@ export class AnswerQuestion {
   }
 }
 
+/** A ticket the link form offers for the other end: its canonical key, its label, its head. */
+export interface LinkOption {
+  key: string;
+  label: string;
+  head: TicketHead;
+}
+
 /**
- * Adds a link from this ticket to another of the tenant (docs/adr/0012). The other ticket typed
+ * The other end as the person typed it: a canonical key, `<team>/<PROJECT>-<number>`, of any team,
+ * or the short form `<PROJECT>-<number>` inside the team `team` (docs/adr/0007 D3) — the team in
+ * lower case and the key in upper case, as the routes take them, however it was typed; null for
+ * anything else.
+ */
+export function typedKey(text: string, team: string): string | null {
+  const typed = text.trim();
+  const slash = typed.indexOf('/');
+  const other = slash < 0 ? team : typed.slice(0, slash).toLowerCase();
+  const short = (slash < 0 ? typed : typed.slice(slash + 1)).toUpperCase();
+  return /^[a-z0-9][a-z0-9-]{1,62}$/.test(other) &&
+    /^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]{0,9}$/.test(short)
+    ? `${other}/${short}`
+    : null;
+}
+
+/**
+ * Adds a link from this ticket, its source, to another ticket the person reads, of any project or
+ * team (docs/adr/0012 D2): the field offers the open tickets of the ticket's project from its
+ * button, and once the person types, the tickets of every team of the person that the person-level
+ * search finds for the words or the key typed (docs/adr/0023 D2, docs/adr/0025), each with its
+ * team where it is of another; it takes a key typed as well, canonical or short inside the team.
+ * A key the person cannot read is refused as one that does not exist. The other ticket typed
  * belongs to the ticket it was typed on.
  */
 @Component({
   selector: 'app-link-adder',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonDirective, FormsModule, InputText, Select],
+  imports: [AutoComplete, ButtonDirective, FormsModule, Select, TicketChoice],
   template: `
     <form class="adder" (ngSubmit)="send()">
       <p-select
@@ -455,15 +488,28 @@ export class AnswerQuestion {
         size="small"
         ariaLabel="Link type"
       />
-      <input
-        pInputText
+      <p-autocomplete
         name="other"
-        placeholder="COW-12"
         [ngModel]="other()"
         (ngModelChange)="other.set($event)"
-        aria-label="The other ticket"
+        [suggestions]="suggestions()"
+        optionLabel="label"
+        (completeMethod)="complete($event.query)"
+        [dropdown]="true"
+        [delay]="searchDelay"
+        placeholder="COW-12, team/COW-12 or words"
+        ariaLabel="The other ticket"
+        dropdownAriaLabel="The open tickets of the project"
+        emptyMessage="No ticket you can read matches"
+        appendTo="body"
+        size="small"
+        class="other"
         data-testid="link-other"
-      />
+      >
+        <ng-template #item let-option>
+          <app-ticket-choice [head]="option.head" [here]="team()" />
+        </ng-template>
+      </p-autocomplete>
       <button
         pButton
         type="submit"
@@ -484,37 +530,106 @@ export class AnswerQuestion {
   styles: `
     .adder {
       display: grid;
-      grid-template-columns: 1fr 1fr auto;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) auto;
       gap: 0.5rem;
       margin-top: 0.75rem;
-      input {
-        min-width: 0;
-      }
+    }
+    .other {
+      min-width: 0;
+    }
+    :host ::ng-deep .other .p-autocomplete {
+      width: 100%;
+    }
+    :host ::ng-deep .other input {
+      min-width: 0;
     }
   `,
 })
 export class LinkAdder {
   readonly ticketKey = input.required<string>();
   private readonly conversation = inject(Conversation);
+  private readonly tickets = inject(TicketsService);
   private readonly problems = inject(ProblemService);
   protected readonly types: LinkType[] = ['blocks', 'relates-to', 'duplicates', 'found-in'];
+  protected readonly searchDelay = searchDelay;
   protected readonly type = draft<LinkType>(this.ticketKey, () => 'relates-to');
-  protected readonly other = draft(this.ticketKey, () => '');
+  /** The text typed, or the ticket picked among the offered ones. */
+  protected readonly other = draft<string | LinkOption>(this.ticketKey, () => '');
+  protected readonly suggestions = signal<LinkOption[]>([]);
   protected readonly busy = signal(false);
-  protected readonly valid = computed(() =>
-    /^[A-Z][A-Z0-9]{1,9}-[1-9][0-9]*$/.test(this.other().trim().toUpperCase()),
-  );
+  /** The team of the ticket, which a short key names. */
+  protected readonly team = computed(() => splitKey(this.ticketKey()).team);
+  /** The other end's canonical key, or null while what the field holds names none. */
+  private readonly target = computed(() => {
+    const other = this.other();
+    return typeof other === 'object' && other !== null
+      ? other.key
+      : typedKey(other ?? '', this.team());
+  });
+  protected readonly valid = computed(() => this.target() !== null);
+  /** The text the last offer was asked for: an older answer is dropped. */
+  private asked: string | null = null;
+  /** The project's open tickets, read once per project the field offers them for. */
+  private readonly projectOffer = new Map<string, LinkOption[]>();
+
+  /**
+   * What the field offers: the open tickets of the ticket's project for an empty text — the
+   * field's button —, the person-level search's hits for words or a key; never the ticket itself.
+   */
+  protected async complete(text: string): Promise<void> {
+    const query = text.trim();
+    const key = this.ticketKey();
+    this.asked = query;
+    try {
+      const offered = query === '' ? await this.openOfProject(key) : await this.found(query);
+      if (this.asked === query && this.ticketKey() === key) {
+        this.suggestions.set(offered.filter((option) => option.key !== key));
+      }
+    } catch (error) {
+      if (this.asked === query) {
+        this.suggestions.set([]);
+        this.problems.report(error);
+      }
+    }
+  }
 
   protected async send(): Promise<void> {
     const key = this.ticketKey();
+    const target = this.target();
+    if (target === null) {
+      return;
+    }
     if (
       (await guarded(this.busy, this.problems, () =>
-        this.conversation.link(key, this.type(), this.other().trim().toUpperCase()),
+        this.conversation.link(key, this.type(), target),
       )) &&
       this.ticketKey() === key
     ) {
       this.other.set('');
     }
+  }
+
+  private async openOfProject(key: string): Promise<LinkOption[]> {
+    const { team, project } = routeOf(key);
+    const place = `${team}/${project}`;
+    let offered = this.projectOffer.get(place);
+    if (!offered) {
+      const tickets = await this.tickets.openTickets(team, project);
+      offered = tickets.map((ticket) =>
+        this.option(headOfTicket(ticket, { slug: team, name: team })),
+      );
+      this.projectOffer.set(place, offered);
+    }
+    return offered;
+  }
+
+  private async found(query: string): Promise<LinkOption[]> {
+    const hits = await this.tickets.search(query);
+    return hits.map((hit) => this.option(headOfHit(hit)));
+  }
+
+  private option(head: TicketHead): LinkOption {
+    return { key: head.key ?? '', label: headLabel(head, this.team()), head };
   }
 }
 

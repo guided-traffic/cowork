@@ -66,6 +66,10 @@ export function happening(entry: InboxEntry): string {
     case 'state_changed':
       return typeof state === 'string' ? `moved it to ${state}` : 'changed its state';
     case 'blocker_closed': {
+      // A prerequisite of another team, which the act names by no key (docs/adr/0012 D5).
+      if (entry.act.action === 'prerequisite_settled') {
+        return 'closed a ticket of another team that blocks it';
+      }
       const blocker = entry.blocker ? shortKey(entry.blocker.key) : 'a ticket';
       return `closed ${blocker}, which blocks it${typeof state === 'string' ? `, as ${state}` : ''}`;
     }

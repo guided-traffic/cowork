@@ -81,7 +81,8 @@ export interface ImportFile {
   outcome: ImportOutcome;
 
   /**
-   * The key of the parent in the project
+   * The parent's canonical key: a ticket of the upload or the project, or of another project or team
+   * the importing person reads (docs/adr/0008 D2, docs/adr/0051 D9)
    */
   parent: (string | null);
 

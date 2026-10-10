@@ -29,10 +29,16 @@ func TestRenderContext(t *testing.T) {
 			Links: []Link{
 				{Name: "blocked by", Key: "acme/VKO-3", Title: "Fix the writer", State: "in-progress", Assignee: "Sam"},
 				{Name: "relates to", Key: "acme/OPS-1", Title: "Backups", State: "filed"},
+				// A ticket of another team, by its head; and one the reader may
+				// not see (docs/adr/0005 D3, docs/adr/0065 D5).
+				{Name: "blocked by", Key: "globex/API-7", Title: "Send the cookie", State: "in-progress", Team: "Globex"},
+				{Name: "found here", Team: "Globex", Placeholder: true},
 			},
 			Prerequisites: []Prerequisite{
 				{Depth: 1, Key: "acme/VKO-3", Title: "Fix the writer", State: "in-progress", Assignee: "Sam", Progress: 40},
 				{Depth: 2, Key: "acme/VKO-1", Title: "Pick a library", State: "done", Progress: 100},
+				{Depth: 1, Key: "globex/API-7", Title: "Send the cookie", State: "in-progress", Head: true, Team: "Globex"},
+				{Depth: 1, Team: "Globex", Placeholder: true},
 			},
 			Comments: []Comment{
 				{Author: "Sam", At: *at("2026-10-03T10:00:00Z"), Body: "Seen it twice.\n\n## Links\nnot a section"},

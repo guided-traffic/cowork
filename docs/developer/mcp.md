@@ -128,6 +128,15 @@ working directory and has no binding resolves it once, before its first tool cal
 `Call`), so a short key works without `session_start` once the SessionStart hook said the session is
 bound (`TestAToolCallBindsTheSessionOnce`); a failed or empty resolution is not tried again.
 
+A relation may name a ticket of another team
+([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3 as amended
+2026-10-10). `link` takes the other end's key — short against the binding, full of any team — and
+calls `linkTicketTo` with the other end's team and short key (`putLink`), so one the person cannot
+read is refused as a key that names nothing; `file_ticket`'s parent takes either, as the API does. No tool
+was added: `get_ticket` reads the context document, whose links and prerequisites of another team
+are their heads and whose placeholders read `<team> [Confidential]`, and its frontmatter names a
+parent of another team by its key alone ([domain.md](domain.md#relations-across-teams)).
+
 ## The session start, the binding and the reminder
 
 `Start` is one function with two callers, the hook and the tool (ADR 0067 D1):

@@ -13,35 +13,91 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
 
-const deleteLink = `-- name: DeleteLink :execrows
+const deleteLinkByID = `-- name: DeleteLinkByID :execrows
 DELETE FROM ticket_links
-WHERE tenant_id = $1 AND type = $2
-  AND source_id = $3 AND target_id = $4
+WHERE tenant_id = $1 AND id = $2
 `
 
-type DeleteLinkParams struct {
+type DeleteLinkByIDParams struct {
 	TenantID uuid.UUID
-	Type     domain.LinkType
-	SourceID uuid.UUID
-	TargetID uuid.UUID
+	ID       uuid.UUID
 }
 
-func (q *Queries) DeleteLink(ctx context.Context, arg DeleteLinkParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteLink,
-		arg.TenantID,
-		arg.Type,
-		arg.SourceID,
-		arg.TargetID,
-	)
+func (q *Queries) DeleteLinkByID(ctx context.Context, arg DeleteLinkByIDParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteLinkByID, arg.TenantID, arg.ID)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected(), nil
 }
 
+const detachChildOf = `-- name: DetachChildOf :execrows
+UPDATE tickets
+SET parent_id = NULL
+WHERE tenant_id = $1 AND id = $2 AND parent_id = $3::uuid
+  AND deleted_at IS NULL
+`
+
+type DetachChildOfParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+	ParentID uuid.UUID
+}
+
+// A child of the team leaves its parent from the parent's side, whatever the
+// caller sees of the child (docs/adr/0008 D2 as amended 2026-10-10): its
+// parent alone changes, no version, as at a purge — the write is the
+// parent's, whose writer the caller is. Nothing where the ticket is no such
+// child, or deleted.
+func (q *Queries) DetachChildOf(ctx context.Context, arg DetachChildOfParams) (int64, error) {
+	result, err := q.db.Exec(ctx, detachChildOf, arg.TenantID, arg.ID, arg.ParentID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getLinkByID = `-- name: GetLinkByID :one
+SELECT id, type, source_id, target_id, created_by, created_at
+FROM ticket_links
+WHERE tenant_id = $1 AND id = $2
+`
+
+type GetLinkByIDParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+type GetLinkByIDRow struct {
+	ID        uuid.UUID
+	Type      domain.LinkType
+	SourceID  uuid.UUID
+	TargetID  uuid.UUID
+	CreatedBy uuid.UUID
+	CreatedAt time.Time
+}
+
+// A link of the transaction's team by its id, as its removal by id names it:
+// the row of a link whose source is a ticket of the team.
+func (q *Queries) GetLinkByID(ctx context.Context, arg GetLinkByIDParams) (GetLinkByIDRow, error) {
+	row := q.db.QueryRow(ctx, getLinkByID, arg.TenantID, arg.ID)
+	var i GetLinkByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.SourceID,
+		&i.TargetID,
+		&i.CreatedBy,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const insertLink = `-- name: InsertLink :one
+
 INSERT INTO ticket_links (tenant_id, type, source_id, target_id, created_by)
 VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT DO NOTHING
 RETURNING id, created_at
 `
 
@@ -58,6 +114,13 @@ type InsertLinkRow struct {
 	CreatedAt time.Time
 }
 
+// A link lives in its source's team; its target may be a ticket of any team
+// (docs/adr/0012 D2 as amended 2026-10-10, migration 47).
+// A new link, or no row where an equal one stands by now: the same type
+// between the same tickets in the same direction, or a relates-to of the pair
+// stored from either end (ticket_links_relates_once). A writer that raced
+// another to it waits for that one's commit here and reads the link back
+// instead of failing (docs/adr/0045 D1).
 func (q *Queries) InsertLink(ctx context.Context, arg InsertLinkParams) (InsertLinkRow, error) {
 	row := q.db.QueryRow(ctx, insertLink,
 		arg.TenantID,
@@ -68,5 +131,36 @@ func (q *Queries) InsertLink(ctx context.Context, arg InsertLinkParams) (InsertL
 	)
 	var i InsertLinkRow
 	err := row.Scan(&i.ID, &i.CreatedAt)
+	return i, err
+}
+
+const linkEndKey = `-- name: LinkEndKey :one
+SELECT p.key AS project_key, t.number
+FROM tickets t
+JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
+WHERE t.tenant_id = $1 AND t.id = $2
+`
+
+type LinkEndKeyParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+type LinkEndKeyRow struct {
+	ProjectKey string
+	Number     int32
+}
+
+// The key of a ticket of the transaction's team at the other end of a
+// relation the caller removes — a link, or a child of the parent they write —,
+// whatever they see of it: the removal is an act on both tickets
+// (docs/adr/0012 D3, docs/adr/0008 D2), the other one's shown to its own
+// readers.
+// visibility: exempt (the other end of a relation the caller removes, whose act is recorded on it)
+// deletion: exempt (a link to a deleted ticket is removed with its act as well)
+func (q *Queries) LinkEndKey(ctx context.Context, arg LinkEndKeyParams) (LinkEndKeyRow, error) {
+	row := q.db.QueryRow(ctx, linkEndKey, arg.TenantID, arg.ID)
+	var i LinkEndKeyRow
+	err := row.Scan(&i.ProjectKey, &i.Number)
 	return i, err
 }

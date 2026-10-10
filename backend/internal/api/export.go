@@ -48,7 +48,11 @@ func (s *Server) ExportTicket(ctx context.Context, req apigen.ExportTicketReques
 		if tc, err = visibleTicket(ctx, r, t, req.Project, req.Number); err != nil {
 			return err
 		}
-		doc, err = exportDocument(ctx, r, t, tc)
+		st, err := showing(ctx, r, tc.row, nil)
+		if err != nil {
+			return err
+		}
+		doc, err = exportDocument(ctx, r, t, st)
 		return err
 	})
 	if err != nil {
@@ -65,9 +69,12 @@ func (s *Server) ExportTicket(ctx context.Context, req apigen.ExportTicketReques
 	return markdownResponse{body: markdown.Render(doc), etag: *etag(tc.row.Version)}, nil
 }
 
-// exportDocument gathers what the document shows.
-func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx) (markdown.Ticket, error) {
-	row := tc.row
+// exportDocument gathers what the document shows. The parent is written by
+// its canonical key, of any project or team, and nothing else of it — never its
+// head's text —, and left out where the caller may not see it
+// (docs/adr/0051 D9 as made concrete 2026-10-10).
+func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, st shown) (markdown.Ticket, error) {
+	row := st.row
 	stages := stagesOf(row)
 	doc := markdown.Ticket{
 		Key: ticketKey(t, row), Title: row.Title, Type: string(row.Type), State: string(row.State), Severity: string(row.Severity),
@@ -81,8 +88,8 @@ func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, tc tick
 		return doc, err
 	}
 	doc.Assignee = assignee
-	if row.ParentNumber != nil {
-		doc.Parent = domain.FullKey(t.Slug, row.ProjectKey, *row.ParentNumber)
+	if st.parent != nil {
+		doc.Parent = st.parent.Key()
 	}
 	if err := stateNote(ctx, r, t, row, &doc); err != nil {
 		return doc, err

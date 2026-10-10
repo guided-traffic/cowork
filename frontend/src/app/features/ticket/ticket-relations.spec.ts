@@ -8,8 +8,9 @@ import { ApplicationRef, ResourceRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { provideApiConfiguration } from '../../api/api-configuration';
+import { Relation, TicketHead } from '../../api/models';
 import { EventStreamService, StreamEvent, TicketEventName } from '../../core/event-stream.service';
-import { address, TicketAddress, TicketRelations } from './ticket-relations';
+import { address, childPageSize, TicketAddress, TicketRelations } from './ticket-relations';
 
 describe('address', () => {
   it.each([
@@ -55,13 +56,47 @@ describe('TicketRelations', () => {
     comments: `${base}/comments?limit=200`,
     activity: `${base}/activity?order=desc&limit=100`,
     questions: `${base}/questions?limit=200`,
-    links: `${base}/links?limit=200`,
+    links: `${base}/relations?kind=link&limit=200`,
+    children: `${base}/relations?kind=child&limit=${childPageSize}`,
     interest: `${base}/interest?limit=200`,
     attachments: `${base}/attachments?limit=200`,
     time: `${base}/time-entries?limit=200`,
-    tree: `${base}/prerequisites?direction=down&limit=200`,
+    tree: `${base}/prerequisite-tree?direction=down&limit=200`,
   };
   const empty = { items: [], next_cursor: null };
+
+  /** The head of a ticket at the other end of a relation, which the reader reads. */
+  function head(key: string, overrides: Partial<TicketHead> = {}): TicketHead {
+    return {
+      team: { slug: key.slice(0, key.indexOf('/')), name: 'Team' },
+      key,
+      title: `Ticket ${key}`,
+      type: 'task',
+      state: 'filed',
+      placeholder: false,
+      readable: true,
+      ...overrides,
+    };
+  }
+  const child = (key: string): Relation => ({
+    kind: 'child',
+    id: `handle-${key.replace(/[^A-Za-z0-9]/g, '')}`,
+    link: null,
+    head: head(key),
+  });
+  const linked = (key: string): Relation => ({
+    kind: 'link',
+    id: `l-${key}`,
+    link: {
+      id: `l-${key}`,
+      type: 'blocks',
+      direction: 'outgoing',
+      name: 'blocks',
+      created_by: { id: 'p1', display_name: 'Ada' },
+      created_at: '2026-10-01T09:00:00Z',
+    },
+    head: head(key),
+  });
 
   let events: Subject<StreamEvent>;
   let http: HttpTestingController;
@@ -82,8 +117,8 @@ describe('TicketRelations', () => {
     relations = TestBed.inject(TicketRelations);
   });
 
-  function ticketEvent(name: TicketEventName, key = 'acme/COW-12'): StreamEvent {
-    return { name, id: 'e-1', key, version: 3, kind: 'changed' };
+  function ticketEvent(name: TicketEventName, key = 'acme/COW-12', kind = 'changed'): StreamEvent {
+    return { name, id: 'e-1', key, version: 3, kind };
   }
 
   /** The resources' `reload`, replaced so that no request goes out. */
@@ -93,6 +128,7 @@ describe('TicketRelations', () => {
       activity: vi.spyOn(relations.activity, 'reload').mockReturnValue(true),
       questions: vi.spyOn(relations.questions, 'reload').mockReturnValue(true),
       links: vi.spyOn(relations.links, 'reload').mockReturnValue(true),
+      children: vi.spyOn(relations.children, 'reload').mockReturnValue(true),
       interest: vi.spyOn(relations.interest, 'reload').mockReturnValue(true),
       attachments: vi.spyOn(relations.attachments, 'reload').mockReturnValue(true),
       time: vi.spyOn(relations.time, 'reload').mockReturnValue(true),
@@ -114,7 +150,7 @@ describe('TicketRelations', () => {
       expect(relations.comments.status()).toBe('idle');
     });
 
-    it('loads the comments, the activity, the questions, the links, the interest, the files, the time and the prerequisite tree of the ticket that is set', async () => {
+    it('loads the comments, the activity, the questions, the links, the children, the interest, the files, the time and the prerequisite tree of the ticket that is set', async () => {
       relations.at.set(cow12);
       TestBed.tick();
 
@@ -122,7 +158,7 @@ describe('TicketRelations', () => {
         comments: { items: [], next_cursor: null },
         activity: { items: [], next_cursor: null },
         questions: { items: [], next_cursor: null },
-        links: { items: [], next_cursor: null },
+        links: { items: [linked('globex/API-7')], next_cursor: null },
         interest: { items: [], next_cursor: null },
         attachments: { items: [], next_cursor: null },
         time: { items: [], next_cursor: null, total_minutes: 0 },
@@ -131,12 +167,56 @@ describe('TicketRelations', () => {
       for (const [part, body] of Object.entries(bodies)) {
         http.expectOne(urls[part as keyof typeof urls]).flush(body);
       }
+      http.expectOne(urls.children).flush({ items: [child('globex/API-8')], next_cursor: null });
       await TestBed.inject(ApplicationRef).whenStable();
 
       for (const part of Object.keys(bodies) as (keyof typeof bodies)[]) {
         expect(relations[part].value(), part).toEqual(bodies[part]);
       }
+      expect(relations.children.value()).toEqual({
+        items: [child('globex/API-8')],
+        nextCursor: null,
+      });
       http.verify();
+    });
+
+    // docs/adr/0008 D2, docs/adr/0048 D3: the children, page after page.
+    it('loads the children a page at a time, one more on request, and every page held again on a reload', async () => {
+      relations.at.set(cow12);
+      TestBed.tick();
+      for (const request of http.match((each) => !each.url.endsWith('/relations'))) {
+        request.flush({ ...empty, open: 0, total_minutes: 0 });
+      }
+      for (const request of http.match((each) => each.urlWithParams === urls.links)) {
+        request.flush(empty);
+      }
+      http.expectOne(urls.children).flush({ items: [child('acme/COW-20')], next_cursor: 'p2' });
+      await TestBed.inject(ApplicationRef).whenStable();
+      expect(relations.children.value()?.nextCursor).toBe('p2');
+
+      relations.childPages.update((pages) => pages + 1);
+      TestBed.tick();
+      http.expectOne(urls.children).flush({ items: [child('acme/COW-20')], next_cursor: 'p2' });
+      await new Promise((resolve) => setTimeout(resolve));
+      http
+        .expectOne(`${base}/relations?kind=child&cursor=p2&limit=${childPageSize}`)
+        .flush({ items: [child('globex/API-9')], next_cursor: null });
+      await TestBed.inject(ApplicationRef).whenStable();
+
+      expect(relations.children.value()).toEqual({
+        items: [child('acme/COW-20'), child('globex/API-9')],
+        nextCursor: null,
+      });
+      http.verify();
+    });
+
+    it('starts the children of another ticket at one page', () => {
+      relations.at.set(cow12);
+      relations.childPages.set(3);
+
+      relations.at.set({ team: 'acme', project: 'OPS', number: 3 });
+
+      expect(relations.childPages()).toBe(1);
     });
 
     it('loads again for the next ticket when another one is set', () => {
@@ -151,11 +231,12 @@ describe('TicketRelations', () => {
         '/api/v1/teams/acme/projects/OPS/tickets/3/comments',
         '/api/v1/teams/acme/projects/OPS/tickets/3/activity',
         '/api/v1/teams/acme/projects/OPS/tickets/3/questions',
-        '/api/v1/teams/acme/projects/OPS/tickets/3/links',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/relations',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/relations',
         '/api/v1/teams/acme/projects/OPS/tickets/3/interest',
         '/api/v1/teams/acme/projects/OPS/tickets/3/attachments',
         '/api/v1/teams/acme/projects/OPS/tickets/3/time-entries',
-        '/api/v1/teams/acme/projects/OPS/tickets/3/prerequisites',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/prerequisite-tree',
       ]);
     });
 
@@ -167,7 +248,7 @@ describe('TicketRelations', () => {
       relations.direction.set('up');
       TestBed.tick();
 
-      http.expectOne(`${base}/prerequisites?direction=up&limit=200`);
+      http.expectOne(`${base}/prerequisite-tree?direction=up&limit=200`);
       http.verify();
     });
   });
@@ -279,6 +360,7 @@ describe('TicketRelations', () => {
       expect(reloaded(spies).sort()).toEqual([
         'activity',
         'attachments',
+        'children',
         'comments',
         'interest',
         'links',
@@ -288,27 +370,108 @@ describe('TicketRelations', () => {
       ]);
     });
 
+    // docs/adr/0017 D3, docs/adr/0054 D2: a child of another team moved the ticket's stages.
+    it('reload the children alone on the ticket’s own derived event, which records no act', () => {
+      const spies = spyOnReloads();
+
+      events.next(ticketEvent('ticket.changed', 'acme/COW-12', 'derived'));
+
+      expect(reloaded(spies)).toEqual(['children']);
+    });
+
+    // docs/adr/0008 D2 as amended again 2026-10-10: a child left the ticket from its side.
+    it('reload the children and the activity alone on the ticket’s own detached event', () => {
+      const spies = spyOnReloads();
+
+      events.next(ticketEvent('ticket.changed', 'acme/COW-12', 'detached'));
+
+      expect(reloaded(spies).sort()).toEqual(['activity', 'children']);
+    });
+
+    it('reload the links or the children when the page asks, after a removal', () => {
+      const spies = spyOnReloads();
+
+      relations.reloadLinks();
+      expect(reloaded(spies)).toEqual(['links']);
+      relations.reloadChildren();
+      expect(reloaded(spies).sort()).toEqual(['children', 'links']);
+    });
+
+    it.each(['created', 'updated', 'restored'])(
+      'reload the children on another ticket’s %s, which may have made it a child of this one',
+      (kind) => {
+        const spies = spyOnReloads();
+
+        events.next(ticketEvent('ticket.changed', 'globex/API-3', kind));
+
+        expect(reloaded(spies)).toEqual(['children']);
+      },
+    );
+
+    describe('of a ticket at the other end of a link or a child (docs/adr/0005 D3)', () => {
+      async function loaded() {
+        TestBed.tick();
+        for (const request of http.match(() => true)) {
+          const url = request.request.urlWithParams;
+          request.flush(
+            url === urls.links
+              ? { items: [linked('globex/API-7')], next_cursor: null }
+              : url === urls.children
+                ? { items: [child('globex/API-8')], next_cursor: null }
+                : { ...empty, open: 0, total_minutes: 0 },
+          );
+        }
+        await TestBed.inject(ApplicationRef).whenStable();
+      }
+
+      it('reload the links alone when the ticket at the other end of a link changes, of any team', async () => {
+        await loaded();
+        const spies = spyOnReloads();
+
+        events.next(ticketEvent('ticket.changed', 'globex/API-7'));
+
+        expect(reloaded(spies)).toEqual(['links']);
+      });
+
+      it('reload the children alone when a child changes, of any team', async () => {
+        await loaded();
+        const spies = spyOnReloads();
+
+        events.next(ticketEvent('ticket.changed', 'globex/API-8'));
+
+        expect(reloaded(spies)).toEqual(['children']);
+      });
+
+      it.each(['comment.changed', 'question.changed', 'interest.changed', 'link.changed'] as const)(
+        'leave them alone on %s of such a ticket, which changes nothing its head shows',
+        async (name) => {
+          await loaded();
+          const spies = spyOnReloads();
+
+          events.next(ticketEvent(name, 'globex/API-7'));
+          events.next(ticketEvent(name, 'globex/API-8'));
+
+          expect(reloaded(spies)).toEqual([]);
+        },
+      );
+    });
+
     describe('of a ticket of the prerequisite tree', () => {
       const node = {
-        key: 'acme/COW-7',
-        title: 'Pick the format',
-        state: 'filed' as const,
-        blocked_from: null,
-        assignee: null,
-        progress: 0,
-        progress_refinement: 0,
-        progress_review: 0,
-        progress_derived: false,
         depth: 1,
         settled: false,
         repeated: false,
+        blocked_from: null,
+        head: head('acme/COW-7', { title: 'Pick the format' }),
+        assignee: null,
+        progress: { refinement: 0, implementation: 0, review: 0, derived: false },
       };
 
       async function loaded() {
         TestBed.tick();
         for (const request of http.match(() => true)) {
           request.flush(
-            request.request.url.endsWith('/prerequisites')
+            request.request.url.endsWith('/prerequisite-tree')
               ? { items: [node], next_cursor: null, open: 1 }
               : empty,
           );
@@ -494,6 +657,7 @@ describe('TicketRelations', () => {
       'activity',
       'questions',
       'links',
+      'children',
       'interest',
       'attachments',
       'time',

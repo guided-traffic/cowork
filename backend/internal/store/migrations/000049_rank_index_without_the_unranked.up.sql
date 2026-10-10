@@ -1,0 +1,24 @@
+-- A ticket's rank key is unique in its project among the tickets that hold
+-- one (docs/adr/0014 D2), and the index that holds it now says so: it covers
+-- the ranked tickets alone. Nothing about which keys may stand changes — a
+-- NULL never equalled another in the index before either.
+--
+-- What changes is the lock a change of the rank takes. PostgreSQL locks a row
+-- an UPDATE changes a key column of FOR UPDATE, and takes a column covered by
+-- a unique index that is not partial for such a key, though no foreign key
+-- references the rank; every other UPDATE locks FOR NO KEY UPDATE. A done, a
+-- drop, a reopen and a move change the rank, so each locked its ticket FOR
+-- UPDATE, which conflicts with the FOR KEY SHARE a foreign key's check takes
+-- on the row it references. Closing a parent and, at once, a child it blocks
+-- deadlocked on it: the child's transaction held its row and waited on the
+-- parent's to derive its progress, while the parent's transaction held its
+-- own and waited on the child's to insert the notifications that reference it.
+-- With the rank no key, the reference takes its lock
+-- beside the child's update and both transactions finish, one after the other
+-- (TestClosingAParentAndTheChildItBlocksAtOnceFinishesBoth).
+--
+-- Expand only (docs/adr/0028 D3): the same uniqueness for the release before,
+-- which names no index; the new index stands before the old one goes, in one
+-- transaction.
+CREATE UNIQUE INDEX tickets_by_rank_key ON tickets (tenant_id, project_id, rank) WHERE rank IS NOT NULL;
+DROP INDEX tickets_by_rank;

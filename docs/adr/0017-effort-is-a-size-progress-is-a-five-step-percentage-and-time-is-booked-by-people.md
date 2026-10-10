@@ -42,9 +42,30 @@ stages in the export. The bars on the board's cards and the detail's three slide
 views' ([ADR 0018](0018-the-views-of-the-first-release.md)). *(2026-10-04.)* In the browser the
 author corrects an entry over its version and reads its earlier values (D7).
 
-**Amended 2026-10-10 by the owner (not built):** D3 — the derived progress counts a parent's
+**Amended 2026-10-10 by the owner (~~not built~~ built the same day):** D3 — the derived progress counts a parent's
 children in other teams too, once a ticket's children may live there
 ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2, [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3).
+Built ([migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql)): every refresh of a parent's derived stages, a change of
+its children in its own team included, runs through `refresh_derived`, a crossing of
+[ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7. It walks the
+ancestors across teams, the deepest first, derives each stage from the children of every team as
+`ticket_derived_stage` derives it within a team, and writes those columns alone, which the trigger
+`tickets_crossing_guard` holds it to; no version moves and no act is recorded. A parent ~~of another
+team~~ *(2026-10-10, migration 51: of any team)* whose values changed is told on its team's streams
+as `ticket.changed` of the kind `derived`
+([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D2), with an id made for the event, since the change is no act. The browser fetches a parent it
+holds again on that kind, whose version it holds already, and the parent's page loads its children
+again (2026-10-10). *(Made concrete 2026-10-10 by the
+implementer after the security review, open to the owner's objection,
+[migration 48](../../backend/internal/store/migrations/000048_derived_progress_of_another_teams_parent.up.sql):)* on a parent of another team than the writer's the write is the
+three derived columns and nothing else. The seeding of a parent's own stages from the last derived
+values when its last child leaves, the mark done by hand of a done parent that gains a child, and
+the move of its `updated_at` happen only where the parent is of the writer's own team: a parent of
+another team keeps its own values until its own team changes them, and the guard refuses anything
+more on its row (`TestAChildOfAnotherTeamNeverRewritesItsParentsOwnProgress`). Migration 47 had
+seeded them across teams too, so a writer of team B could rewrite a stage a member of team A had
+set, with no act and no version.
 
 ## Context
 
@@ -75,7 +96,7 @@ but `dropped`. A ticket that existed before the stages keeps its `progress` as
 implementation, has refinement full from `decided` on, and review full when it is `done`.
 
 **D3 — A ticket with children shows the progress derived from them and does not take a
-manual value.** *(Amended 2026-10-10 by the owner, not built: every child counts, a child in
+manual value.** *(Amended 2026-10-10 by the owner, built the same day: every child counts, a child in
 another team included. The child's transaction writes the parent's derived columns in the parent's
 team through one function of the data layer that writes those columns and nothing else, no version
 ([ADR 0050](0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md)

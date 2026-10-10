@@ -74,6 +74,14 @@ handler and the operation the rename renamed, `ListTeams` and `getTeam`; the req
 admission names `getTeam`, and a request to the deprecated twin of `getTenant` is answered as it.
 No rule changes.
 
+*(2026-10-10.)* D4's head at the other end of a relation is built
+([migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql), `ticket_sight`): a member to whom a project is restricted reads a
+ticket of it that a parent, a child or a link of a ticket they see names by its head, and that
+ticket counts among the open prerequisites of the ticket it blocks and refuses its `done`
+([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D6, D7), since its state is in its
+head; every other surface keeps the predicate. The browser shows such a head without a link to the
+ticket, which the member may not open (2026-10-10).
+
 ## Context
 
 [ADR 0004](0004-cowork-is-a-team-product.md) made cowork a team product and put the question
@@ -171,7 +179,7 @@ tickets and their children includes `project is unrestricted OR person is on its
 person is tenant admin`, and the person-level unions, the search, the dashboard and the
 notification fan-out go through the same queries. There is no code path to a ticket that does
 not pass the predicate. *(Made concrete 2026-10-10 on the recommendation, open to the owner's
-objection, not built:)* at the other end of a parent, a child or a link of a ticket the person sees,
+objection, built the same day:)* at the other end of a parent, a child or a link of a ticket the person sees,
 a ticket of a project restricted from them is shown by its head, as to a person outside the team
 ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3) — a member is never shown less than an outsider; every other surface keeps the
 predicate.

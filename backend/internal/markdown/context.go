@@ -36,6 +36,12 @@ type Context struct {
 // other end.
 type Link struct {
 	Name, Key, Title, State, Assignee string
+	// Team is the other end's team, by its name, where the reader sees it by
+	// its head alone or not at all; Placeholder says the reader may not see it:
+	// the line shows `<team> [Confidential]` and nothing else
+	// (docs/adr/0005 D3, docs/adr/0065 D5).
+	Team        string
+	Placeholder bool
 }
 
 // Prerequisite is a node of the prerequisite tree; Depth 1 blocks the ticket
@@ -44,6 +50,12 @@ type Prerequisite struct {
 	Depth                       int
 	Key, Title, State, Assignee string
 	Progress                    int
+	// Head is a ticket the reader sees by its head only — another team's, or
+	// of a project restricted from them: no assignee and no progress. Team and
+	// Placeholder are a Link's (docs/adr/0012 D6 as amended 2026-10-10).
+	Head        bool
+	Team        string
+	Placeholder bool
 }
 
 // Token is the token an act came through (docs/adr/0036 D6): its name, empty
@@ -112,9 +124,20 @@ func writeLinks(b *bytes.Buffer, links []Link) {
 		return
 	}
 	for _, l := range links {
-		fmt.Fprintf(b, "- %s %s — %s (%s, %s)\n", l.Name, l.Key, oneLine(l.Title), l.State, assignee(l.Assignee))
+		switch {
+		case l.Placeholder:
+			fmt.Fprintf(b, "- %s %s\n", l.Name, placeholder(l.Team))
+		case l.Team != "":
+			fmt.Fprintf(b, "- %s %s — %s (%s)\n", l.Name, l.Key, oneLine(l.Title), l.State)
+		default:
+			fmt.Fprintf(b, "- %s %s — %s (%s, %s)\n", l.Name, l.Key, oneLine(l.Title), l.State, assignee(l.Assignee))
+		}
 	}
 }
+
+// placeholder is a ticket the reader may not see, by its team's name alone
+// (docs/adr/0065 D5 as amended 2026-10-10).
+func placeholder(team string) string { return oneLine(team) + " [Confidential]" }
 
 func writePrerequisites(b *bytes.Buffer, tree []Prerequisite) {
 	b.WriteString("\n## Prerequisites\n\n")
@@ -122,16 +145,27 @@ func writePrerequisites(b *bytes.Buffer, tree []Prerequisite) {
 		b.WriteString("None.\n")
 		return
 	}
-	open := 0
+	open, read := 0, 0
 	for _, p := range tree {
+		if p.Placeholder {
+			continue
+		}
+		read++
 		if p.State != "done" && p.State != "dropped" {
 			open++
 		}
 	}
-	fmt.Fprintf(b, "%d of %d open.\n\n", open, len(tree))
+	fmt.Fprintf(b, "%d of %d open.\n\n", open, read)
 	for _, p := range tree {
-		fmt.Fprintf(b, "%s- %s — %s (%s, %s, %d%%)\n", strings.Repeat("  ", max(p.Depth-1, 0)), p.Key, oneLine(p.Title),
-			p.State, assignee(p.Assignee), p.Progress)
+		indent := strings.Repeat("  ", max(p.Depth-1, 0))
+		switch {
+		case p.Placeholder:
+			fmt.Fprintf(b, "%s- %s\n", indent, placeholder(p.Team))
+		case p.Head:
+			fmt.Fprintf(b, "%s- %s — %s (%s)\n", indent, p.Key, oneLine(p.Title), p.State)
+		default:
+			fmt.Fprintf(b, "%s- %s — %s (%s, %s, %d%%)\n", indent, p.Key, oneLine(p.Title), p.State, assignee(p.Assignee), p.Progress)
+		}
 	}
 }
 

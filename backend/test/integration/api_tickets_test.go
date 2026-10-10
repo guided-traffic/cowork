@@ -253,11 +253,15 @@ func TestParentCycles(t *testing.T) {
 		assert.Equal(t, "parent_cycle", string(res.ApplicationproblemJSONDefault.Code))
 	}
 
+	// A parent of another project of the team is a parent (docs/adr/0008 D2
+	// as amended 2026-10-10), named by its own project's key; one of a team
+	// the person holds no role in answers as a key that names nothing.
 	other := e.file(t, member, "GAMMA", task("elsewhere"))
 	res := e.patch(t, member, a, apigen.TicketPatch{Parent: nullable.NewNullableWithValue("GAMMA-" + strconv.Itoa(other.Number))})
-	assert.Equal(t, http.StatusBadRequest, res.StatusCode(), "a parent of another project")
-	res = e.patch(t, member, a, apigen.TicketPatch{Parent: nullable.NewNullableWithValue(e.SlugB + "/BETA-1")})
-	assert.Equal(t, http.StatusBadRequest, res.StatusCode(), "a parent of another tenant")
+	require.Equal(t, http.StatusOK, res.StatusCode(), "a parent of another project")
+	assert.Equal(t, e.SlugA+"/GAMMA-"+strconv.Itoa(other.Number), res.JSON200.Parent.MustGet())
+	res = e.patch(t, member, *res.JSON200, apigen.TicketPatch{Parent: nullable.NewNullableWithValue(e.SlugB + "/BETA-1")})
+	assert.Equal(t, http.StatusBadRequest, res.StatusCode(), "a parent of a team the person holds no role in")
 
 	cl := e.s.client(t, member)
 	for round := range 5 {

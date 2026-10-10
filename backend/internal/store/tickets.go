@@ -30,16 +30,12 @@ const ticketSelect = `SELECT t.id, t.project_id, p.key AS project_key, t.number,
        t.urgency_override_reason, t.urgency_override_by, ou.username AS urgency_override_by_username,
        ou.display_name AS urgency_override_by_name, t.urgency_override_at, t.effort, t.progress, t.progress_derived,
        t.progress_refinement, t.progress_refinement_derived, t.progress_review, t.progress_review_derived,
-       t.parent_id, pt.number AS parent_number,
+       t.parent_id,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
        t.confidential, t.rank, t.score_key, t.score_version, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
-       (SELECT count(*) FROM ticket_links pl
-        JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
-        WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
-          AND ps.state NOT IN ('done', 'dropped')
-          AND ps.deleted_at IS NULL AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+       open_prerequisite_count(t.id)::integer AS open_prerequisites,
        t.version, t.created_at, t.updated_at`
 
 const ticketFrom = `FROM tickets t
@@ -47,8 +43,6 @@ JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
 LEFT JOIN users au ON au.id = t.assignee_id
 LEFT JOIN users ou ON ou.id = t.urgency_override_by
-LEFT JOIN tickets pt ON pt.tenant_id = t.tenant_id AND pt.id = t.parent_id
-     AND pt.deleted_at IS NULL AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
 LEFT JOIN tickets bt ON bt.tenant_id = t.tenant_id AND bt.id = t.block_ticket_id
      AND bt.deleted_at IS NULL AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
 LEFT JOIN projects bp ON bp.tenant_id = bt.tenant_id AND bp.id = bt.project_id`
@@ -101,8 +95,8 @@ type TicketFilter struct {
 	// (docs/adr/0018 D1).
 	DoneAfter *time.Time
 	Query     string
-	// Blocked filters by whether an open ticket the caller can see blocks
-	// the ticket (docs/adr/0049 D1).
+	// Blocked filters by whether an open ticket blocks the ticket whose state
+	// the caller reads, of any team (docs/adr/0049 D1, docs/adr/0012 D7).
 	Blocked *bool
 	// HasOpenQuestions filters by whether the ticket has an open question.
 	HasOpenQuestions *bool
@@ -428,12 +422,11 @@ const effectiveProgress = "coalesce(t.progress_derived, t.progress)"
 const openQuestion = `EXISTS (SELECT 1 FROM questions oq
         WHERE oq.tenant_id = t.tenant_id AND oq.ticket_id = t.id AND oq.status = 'open')`
 
-// openBlocker holds when an open ticket the caller can see blocks t.
-const openBlocker = `EXISTS (SELECT 1 FROM ticket_links bl
-        JOIN tickets bs ON bs.tenant_id = bl.tenant_id AND bs.id = bl.source_id
-        WHERE bl.tenant_id = t.tenant_id AND bl.target_id = t.id AND bl.type = 'blocks'
-          AND bs.state NOT IN ('done', 'dropped')
-          AND bs.deleted_at IS NULL AND app_ticket_visible(bs.project_id, bs.confidential, bs.assignee_id, bs.reporter_id))`
+// openBlocker holds when an open ticket of any team blocks t whose state the
+// caller reads in a head — the rule open_prerequisite_count counts by, read
+// once for the whole list by migration 47's open_prerequisite_targets
+// (docs/adr/0012 D7, docs/adr/0049 D1).
+const openBlocker = `t.id IN (SELECT open_prerequisite_targets())`
 
 func (b *queryBuilder) textSet(expr string, s ValueSet) {
 	if len(s.In) > 0 {

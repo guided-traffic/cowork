@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { Tooltip } from 'primeng/tooltip';
-import { Block, Ticket, TicketState } from '../../api/models';
+import { Block, Ticket, TicketHead, TicketState } from '../../api/models';
 import { Move } from '../../shared/transitions';
 import { BoardCard } from './board-card';
 
@@ -34,6 +34,20 @@ function ticket(fields: Partial<Ticket> = {}): Ticket {
 }
 
 const analyse: Move = { to: 'analysed', kind: 'forward', label: 'Move to analysed', input: 'none' };
+
+/** The head of the card's parent (docs/adr/0005 D3). */
+function parent(overrides: Partial<TicketHead> = {}): TicketHead {
+  return {
+    team: { slug: 'acme', name: 'Acme' },
+    key: 'acme/COW-3',
+    title: 'Rework the board',
+    type: 'feature',
+    state: 'in-progress',
+    placeholder: false,
+    readable: true,
+    ...overrides,
+  };
+}
 
 describe('BoardCard', () => {
   let clicks: number;
@@ -238,6 +252,79 @@ describe('BoardCard', () => {
       expect(el(fixture, '[data-testid^="card-menu-"]')).toBeNull();
     });
 
+    describe('its parent (docs/adr/0008 D2, docs/adr/0005 D3)', () => {
+      const chip = (fixture: ComponentFixture<BoardCard>) =>
+        el(fixture, '[data-testid="card-parent"]');
+      const tip = (fixture: ComponentFixture<BoardCard>) =>
+        fixture.debugElement
+          .query(By.css('[data-testid="card-parent"]'))
+          .injector.get(Tooltip)
+          .content();
+
+      it('names no parent where the ticket has none', async () => {
+        const fixture = await render(ticket({ parent: null, parent_head: null }));
+
+        expect(chip(fixture)).toBeNull();
+      });
+
+      it('names a parent of its team by its key, a link to it, its title in the tooltip', async () => {
+        const fixture = await render(ticket({ parent: 'acme/COW-3', parent_head: parent() }));
+
+        expect(chip(fixture)?.textContent?.trim()).toBe('COW-3');
+        expect(chip(fixture)?.getAttribute('href')).toBe('/t/acme/tickets/COW-3');
+        expect(chip(fixture)?.getAttribute('aria-label')).toBe('Parent COW-3');
+        expect(tip(fixture)).toBe('Its parent: Rework the board');
+      });
+
+      it('names a parent of another team by its team and key, linked in its team where the reader opens it', async () => {
+        const head = parent({ team: { slug: 'globex', name: 'Globex' }, key: 'globex/API-7' });
+        const fixture = await render(ticket({ parent: 'globex/API-7', parent_head: head }));
+
+        expect(chip(fixture)?.textContent?.trim()).toBe('Globex · API-7');
+        expect(chip(fixture)?.getAttribute('href')).toBe('/t/globex/tickets/API-7');
+      });
+
+      it('names a parent the reader may not open unlinked, and says so in the tooltip', async () => {
+        const head = parent({
+          team: { slug: 'globex', name: 'Globex' },
+          key: 'globex/API-7',
+          readable: false,
+        });
+        const fixture = await render(ticket({ parent: 'globex/API-7', parent_head: head }));
+
+        expect(chip(fixture)?.tagName).toBe('SPAN');
+        expect(text(fixture, '[data-testid="card-parent"]')).toBe('Parent Globex · API-7');
+        expect(tip(fixture)).toBe('Its parent, which you cannot open: Rework the board');
+      });
+
+      // docs/adr/0065 D5 as amended 2026-10-10.
+      it('names a parent the reader may not see as `<team> [Confidential]`, unlinked', async () => {
+        const head = parent({
+          key: null,
+          title: null,
+          type: null,
+          state: null,
+          placeholder: true,
+          readable: false,
+        });
+        const fixture = await render(ticket({ parent: null, parent_head: head }));
+
+        expect(chip(fixture)?.tagName).toBe('SPAN');
+        expect(text(fixture, '[data-testid="card-parent"]')).toBe('Parent Acme [Confidential]');
+        expect(tip(fixture)).toBe('Its parent is confidential: you may not see it');
+      });
+
+      it('keeps a click on the parent to its link, not the card', async () => {
+        const fixture = await render(ticket({ parent: 'acme/COW-3', parent_head: parent() }));
+
+        chip(fixture)?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        await fixture.whenStable();
+
+        expect(clicks).toBe(0);
+        expect(TestBed.inject(Router).url).toBe('/t/acme/tickets/COW-3');
+      });
+    });
+
     it('keeps a click on its key to the link, not the card', async () => {
       const fixture = await render(ticket());
 
@@ -266,6 +353,15 @@ describe('BoardCard', () => {
       expect(el(fixture, '[data-severity]')).toBeNull();
       expect(el(fixture, 'app-stage-bar')).toBeNull();
       expect(el(fixture, '[data-testid^="card-menu-"]')).toBeNull();
+    });
+
+    it('names no parent: the compact card keeps to the key, the title, the size and the state', async () => {
+      const fixture = await render(
+        ticket({ horizon: 'next', parent: 'acme/COW-3', parent_head: parent() }),
+        { compact: true },
+      );
+
+      expect(el(fixture, '[data-testid="card-parent"]')).toBeNull();
     });
 
     it('makes the ticket now from its button, and keeps the click from the card', async () => {

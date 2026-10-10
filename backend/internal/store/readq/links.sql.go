@@ -13,25 +13,6 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
 
-const blocksPathExists = `-- name: BlocksPathExists :one
-SELECT blocks_path_exists($1, $2, $3)::boolean AS reachable
-`
-
-type BlocksPathExistsParams struct {
-	TenantID uuid.UUID
-	FromID   uuid.UUID
-	ToID     uuid.UUID
-}
-
-// Whether to_id is reachable from from_id over blocks links (docs/adr/0012 D4).
-// visibility: exempt (an integrity walk returns no ticket)
-func (q *Queries) BlocksPathExists(ctx context.Context, arg BlocksPathExistsParams) (bool, error) {
-	row := q.db.QueryRow(ctx, blocksPathExists, arg.TenantID, arg.FromID, arg.ToID)
-	var reachable bool
-	err := row.Scan(&reachable)
-	return reachable, err
-}
-
 const getLink = `-- name: GetLink :one
 SELECT l.id, l.created_by, u.username AS created_by_username, u.display_name AS created_by_name, l.created_at
 FROM ticket_links l
@@ -190,59 +171,6 @@ func (q *Queries) ListDependents(ctx context.Context, arg ListDependentsParams) 
 			&i.ProgressReview,
 			&i.ProgressReviewDerived,
 			&i.OpenCount,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listOpenPrerequisites = `-- name: ListOpenPrerequisites :many
-SELECT s.id, sp.key AS project_key, s.number, s.title, s.state
-FROM ticket_links l
-JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
-JOIN projects sp ON sp.tenant_id = s.tenant_id AND sp.id = s.project_id
-WHERE l.tenant_id = $1 AND l.target_id = $2 AND l.type = 'blocks'
-  AND s.state NOT IN ('done', 'dropped')
-  AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
-ORDER BY sp.key, s.number
-`
-
-type ListOpenPrerequisitesParams struct {
-	TenantID uuid.UUID
-	TicketID uuid.UUID
-}
-
-type ListOpenPrerequisitesRow struct {
-	ID         uuid.UUID
-	ProjectKey string
-	Number     int32
-	Title      string
-	State      domain.TicketState
-}
-
-// The open direct blocks sources of a ticket the caller can see: what refuses
-// done (docs/adr/0012 D7). One the caller cannot see neither shows nor
-// refuses.
-func (q *Queries) ListOpenPrerequisites(ctx context.Context, arg ListOpenPrerequisitesParams) ([]ListOpenPrerequisitesRow, error) {
-	rows, err := q.db.Query(ctx, listOpenPrerequisites, arg.TenantID, arg.TicketID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListOpenPrerequisitesRow{}
-	for rows.Next() {
-		var i ListOpenPrerequisitesRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ProjectKey,
-			&i.Number,
-			&i.Title,
-			&i.State,
 		); err != nil {
 			return nil, err
 		}

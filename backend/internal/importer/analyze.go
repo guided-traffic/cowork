@@ -106,6 +106,10 @@ type Needs struct {
 	// Numbers are the numbers the ticket files bring, for the conflicts;
 	// Referenced the numbers their references name that no file brings.
 	Numbers, Referenced []int32
+	// External are the canonical keys the references name outside the
+	// project the upload comes from — another project, another team —, which
+	// the caller resolves for the importing person (docs/adr/0051 D9).
+	External []string
 	// Usernames and Subjects are the identities the assignees name: local
 	// accounts, and persons of the configured issuer.
 	Usernames, Subjects []string
@@ -137,8 +141,45 @@ func (u *Upload) Needs(issuer string) Needs {
 		values = append(values, l.Source, l.Target)
 	}
 	n.Referenced = u.referencedNumbers(values)
+	n.External = u.externalKeys(values)
 	slices.Sort(n.Numbers)
 	return n
+}
+
+// MayLinkBlocks reports whether the upload can bring a blocks link: one of
+// its links manifest, or a file's blocked-by — a block on a ticket, or a
+// repository's prerequisite. An execution that may write one takes the lock of
+// the blocks graph before anything else it locks.
+func (u *Upload) MayLinkBlocks() bool {
+	for _, l := range u.links {
+		if l.Type == string(domain.LinkBlocks) {
+			return true
+		}
+	}
+	for _, f := range u.sortedFiles() {
+		if f.BlockedBy != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// externalKeys are the canonical keys among the values that name no ticket of
+// the project the upload comes from, sorted and each once.
+func (u *Upload) externalKeys(values []string) []string {
+	project := u.sourceProject()
+	seen := map[string]bool{}
+	var out []string
+	for _, v := range values {
+		k, err := domain.ParseTicketKey(v)
+		if err != nil || k.Tenant == "" || k.Tenant+"/"+k.Project == project || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // referencedNumbers are the numbers of the project the values name, sorted.
@@ -210,6 +251,11 @@ type Target struct {
 	// Existing are the project's live tickets the caller sees that the
 	// upload's references name, by number.
 	Existing map[int32]uuid.UUID
+	// External are the tickets of another project or another team the
+	// references name by their canonical keys and the importing person reads,
+	// by the key as the upload writes it (docs/adr/0008 D2, docs/adr/0051 D9);
+	// a key the person does not read is absent.
+	External map[string]External
 	// Persons are the members an assignee's identity names, each one who can
 	// see the project, by identity; Assignees those the corrections name, by
 	// id.
@@ -234,6 +280,13 @@ type Target struct {
 // Key is the full key a number gets in the target project.
 func (t Target) Key(n int32) string { return domain.FullKey(t.Tenant, t.Project, n) }
 
+// External is a ticket of another project or another team a reference names
+// and the importing person reads: its id and its team's slug.
+type External struct {
+	ID   uuid.UUID
+	Team string
+}
+
 // Result is the analysis: the report, and the plan the execution writes.
 type Result struct {
 	Report Report
@@ -254,6 +307,10 @@ type Plan struct {
 type Ref struct {
 	Number int32
 	ID     uuid.UUID
+	// Key is the canonical key of a ticket of another project or another
+	// team, by which the report and the acts name it; empty for a ticket the
+	// import creates or one of the project.
+	Key string
 }
 
 // PlannedTicket is a ticket the execution creates.

@@ -28,7 +28,9 @@ export interface TicketPatch {
   override_prerequisites?: boolean;
 
   /**
-   * A ticket key of the same project; null makes the ticket a root
+   * The parent's key as a filing takes it — canonical, any team; short, this team, any project —, a
+   * ticket the caller reads; null makes the ticket a root, whatever the reader sees of the parent
+   * it had (docs/adr/0008 D2)
    */
   parent?: (string | null);
 

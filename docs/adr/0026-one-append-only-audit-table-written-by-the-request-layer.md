@@ -73,6 +73,31 @@ export by its operation, `exportTeam`, which the rename renamed; its deprecated 
 `exportTenant` for one release and is answered as it. No rule changes; the audit record keeps the
 entity `tenant`.
 
+*(2026-10-10.)* D1's action `prerequisite_settled` is built with the relations between teams
+([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D5 as made concrete that day,
+[migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql)): the act on a blocked ticket of another team, in that team's
+record, when a ticket that blocks it reaches `done` or `dropped`; ~~its `after` names the
+prerequisite by its head as a person outside its team reads it~~ *(after the security review: its
+refs name the prerequisite, and it stores no head of it)*, and it tells the blocked ticket's
+watchers. The acts of a link across teams and of the end of a relation at a purge are written in
+the record of the team each changes
+([ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D2),
+by the actor of the act that changed it. *(Made concrete 2026-10-10 by the implementer after the
+security review, open to the owner's objection:)* an actor who holds no role in the team whose
+record such an act goes into is no actor there: the act is a system actor's —
+`system:ticket-purge` inside a purge, `system:relation` otherwise — and carries no person, token or
+agent mark of the caller's, so a reader of that team learns nothing of a person outside it; each
+names the ticket of the other team in its refs, which the activity's redaction reads.
+
+*(2026-10-10.)* D1 gains the action `detached`, built with the removal of a relation by a writer of
+either end ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2 as
+amended again that day,
+[migration 52](../../backend/internal/store/migrations/000052_end_a_relation_from_either_end.up.sql)):
+the act on a parent when a child leaves it from the parent's side, or from the child's side where
+the parent is of another team — then in the parent's team's record, under the rule above —; its
+`before` names the child's key and its refs the child. The child records `updated`, its parent
+cleared, in its own team's record.
+
 ## Context
 
 [ADR 0004](0004-cowork-is-a-team-product.md) D3 requires every change attributable and
@@ -99,12 +124,14 @@ and the start-up synchronisation as `system:bootstrap`)* *(amended 2026-10-04: w
 provider decides — a login through it, a session's groups refresh, a token's gate check, the
 memberships it derives — is `system:identity-provider`'s, also where an administrator's request
 records it: the derivation that follows a change of a group mapping is the system actor's act in
-the administrator's transaction, and carries the request, not the administrator)* |
+the administrator's transaction, and carries the request, not the administrator)* *(amended
+2026-10-10: an act recorded in another team's record for a caller who holds no role there is
+`system:relation`'s, or `system:ticket-purge`'s inside a purge, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D5)* |
 | `agent` | null, or the agent mark from the request (name, model, session) when an agent acted in the person's name; *(added 2026-10-02)* `agent_capabilities` the capability set that applied ([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D5) |
 | `token_id` | the personal access token used, or null for a browser session; *(added 2026-10-04, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6)* `token_name` its name as the token has it, copied when the row is written — the activity shows it to readers who may not read the token's row, and a revoked token's acts keep it; null without a token, and on every row written before the column existed, which names the token by its id alone; a system actor's act in a request carries neither |
 | `entity_type`, `entity_id` | what changed |
 | `ticket_id` | the ticket the entity belongs to, denormalised, so a ticket's activity is one index scan; *(added 2026-10-02)* `ticket_key` its key, which survives the ticket's purge |
-| `action` | an enum: `created`, `updated`, `transitioned`, `linked`, `unlinked`, `commented`, `edited`, `withdrawn`, `assigned`, `interest`, `ranked`, `overridden`, `asked`, `answered`, `booked`, `voided`, `locked`, `uploaded`, `downloaded`, `exported`, `deleted`, `restored`, `purged`, … *(added 2026-10-03: `logged_in`, `logged_out`, `login_failed`, `unlocked`, `password_changed`, `password_reset`, `deactivated`, `reactivated`)* *(added 2026-10-04: `login_refused`, a login through the identity provider whose ID token verified and which the gate, a deactivation or the init state refused — installation-level, with the person when one exists and the reason; a login that fails before that is in the log only)* *(added 2026-10-04: `read`, a person's own notifications marked read — one or every one up to the newest seen, per tenant, [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D6)* *(added 2026-10-06: `imported`, an import job's execution, [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D3)* |
+| `action` | an enum: `created`, `updated`, `transitioned`, `linked`, `unlinked`, `commented`, `edited`, `withdrawn`, `assigned`, `interest`, `ranked`, `overridden`, `asked`, `answered`, `booked`, `voided`, `locked`, `uploaded`, `downloaded`, `exported`, `deleted`, `restored`, `purged`, … *(added 2026-10-03: `logged_in`, `logged_out`, `login_failed`, `unlocked`, `password_changed`, `password_reset`, `deactivated`, `reactivated`)* *(added 2026-10-04: `login_refused`, a login through the identity provider whose ID token verified and which the gate, a deactivation or the init state refused — installation-level, with the person when one exists and the reason; a login that fails before that is in the log only)* *(added 2026-10-04: `read`, a person's own notifications marked read — one or every one up to the newest seen, per tenant, [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md) D6)* *(added 2026-10-06: `imported`, an import job's execution, [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D3)* *(added 2026-10-10: `prerequisite_settled`, the act on a blocked ticket of another team when its prerequisite reaches `done` or `dropped`, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D5)* *(added 2026-10-10: `detached`, the act on a parent when a child leaves it from the parent's side, or from the child's side where the parent is of another team, [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2)* |
 | `before`, `after` | JSONB of the changed fields only; *(amended 2026-10-02)* never a comment's text, which a withdrawal must be able to hide ([ADR 0015](0015-comments-are-a-thread-and-activity-is-a-separate-list.md) D3) — the comment's revisions keep it; *(amended after the security review, 2026-10-04)* never an e-mail address, which no append-only row could erase on request — a changed address is recorded as `email_changed: true`; ~~a person's group lists are recorded~~ *(amended 2026-10-04, the owner's answer recorded in [ADR 0030](0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md) D6)* never a person's groups either: a change of them is recorded as `groups_changed: true`, and the row of a person's creation says nothing of them; the memberships the groups cause are recorded tenant by tenant |
 | `refs` *(added 2026-10-02)* | the other tickets the payload names — a link's other end, the ticket a block waits on, the prerequisites a close overrode, a parent; D6 withholds the payload from a reader who cannot see one of them |
 | `reason`, `note` | the transition's reason or verification note, the override's reason |

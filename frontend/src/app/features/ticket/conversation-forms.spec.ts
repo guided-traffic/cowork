@@ -4,19 +4,23 @@ import { signal, Type, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { MessageService } from 'primeng/api';
+import { AutoComplete } from 'primeng/autocomplete';
 import { Select } from 'primeng/select';
 import type { MockInstance } from 'vitest';
 import { provideApiConfiguration } from '../../api/api-configuration';
-import { Comment, Member, Problem, Question, Ticket } from '../../api/models';
+import { Comment, Member, Problem, Question, SearchHit, Ticket } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { MembersService } from '../../core/members.service';
 import { SessionService } from '../../core/session.service';
+import { TicketsService } from '../../core/tickets.service';
 import {
   AnswerQuestion,
   AskQuestion,
   CommentComposer,
   EditQuestion,
   LinkAdder,
+  LinkOption,
+  typedKey,
 } from './conversation-forms';
 
 /** Any Idempotency-Key a form makes: a UUID (docs/adr/0045 D3). */
@@ -94,8 +98,16 @@ describe('conversation forms', () => {
     editQuestion: MockInstance<Conversation['editQuestion']>;
   };
   let people: WritableSignal<Member[]>;
+  let tickets: {
+    openTickets: MockInstance<TicketsService['openTickets']>;
+    search: MockInstance<TicketsService['search']>;
+  };
 
   beforeEach(() => {
+    tickets = {
+      openTickets: vi.fn<TicketsService['openTickets']>().mockResolvedValue([]),
+      search: vi.fn<TicketsService['search']>().mockResolvedValue([]),
+    };
     conversation = {
       comment: vi.fn<Conversation['comment']>().mockResolvedValue({} as Comment),
       ask: vi.fn<Conversation['ask']>().mockResolvedValue({} as Question),
@@ -111,6 +123,7 @@ describe('conversation forms', () => {
         { provide: Conversation, useValue: conversation },
         { provide: MembersService, useValue: { list: people } },
         { provide: SessionService, useValue: { person: signal({ id: 'p1' }) } },
+        { provide: TicketsService, useValue: tickets },
       ],
     });
   });
@@ -786,6 +799,43 @@ describe('conversation forms', () => {
 
   describe('LinkAdder', () => {
     const adder = () => render(LinkAdder, { ticketKey: key });
+    /** The field of the other end: the combobox of the autocomplete. */
+    const field = `${byTestId('link-other')} input`;
+    const autocomplete = (fixture: ComponentFixture<unknown>) =>
+      fixture.debugElement.query(By.directive(AutoComplete));
+    const offered = (fixture: ComponentFixture<unknown>) =>
+      (autocomplete(fixture).componentInstance.suggestions() as LinkOption[]).map((option) => [
+        option.key,
+        option.label,
+      ]);
+    const hit = (other: string, title: string): SearchHit => {
+      const team = other.slice(0, other.indexOf('/'));
+      const name = team === 'acme' ? 'Acme' : 'Globex';
+      return {
+        key: other,
+        title,
+        state: 'filed',
+        type: 'task',
+        team: { slug: team, name },
+        tenant: { slug: team, name },
+        found_in: 'ticket',
+        comment: null,
+        question: null,
+        snippet: [],
+      };
+    };
+
+    it('names the other ticket by the field and the button a person reads', async () => {
+      const fixture = await adder();
+
+      const input = el(fixture, field);
+      expect(input?.getAttribute('role')).toBe('combobox');
+      expect(input?.getAttribute('aria-label')).toBe('The other ticket');
+      expect(input?.getAttribute('placeholder')).toBe('COW-12, team/COW-12 or words');
+      expect(button(fixture, byTestId('link-add'))?.getAttribute('aria-label')).toBe(
+        'Add the link',
+      );
+    });
 
     it.each([
       ['COW-12', true],
@@ -794,6 +844,10 @@ describe('conversation forms', () => {
       ['AB-1', true],
       ['A1-100', true],
       ['ABCDEFGHIJ-5', true],
+      ['acme/COW-12', true],
+      ['globex/api-7', true],
+      ['Globex/API-7', true],
+      ['team-2/OPS-1', true],
       ['', false],
       ['   ', false],
       ['COW', false],
@@ -804,14 +858,26 @@ describe('conversation forms', () => {
       ['1COW-2', false],
       ['COW-12-3', false],
       ['COW 12', false],
-      ['acme/COW-12', false],
       ['ABCDEFGHIJK-1', false],
+      ['COW-12345678901', false],
+      ['/COW-12', false],
+      ['a/COW-12', false],
+      ['acme/', false],
+      ['ac me/COW-1', false],
+      ['acme/COW-12/3', false],
     ])('accepts the other ticket %j: %s', async (other, valid) => {
       const fixture = await adder();
 
-      typeInto(fixture, byTestId('link-other'), other);
+      typeInto(fixture, field, other);
 
       expect(button(fixture, byTestId('link-add'))?.disabled).toBe(!valid);
+    });
+
+    it('reads a typed key as the canonical key the routes take, a short one inside the team (docs/adr/0007 D3)', () => {
+      expect(typedKey(' ops-3 ', 'acme')).toBe('acme/OPS-3');
+      expect(typedKey('Globex/api-7', 'acme')).toBe('globex/API-7');
+      expect(typedKey('acme/COW-12', 'globex')).toBe('acme/COW-12');
+      expect(typedKey('not a key', 'acme')).toBeNull();
     });
 
     it('links as relates-to unless another type is chosen, and offers the four types', async () => {
@@ -822,16 +888,27 @@ describe('conversation forms', () => {
       expect(el(fixture, 'p-select .p-select-label')?.textContent?.trim()).toBe('relates-to');
     });
 
-    it('links to the other ticket by its short key, upper-cased and trimmed, and empties the field', async () => {
+    it('links to a ticket of its team by its short key, trimmed, as the canonical key, and empties the field', async () => {
       const fixture = await adder();
-      typeInto(fixture, byTestId('link-other'), '  ops-3 ');
+      typeInto(fixture, field, '  ops-3 ');
 
       submit(fixture);
       await settle(fixture);
 
-      expect(conversation.link).toHaveBeenCalledExactlyOnceWith(key, 'relates-to', 'OPS-3');
-      expect((el(fixture, byTestId('link-other')) as HTMLInputElement).value).toBe('');
+      expect(conversation.link).toHaveBeenCalledExactlyOnceWith(key, 'relates-to', 'acme/OPS-3');
+      expect((el(fixture, field) as HTMLInputElement).value).toBe('');
       expect(button(fixture, byTestId('link-add'))?.disabled).toBe(true);
+    });
+
+    // docs/adr/0012 D2 as amended 2026-10-10.
+    it('links to a ticket of another team by its canonical key, the team in lower case', async () => {
+      const fixture = await adder();
+      typeInto(fixture, field, 'Globex/api-7');
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(conversation.link).toHaveBeenCalledExactlyOnceWith(key, 'relates-to', 'globex/API-7');
     });
 
     it('links with the type that is chosen', async () => {
@@ -839,22 +916,23 @@ describe('conversation forms', () => {
       fixture.debugElement
         .query(By.directive(Select))
         .triggerEventHandler('ngModelChange', 'blocks');
-      typeInto(fixture, byTestId('link-other'), 'COW-3');
+      typeInto(fixture, field, 'COW-3');
       await settle(fixture);
 
       submit(fixture);
       await settle(fixture);
 
-      expect(conversation.link).toHaveBeenCalledExactlyOnceWith(key, 'blocks', 'COW-3');
+      expect(conversation.link).toHaveBeenCalledExactlyOnceWith(key, 'blocks', 'acme/COW-3');
     });
 
     it('does not link to something that is not a ticket key', async () => {
       const fixture = await adder();
-      typeInto(fixture, byTestId('link-other'), 'not a key');
+      typeInto(fixture, field, 'not a key');
 
       submit(fixture);
       await settle(fixture);
 
+      expect(conversation.link).not.toHaveBeenCalled();
       expect(button(fixture, byTestId('link-add'))?.disabled).toBe(true);
     });
 
@@ -864,7 +942,7 @@ describe('conversation forms', () => {
       );
       const add = vi.spyOn(TestBed.inject(MessageService), 'add');
       const fixture = await adder();
-      typeInto(fixture, byTestId('link-other'), 'COW-3');
+      typeInto(fixture, field, 'COW-3');
 
       submit(fixture);
       await settle(fixture);
@@ -872,7 +950,7 @@ describe('conversation forms', () => {
       expect(add).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ detail: 'COW-3 already waits on this ticket.' }),
       );
-      expect((el(fixture, byTestId('link-other')) as HTMLInputElement).value).toBe('COW-3');
+      expect((el(fixture, field) as HTMLInputElement).value).toBe('COW-3');
       expect(button(fixture, byTestId('link-add'))?.disabled).toBe(false);
     });
 
@@ -880,7 +958,7 @@ describe('conversation forms', () => {
       const write = deferred<unknown>();
       conversation.link.mockReturnValue(write.promise);
       const fixture = await adder();
-      typeInto(fixture, byTestId('link-other'), 'COW-3');
+      typeInto(fixture, field, 'COW-3');
 
       submit(fixture);
       await settle(fixture);
@@ -889,6 +967,90 @@ describe('conversation forms', () => {
       await settle(fixture);
 
       expect(conversation.link).toHaveBeenCalledOnce();
+    });
+
+    describe('what the field offers', () => {
+      it('offers the open tickets of the project from its button, never the ticket itself, read once', async () => {
+        tickets.openTickets.mockResolvedValue([
+          { key: 'acme/COW-3', title: 'Rework the board', type: 'task', state: 'filed' } as Ticket,
+          { key, title: 'The ticket itself', type: 'bug', state: 'filed' } as Ticket,
+        ]);
+        const fixture = await adder();
+
+        autocomplete(fixture).triggerEventHandler('completeMethod', { query: '' });
+        await settle(fixture);
+        autocomplete(fixture).triggerEventHandler('completeMethod', { query: '  ' });
+        await settle(fixture);
+
+        expect(tickets.openTickets).toHaveBeenCalledExactlyOnceWith('acme', 'COW');
+        expect(tickets.search).not.toHaveBeenCalled();
+        expect(offered(fixture)).toEqual([['acme/COW-3', 'COW-3 Rework the board']]);
+      });
+
+      it('offers the hits of the search across the teams of the person for words, each of another team with its team', async () => {
+        tickets.search.mockResolvedValue([
+          hit('globex/API-7', 'Send the quoll attribute'),
+          hit('acme/OPS-2', 'Count the quolls'),
+          hit(key, 'The ticket itself'),
+        ]);
+        const fixture = await adder();
+
+        autocomplete(fixture).triggerEventHandler('completeMethod', { query: ' quoll ' });
+        await settle(fixture);
+
+        expect(tickets.search).toHaveBeenCalledExactlyOnceWith('quoll');
+        expect(offered(fixture)).toEqual([
+          ['globex/API-7', 'Globex · API-7 Send the quoll attribute'],
+          ['acme/OPS-2', 'OPS-2 Count the quolls'],
+        ]);
+      });
+
+      it('links to the ticket picked among them by its canonical key', async () => {
+        tickets.search.mockResolvedValue([hit('globex/API-7', 'Send the quoll attribute')]);
+        const fixture = await adder();
+        autocomplete(fixture).triggerEventHandler('completeMethod', { query: 'quoll' });
+        await settle(fixture);
+
+        const [picked] = autocomplete(fixture).componentInstance.suggestions() as LinkOption[];
+        autocomplete(fixture).triggerEventHandler('ngModelChange', picked);
+        await settle(fixture);
+        expect(button(fixture, byTestId('link-add'))?.disabled).toBe(false);
+        submit(fixture);
+        await settle(fixture);
+
+        expect(conversation.link).toHaveBeenCalledExactlyOnceWith(
+          key,
+          'relates-to',
+          'globex/API-7',
+        );
+      });
+
+      it('drops an offer that comes after the person asked for another', async () => {
+        const first = deferred<SearchHit[]>();
+        tickets.search.mockReturnValueOnce(first.promise);
+        tickets.search.mockResolvedValueOnce([hit('acme/OPS-3', 'Second words')]);
+        const fixture = await adder();
+
+        autocomplete(fixture).triggerEventHandler('completeMethod', { query: 'first' });
+        autocomplete(fixture).triggerEventHandler('completeMethod', { query: 'second' });
+        await settle(fixture);
+        first.resolve([hit('acme/OPS-1', 'First words')]);
+        await settle(fixture);
+
+        expect(offered(fixture)).toEqual([['acme/OPS-3', 'OPS-3 Second words']]);
+      });
+
+      it('toasts an offer that failed, and offers nothing', async () => {
+        tickets.search.mockRejectedValue(new HttpErrorResponse({ status: 0 }));
+        const add = vi.spyOn(TestBed.inject(MessageService), 'add');
+        const fixture = await adder();
+
+        autocomplete(fixture).triggerEventHandler('completeMethod', { query: 'quoll' });
+        await settle(fixture);
+
+        expect(add).toHaveBeenCalledOnce();
+        expect(offered(fixture)).toEqual([]);
+      });
     });
   });
 
@@ -1102,12 +1264,12 @@ describe('conversation forms', () => {
       fixture.debugElement
         .query(By.directive(Select))
         .triggerEventHandler('ngModelChange', 'blocks');
-      typeInto(fixture, byTestId('link-other'), 'OPS-3');
+      typeInto(fixture, `${byTestId('link-other')} input`, 'OPS-3');
 
       fixture.componentRef.setInput('ticketKey', next);
       await settle(fixture);
 
-      expect((el(fixture, byTestId('link-other')) as HTMLInputElement).value).toBe('');
+      expect((el(fixture, `${byTestId('link-other')} input`) as HTMLInputElement).value).toBe('');
       expect(el(fixture, 'p-select .p-select-label')?.textContent?.trim()).toBe('relates-to');
       expect(conversation.link).not.toHaveBeenCalled();
     });

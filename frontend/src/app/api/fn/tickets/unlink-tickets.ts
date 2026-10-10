@@ -32,7 +32,8 @@ export interface UnlinkTickets$Params {
   type: LinkType;
 
 /**
- * The other end's key, <PROJECT>-<number>; a link never leaves the tenant (docs/adr/0012 D2)
+ * The other end's short key, <PROJECT>-<number>: a ticket of the team in the path, or with
+ * `other_team` of that team (docs/adr/0007 D3, docs/adr/0012 D2)
  */
   other: string;
 }

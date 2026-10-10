@@ -265,7 +265,7 @@ func assertImportedTickets(t *testing.T, e ticketEnv, f *fixture.DB, job uuid.UU
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, hidden.StatusCode(), "the embargo's rule set the flag (docs/adr/0065 D7)")
 
-	links, err := admin.ListTicketLinksWithResponse(e.ctx, e.SlugA, "ALPHA", 28, &apigen.ListTicketLinksParams{})
+	links, err := admin.ListTicketLinksWithResponse(e.ctx, e.SlugA, "ALPHA", 28, &apigen.ListTicketLinksParams{}) //nolint:staticcheck // SA1019: the deprecated read is still answered
 	require.NoError(t, err)
 	require.Len(t, links.JSON200.Items, 1)
 	assert.Equal(t, e.SlugA+"/ALPHA-26", links.JSON200.Items[0].Ticket.Key)
@@ -403,7 +403,7 @@ func TestImportLeavesOutWhatItCannotImport(t *testing.T) {
 		apigen.ImportCorrection{Path: "005-ticket-5.md", Assignee: nullable.NewNullableWithValue(e.MemberA)})
 	require.Equal(t, http.StatusOK, executed.StatusCode(), string(executed.Body))
 	assert.Equal(t, apigen.ImportOutcomeExclude, reported(t, executed.JSON200, "001-ticket-1.md").Outcome)
-	links, err := e.s.client(t, admin).ListTicketLinksWithResponse(e.ctx, e.SlugA, "ALPHA", 5, &apigen.ListTicketLinksParams{})
+	links, err := e.s.client(t, admin).ListTicketLinksWithResponse(e.ctx, e.SlugA, "ALPHA", 5, &apigen.ListTicketLinksParams{}) //nolint:staticcheck // SA1019: the deprecated read is still answered
 	require.NoError(t, err)
 	require.Len(t, links.JSON200.Items, 1, "the excluded file's number names the project's ticket")
 	assert.Equal(t, e.SlugA+"/ALPHA-1", links.JSON200.Items[0].Ticket.Key)

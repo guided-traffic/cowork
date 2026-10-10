@@ -191,7 +191,10 @@ transitions `filed → analysed`, `decided → in-progress`, into `blocked` and 
 *(Amended 2026-10-06 by the owner, the review after experience of the acts no record had
 listed:)* the baseline holds five more, each recorded with the agent mark and the capabilities
 the request held — removing a link, an open `blocks` link into a ticket before its `done`
-included ([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D7 as amended that day);
+included ([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D7 as amended that day)
+*(2026-10-10: from either end of it, and a child from its parent's side, as a writer of either end
+removes a relation, [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md)
+D2 and ADR 0012 D2 as amended again that day; no capability and no rule of this record changed)*;
 the backward moves and reopens of [ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md)
 — `in-progress → decided` or `→ analysed`, `decided → analysed`, `review → in-progress`,
 `dropped → filed`, the withdrawal of a done by hand and the write that lowers a stage of a ticket
@@ -374,6 +377,10 @@ scope alone.
     person's: an agent with `close` removes the open `blocks` links into its ticket and then
     closes it, two calls of its own. ADR 0012 D7's refusal then holds an agent only as long as
     the links stand; the removals are on both tickets' activity, marked as the agent's.
+    *(2026-10-10:)* That includes a link another team keeps onto the agent's ticket, which a
+    writer of either end now removes; in the other team's record the removal is
+    `system:relation`'s where the agent's person holds no role there, the mark in its own team's
+    record alone ([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) Residual risks).
   - **A backward move or a reopen** undoes what its person kept for themselves: a token without
     `decide` moves a decided ticket back to `analysed`, a token without `close` withdraws its
     person's done by hand or lowers a stage of a ticket done by its stages, a token without

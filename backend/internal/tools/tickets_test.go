@@ -113,8 +113,8 @@ func TestSearch(t *testing.T) {
 func TestFileTicket(t *testing.T) {
 	f := newFake(t)
 	f.on("POST /api/v1/teams/acme/projects/COW/tickets", http.StatusCreated, ticket("acme/COW-12", "filed"))
-	f.on("PUT /api/v1/teams/acme/projects/COW/tickets/12/links/{type}/{other}", http.StatusCreated, map[string]any{})
-	f.on("PUT /api/v1/teams/acme/projects/COW/tickets/3/links/{type}/{other}", http.StatusCreated, map[string]any{})
+	f.on("PUT /api/v1/teams/acme/projects/COW/tickets/12/links/{type}/{other_team}/{other}", http.StatusCreated, map[string]any{})
+	f.on("PUT /api/v1/teams/acme/projects/COW/tickets/3/links/{type}/{other_team}/{other}", http.StatusCreated, map[string]any{})
 
 	res := call(t, f.session(true), "file_ticket", `{"type": "task", "title": "Ship it", "severity": "medium",
 		"security": "none", "effort": "S", "body": "## Current state", "links": [
@@ -124,7 +124,7 @@ func TestFileTicket(t *testing.T) {
 	assert.Contains(t, res.Text, "Filed acme/COW-12 — Ship it (task, filed), in the horizon later.")
 	assert.Contains(t, res.Text, "Linked: acme/COW-12 relates-to acme/COW-5.")
 	assert.Contains(t, res.Text, "Linked: acme/COW-3 blocks acme/COW-12.")
-	assert.Contains(t, res.Text, "a link stays inside one team")
+	assert.Contains(t, res.Text, "Linked: acme/COW-12 blocks other/OPS-1.", "a link reaches a ticket of another team")
 	posted := f.calls(http.MethodPost, "/api/v1/teams/acme/projects/COW/tickets")
 	require.Len(t, posted, 1)
 	_, err := uuid.Parse(posted[0].Header.Get("Idempotency-Key"))
@@ -132,8 +132,9 @@ func TestFileTicket(t *testing.T) {
 	body := decodeBody(t, posted[0])
 	assert.Equal(t, "## Current state", body["body"])
 	assert.NotContains(t, body, "threat")
-	assert.Len(t, f.calls(http.MethodPut, "/api/v1/teams/acme/projects/COW/tickets/12/links/relates-to/COW-5"), 1)
-	assert.Len(t, f.calls(http.MethodPut, "/api/v1/teams/acme/projects/COW/tickets/3/links/blocks/COW-12"), 1)
+	assert.Len(t, f.calls(http.MethodPut, "/api/v1/teams/acme/projects/COW/tickets/12/links/relates-to/acme/COW-5"), 1)
+	assert.Len(t, f.calls(http.MethodPut, "/api/v1/teams/acme/projects/COW/tickets/3/links/blocks/acme/COW-12"), 1)
+	assert.Len(t, f.calls(http.MethodPut, "/api/v1/teams/acme/projects/COW/tickets/12/links/blocks/other/OPS-1"), 1)
 
 	res = call(t, f.session(false), "file_ticket", `{"type": "task", "title": "x", "severity": "low", "security": "none", "effort": "S"}`)
 	assert.True(t, res.IsError, "an unbound session names the project")
@@ -201,7 +202,8 @@ func TestCommentLinkAndWatch(t *testing.T) {
 	f := newFake(t)
 	f.on("POST "+ticketPath+"/comments", http.StatusCreated, map[string]any{"id": uuid.NewString()})
 	f.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "in-progress"), "ETag", `"3"`)
-	f.on("PUT "+ticketPath+"/links/blocks/COW-3", http.StatusOK, map[string]any{})
+	f.on("PUT "+ticketPath+"/links/blocks/acme/COW-3", http.StatusOK, map[string]any{})
+	f.refuse("PUT "+ticketPath+"/links/blocks/beta/COW-3", http.StatusNotFound, "not_found", "no such ticket")
 	f.on("PUT "+ticketPath+"/interest", http.StatusCreated, map[string]any{})
 	s := f.session(true)
 
@@ -216,8 +218,11 @@ func TestCommentLinkAndWatch(t *testing.T) {
 	res = call(t, s, "link", `{"key": "COW-12", "type": "blocks", "other_key": "acme/COW-3"}`)
 	require.False(t, res.IsError, res.Text)
 	assert.Equal(t, "Linked: acme/COW-12 blocks acme/COW-3.", res.Text)
+	// A ticket of another team the person does not read is refused by the
+	// server as a key that names nothing (docs/adr/0012 D2); the tool asks.
 	res = call(t, s, "link", `{"key": "COW-12", "type": "blocks", "other_key": "beta/COW-3"}`)
 	assert.True(t, res.IsError)
+	assert.Contains(t, res.Text, "no such ticket")
 
 	res = call(t, s, "watch", `{"key": "COW-12"}`)
 	require.False(t, res.IsError, res.Text)

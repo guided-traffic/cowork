@@ -50,6 +50,18 @@
           "type": "string"
         }
       },
+      "ChildRelation": {
+        "description": "The `id` of a child's relation, as `…/relations` gives it: an opaque handle that names the child\nof this ticket without showing the child's id (docs/adr/0008 D2)\n",
+        "in": "path",
+        "name": "child",
+        "required": true,
+        "schema": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "type": "string"
+        }
+      },
       "CommentID": {
         "description": "The comment's id",
         "in": "path",
@@ -344,6 +356,16 @@
           "type": "integer"
         }
       },
+      "LinkID": {
+        "description": "A link's id, as a relation of the ticket names it (docs/adr/0012 D1)",
+        "in": "path",
+        "name": "link",
+        "required": true,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
       "MeProject": {
         "description": "Narrows a person-level list further to one project of the team `team` names, by its key; it\nneeds `team` or the deprecated `tenant` (`400 validation_failed` without). A key that names no\nproject the person sees there lists nothing\n",
         "in": "query",
@@ -400,8 +422,18 @@
           "type": "string"
         }
       },
+      "OtherTeamSlug": {
+        "description": "The team of the other end, any team of the installation (docs/adr/0005 D3, docs/adr/0012 D2)",
+        "in": "path",
+        "name": "other_team",
+        "required": true,
+        "schema": {
+          "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+          "type": "string"
+        }
+      },
       "OtherTicketKey": {
-        "description": "The other end's key, \u003cPROJECT\u003e-\u003cnumber\u003e; a link never leaves the tenant (docs/adr/0012 D2)",
+        "description": "The other end's short key, \u003cPROJECT\u003e-\u003cnumber\u003e: a ticket of the team in the path, or with\n`other_team` of that team (docs/adr/0007 D3, docs/adr/0012 D2)\n",
         "in": "path",
         "name": "other",
         "required": true,
@@ -498,6 +530,24 @@
           "minimum": 1,
           "type": "integer"
         }
+      },
+      "RelationKinds": {
+        "description": "The kinds of relation to list, repeatable; every kind when left out",
+        "explode": true,
+        "in": "query",
+        "name": "kind",
+        "schema": {
+          "items": {
+            "enum": [
+              "parent",
+              "child",
+              "link"
+            ],
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "style": "form"
       },
       "RepositoryID": {
         "description": "The binding's id",
@@ -1437,6 +1487,7 @@
         "type": "object"
       },
       "AuditAction": {
+        "description": "`prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it\nreaches done or dropped, naming that prerequisite in its refs alone — its activity entry is\nredacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who\nholds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5).\n`detached` is recorded on a parent when a child leaves it from the parent's side, or from the\nchild's side where the parent is of another team, naming the child in its refs\n(docs/adr/0008 D2 as amended 2026-10-10)\n",
         "enum": [
           "created",
           "updated",
@@ -1480,7 +1531,9 @@
           "closed",
           "reopened",
           "accepted",
-          "imported"
+          "imported",
+          "prerequisite_settled",
+          "detached"
         ],
         "type": "string"
       },
@@ -4249,7 +4302,7 @@
             "$ref": "#/components/schemas/ImportOutcome"
           },
           "parent": {
-            "description": "The key of the parent in the project",
+            "description": "The parent's canonical key: a ticket of the upload or the project, or of another project or team\nthe importing person reads (docs/adr/0008 D2, docs/adr/0051 D9)\n",
             "type": [
               "string",
               "null"
@@ -4703,7 +4756,7 @@
             "type": "string"
           },
           "key": {
-            "description": "The other end's key in the project",
+            "description": "The other end's canonical key: a ticket of the upload or the project, or of another project or\nteam the importing person reads (docs/adr/0012 D2, docs/adr/0051 D9)\n",
             "type": "string"
           },
           "source": {
@@ -4854,7 +4907,7 @@
             "$ref": "#/components/schemas/Activity"
           },
           "blocker": {
-            "description": "For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is now; null otherwise",
+            "description": "For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is\nnow; null for a ticket of another team, which the act names in its refs alone and the ticket's\nrelations show by its head (docs/adr/0012 D5); null otherwise\n",
             "oneOf": [
               {
                 "$ref": "#/components/schemas/TicketRef"
@@ -5985,6 +6038,18 @@
                 "open_prerequisites": 1,
                 "opened_at": "2026-10-01T08:15:00Z",
                 "parent": "acme/WEB-40",
+                "parent_head": {
+                  "key": "acme/WEB-40",
+                  "placeholder": false,
+                  "readable": true,
+                  "state": "in-progress",
+                  "team": {
+                    "name": "Acme",
+                    "slug": "acme"
+                  },
+                  "title": "Every supported browser signs in",
+                  "type": "feature"
+                },
                 "progress": 60,
                 "progress_derived": false,
                 "progress_refinement": 100,
@@ -6032,6 +6097,37 @@
         "required": [
           "items",
           "next_cursor"
+        ],
+        "type": "object"
+      },
+      "NodeProgress": {
+        "description": "The three progress stages as the ticket shows them (docs/adr/0017 D2, D3)",
+        "properties": {
+          "derived": {
+            "description": "The stages are derived from the ticket's children",
+            "type": "boolean"
+          },
+          "implementation": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "refinement": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "review": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "implementation",
+          "refinement",
+          "review",
+          "derived"
         ],
         "type": "object"
       },
@@ -6153,6 +6249,185 @@
         "required": [
           "id",
           "display_name"
+        ],
+        "type": "object"
+      },
+      "PrerequisiteHeadNode": {
+        "description": "A ticket of a prerequisite tree, or of its upward reading, across teams (docs/adr/0012 D6 as\namended 2026-10-10), by its head. The walk goes on only from a ticket the reader reads: a head\nand a placeholder are leaves, what lies behind them stays behind their team's membership\n(docs/adr/0005 D3, docs/adr/0065 D5).\n",
+        "properties": {
+          "assignee": {
+            "description": "The assignee, of a ticket of the reader's own team they read; null otherwise and without one",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Person"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "blocked_from": {
+            "description": "The state a blocked ticket came from, of a ticket the reader reads; null unless it is blocked,\nand for a head or a placeholder, a head being the five fields of TicketHead alone\n",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "depth": {
+            "description": "1 for a ticket next to the one asked about — blocking it, or blocked by it read upward",
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "head": {
+            "$ref": "#/components/schemas/TicketHead"
+          },
+          "progress": {
+            "description": "The stages, of a ticket of the reader's own team they read; null otherwise",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/NodeProgress"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "repeated": {
+            "description": "The ticket stands in the tree in full under another ticket; here it is shown without what lies behind it",
+            "type": "boolean"
+          },
+          "settled": {
+            "description": "Done or dropped (docs/adr/0012 D6); null for a placeholder, whose state the reader may not read",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "depth",
+          "repeated",
+          "settled",
+          "blocked_from",
+          "head",
+          "assignee",
+          "progress"
+        ],
+        "type": "object"
+      },
+      "PrerequisiteHeadTree": {
+        "example": {
+          "items": [
+            {
+              "assignee": {
+                "display_name": "Ada Lovelace",
+                "id": "019cadb4-4b00-7719-ade7-c2d450e9b5f3",
+                "username": "ada"
+              },
+              "blocked_from": null,
+              "depth": 1,
+              "head": {
+                "key": "acme/WEB-41",
+                "placeholder": false,
+                "readable": true,
+                "state": "done",
+                "team": {
+                  "name": "Acme",
+                  "slug": "acme"
+                },
+                "title": "Pick the SameSite mode of the session cookie",
+                "type": "decision"
+              },
+              "progress": {
+                "derived": false,
+                "implementation": 100,
+                "refinement": 100,
+                "review": 100
+              },
+              "repeated": false,
+              "settled": true
+            },
+            {
+              "assignee": {
+                "display_name": "Sam Rivera",
+                "id": "019e165f-39c0-7937-931a-d0fa7735df32",
+                "username": "sam"
+              },
+              "blocked_from": null,
+              "depth": 1,
+              "head": {
+                "key": "acme/WEB-39",
+                "placeholder": false,
+                "readable": true,
+                "state": "analysed",
+                "team": {
+                  "name": "Acme",
+                  "slug": "acme"
+                },
+                "title": "Log the sign-in failures with their reason",
+                "type": "task"
+              },
+              "progress": {
+                "derived": false,
+                "implementation": 0,
+                "refinement": 40,
+                "review": 0
+              },
+              "repeated": false,
+              "settled": false
+            },
+            {
+              "assignee": null,
+              "blocked_from": null,
+              "depth": 1,
+              "head": {
+                "key": "globex/API-7",
+                "placeholder": false,
+                "readable": false,
+                "state": "in-progress",
+                "team": {
+                  "name": "Globex",
+                  "slug": "globex"
+                },
+                "title": "Send the SameSite attribute on the session cookie",
+                "type": "task"
+              },
+              "progress": null,
+              "repeated": false,
+              "settled": false
+            }
+          ],
+          "next_cursor": null,
+          "open": 2
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PrerequisiteHeadNode"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "open": {
+            "description": "The open tickets of the whole tree whose state the reader reads, each counted once, on every\npage; a placeholder is never counted\n",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor",
+          "open"
         ],
         "type": "object"
       },
@@ -7055,6 +7330,232 @@
           "withdrawn"
         ],
         "type": "string"
+      },
+      "Relation": {
+        "description": "A relation of a ticket — its parent, a child, a link in either direction — and the ticket at its\nother end as the reader sees it, of any project or team (docs/adr/0005 D3, docs/adr/0008 D2,\ndocs/adr/0012 D2)\n",
+        "example": {
+          "head": {
+            "key": "globex/API-7",
+            "placeholder": false,
+            "readable": false,
+            "state": "in-progress",
+            "team": {
+              "name": "Globex",
+              "slug": "globex"
+            },
+            "title": "Send the SameSite attribute on the session cookie",
+            "type": "task"
+          },
+          "id": "01a0f68e-5c40-7a3e-9b1d-4f2c8e6a7d10",
+          "kind": "link",
+          "link": {
+            "created_at": "2026-10-01T08:22:00Z",
+            "created_by": {
+              "display_name": "Grace Hopper",
+              "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+              "username": null
+            },
+            "direction": "incoming",
+            "id": "01a0f68e-5c40-7a3e-9b1d-4f2c8e6a7d10",
+            "name": "blocked by",
+            "type": "blocks"
+          }
+        },
+        "properties": {
+          "head": {
+            "$ref": "#/components/schemas/TicketHead"
+          },
+          "id": {
+            "description": "The relation's id, by which a writer of the ticket removes it (docs/adr/0008 D2,\ndocs/adr/0012 D2 as amended 2026-10-10): a link's id, which `DELETE …/links/{link}` takes;\nfor a child an opaque handle, which `DELETE …/children/{child}` takes and which shows no id\nof the child; null for the parent, which the update of `parent` removes\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "enum": [
+              "parent",
+              "child",
+              "link"
+            ],
+            "type": "string"
+          },
+          "link": {
+            "description": "The link of a relation of the kind `link`; null for a parent and a child",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RelationLink"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "link",
+          "head"
+        ],
+        "type": "object"
+      },
+      "RelationLink": {
+        "description": "The link of a relation of the kind `link`, read from the ticket asked about (docs/adr/0012 D1)",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by": {
+            "$ref": "#/components/schemas/Person"
+          },
+          "direction": {
+            "description": "Outgoing when the ticket asked about is the link's source",
+            "enum": [
+              "outgoing",
+              "incoming"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "The link's id, which `DELETE …/links/{link}` removes it by",
+            "format": "uuid",
+            "type": "string"
+          },
+          "name": {
+            "description": "The link read from the ticket asked about: blocks, blocked by, relates to, duplicates, duplicated by, found in, found here",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/LinkType"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "direction",
+          "name",
+          "created_by",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "RelationList": {
+        "example": {
+          "items": [
+            {
+              "head": {
+                "key": "acme/WEB-40",
+                "placeholder": false,
+                "readable": true,
+                "state": "in-progress",
+                "team": {
+                  "name": "Acme",
+                  "slug": "acme"
+                },
+                "title": "Every supported browser signs in",
+                "type": "feature"
+              },
+              "id": null,
+              "kind": "parent",
+              "link": null
+            },
+            {
+              "head": {
+                "key": null,
+                "placeholder": true,
+                "readable": false,
+                "state": null,
+                "team": {
+                  "name": "Acme",
+                  "slug": "acme"
+                },
+                "title": null,
+                "type": null
+              },
+              "id": "7l4WbIVeBm2dJt0Hc1qXr9Fk8aZuYe3PoS6gNvAwLnM5Ri2TfUjEs0Dy1Kx4Qh7Gp8Cz9Bm3Va6Lw5Hn2Jr4Ys7Tq0",
+              "kind": "child",
+              "link": null
+            },
+            {
+              "head": {
+                "key": "acme/WEB-39",
+                "placeholder": false,
+                "readable": true,
+                "state": "analysed",
+                "team": {
+                  "name": "Acme",
+                  "slug": "acme"
+                },
+                "title": "Log the sign-in failures with their reason",
+                "type": "task"
+              },
+              "id": "01a0f68c-8780-7b4f-be55-ff44fa945045",
+              "kind": "link",
+              "link": {
+                "created_at": "2026-10-01T08:20:00Z",
+                "created_by": {
+                  "display_name": "Grace Hopper",
+                  "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                  "username": null
+                },
+                "direction": "incoming",
+                "id": "01a0f68c-8780-7b4f-be55-ff44fa945045",
+                "name": "blocked by",
+                "type": "blocks"
+              }
+            },
+            {
+              "head": {
+                "key": "globex/API-7",
+                "placeholder": false,
+                "readable": false,
+                "state": "in-progress",
+                "team": {
+                  "name": "Globex",
+                  "slug": "globex"
+                },
+                "title": "Send the SameSite attribute on the session cookie",
+                "type": "task"
+              },
+              "id": "01a0f68e-5c40-7a3e-9b1d-4f2c8e6a7d10",
+              "kind": "link",
+              "link": {
+                "created_at": "2026-10-01T08:22:00Z",
+                "created_by": {
+                  "display_name": "Grace Hopper",
+                  "id": "019cb855-3d80-7d3c-a80d-97fa1e50d59e",
+                  "username": null
+                },
+                "direction": "incoming",
+                "id": "01a0f68e-5c40-7a3e-9b1d-4f2c8e6a7d10",
+                "name": "blocked by",
+                "type": "blocks"
+              }
+            }
+          ],
+          "next_cursor": null
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Relation"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
       },
       "Repository": {
         "example": {
@@ -8125,6 +8626,18 @@
           "open_prerequisites": 1,
           "opened_at": "2026-10-01T08:15:00Z",
           "parent": "acme/WEB-40",
+          "parent_head": {
+            "key": "acme/WEB-40",
+            "placeholder": false,
+            "readable": true,
+            "state": "in-progress",
+            "team": {
+              "name": "Acme",
+              "slug": "acme"
+            },
+            "title": "Every supported browser signs in",
+            "type": "feature"
+          },
           "progress": 60,
           "progress_derived": false,
           "progress_refinement": 100,
@@ -8242,7 +8755,7 @@
             "type": "integer"
           },
           "open_prerequisites": {
-            "description": "The open tickets that block this one and that the caller can see (docs/adr/0012 D7,\ndocs/adr/0018 D1); a ticket the caller cannot see is never counted\n",
+            "description": "The open tickets of any team that block this one and whose state the caller reads in a head\n(docs/adr/0012 D6, D7, docs/adr/0018 D1) — the tickets done is refused over; a ticket the\ncaller may not see, a placeholder, is never counted\n",
             "minimum": 0,
             "type": "integer"
           },
@@ -8251,10 +8764,21 @@
             "type": "string"
           },
           "parent": {
-            "description": "The parent's key",
+            "description": "The parent's canonical key, a ticket of any project or team (docs/adr/0008 D2); null without\na parent, and for a parent the reader may not see — `parent_head` is its placeholder then\n",
             "type": [
               "string",
               "null"
+            ]
+          },
+          "parent_head": {
+            "description": "The parent as the reader sees it (docs/adr/0005 D3): its head, the placeholder where the\nreader may not see it, null without a parent\n",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketHead"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "progress": {
@@ -8369,6 +8893,7 @@
           "progress_review",
           "progress_derived",
           "parent",
+          "parent_head",
           "reporter",
           "reporter_agent",
           "reporter_token",
@@ -8470,7 +8995,7 @@
             "description": "The horizon the ticket is filed into; later when left out (docs/adr/0010 D3)"
           },
           "parent": {
-            "description": "A ticket key of the same project, short or full",
+            "description": "The parent's key: canonical, a ticket of any team of the installation, or short, a ticket of\nthis team in any project (docs/adr/0007 D3, docs/adr/0008 D2). A key the caller does not read\nis refused exactly as one that does not exist: 400 `validation_failed` at `/parent`\n",
             "type": "string"
           },
           "security": {
@@ -8499,6 +9024,77 @@
           "severity",
           "security",
           "effort"
+        ],
+        "type": "object"
+      },
+      "TicketHead": {
+        "description": "A ticket at the other end of a relation — a parent, a child, a link — as the reader sees it\n(docs/adr/0005 D3, docs/adr/0065 D5): its team, and its key, title, type and state, which is all\na reader who holds no role in its team, or to whom its project is restricted, reads of it\n(docs/adr/0034 D4). A ticket the reader may not see is the placeholder, `\u003cteam\u003e [Confidential]`:\nits team and nothing else, the key, the title, the type and the state null — in another team\nor in the reader's own.\n",
+        "example": {
+          "key": "globex/API-7",
+          "placeholder": false,
+          "readable": false,
+          "state": "in-progress",
+          "team": {
+            "name": "Globex",
+            "slug": "globex"
+          },
+          "title": "Send the SameSite attribute on the session cookie",
+          "type": "task"
+        },
+        "properties": {
+          "key": {
+            "description": "The canonical key, \u003cteam\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e; null for the placeholder",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "placeholder": {
+            "description": "The reader may not see the ticket; it shows as `\u003cteam\u003e [Confidential]`",
+            "type": "boolean"
+          },
+          "readable": {
+            "description": "The reader reads the ticket and may open it; a head they may not open is false",
+            "type": "boolean"
+          },
+          "state": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "team": {
+            "$ref": "#/components/schemas/TeamRef"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TicketType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "team",
+          "key",
+          "title",
+          "type",
+          "state",
+          "placeholder",
+          "readable"
         ],
         "type": "object"
       },
@@ -8537,6 +9133,18 @@
               "open_prerequisites": 1,
               "opened_at": "2026-10-01T08:15:00Z",
               "parent": "acme/WEB-40",
+              "parent_head": {
+                "key": "acme/WEB-40",
+                "placeholder": false,
+                "readable": true,
+                "state": "in-progress",
+                "team": {
+                  "name": "Acme",
+                  "slug": "acme"
+                },
+                "title": "Every supported browser signs in",
+                "type": "feature"
+              },
               "progress": 60,
               "progress_derived": false,
               "progress_refinement": 100,
@@ -8627,7 +9235,7 @@
             "type": "boolean"
           },
           "parent": {
-            "description": "A ticket key of the same project; null makes the ticket a root",
+            "description": "The parent's key as a filing takes it — canonical, any team; short, this team, any project —, a\nticket the caller reads; null makes the ticket a root, whatever the reader sees of the parent\nit had (docs/adr/0008 D2)\n",
             "type": [
               "string",
               "null"
@@ -11355,7 +11963,7 @@
     },
     "/api/v1/teams/{team}/events": {
       "get": {
-        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`project.changed` says that a project's tickets changed as a whole — its rank set by the\nscore (docs/adr/0014 D3), `kind` `ranked`, or an import executed into it (docs/adr/0051 D3),\n`kind` `imported`, whose tickets announce no event of their own — with\n`data: {\"key\": \"\u003cteam\u003e/\u003cPROJECT\u003e\", \"kind\": …}`; `id:` is the act's id. It reaches whoever\nsees the project, and the client reloads the lists it shows.\n\n`membership.changed` says that who belongs to the team, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries the team's slug, `team` — and the same slug under the deprecated `tenant`,\nwritten for one release and dropped in a later one (docs/adr/0005 D1, docs/adr/0046 D7) —,\nand keys only, each where it applies:\n`person_id`, the person whose membership or project access changed; `project_id`, the\nproject whose restriction or access list changed; `mapping_id`, the group mapping made,\nchanged or removed. The client reloads what it shows of that team's members, mappings and\naccess lists, its project list when `project_id` is there, and the person's own\n`GET /api/v1/me`. An event about an access entry reaches the team's administrators and the\nperson it names, one about a mapping the administrators, every other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream carries\nevery event of every team the person belongs to that the team's own stream would carry\nto them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with\n`data: {\"unread\": n}`, the person's unread notifications in every team the request reaches\n(`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox\nchanges — a notification for them, or theirs marked read. The count carries no `id:` and is\nnot replayed: it says how things stand. A team the person is granted a role in is followed\nat once, one they leave no more after the act that took it away. A token restricted to a\nteam hears its team alone (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level\nstream the gap of every team it follows, in the order the server received the events;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmemberships again; the stream ends when the token or the membership of the team in the\npath fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
+        "description": "`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`ticket.changed` of `kind` `derived` says that a parent's derived stages moved because a\nchild changed, of the parent's team or another (docs/adr/0017 D3 as amended 2026-10-10); it is\nsent on the parent's team's streams, under the same rules, and the client reloads the ticket,\nwhose version the change does not move. The change is no act, so its `id:` is made for the\nevent and names no act.\n\n`project.changed` says that a project's tickets changed as a whole — its rank set by the\nscore (docs/adr/0014 D3), `kind` `ranked`, or an import executed into it (docs/adr/0051 D3),\n`kind` `imported`, whose tickets announce no event of their own — with\n`data: {\"key\": \"\u003cteam\u003e/\u003cPROJECT\u003e\", \"kind\": …}`; `id:` is the act's id. It reaches whoever\nsees the project, and the client reloads the lists it shows.\n\n`membership.changed` says that who belongs to the team, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries the team's slug, `team` — and the same slug under the deprecated `tenant`,\nwritten for one release and dropped in a later one (docs/adr/0005 D1, docs/adr/0046 D7) —,\nand keys only, each where it applies:\n`person_id`, the person whose membership or project access changed; `project_id`, the\nproject whose restriction or access list changed; `mapping_id`, the group mapping made,\nchanged or removed. The client reloads what it shows of that team's members, mappings and\naccess lists, its project list when `project_id` is there, and the person's own\n`GET /api/v1/me`. An event about an access entry reaches the team's administrators and the\nperson it names, one about a mapping the administrators, every other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream carries\nevery event of every team the person belongs to that the team's own stream would carry\nto them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with\n`data: {\"unread\": n}`, the person's unread notifications in every team the request reaches\n(`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox\nchanges — a notification for them, or theirs marked read. The count carries no `id:` and is\nnot replayed: it says how things stand. A team the person is granted a role in is followed\nat once, one they leave no more after the act that took it away. A token restricted to a\nteam hears its team alone (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level\nstream the gap of every team it follows, in the order the server received the events;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmemberships again; the stream ends when the token or the membership of the team in the\npath fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
         "operationId": "streamEvents",
         "parameters": [
           {
@@ -13356,6 +13964,18 @@
                   "open_prerequisites": 0,
                   "opened_at": "2026-10-06T09:30:00Z",
                   "parent": "acme/WEB-40",
+                  "parent_head": {
+                    "key": "acme/WEB-40",
+                    "placeholder": false,
+                    "readable": true,
+                    "state": "in-progress",
+                    "team": {
+                      "name": "Acme",
+                      "slug": "acme"
+                    },
+                    "title": "Every supported browser signs in",
+                    "type": "feature"
+                  },
                   "progress": 0,
                   "progress_derived": false,
                   "progress_refinement": 0,
@@ -13460,7 +14080,7 @@
         }
       ],
       "patch": {
-        "description": "`If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new\nassignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change\nmakes confidential — only to its own person or to nobody, and another new assignee is 403\n`agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another\nnew assignee is 403 `session_required` — admitting a person takes a browser session\n(docs/adr/0035 D5).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
+        "description": "`If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on\nthe parent the change read: a ticket detached from its parent's side, or by a purge of the\nparent, keeps its version, and a change that raced such a removal is refused with `412` and the\nsent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change\nthat takes the ticket away from a parent of another team — clearing it or setting another —\nrecords `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended\n2026-10-10).\n\nAssigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a\nconfidential ticket — or one the change makes confidential — only to its own person or to\nnobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token\nis held the same way, and another new assignee is 403 `session_required` — admitting a person\ntakes a browser session (docs/adr/0035 D5).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
         "operationId": "updateTicket",
         "parameters": [
           {
@@ -13881,6 +14501,38 @@
           "tickets"
         ]
       }
+    },
+    "/api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child}": {
+      "delete": {
+        "description": "The parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a\nwriter of this ticket detaches a child of any project or team from it, whatever they read of\nthe child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The\nchild's side ends it by the update of its `parent`. The child's parent alone changes, its\nversion stays — an update of the child read before is refused with `412`, the parent being\npart of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived\nagain. A relation that is no child of this ticket, or none, answers exactly as a missing one,\n`404` \"no such child\", and removes nothing. The act `updated` is recorded on the child — in\nits own team's record, as `system:relation` where the caller holds no role in that team — and\n`detached` on this ticket.\n",
+        "operationId": "removeTicketChild",
+        "responses": {
+          "204": {
+            "description": "The child is no child of this ticket any more"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Remove a child of this ticket, of any project or team, by the id of the relation",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TeamSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/ChildRelation"
+        }
+      ]
     },
     "/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments": {
       "get": {
@@ -14491,7 +15143,8 @@
     },
     "/api/v1/teams/{team}/projects/{project}/tickets/{number}/links": {
       "get": {
-        "description": "Each link read from this ticket, under its reverse name when the ticket is the target\n(docs/adr/0012 D1). A link whose other end the caller cannot see is absent.\n",
+        "deprecated": true,
+        "description": "Deprecated, replaced by `…/relations?kind=link`, which shows every link, the ends of other\nteams and those the caller may not see included, by their heads; kept in /api/v1 for one\nrelease, behaving as it did, and removed in a later one (docs/adr/0046 D7). Each link read\nfrom this ticket, under its reverse name when the ticket is the target (docs/adr/0012 D1). A\nlink whose other end the caller cannot see, or is a ticket of another team, is absent.\n",
         "operationId": "listTicketLinks",
         "parameters": [
           {
@@ -14527,7 +15180,7 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "The ticket's links in both directions",
+        "summary": "The ticket's links in both directions, inside its team",
         "tags": [
           "tickets"
         ]
@@ -14544,9 +15197,112 @@
         }
       ]
     },
+    "/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link}": {
+      "delete": {
+        "description": "The way to remove a link whose other end the caller may not see — a placeholder shows no key\n(docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must\nbe the link's source or its target, whatever the caller reads of the other end and whatever\nteam keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this\nticket, or none, answers exactly as a missing one, `404` \"no such link\", and removes nothing.\nThe act is recorded on both tickets, the other end's in its own team's record — as\n`system:relation` where the caller holds no role in that team.\n",
+        "operationId": "removeTicketLink",
+        "responses": {
+          "204": {
+            "description": "The link is gone"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Remove a link of this ticket, either end of it, by the link's id",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TeamSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/LinkID"
+        }
+      ]
+    },
+    "/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}": {
+      "delete": {
+        "description": "A write on this ticket, either end of the link — its source or its target —, whatever the\ncaller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket\nremoves a link another team keeps to it as well. The link is found among this ticket's\nrelations by the other end's key, so a key the caller sees as a head removes its link.\nIdempotent: no such link — or a key that names none — answers 204 as well. An end the caller\nmay not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is\nrecorded on both tickets, the other end's in its own team's record — as `system:relation`\nwhere the caller holds no role in that team.\n",
+        "operationId": "unlinkTicketFrom",
+        "responses": {
+          "204": {
+            "description": "The link is gone"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Remove a link to a ticket of any team by its canonical key",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TeamSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/PathLinkType"
+        },
+        {
+          "$ref": "#/components/parameters/OtherTeamSlug"
+        },
+        {
+          "$ref": "#/components/parameters/OtherTicketKey"
+        }
+      ],
+      "put": {
+        "description": "`other_team` and `other` are the other end's canonical key, \u003cteam\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e, a ticket\nof any team of the installation (docs/adr/0012 D2 as amended 2026-10-10). Set by a `member` or\n`admin` of this ticket's team with `write` scope, in the agent baseline (docs/adr/0043 D2), who\nreads the other ticket — at least a `viewer` of its team, its project open to them, a\nconfidential one only when admitted. One they do not read answers exactly as one that does not\nexist, 404 `not_found` \"no such ticket\", so that trying keys tells nothing (docs/adr/0008 D2).\nIdempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second act for\nan existing one — a `relates-to` made from the other end included. An act on both tickets, the\nother end's in its own team's record (docs/adr/0012 D3). A `blocks` link that would close a\ncycle through any team is 409 `link_cycle` (D4).\n",
+        "operationId": "linkTicketTo",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Relation"
+                }
+              }
+            },
+            "description": "The link existed already"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Relation"
+                }
+              }
+            },
+            "description": "The new link"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Link this ticket, as the source, to a ticket of any team by its canonical key",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
     "/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}": {
       "delete": {
-        "description": "Idempotent; removing a link that does not exist answers 204 as well.",
+        "description": "Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in\nthe path, either end of the link — its source or its target —, whatever the caller reads of\nthe other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.\n",
         "operationId": "unlinkTickets",
         "responses": {
           "204": {
@@ -14579,7 +15335,7 @@
         }
       ],
       "put": {
-        "description": "Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second\nact for an existing one. A member's act with `write` scope, in the agent baseline\n(docs/adr/0043 D2). A `blocks` link that would close a cycle is 409 `link_cycle`\n(docs/adr/0012 D4); `relates-to` is symmetric and stored once.\n",
+        "description": "The short form inside the team (docs/adr/0007 D3); `…/links/{type}/{other_team}/{other}`\nlinks to a ticket of any team. Idempotent by its address (docs/adr/0045 D1): 201 for a new\nlink, 200 without a second act for an existing one. A member's act with `write` scope on this\nticket, in the agent baseline (docs/adr/0043 D2), who reads the other ticket: one they do not\nread is the 404 of one that does not exist (docs/adr/0012 D2). A `blocks` link that would close\na cycle, through any team, is 409 `link_cycle` (docs/adr/0012 D4); `relates-to` is symmetric\nand stored once.\n",
         "operationId": "linkTickets",
         "responses": {
           "200": {
@@ -14655,9 +15411,78 @@
         }
       ]
     },
+    "/api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisite-tree": {
+      "get": {
+        "description": "docs/adr/0012 D6 as amended 2026-10-10. `direction=down`, the default: the tickets that block\nthis one, what blocks those, and so on; `direction=up`: its dependents. Every node is a head of\nany project or team, as the caller sees it. The walk goes on only from a ticket the caller\nreads: a head and a placeholder are leaves, and what lies behind them stays behind their\nteam's membership (docs/adr/0005 D3, docs/adr/0065 D5). A node of the caller's own team they\nread shows its assignee and its progress; any other node neither. To a depth of eight, depth\nfirst, siblings in the order they were filed; a ticket under two others stands in full once and\n`repeated` elsewhere. `open` counts the open tickets of the whole tree whose state the caller\nreads, each once, never a placeholder.\n",
+        "operationId": "listPrerequisiteTree",
+        "parameters": [
+          {
+            "description": "down for the prerequisites, the default; up for the dependents",
+            "in": "query",
+            "name": "direction",
+            "schema": {
+              "default": "down",
+              "enum": [
+                "down",
+                "up"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrerequisiteHeadTree"
+                }
+              }
+            },
+            "description": "A page of the tree, depth first",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's prerequisite tree across teams, or read upward its dependents, by heads",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TeamSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ]
+    },
     "/api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisites": {
       "get": {
-        "description": "docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what\nblocks those, and so on — what has to be done before it can be finished. `direction=up`:\nits dependents, the tickets it blocks and what those block. To a depth of eight, depth\nfirst, siblings in the order they were filed. The walk never passes a ticket the caller\ncannot see: that ticket is absent, and so is whatever lies only behind it (docs/adr/0065\nD5). A ticket that stands in the tree under two others is shown in full once, under the\nfirst of them nearest the ticket asked about, and under each other one as `repeated`,\nwithout what lies behind it. `open` counts the open tickets of the whole tree, each once,\non every page; the done and dropped ones are `settled`.\n",
+        "deprecated": true,
+        "description": "Deprecated, replaced by `…/prerequisite-tree`, whose nodes are heads of any team; kept in\n/api/v1 for one release, behaving as it did — a ticket of another team is absent with what lies\nbehind it —, and removed in a later one (docs/adr/0046 D7).\ndocs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what\nblocks those, and so on — what has to be done before it can be finished. `direction=up`:\nits dependents, the tickets it blocks and what those block. To a depth of eight, depth\nfirst, siblings in the order they were filed. The walk never passes a ticket the caller\ncannot see: that ticket is absent, and so is whatever lies only behind it (docs/adr/0065\nD5). A ticket that stands in the tree under two others is shown in full once, under the\nfirst of them nearest the ticket asked about, and under each other one as `repeated`,\nwithout what lies behind it. `open` counts the open tickets of the whole tree, each once,\non every page; the done and dropped ones are `settled`.\n",
         "operationId": "listPrerequisites",
         "parameters": [
           {
@@ -14706,7 +15531,7 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "The ticket's prerequisite tree, or read upward its dependents",
+        "summary": "The ticket's prerequisite tree inside its team, or read upward its dependents",
         "tags": [
           "tickets"
         ]
@@ -15143,6 +15968,64 @@
           "tickets"
         ]
       }
+    },
+    "/api/v1/teams/{team}/projects/{project}/tickets/{number}/relations": {
+      "get": {
+        "description": "Every relation of the ticket (docs/adr/0005 D3, docs/adr/0008 D2, docs/adr/0012 D2): its parent,\nits children and its links in both directions, each other end of any project or team shown as\nthe caller sees it — readable, by its head where the caller holds no role in its team or its\nproject is restricted from them (docs/adr/0034 D4), and as the placeholder `\u003cteam\u003e\n[Confidential]` where they may not see it, in another team or their own (docs/adr/0065 D5). A\ndeleted other end is absent. The parent first, then the children in the order they were filed,\nthen the links in the order they were made.\n",
+        "operationId": "listTicketRelations",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RelationKinds"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationList"
+                }
+              }
+            },
+            "description": "A page of relations",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The ticket's parent, children and links, of any project or team, by their heads",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TeamSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ]
     },
     "/api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries": {
       "get": {
@@ -16972,7 +17855,7 @@
     "/api/v1/tenants/{tenant}/events": {
       "get": {
         "deprecated": true,
-        "description": "Deprecated: `/api/v1/teams/{team}/events`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\n`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`project.changed` says that a project's tickets changed as a whole — its rank set by the\nscore (docs/adr/0014 D3), `kind` `ranked`, or an import executed into it (docs/adr/0051 D3),\n`kind` `imported`, whose tickets announce no event of their own — with\n`data: {\"key\": \"\u003cteam\u003e/\u003cPROJECT\u003e\", \"kind\": …}`; `id:` is the act's id. It reaches whoever\nsees the project, and the client reloads the lists it shows.\n\n`membership.changed` says that who belongs to the team, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries the team's slug, `team` — and the same slug under the deprecated `tenant`,\nwritten for one release and dropped in a later one (docs/adr/0005 D1, docs/adr/0046 D7) —,\nand keys only, each where it applies:\n`person_id`, the person whose membership or project access changed; `project_id`, the\nproject whose restriction or access list changed; `mapping_id`, the group mapping made,\nchanged or removed. The client reloads what it shows of that team's members, mappings and\naccess lists, its project list when `project_id` is there, and the person's own\n`GET /api/v1/me`. An event about an access entry reaches the team's administrators and the\nperson it names, one about a mapping the administrators, every other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream carries\nevery event of every team the person belongs to that the team's own stream would carry\nto them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with\n`data: {\"unread\": n}`, the person's unread notifications in every team the request reaches\n(`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox\nchanges — a notification for them, or theirs marked read. The count carries no `id:` and is\nnot replayed: it says how things stand. A team the person is granted a role in is followed\nat once, one they leave no more after the act that took it away. A token restricted to a\nteam hears its team alone (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level\nstream the gap of every team it follows, in the order the server received the events;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmemberships again; the stream ends when the token or the membership of the team in the\npath fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
+        "description": "Deprecated: `/api/v1/teams/{team}/events`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\n`ticket.changed` (an upload included), `comment.changed`, `question.changed`,\n`link.changed` and `interest.changed`, each with `data: {\"key\", \"version\", \"kind\"}` — a key\nand a version, never content (docs/adr/0054 D2); `id:` is the act's id. An event of a\nproject the caller cannot see, or of a confidential ticket they may not read, never\narrives (D3).\n\n`ticket.changed` of `kind` `derived` says that a parent's derived stages moved because a\nchild changed, of the parent's team or another (docs/adr/0017 D3 as amended 2026-10-10); it is\nsent on the parent's team's streams, under the same rules, and the client reloads the ticket,\nwhose version the change does not move. The change is no act, so its `id:` is made for the\nevent and names no act.\n\n`project.changed` says that a project's tickets changed as a whole — its rank set by the\nscore (docs/adr/0014 D3), `kind` `ranked`, or an import executed into it (docs/adr/0051 D3),\n`kind` `imported`, whose tickets announce no event of their own — with\n`data: {\"key\": \"\u003cteam\u003e/\u003cPROJECT\u003e\", \"kind\": …}`; `id:` is the act's id. It reaches whoever\nsees the project, and the client reloads the lists it shows.\n\n`membership.changed` says that who belongs to the team, or who sees a project, changed —\nby an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its\n`data` carries the team's slug, `team` — and the same slug under the deprecated `tenant`,\nwritten for one release and dropped in a later one (docs/adr/0005 D1, docs/adr/0046 D7) —,\nand keys only, each where it applies:\n`person_id`, the person whose membership or project access changed; `project_id`, the\nproject whose restriction or access list changed; `mapping_id`, the group mapping made,\nchanged or removed. The client reloads what it shows of that team's members, mappings and\naccess lists, its project list when `project_id` is there, and the person's own\n`GET /api/v1/me`. An event about an access entry reaches the team's administrators and the\nperson it names, one about a mapping the administrators, every other every member.\n\nWith `me=true` — the person-level pages, and the bell in the top bar — the stream carries\nevery event of every team the person belongs to that the team's own stream would carry\nto them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with\n`data: {\"unread\": n}`, the person's unread notifications in every team the request reaches\n(`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox\nchanges — a notification for them, or theirs marked read. The count carries no `id:` and is\nnot replayed: it says how things stand. A team the person is granted a role in is followed\nat once, one they leave no more after the act that took it away. A token restricted to a\nteam hears its team alone (docs/adr/0035 D3).\n\nA reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level\nstream the gap of every team it follows, in the order the server received the events;\nbeyond it the stream starts with `event: resync`, and the client refetches its lists (D5).\nA comment every twenty seconds keeps proxies open and checks the token and the\nmemberships again; the stream ends when the token or the membership of the team in the\npath fails. `event: unavailable` ends a stream\nthe server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).\n",
         "operationId": "streamEventsDeprecated",
         "parameters": [
           {
@@ -19008,6 +19891,18 @@
                   "open_prerequisites": 0,
                   "opened_at": "2026-10-06T09:30:00Z",
                   "parent": "acme/WEB-40",
+                  "parent_head": {
+                    "key": "acme/WEB-40",
+                    "placeholder": false,
+                    "readable": true,
+                    "state": "in-progress",
+                    "team": {
+                      "name": "Acme",
+                      "slug": "acme"
+                    },
+                    "title": "Every supported browser signs in",
+                    "type": "feature"
+                  },
                   "progress": 0,
                   "progress_derived": false,
                   "progress_refinement": 0,
@@ -19116,7 +20011,7 @@
       ],
       "patch": {
         "deprecated": true,
-        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\n`If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new\nassignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change\nmakes confidential — only to its own person or to nobody, and another new assignee is 403\n`agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another\nnew assignee is 403 `session_required` — admitting a person takes a browser session\n(docs/adr/0035 D5).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\n`If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on\nthe parent the change read: a ticket detached from its parent's side, or by a purge of the\nparent, keeps its version, and a change that raced such a removal is refused with `412` and the\nsent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change\nthat takes the ticket away from a parent of another team — clearing it or setting another —\nrecords `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended\n2026-10-10).\n\nAssigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a\nconfidential ticket — or one the change makes confidential — only to its own person or to\nnobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token\nis held the same way, and another new assignee is 403 `session_required` — admitting a person\ntakes a browser session (docs/adr/0035 D5).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
         "operationId": "updateTicketDeprecated",
         "parameters": [
           {
@@ -19546,6 +20441,39 @@
           "tenants"
         ]
       }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/children/{child}": {
+      "delete": {
+        "deprecated": true,
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nThe parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a\nwriter of this ticket detaches a child of any project or team from it, whatever they read of\nthe child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The\nchild's side ends it by the update of its `parent`. The child's parent alone changes, its\nversion stays — an update of the child read before is refused with `412`, the parent being\npart of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived\nagain. A relation that is no child of this ticket, or none, answers exactly as a missing one,\n`404` \"no such child\", and removes nothing. The act `updated` is recorded on the child — in\nits own team's record, as `system:relation` where the caller holds no role in that team — and\n`detached` on this ticket.\n",
+        "operationId": "removeTicketChildDeprecated",
+        "responses": {
+          "204": {
+            "description": "The child is no child of this ticket any more"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Deprecated: Remove a child of this ticket, of any project or team, by the id of the relation",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/ChildRelation"
+        }
+      ]
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments": {
       "get": {
@@ -20173,7 +21101,7 @@
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links": {
       "get": {
         "deprecated": true,
-        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nEach link read from this ticket, under its reverse name when the ticket is the target\n(docs/adr/0012 D1). A link whose other end the caller cannot see is absent.\n",
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nDeprecated, replaced by `…/relations?kind=link`, which shows every link, the ends of other\nteams and those the caller may not see included, by their heads; kept in /api/v1 for one\nrelease, behaving as it did, and removed in a later one (docs/adr/0046 D7). Each link read\nfrom this ticket, under its reverse name when the ticket is the target (docs/adr/0012 D1). A\nlink whose other end the caller cannot see, or is a ticket of another team, is absent.\n",
         "operationId": "listTicketLinksDeprecated",
         "parameters": [
           {
@@ -20209,7 +21137,7 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Deprecated: The ticket's links in both directions",
+        "summary": "Deprecated: The ticket's links in both directions, inside its team",
         "tags": [
           "tenants"
         ]
@@ -20226,10 +21154,116 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{link}": {
+      "delete": {
+        "deprecated": true,
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nThe way to remove a link whose other end the caller may not see — a placeholder shows no key\n(docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must\nbe the link's source or its target, whatever the caller reads of the other end and whatever\nteam keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this\nticket, or none, answers exactly as a missing one, `404` \"no such link\", and removes nothing.\nThe act is recorded on both tickets, the other end's in its own team's record — as\n`system:relation` where the caller holds no role in that team.\n",
+        "operationId": "removeTicketLinkDeprecated",
+        "responses": {
+          "204": {
+            "description": "The link is gone"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Deprecated: Remove a link of this ticket, either end of it, by the link's id",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/LinkID"
+        }
+      ]
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}": {
+      "delete": {
+        "deprecated": true,
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nA write on this ticket, either end of the link — its source or its target —, whatever the\ncaller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket\nremoves a link another team keeps to it as well. The link is found among this ticket's\nrelations by the other end's key, so a key the caller sees as a head removes its link.\nIdempotent: no such link — or a key that names none — answers 204 as well. An end the caller\nmay not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is\nrecorded on both tickets, the other end's in its own team's record — as `system:relation`\nwhere the caller holds no role in that team.\n",
+        "operationId": "unlinkTicketFromDeprecated",
+        "responses": {
+          "204": {
+            "description": "The link is gone"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Deprecated: Remove a link to a ticket of any team by its canonical key",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/PathLinkType"
+        },
+        {
+          "$ref": "#/components/parameters/OtherTeamSlug"
+        },
+        {
+          "$ref": "#/components/parameters/OtherTicketKey"
+        }
+      ],
+      "put": {
+        "deprecated": true,
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\n`other_team` and `other` are the other end's canonical key, \u003cteam\u003e/\u003cPROJECT\u003e-\u003cnumber\u003e, a ticket\nof any team of the installation (docs/adr/0012 D2 as amended 2026-10-10). Set by a `member` or\n`admin` of this ticket's team with `write` scope, in the agent baseline (docs/adr/0043 D2), who\nreads the other ticket — at least a `viewer` of its team, its project open to them, a\nconfidential one only when admitted. One they do not read answers exactly as one that does not\nexist, 404 `not_found` \"no such ticket\", so that trying keys tells nothing (docs/adr/0008 D2).\nIdempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second act for\nan existing one — a `relates-to` made from the other end included. An act on both tickets, the\nother end's in its own team's record (docs/adr/0012 D3). A `blocks` link that would close a\ncycle through any team is 409 `link_cycle` (D4).\n",
+        "operationId": "linkTicketToDeprecated",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Relation"
+                }
+              }
+            },
+            "description": "The link existed already"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Relation"
+                }
+              }
+            },
+            "description": "The new link"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Deprecated: Link this ticket, as the source, to a ticket of any team by its canonical key",
+        "tags": [
+          "tenants"
+        ]
+      }
+    },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}": {
       "delete": {
         "deprecated": true,
-        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nIdempotent; removing a link that does not exist answers 204 as well.",
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nIdempotent; removing a link that does not exist answers 204 as well. A write on the ticket in\nthe path, either end of the link — its source or its target —, whatever the caller reads of\nthe other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.\n",
         "operationId": "unlinkTicketsDeprecated",
         "responses": {
           "204": {
@@ -20263,7 +21297,7 @@
       ],
       "put": {
         "deprecated": true,
-        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nIdempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second\nact for an existing one. A member's act with `write` scope, in the agent baseline\n(docs/adr/0043 D2). A `blocks` link that would close a cycle is 409 `link_cycle`\n(docs/adr/0012 D4); `relates-to` is symmetric and stored once.\n",
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nThe short form inside the team (docs/adr/0007 D3); `…/links/{type}/{other_team}/{other}`\nlinks to a ticket of any team. Idempotent by its address (docs/adr/0045 D1): 201 for a new\nlink, 200 without a second act for an existing one. A member's act with `write` scope on this\nticket, in the agent baseline (docs/adr/0043 D2), who reads the other ticket: one they do not\nread is the 404 of one that does not exist (docs/adr/0012 D2). A `blocks` link that would close\na cycle, through any team, is 409 `link_cycle` (docs/adr/0012 D4); `relates-to` is symmetric\nand stored once.\n",
         "operationId": "linkTicketsDeprecated",
         "responses": {
           "200": {
@@ -20340,10 +21374,79 @@
         }
       ]
     },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisite-tree": {
+      "get": {
+        "deprecated": true,
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisite-tree`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\ndocs/adr/0012 D6 as amended 2026-10-10. `direction=down`, the default: the tickets that block\nthis one, what blocks those, and so on; `direction=up`: its dependents. Every node is a head of\nany project or team, as the caller sees it. The walk goes on only from a ticket the caller\nreads: a head and a placeholder are leaves, and what lies behind them stays behind their\nteam's membership (docs/adr/0005 D3, docs/adr/0065 D5). A node of the caller's own team they\nread shows its assignee and its progress; any other node neither. To a depth of eight, depth\nfirst, siblings in the order they were filed; a ticket under two others stands in full once and\n`repeated` elsewhere. `open` counts the open tickets of the whole tree whose state the caller\nreads, each once, never a placeholder.\n",
+        "operationId": "listPrerequisiteTreeDeprecated",
+        "parameters": [
+          {
+            "description": "down for the prerequisites, the default; up for the dependents",
+            "in": "query",
+            "name": "direction",
+            "schema": {
+              "default": "down",
+              "enum": [
+                "down",
+                "up"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrerequisiteHeadTree"
+                }
+              }
+            },
+            "description": "A page of the tree, depth first",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Deprecated: The ticket's prerequisite tree across teams, or read upward its dependents, by heads",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ]
+    },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites": {
       "get": {
         "deprecated": true,
-        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisites`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\ndocs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what\nblocks those, and so on — what has to be done before it can be finished. `direction=up`:\nits dependents, the tickets it blocks and what those block. To a depth of eight, depth\nfirst, siblings in the order they were filed. The walk never passes a ticket the caller\ncannot see: that ticket is absent, and so is whatever lies only behind it (docs/adr/0065\nD5). A ticket that stands in the tree under two others is shown in full once, under the\nfirst of them nearest the ticket asked about, and under each other one as `repeated`,\nwithout what lies behind it. `open` counts the open tickets of the whole tree, each once,\non every page; the done and dropped ones are `settled`.\n",
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisites`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nDeprecated, replaced by `…/prerequisite-tree`, whose nodes are heads of any team; kept in\n/api/v1 for one release, behaving as it did — a ticket of another team is absent with what lies\nbehind it —, and removed in a later one (docs/adr/0046 D7).\ndocs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what\nblocks those, and so on — what has to be done before it can be finished. `direction=up`:\nits dependents, the tickets it blocks and what those block. To a depth of eight, depth\nfirst, siblings in the order they were filed. The walk never passes a ticket the caller\ncannot see: that ticket is absent, and so is whatever lies only behind it (docs/adr/0065\nD5). A ticket that stands in the tree under two others is shown in full once, under the\nfirst of them nearest the ticket asked about, and under each other one as `repeated`,\nwithout what lies behind it. `open` counts the open tickets of the whole tree, each once,\non every page; the done and dropped ones are `settled`.\n",
         "operationId": "listPrerequisitesDeprecated",
         "parameters": [
           {
@@ -20392,7 +21495,7 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Deprecated: The ticket's prerequisite tree, or read upward its dependents",
+        "summary": "Deprecated: The ticket's prerequisite tree inside its team, or read upward its dependents",
         "tags": [
           "tenants"
         ]
@@ -20838,6 +21941,65 @@
           "tenants"
         ]
       }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/relations": {
+      "get": {
+        "deprecated": true,
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/relations`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nEvery relation of the ticket (docs/adr/0005 D3, docs/adr/0008 D2, docs/adr/0012 D2): its parent,\nits children and its links in both directions, each other end of any project or team shown as\nthe caller sees it — readable, by its head where the caller holds no role in its team or its\nproject is restricted from them (docs/adr/0034 D4), and as the placeholder `\u003cteam\u003e\n[Confidential]` where they may not see it, in another team or their own (docs/adr/0065 D5). A\ndeleted other end is absent. The parent first, then the children in the order they were filed,\nthen the links in the order they were made.\n",
+        "operationId": "listTicketRelationsDeprecated",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RelationKinds"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationList"
+                }
+              }
+            },
+            "description": "A page of relations",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Deprecated: The ticket's parent, children and links, of any project or team, by their heads",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        }
+      ]
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries": {
       "get": {

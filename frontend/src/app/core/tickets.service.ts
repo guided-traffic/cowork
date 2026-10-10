@@ -11,13 +11,14 @@ import {
 import { HttpErrorResponse } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
+import { searchMyTeams } from '../api/fn/search/search-my-teams';
 import {
   listProjectTickets,
   ListProjectTickets$Params,
 } from '../api/fn/tickets/list-project-tickets';
 import { listTeamTickets, ListTeamTickets$Params } from '../api/fn/tickets/list-team-tickets';
 import { resolveTicket } from '../api/fn/tickets/resolve-ticket';
-import { Ticket, TicketList } from '../api/models';
+import { SearchHit, Ticket, TicketList } from '../api/models';
 import { ConditionalPages, PageFetcher } from './conditional';
 import { EntityCache } from './entity-cache';
 import {
@@ -42,6 +43,22 @@ export interface TicketPage {
   versions?: ReadonlyMap<string, number>;
 }
 
+/**
+ * Whether an act of a ticket changed what the ticket shows although it names the version the cache
+ * holds: its derived stages moved because a child changed (`derived`, docs/adr/0017 D3,
+ * docs/adr/0054 D2), a child was detached from it (`detached`), or — for a ticket that has a
+ * parent — the parent detached it, which records `updated` on it and leaves its version
+ * (docs/adr/0008 D2 as amended again 2026-10-10). A ticket without a parent has no such `updated`:
+ * the event of a write of its own, whose answer the cache holds, fetches nothing.
+ */
+export function changesWithoutVersion(kind: string, held: Ticket): boolean {
+  return (
+    kind === 'derived' ||
+    kind === 'detached' ||
+    (kind === 'updated' && (held.parent !== null || held.parent_head !== null))
+  );
+}
+
 /** `acme/VKO-12` → `{ team: 'acme', key: 'VKO-12' }`, the parameters of the ticket resolver. */
 export function splitKey(key: string): { team: string; key: string } {
   const slash = key.indexOf('/');
@@ -57,6 +74,9 @@ export const listReloadDelay = 150;
  * projects list asks for 200 as well; a longer list takes more pages.
  */
 export const pageSize = 200;
+
+/** How many hits a chooser's search offers: the first page of the person-level search. */
+export const searchLimit = 20;
 
 /**
  * The request of {@link TicketsService.projectTicketPages}: the filters of a project's list and how
@@ -204,6 +224,18 @@ export class TicketsService {
     return tickets;
   }
 
+  /**
+   * The tickets of every team of the person that hold the words, or whose key begins with the key,
+   * typed — the person-level search, a union under each team's rules (docs/adr/0023 D2,
+   * docs/adr/0025) —, the first page of them, best first: what a person picks a parent or the
+   * other end of a link from, of any team (docs/adr/0008 D2, docs/adr/0012 D2). A one-off read,
+   * not an open list: nothing reloads it, and the cache stays as it was.
+   */
+  async search(q: string, limit = searchLimit): Promise<SearchHit[]> {
+    const page = await this.api.invoke(searchMyTeams, { q, limit });
+    return page.items;
+  }
+
   /** Fetches one ticket by its canonical key into the cache. */
   async refresh(key: string): Promise<Ticket> {
     const ticket = await this.api.invoke(resolveTicket, splitKey(key));
@@ -255,6 +287,12 @@ export class TicketsService {
   }
 
   private react(event: StreamEvent): void {
+    // A detail view shows its ticket's parent by its head (docs/adr/0005 D3), which the ticket's
+    // version does not count: a change of the parent — of any tenant of the person — fetches the
+    // ticket that names it again.
+    if (event.name === 'ticket.changed') {
+      this.refetchChildrenOf(event.key);
+    }
     // The person-level stream carries the events of every tenant of the person (docs/adr/0054
     // D1); this service holds the tickets of the tenant the pages show.
     if (!ofTenant(event, this.session.tenant())) {
@@ -285,17 +323,27 @@ export class TicketsService {
     const held = this.cache.value(event.key);
     // A ticket's version counts its own fields only (docs/adr/0050 D1): a newer one is a change;
     // a link changes its open prerequisites without one, and a stake its score (docs/adr/0013
-    // D3); a question or a comment changes nothing the ticket itself shows.
+    // D3); a question or a comment changes nothing the ticket itself shows. Some changes of a
+    // ticket move no version at all ({@link changesWithoutVersion}).
     const stale =
       held !== undefined &&
       (event.name === 'ticket.changed'
-        ? held.version < event.version
+        ? held.version < event.version || changesWithoutVersion(event.kind, held)
         : event.name === 'link.changed' || event.name === 'interest.changed');
     if (stale) {
       this.refetch(event.key);
     }
     if (event.name !== 'comment.changed' && event.name !== 'interest.changed') {
       this.reloadLists();
+    }
+  }
+
+  /** Refetches every ticket a detail view shows whose parent is `key`, the ticket that changed. */
+  private refetchChildrenOf(key: string): void {
+    for (const shown of this.watched.keys()) {
+      if (this.cache.value(shown)?.parent === key) {
+        this.refetch(shown);
+      }
     }
   }
 

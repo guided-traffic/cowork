@@ -25,6 +25,11 @@ ticket, a comment, a question, a project, a file, a booking of time, as the firs
 account, a grant and a group mapping did — and sends it again when the same content is sent again
 ([`features/`](../../frontend/src/app/features/), [frontend.md](../developer/frontend.md#where-state-lives)).
 
+Made concrete 2026-10-10 by the implementer, open to the owner's objection, and built the same day
+(D1: a link set twice at once, or from both ends of a `relates-to`, is one link, and both writers
+get the answer for it — [`InsertLink`](../../backend/internal/store/queries/write/links.sql) takes the
+conflict, `setLink` in [`api/links.go`](../../backend/internal/api/links.go) reads the link back).
+
 ## Context
 
 An agent retries after a timeout, and it cannot know whether the first attempt committed. A
@@ -43,7 +48,13 @@ key at all if its routes are shaped as `PUT` on a known address.
 (`PATCH …/tickets/{n}` with `If-Match`, the API record), interest
 (`PUT …/tickets/{n}/interest`), a link (`PUT …/tickets/{n}/links/{type}/{other-key}`; an
 existing link is success, not conflict), a watch. Repeating any of them is harmless by
-construction.
+construction. *(Made concrete 2026-10-10 by the implementer, open to the owner's objection, and
+built the same day:)* so is setting a link twice at once — the same address from two writers, or a
+`relates-to` from both its ends, which
+[ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D1 stores once whichever end made it,
+across teams too: the later writer's insert waits for the earlier one's commit, takes the conflict
+(`ON CONFLICT DO NOTHING`) and answers the link that now exists, `200` with no act of its own;
+nobody gets a `500` (`TestALinkSetAtOnceFromBothEndsIsOneLink`).
 
 **D2 — A transition carries its `from` state, and a stale one is a `409`.**
 `POST …/tickets/{n}/transitions` with `{from, to, reason|note}`; when the ticket is no

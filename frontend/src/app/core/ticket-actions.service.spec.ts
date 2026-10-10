@@ -33,6 +33,7 @@ function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Tick
     block: null,
     confidential: false,
     parent: null,
+    parent_head: null,
     progress: 0,
     progress_derived: false,
     progress_refinement: 0,
@@ -947,24 +948,45 @@ describe('TicketActions', () => {
       expect(tickets.cache.value(key)?.version).toBe(5);
     });
 
-    it('names the open tickets that wait on it directly, a step up its tree', async () => {
+    it('names the open tickets that wait on it directly, a step up its tree, of any team, by their heads', async () => {
+      const head = (key: string | null, team = 'acme') => ({
+        team: { slug: team, name: team === 'acme' ? 'Acme' : 'Globex' },
+        key,
+        title: key ? `Ticket ${key}` : null,
+        type: key ? 'task' : null,
+        state: key ? 'filed' : null,
+        placeholder: key === null,
+        readable: team === 'acme',
+      });
       const names = actions.dependents(key);
 
       await settle();
-      const sent = request(`${route}/prerequisites`);
+      const sent = request(`${route}/prerequisite-tree`);
       expect(sent.request.params.get('direction')).toBe('up');
+      expect(sent.request.params.get('limit')).toBe('50');
+      const node = (depth: number, settled: boolean | null, shown: ReturnType<typeof head>) => ({
+        depth,
+        settled,
+        repeated: false,
+        blocked_from: null,
+        head: shown,
+        assignee: null,
+        progress: null,
+      });
       sent.flush({
         open: 2,
         next_cursor: null,
         items: [
-          { key: 'acme/VKO-13', depth: 1, state: 'filed' },
-          { key: 'acme/OPS-2', depth: 1, state: 'done' },
-          { key: 'acme/VKO-20', depth: 2, state: 'filed' },
-          { key: 'acme/OPS-3', depth: 1, state: 'blocked' },
+          node(1, false, head('acme/VKO-13')),
+          node(1, true, head('acme/OPS-2')),
+          node(2, false, head('acme/VKO-20')),
+          node(1, false, head('globex/API-3', 'globex')),
+          // A ticket the person may not see: its state is not theirs to read.
+          node(1, null, head(null, 'globex')),
         ],
       });
 
-      expect(await names).toEqual(['VKO-13', 'OPS-3']);
+      expect((await names).map((each) => each.key)).toEqual(['acme/VKO-13', 'globex/API-3']);
     });
   });
 });

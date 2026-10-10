@@ -79,6 +79,24 @@ failed run's log, fixes it, and sets the version back so the next run applies th
 steps are [runtime.md, the migration run](runtime.md#the-migration-run), the alert's runbook is
 [metrics.md, CoworkSchemaDirty](metrics.md#coworkschemadirty).
 
+## The release that relates tickets across teams
+
+A ticket's parent, its children and its links may be tickets of another project or team from this
+release on ([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3,
+as amended 2026-10-10). Its migration, 47, rewrites no row: it widens two keys and adds an audit
+action, functions, a trigger and policies for the owner role, named as the role that runs it — so it
+runs as every migration does, as the owner of the tables. A database whose crossing policies or
+functions are not that role's is refused by `cowork serve` at its start
+([runtime.md](runtime.md#the-backend)).
+
+**While two releases write at once** — the rolling update over migration 47 — and after a rollback to
+the release before, the release before walks the parents and the `blocks` links within one team,
+under locks that do not exclude this release's, derives a parent's progress from its own team, and
+ends the relations into other teams at a purge without an act in their record
+([H-112](../security/tenancy.md#h-112)). Keep the window short and relate nothing across teams in it;
+a cycle that a writer of each release closes between them stays until a person removes one of its
+edges.
+
 ## The release that calls a tenant a team
 
 A team was called a tenant until this release

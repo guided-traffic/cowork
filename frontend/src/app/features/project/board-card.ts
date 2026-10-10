@@ -7,13 +7,16 @@ import { SecurityBadge, SeverityBadge, StateBadge, TypeIcon } from '../../shared
 import { SizeIcon } from '../../shared/size';
 import { StageBar } from '../../shared/stage-bar';
 import { currentStage, stagesOf } from '../../shared/stages';
+import { parentChip } from '../../shared/ticket-head';
 import { count } from '../../shared/time';
 import { Move } from '../../shared/transitions';
 import { meanings } from '../../shared/vocabulary';
 
 /**
  * A card of the board (docs/adr/0018 D1). In a state column: the type and the key, the title,
- * `release` where the horizon is that, the state in Refinement (which holds two), severity and
+ * the parent by its head — of any project or team, linked where the reader may open it, the
+ * placeholder `<team> [Confidential]` where they may not see it (docs/adr/0005 D3, docs/adr/0065
+ * D5) —, `release` where the horizon is that, the state in Refinement (which holds two), severity and
  * security, the bar of the stage the ticket works on, the block on a blocked card, the open
  * prerequisites, the effort as its size and the assignee — and the button of the card's action and
  * the menu of its moves. In the column `next` it is compact: key, title, size, state and the button
@@ -65,6 +68,11 @@ export class BoardCard {
   protected readonly showsState = computed(
     () => this.compact() || ['filed', 'analysed'].includes(this.ticket().state),
   );
+  /** The chip that names the parent, where the ticket has one. */
+  protected readonly parent = computed(() => {
+    const head = this.ticket().parent_head;
+    return head ? parentChip(head, this.tenant()) : null;
+  });
   protected readonly prerequisites = computed(() =>
     count(this.ticket().open_prerequisites, 'open prerequisite'),
   );

@@ -8,10 +8,11 @@ import { answerQuestion } from '../api/fn/questions/answer-question';
 import { askQuestion } from '../api/fn/questions/ask-question';
 import { updateQuestion } from '../api/fn/questions/update-question';
 import { withdrawQuestion } from '../api/fn/questions/withdraw-question';
-import { linkTickets } from '../api/fn/tickets/link-tickets';
+import { linkTicketTo } from '../api/fn/tickets/link-ticket-to';
 import { removeInterest } from '../api/fn/tickets/remove-interest';
+import { removeTicketChild } from '../api/fn/tickets/remove-ticket-child';
+import { removeTicketLink } from '../api/fn/tickets/remove-ticket-link';
 import { setInterest } from '../api/fn/tickets/set-interest';
-import { unlinkTickets } from '../api/fn/tickets/unlink-tickets';
 import {
   Comment,
   CommentRevision,
@@ -23,6 +24,7 @@ import {
 } from '../api/models';
 import { etagOf } from './entity-cache';
 import { routeOf } from './ticket-actions.service';
+import { splitKey } from './tickets.service';
 
 /**
  * The writes around a ticket (docs/adr/0018 D2): comments (docs/adr/0015), questions and their
@@ -112,15 +114,32 @@ export class Conversation {
     return this.api.invoke(withdrawQuestion, { ...routeOf(key), question: question.number });
   }
 
-  /** Links this ticket, as the source, to another of the tenant by its short key. */
+  /**
+   * Links this ticket, as the source, to another by its canonical key, a ticket of any team the
+   * person reads (docs/adr/0012 D2); one they do not read is the `404` of one that does not exist.
+   */
   link(key: string, type: LinkType, other: string): Promise<unknown> {
-    return this.api.invoke(linkTickets, { ...routeOf(key), type, other });
+    const { team, key: short } = splitKey(other);
+    return this.api.invoke(linkTicketTo, { ...routeOf(key), type, other_team: team, other: short });
   }
 
-  /** Removes a link from its source's side: `source` and `target` are canonical keys. */
-  unlink(source: string, type: LinkType, target: string): Promise<unknown> {
-    const short = target.slice(target.indexOf('/') + 1);
-    return this.api.invoke(unlinkTickets, { ...routeOf(source), type, other: short });
+  /**
+   * Removes a link of the ticket `key` by the link's id — the ticket either end of it, its source or
+   * its target, whatever team keeps the link and whatever the person reads of the other end
+   * (docs/adr/0012 D2 as amended again 2026-10-10); the id reaches a link whose other end shows no
+   * key (docs/adr/0065 D5). A link that is gone already is `404` "no such link".
+   */
+  unlink(key: string, link: string): Promise<unknown> {
+    return this.api.invoke(removeTicketLink, { ...routeOf(key), link });
+  }
+
+  /**
+   * Detaches a child of any project or team from the ticket `key`, its parent, by the id its
+   * relation carries — an opaque handle (docs/adr/0008 D2 as amended again 2026-10-10). A child
+   * that is gone already is `404` "no such child".
+   */
+  removeChild(key: string, child: string): Promise<unknown> {
+    return this.api.invoke(removeTicketChild, { ...routeOf(key), child });
   }
 
   setInterest(key: string, weight: InterestWeight, note: string): Promise<unknown> {
