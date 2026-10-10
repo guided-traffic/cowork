@@ -33,13 +33,20 @@ const (
 // token's gate check and a mapping's change derive the person's memberships
 // one after the other, each on what the one before committed.
 // tenantLockNamespace, "cowt", orders the changes of who administers a tenant
-// (LockTenant). The order is the tenant's lock first, then the persons' locks
-// by ascending id: no transaction takes a tenant's lock after a person's. A
-// transaction takes the lock of its own tenant and of no other, so the
-// tenants' locks need no order among themselves.
+// (LockTenant). subjectLockNamespace, "cows", orders the logins of one
+// identity of the issuer, keyed on the issuer and the subject (forSubject):
+// the person has no id to lock until their first login has made them, so the
+// second of two first logins at once waits for the first and finds the person
+// it made. The order is the subject's lock first, then the tenant's, then the
+// persons' locks by ascending id: no transaction takes the subject's lock
+// after a tenant's or a person's, nor a tenant's lock after a person's. A
+// login takes the lock of its own subject and of no other, and a transaction
+// the lock of its own tenant and of no other, so neither kind needs an order
+// among itself.
 const (
 	identityLockNamespace int32 = 0x636f7769
 	tenantLockNamespace   int32 = 0x636f7774
+	subjectLockNamespace  int32 = 0x636f7773
 )
 
 // LockTenant takes the lock that orders the changes of the tenant's
@@ -219,6 +226,19 @@ func (t *identityTx) set(ctx context.Context, name, value string) error {
 	return nil
 }
 
+// forSubject takes the subject's lock, a login's first lock, before the
+// person is read: another login of the same issuer and subject waits for it
+// until this transaction ends, and then reads the person this one made or
+// refreshed. The key is the hash of the pair as a JSON array, which no other
+// pair writes the same; two pairs whose hashes meet only wait for each other.
+func (t *identityTx) forSubject(ctx context.Context, issuer, subject string) error {
+	if _, err := t.tx.Exec(ctx, "SELECT pg_advisory_xact_lock($1, hashtext(json_build_array($2::text, $3::text)::text))",
+		subjectLockNamespace, issuer, subject); err != nil {
+		return fmt.Errorf("take the subject lock: %w", err)
+	}
+	return nil
+}
+
 // forPerson names the person and takes the lock that orders the identity
 // provider's decisions about them.
 func (t *identityTx) forPerson(ctx context.Context, person uuid.UUID) error {
@@ -351,7 +371,9 @@ type OIDCLoginResult struct {
 }
 
 // CompleteOIDCLogin decides a verified login in one transaction (docs/adr/0029
-// D5, docs/adr/0030 D1, D2, docs/adr/0032 D5): the gate, a deactivated person
+// D5, docs/adr/0030 D1, D2, docs/adr/0032 D5), under the subject's lock taken
+// first (docs/adr/0027 D5), so that the second of two logins of one identity
+// at once finds the person the first made: the gate, a deactivated person
 // and the init state refuse it — recorded as login_refused at the
 // installation's level, with the person when one exists, and no person made;
 // otherwise the person is found by issuer and subject or made, their display
@@ -365,6 +387,9 @@ func (db *DB) CompleteOIDCLogin(ctx context.Context, in OIDCLogin) (OIDCLoginRes
 	}
 	defer t.rollback(ctx)
 	issuer, subject := in.Issuer, in.Subject
+	if err := t.forSubject(ctx, issuer, subject); err != nil {
+		return OIDCLoginResult{}, err
+	}
 	existing, err := t.w.GetPersonByIdentity(ctx, readq.GetPersonByIdentityParams{Issuer: &issuer, Subject: &subject})
 	found := err == nil
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {

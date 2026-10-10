@@ -355,6 +355,48 @@ func TestADeactivatedPersonIsRefused(t *testing.T) {
 		AND reason = 'not_allowed' AND note = 'deactivated'`, w.person(t)))
 }
 
+// docs/adr/0029 D5, docs/adr/0027 D5: two first logins of one new identity at
+// once — two tabs, a double click on the sign-in, two tests that sign in one
+// fresh person — both sign in and make one person: the second waits for the
+// subject's lock the first holds, then finds the person the first made and
+// carries on as a returning person's login. Eight rounds, each a new identity
+// whose two callbacks go through simultaneously.
+func TestTwoFirstLoginsOfOneIdentityMakeOnePerson(t *testing.T) {
+	w := newFakeWorld(t)
+	for round := range 8 {
+		subject := uniqueSlug("twin")
+		w.is.Add(fakeissuer.User{Subject: subject, Email: subject + "@example.com", EmailVerified: true, Name: "Twin",
+			Groups: []string{"cowork-users", w.group}})
+		landed := make([]string, 2)
+		callbacks := make([]func() int, 2)
+		for i := range callbacks {
+			b := w.s.browser(t)
+			start := b.get("/auth/oidc/login")
+			require.Equal(t, http.StatusFound, start.StatusCode)
+			state, ok := cookieValue(start, stateCookieName)
+			require.True(t, ok, "the start sets the state cookie")
+			back, err := url.Parse(walkIssuer(t, start.Header.Get("Location"), ""))
+			require.NoError(t, err)
+			callbacks[i] = func() int {
+				res := b.get("/auth/callback?"+back.RawQuery, withState(state))
+				landed[i] = res.Header.Get("Location")
+				return res.StatusCode
+			}
+		}
+		for i, code := range simultaneously(callbacks...) {
+			assert.Equal(t, http.StatusSeeOther, code, "round %d, login %d", round, i)
+			assert.Equal(t, "/", landed[i], "round %d, login %d: signed in, not sent back to the login page", round, i)
+		}
+		assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM users WHERE oidc_issuer = $1 AND oidc_subject = $2`,
+			w.is.URL, subject), "round %d: one person", round)
+		assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM audit_events a JOIN users u ON u.id = a.entity_id
+			WHERE u.oidc_issuer = $1 AND u.oidc_subject = $2 AND a.entity_type = 'user' AND a.action = 'created'`,
+			w.is.URL, subject), "round %d: made once", round)
+		assert.EqualValues(t, 2, scalar[int64](t, `SELECT count(*) FROM sessions s JOIN users u ON u.id = s.user_id
+			WHERE u.oidc_issuer = $1 AND u.oidc_subject = $2`, w.is.URL, subject), "round %d: a session for each login", round)
+	}
+}
+
 // docs/adr/0030 D2, D7, docs/adr/0034 D1: the editor of a mapping — a global
 // administrator by the administrator group, who alone changes a mapping —
 // sees which mappings hold their own groups, and the change of the one that
