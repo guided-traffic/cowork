@@ -9,7 +9,7 @@ import { RequestBuilder } from '../../request-builder';
 
 import { SearchHitList } from '../../models/search-hit-list';
 
-export interface SearchMyTenants$Params {
+export interface SearchMyTeams$Params {
 
 /**
  * The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length
@@ -18,8 +18,18 @@ export interface SearchMyTenants$Params {
   q: string;
 
 /**
- * Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names
- * none of them is `404 not_found`, whether or not the tenant exists
+ * Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
+ * none of them is `404 not_found`, whether or not the team exists. Not together with the
+ * deprecated `tenant` (`400 validation_failed`)
+ */
+  team?: string;
+
+/**
+ * Deprecated: replaced by `team`, which it means, kept in /api/v1 for one release and removed in a
+ * later one (docs/adr/0005 D1, docs/adr/0046 D7). Not together with `team`
+ * (`400 validation_failed`)
+ *
+ * @deprecated
  */
   tenant?: string;
 
@@ -34,10 +44,11 @@ export interface SearchMyTenants$Params {
   limit?: number;
 }
 
-export function searchMyTenants(http: HttpClient, rootUrl: string, params: SearchMyTenants$Params, context?: HttpContext): Observable<StrictHttpResponse<SearchHitList>> {
-  const rb = new RequestBuilder(rootUrl, searchMyTenants.PATH, 'get');
+export function searchMyTeams(http: HttpClient, rootUrl: string, params: SearchMyTeams$Params, context?: HttpContext): Observable<StrictHttpResponse<SearchHitList>> {
+  const rb = new RequestBuilder(rootUrl, searchMyTeams.PATH, 'get');
   if (params) {
     rb.query('q', params.q, {});
+    rb.query('team', params.team, {});
     rb.query('tenant', params.tenant, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
@@ -53,4 +64,4 @@ export function searchMyTenants(http: HttpClient, rootUrl: string, params: Searc
   );
 }
 
-searchMyTenants.PATH = '/api/v1/me/search';
+searchMyTeams.PATH = '/api/v1/me/search';

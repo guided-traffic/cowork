@@ -19,7 +19,7 @@ export interface Account {
   password_change_required: boolean;
 
   /**
-   * The person's highest role in this tenant; null when they have none any more
+   * The person's highest role in this team; null when they have none any more
    */
   role: (Role | null);
   username: string;

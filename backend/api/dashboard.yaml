@@ -1,13 +1,13 @@
-# The tenant's dashboard (docs/adr/0018 D6): nine fixed tiles, one route, one
+# The team's dashboard (docs/adr/0018 D6): nine fixed tiles, one route, one
 # transaction. The definition of each tile is its field's description in
 # components/schemas.yaml#/Dashboard.
 dashboard:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: getDashboard
     tags: [dashboard]
-    summary: The tenant's dashboard, its nine tiles over what the caller can see
+    summary: The team's dashboard, its nine tiles over what the caller can see
     description: |
       `read` scope, any member. The tiles of docs/adr/0018 D6 — open tickets by state, by
       severity, the open `live` and `boundary` findings, the blocked tickets, the age of the open

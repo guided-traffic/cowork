@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface PurgeTicket$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The ticket's short key, <PROJECT>-<number>, in one path segment (docs/adr/0007 D3)
@@ -24,7 +24,7 @@ export interface PurgeTicket$Params {
 export function purgeTicket(http: HttpClient, rootUrl: string, params: PurgeTicket$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, purgeTicket.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('key', params.key, {});
   }
 
@@ -38,4 +38,4 @@ export function purgeTicket(http: HttpClient, rootUrl: string, params: PurgeTick
   );
 }
 
-purgeTicket.PATH = '/api/v1/tenants/{tenant}/deleted-tickets/{key}';
+purgeTicket.PATH = '/api/v1/teams/{team}/deleted-tickets/{key}';

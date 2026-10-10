@@ -13,9 +13,9 @@ import { ProjectCreate } from '../../models/project-create';
 export interface CreateProject$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * A UUID the client generates per act and repeats on every retry of it; an
@@ -28,7 +28,7 @@ export interface CreateProject$Params {
 export function createProject(http: HttpClient, rootUrl: string, params: CreateProject$Params, context?: HttpContext): Observable<StrictHttpResponse<Project>> {
   const rb = new RequestBuilder(rootUrl, createProject.PATH, 'post');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.header('Idempotency-Key', params['Idempotency-Key'], {});
     rb.body(params.body, 'application/json');
   }
@@ -43,4 +43,4 @@ export function createProject(http: HttpClient, rootUrl: string, params: CreateP
   );
 }
 
-createProject.PATH = '/api/v1/tenants/{tenant}/projects';
+createProject.PATH = '/api/v1/teams/{team}/projects';

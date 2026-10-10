@@ -12,9 +12,9 @@ import { Ticket } from '../../models/ticket';
 export interface ResolveTicket$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * <PROJECT>-<number>
@@ -25,7 +25,7 @@ export interface ResolveTicket$Params {
 export function resolveTicket(http: HttpClient, rootUrl: string, params: ResolveTicket$Params, context?: HttpContext): Observable<StrictHttpResponse<Ticket>> {
   const rb = new RequestBuilder(rootUrl, resolveTicket.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('key', params.key, {});
   }
 
@@ -39,4 +39,4 @@ export function resolveTicket(http: HttpClient, rootUrl: string, params: Resolve
   );
 }
 
-resolveTicket.PATH = '/api/v1/tickets/{tenant}/{key}';
+resolveTicket.PATH = '/api/v1/tickets/{team}/{key}';

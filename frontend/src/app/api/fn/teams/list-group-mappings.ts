@@ -7,9 +7,14 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { TenantSummaryList } from '../../models/tenant-summary-list';
+import { GroupMappingList } from '../../models/group-mapping-list';
 
-export interface ListTenants$Params {
+export interface ListGroupMappings$Params {
+
+/**
+ * The team's slug (docs/adr/0005 D1, D4)
+ */
+  team: string;
 
 /**
  * The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -20,13 +25,20 @@ export interface ListTenants$Params {
  * Items per page; the server caps it at its configured maximum
  */
   limit?: number;
+
+/**
+ * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+ */
+  'If-None-Match'?: string;
 }
 
-export function listTenants(http: HttpClient, rootUrl: string, params?: ListTenants$Params, context?: HttpContext): Observable<StrictHttpResponse<TenantSummaryList>> {
-  const rb = new RequestBuilder(rootUrl, listTenants.PATH, 'get');
+export function listGroupMappings(http: HttpClient, rootUrl: string, params: ListGroupMappings$Params, context?: HttpContext): Observable<StrictHttpResponse<GroupMappingList>> {
+  const rb = new RequestBuilder(rootUrl, listGroupMappings.PATH, 'get');
   if (params) {
+    rb.path('team', params.team, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
+    rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
   return http.request(
@@ -34,9 +46,9 @@ export function listTenants(http: HttpClient, rootUrl: string, params?: ListTena
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<TenantSummaryList>;
+      return r as StrictHttpResponse<GroupMappingList>;
     })
   );
 }
 
-listTenants.PATH = '/api/v1/tenants';
+listGroupMappings.PATH = '/api/v1/teams/{team}/group-mappings';

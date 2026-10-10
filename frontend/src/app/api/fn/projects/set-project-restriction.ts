@@ -13,9 +13,9 @@ import { ProjectRestrictionSet } from '../../models/project-restriction-set';
 export interface SetProjectRestriction$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -33,7 +33,7 @@ export interface SetProjectRestriction$Params {
 export function setProjectRestriction(http: HttpClient, rootUrl: string, params: SetProjectRestriction$Params, context?: HttpContext): Observable<StrictHttpResponse<Project>> {
   const rb = new RequestBuilder(rootUrl, setProjectRestriction.PATH, 'put');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.header('If-Match', params['If-Match'], {});
     rb.body(params.body, 'application/json');
@@ -49,4 +49,4 @@ export function setProjectRestriction(http: HttpClient, rootUrl: string, params:
   );
 }
 
-setProjectRestriction.PATH = '/api/v1/tenants/{tenant}/projects/{project}/restriction';
+setProjectRestriction.PATH = '/api/v1/teams/{team}/projects/{project}/restriction';

@@ -2,7 +2,7 @@
 # whose time is docs/adr/0034 D5; agents never book (docs/adr/0043 D3).
 ticketTime:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:
@@ -33,7 +33,7 @@ ticketTime:
     summary: Book the caller's own time on the ticket
     description: |
       A member's act with `write` scope; never an agent's (docs/adr/0017 D6). A day on or before
-      the tenant's time_locked_until is 409 `period_locked` (D8).
+      the team's time_locked_until is 409 `period_locked` (D8).
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
@@ -62,7 +62,7 @@ ticketTime:
         $ref: './components/responses.yaml#/Problem'
 timeEntry:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/TimeEntryID'
@@ -127,7 +127,7 @@ timeEntry:
         $ref: './components/responses.yaml#/Problem'
 timeEntryVoid:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/TimeEntryID'
@@ -165,7 +165,7 @@ timeEntryVoid:
         $ref: './components/responses.yaml#/Problem'
 timeEntryRevisions:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/TimeEntryID'
@@ -185,13 +185,13 @@ timeEntryRevisions:
               $ref: './components/schemas.yaml#/TimeEntryRevisionList'
       default:
         $ref: './components/responses.yaml#/Problem'
-tenantTime:
+teamTime:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
-    operationId: listTenantTime
+    operationId: listTeamTime
     tags: [time]
-    summary: The tenant's time entries the caller may see, newest first
+    summary: The team's time entries the caller may see, newest first
     description: |
       A table (docs/adr/0048 D2): cursor pages, or numbered pages with a total. `Accept:
       text/csv` returns the page as CSV, every cell that could start a formula prefixed with an
@@ -214,7 +214,7 @@ tenantTime:
           application/json:
             schema:
               $ref: './components/schemas.yaml#/TimeEntryList'
-            # The tenant's list answers no total_minutes, which the schema's example, a ticket's, shows.
+            # The team's list answers no total_minutes, which the schema's example, a ticket's, shows.
             example:
               items:
                 - id: 01a111f6-0be0-7944-856c-23487b30768e
@@ -257,11 +257,11 @@ tenantTime:
         $ref: './components/responses.yaml#/Problem'
 timeReport:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: timeReport
     tags: [time]
-    summary: Minutes summed per ticket, project, person or for the tenant over a period
+    summary: Minutes summed per ticket, project, person or for the team over a period
     description: 'The visible, not voided entries (docs/adr/0017 D10); `Accept: text/csv` for CSV.'
     parameters:
       - $ref: './components/parameters.yaml#/FromDay'

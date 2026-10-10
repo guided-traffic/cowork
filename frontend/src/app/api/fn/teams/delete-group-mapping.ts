@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface DeleteGroupMapping$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The group mapping's id
@@ -24,7 +24,7 @@ export interface DeleteGroupMapping$Params {
 export function deleteGroupMapping(http: HttpClient, rootUrl: string, params: DeleteGroupMapping$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, deleteGroupMapping.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('mapping_id', params.mapping_id, {});
   }
 
@@ -38,4 +38,4 @@ export function deleteGroupMapping(http: HttpClient, rootUrl: string, params: De
   );
 }
 
-deleteGroupMapping.PATH = '/api/v1/tenants/{tenant}/group-mappings/{mapping_id}';
+deleteGroupMapping.PATH = '/api/v1/teams/{team}/group-mappings/{mapping_id}';

@@ -13,9 +13,9 @@ import { RepositoryBind } from '../../models/repository-bind';
 export interface BindRepository$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -33,7 +33,7 @@ export interface BindRepository$Params {
 export function bindRepository(http: HttpClient, rootUrl: string, params: BindRepository$Params, context?: HttpContext): Observable<StrictHttpResponse<Repository>> {
   const rb = new RequestBuilder(rootUrl, bindRepository.PATH, 'post');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.header('Idempotency-Key', params['Idempotency-Key'], {});
     rb.body(params.body, 'application/json');
@@ -49,4 +49,4 @@ export function bindRepository(http: HttpClient, rootUrl: string, params: BindRe
   );
 }
 
-bindRepository.PATH = '/api/v1/tenants/{tenant}/projects/{project}/repositories';
+bindRepository.PATH = '/api/v1/teams/{team}/projects/{project}/repositories';

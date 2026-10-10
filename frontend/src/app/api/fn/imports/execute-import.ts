@@ -13,9 +13,9 @@ import { ImportJob } from '../../models/import-job';
 export interface ExecuteImport$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -32,7 +32,7 @@ export interface ExecuteImport$Params {
 export function executeImport(http: HttpClient, rootUrl: string, params: ExecuteImport$Params, context?: HttpContext): Observable<StrictHttpResponse<ImportJob>> {
   const rb = new RequestBuilder(rootUrl, executeImport.PATH, 'post');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('import', params.import, {});
     rb.body(params.body, 'application/json');
@@ -48,4 +48,4 @@ export function executeImport(http: HttpClient, rootUrl: string, params: Execute
   );
 }
 
-executeImport.PATH = '/api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution';
+executeImport.PATH = '/api/v1/teams/{team}/projects/{project}/imports/{import}/execution';

@@ -3,7 +3,7 @@
 
 import { SearchFoundIn } from '../models/search-found-in';
 import { SnippetPart } from '../models/snippet-part';
-import { TenantRef } from '../models/tenant-ref';
+import { TeamRef } from '../models/team-ref';
 import { TicketState } from '../models/ticket-state';
 import { TicketType } from '../models/ticket-type';
 export interface SearchHit {
@@ -15,7 +15,7 @@ export interface SearchHit {
   found_in: SearchFoundIn;
 
   /**
-   * The canonical key, <tenant>/<PROJECT>-<number> (docs/adr/0007 D2)
+   * The canonical key, <team>/<PROJECT>-<number> (docs/adr/0007 D2)
    */
   key: string;
 
@@ -31,7 +31,14 @@ export interface SearchHit {
    */
   snippet: Array<SnippetPart>;
   state: TicketState;
-  tenant: TenantRef;
+  team: TeamRef;
+
+  /**
+   * Deprecated, replaced by `team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
+   *
+   * @deprecated
+   */
+  tenant: TeamRef;
   title: string;
   type: TicketType;
 }

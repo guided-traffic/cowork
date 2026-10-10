@@ -1,8 +1,22 @@
+TeamSlug:
+  name: team
+  in: path
+  required: true
+  description: The team's slug (docs/adr/0005 D1, D4)
+  schema: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
+# The deprecated twin of every path under /api/v1/teams/{team}, served under
+# /api/v1/tenants/{tenant} for one release, takes this one in place of
+# TeamSlug. No source path names it: tools/specbundle writes the twins into
+# the bundled document (docs/adr/0023 D1, docs/adr/0046 D7).
 TenantSlug:
   name: tenant
   in: path
   required: true
-  description: The tenant's slug (docs/adr/0005 D4)
+  deprecated: true
+  description: |
+    The team's slug under the name before (docs/adr/0005 D1). Deprecated: the path family
+    `/api/v1/tenants/{tenant}/…` is served beside `/api/v1/teams/{team}/…` for one release and
+    removed in a later one (docs/adr/0046 D7).
   schema: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
 Username:
   name: username
@@ -33,20 +47,30 @@ Cursor:
   in: query
   description: The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
   schema: {type: string, minLength: 1, maxLength: 1024}
+MeTeam:
+  name: team
+  in: query
+  description: |
+    Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
+    none of them is `404 not_found`, whether or not the team exists. Not together with the
+    deprecated `tenant` (`400 validation_failed`)
+  schema: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
 MeTenant:
   name: tenant
   in: query
+  deprecated: true
   description: |
-    Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names
-    none of them is `404 not_found`, whether or not the tenant exists
+    Deprecated: replaced by `team`, which it means, kept in /api/v1 for one release and removed in a
+    later one (docs/adr/0005 D1, docs/adr/0046 D7). Not together with `team`
+    (`400 validation_failed`)
   schema: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
 MeProject:
   name: project
   in: query
   description: |
-    Narrows a person-level list further to one project of the tenant `tenant` names, by its key; it
-    needs `tenant` (`400 validation_failed` without). A key that names no project the person sees
-    there lists nothing
+    Narrows a person-level list further to one project of the team `team` names, by its key; it
+    needs `team` or the deprecated `tenant` (`400 validation_failed` without). A key that names no
+    project the person sees there lists nothing
   schema: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}$'}
 Limit:
   name: limit
@@ -301,7 +325,11 @@ IncludeVoided:
 GroupBy:
   name: group_by
   in: query
-  schema: {type: string, enum: [ticket, project, person, tenant], default: ticket}
+  description: |
+    What the report sums by. `team` sums the whole team in one row, keyed `team`; `tenant` is its
+    deprecated name, kept in /api/v1 for one release, which keys the row `tenant` as before
+    (docs/adr/0005 D1, docs/adr/0046 D7)
+  schema: {type: string, enum: [ticket, project, person, team, tenant], default: ticket}
 AttachmentID:
   name: attachment
   in: path

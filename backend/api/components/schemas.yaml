@@ -42,7 +42,7 @@ Version:
 Role:
   type: string
   enum: [viewer, member, admin]
-  description: A tenant role, lowest first (docs/adr/0034 D1)
+  description: A team role, lowest first (docs/adr/0034 D1)
 Scope:
   type: string
   enum: [read, write, admin]
@@ -76,13 +76,13 @@ TokenMark:
       description: |
         The token's name; null only on an act of the activity recorded before cowork kept the name,
         which says that a token was used, not which one
-TenantRef:
+TeamRef:
   type: object
   required: [slug, name]
   properties:
     slug: {type: string}
     name: {type: string}
-TenantSummary:
+TeamSummary:
   type: object
   required: [slug, name, role]
   properties:
@@ -90,19 +90,19 @@ TenantSummary:
     name: {type: string}
     role:
       description: |
-        The role the caller holds in the tenant, the higher of their mapping and
+        The role the caller holds in the team, the higher of their mapping and
         their grant; null where they hold none (docs/adr/0034 D2)
       oneOf:
         - $ref: '#/Role'
         - type: 'null'
-TenantSummaryList:
+TeamSummaryList:
   type: object
   required: [items, next_cursor]
   properties:
     items:
       type: array
       items:
-        $ref: '#/TenantSummary'
+        $ref: '#/TeamSummary'
     next_cursor:
       type: [string, 'null']
   example:
@@ -113,10 +113,15 @@ TenantSummaryList:
     next_cursor: null
 Membership:
   type: object
-  required: [tenant, role, origins]
+  required: [team, tenant, role, origins]
   properties:
+    team:
+      $ref: '#/TeamRef'
     tenant:
-      $ref: '#/TenantRef'
+      deprecated: true
+      description: Deprecated, replaced by `team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
+      allOf:
+        - $ref: '#/TeamRef'
     role:
       $ref: '#/Role'
     origins:
@@ -150,7 +155,7 @@ Me:
     global_admin:
       type: boolean
       description: |
-        The person is a global administrator: they create tenants and hold no role
+        The person is a global administrator: they create teams and hold no role
         in any of them until they grant themselves one (docs/adr/0004 D4,
         docs/adr/0034 D2)
     local:
@@ -173,7 +178,8 @@ Me:
     local: true
     password_change_required: false
     memberships:
-      - tenant: {slug: acme, name: Acme}
+      - team: {slug: acme, name: Acme}
+        tenant: {slug: acme, name: Acme}
         role: admin
         origins:
           - source: grant
@@ -196,15 +202,19 @@ Token:
       type: array
       items:
         $ref: '#/Capability'
+    restricted_team:
+      type: [string, 'null']
+      description: The slug of the team the token is restricted to
     restricted_tenant:
       type: [string, 'null']
-      description: The slug of the tenant the token is restricted to
+      deprecated: true
+      description: Deprecated, replaced by `restricted_team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
     restricted_project:
       type: [string, 'null']
       description: |
         The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
         without a project restriction, and for one whose project the person no longer sees or
-        whose tenant they no longer belong to — such a token reaches nothing
+        whose team they no longer belong to — such a token reaches nothing
     restricted_project_id:
       type: [string, 'null']
       format: uuid
@@ -230,6 +240,7 @@ Token:
     scope: write
     agent: true
     capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+    restricted_team: acme
     restricted_tenant: acme
     restricted_project: WEB
     restricted_project_id: 019cadcb-2e60-7116-9641-67b17d11d0ef
@@ -263,14 +274,21 @@ TokenCreate:
       items:
         $ref: '#/Capability'
       description: Only with `agent`; omitted, an agent token gets every capability, and an empty list gives it none, the baseline only (docs/adr/0043 D4)
+    team:
+      type: string
+      pattern: '^[a-z0-9][a-z0-9-]{1,62}$'
+      description: The slug of the team the token is restricted to
     tenant:
       type: string
       pattern: '^[a-z0-9][a-z0-9-]{1,62}$'
-      description: The slug of the tenant the token is restricted to
+      deprecated: true
+      description: |
+        Deprecated, replaced by `team`, which it means; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7). Beside `team` it must name the
+        same slug (`400 validation_failed` at `/team`)
     project:
       type: string
       pattern: '^[A-Z][A-Z0-9]{1,9}$'
-      description: The key of the project of that tenant the token is restricted to; needs `tenant`
+      description: The key of the project of that team the token is restricted to; needs `team` or the deprecated `tenant`
     lifetime_days:
       type: integer
       minimum: 1
@@ -297,6 +315,7 @@ TokenCreated:
     scope: write
     agent: true
     capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+    restricted_team: acme
     restricted_tenant: acme
     restricted_project: WEB
     restricted_project_id: 019cadcb-2e60-7116-9641-67b17d11d0ef
@@ -327,6 +346,7 @@ TokenList:
         scope: read
         agent: false
         capabilities: []
+        restricted_team: acme
         restricted_tenant: acme
         restricted_project: null
         created_at: '2026-08-03T12:00:00Z'
@@ -338,10 +358,10 @@ TokenList:
 MemberToken:
   type: object
   description: |
-    A member's token that can act in the tenant, as its administrators see it (docs/adr/0035 D5):
+    A member's token that can act in the team, as its administrators see it (docs/adr/0035 D5):
     its person and its metadata, never its secret, hash or prefix
-  required: [id, name, person, scope, agent, capabilities, restricted_tenant, restricted_project, created_at,
-    expires_at, last_used_on, revoked_at, state]
+  required: [id, name, person, scope, agent, capabilities, restricted_team, restricted_tenant, restricted_project,
+    created_at, expires_at, last_used_on, revoked_at, state]
   properties:
     id: {type: string, format: uuid}
     name:
@@ -358,20 +378,24 @@ MemberToken:
       type: array
       items:
         $ref: '#/Capability'
-    restricted_tenant:
+    restricted_team:
       type: [string, 'null']
       description: |
-        This tenant's slug for a token restricted to it; null for an unrestricted token, which reaches
-        every tenant its person belongs to, so revoking it ends it in all of them
+        This team's slug for a token restricted to it; null for an unrestricted token, which reaches
+        every team its person belongs to, so revoking it ends it in all of them
+    restricted_tenant:
+      type: [string, 'null']
+      deprecated: true
+      description: Deprecated, replaced by `restricted_team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
     restricted_project:
       type: [string, 'null']
-      description: The key of the project of this tenant the token is restricted to; null for none
+      description: The key of the project of this team the token is restricted to; null for none
     created_at: {type: string, format: date-time}
     expires_at: {type: string, format: date-time}
     last_used_on:
       type: [string, 'null']
       format: date
-      description: The last day it was used, wherever; for an unrestricted token possibly in another tenant
+      description: The last day it was used, wherever; for an unrestricted token possibly in another team
     revoked_at:
       type: [string, 'null']
       format: date-time
@@ -391,7 +415,7 @@ MemberTokenList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
-  # An unrestricted token of Grace Hopper, which reaches every tenant she belongs to, and the
+  # An unrestricted token of Grace Hopper, which reaches every team she belongs to, and the
   # agent token Ada Lovelace restricted to acme/WEB.
   example:
     items:
@@ -401,6 +425,7 @@ MemberTokenList:
         scope: read
         agent: false
         capabilities: []
+        restricted_team: null
         restricted_tenant: null
         restricted_project: null
         created_at: '2026-09-20T13:15:00Z'
@@ -414,6 +439,7 @@ MemberTokenList:
         scope: write
         agent: true
         capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+        restricted_team: acme
         restricted_tenant: acme
         restricted_project: WEB
         created_at: '2026-09-15T07:50:00Z'
@@ -437,6 +463,7 @@ CurrentToken:
     scope: write
     agent: true
     capabilities: [decide, close, drop, rank, set-horizon, interest, upload, create-project, record-answer]
+    restricted_team: acme
     restricted_tenant: acme
     restricted_project: WEB
     restricted_project_id: 019cadcb-2e60-7116-9641-67b17d11d0ef
@@ -468,7 +495,7 @@ RequestMark:
         capabilities do not bound
       items:
         $ref: '#/Capability'
-Tenant:
+Team:
   type: object
   required: [slug, name, version, time_visible_to_members, members_create_projects, created_at, updated_at]
   properties:
@@ -496,7 +523,7 @@ Tenant:
     members_create_projects: false
     created_at: '2026-03-02T08:45:00Z'
     updated_at: '2026-10-06T07:55:00Z'
-TenantCreate:
+TeamCreate:
   type: object
   additionalProperties: false
   required: [slug, name]
@@ -504,9 +531,9 @@ TenantCreate:
     slug:
       type: string
       pattern: '^[a-z0-9][a-z0-9-]{1,62}$'
-      description: The tenant's public identifier, immutable and never reused (docs/adr/0005 D4)
+      description: The team's public identifier, immutable and never reused (docs/adr/0005 D4)
     name: {type: string, minLength: 1, maxLength: 200}
-TenantPatch:
+TeamPatch:
   type: object
   additionalProperties: false
   minProperties: 1
@@ -528,7 +555,7 @@ Member:
       type: [string, 'null']
       description: |
         The address the identity provider asserted at the person's last login, which tells two
-        persons of one name apart: for the tenant's administrators; null for anyone else, and for a
+        persons of one name apart: for the team's administrators; null for anyone else, and for a
         person without one, such as a local account
     role:
       $ref: '#/Role'
@@ -540,7 +567,7 @@ Member:
     local:
       type: boolean
       description: The person has a local account — a username and a password of their own — rather than an identity of the identity provider (docs/adr/0033)
-  # As the tenant's administrators read a member: the address is theirs to see.
+  # As the team's administrators read a member: the address is theirs to see.
   example: &example-member
     person: {id: 019cb855-3d80-7d3c-a80d-97fa1e50d59e, username: null, display_name: Grace Hopper}
     email: grace@acme.example
@@ -885,7 +912,7 @@ ProjectAccessRole:
 ProjectAccessEntry:
   type: object
   required: [person, email, role, created_at]
-  description: A person on a project's access list; their role in the project is the lower of their tenant role and the entry's (docs/adr/0034 D3)
+  description: A person on a project's access list; their role in the project is the lower of their team role and the entry's (docs/adr/0034 D3)
   properties:
     person:
       $ref: '#/Person'
@@ -894,7 +921,7 @@ ProjectAccessEntry:
       description: |
         The address the identity provider asserted at the person's last login, which tells two
         persons of one name apart; null for a person without one, such as a local account. The
-        access list is the tenant's administrators' to read.
+        access list is the team's administrators' to read.
     role:
       $ref: '#/ProjectAccessRole'
     created_at: {type: string, format: date-time}
@@ -994,11 +1021,16 @@ LookupRemote:
       description: Its normalised identity; null for a remote that names no host (docs/adr/0066 D1)
 RepositoryBindingRef:
   type: object
-  required: [tenant, project, identity, path, remote, archived]
+  required: [team, tenant, project, identity, path, remote, archived]
   description: A project that binds the repository
   properties:
+    team:
+      $ref: '#/TeamRef'
     tenant:
-      $ref: '#/TenantRef'
+      deprecated: true
+      description: Deprecated, replaced by `team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
+      allOf:
+        - $ref: '#/TeamRef'
     project:
       $ref: '#/ProjectRef'
     identity: {type: string}
@@ -1007,7 +1039,7 @@ RepositoryBindingRef:
     archived:
       type: boolean
       description: The project is archived and refuses new tickets (docs/adr/0006 D4)
-ProposalTenant:
+ProposalTeam:
   type: object
   required: [slug, name, key]
   properties:
@@ -1015,10 +1047,10 @@ ProposalTenant:
     name: {type: string}
     key:
       type: string
-      description: The project key proposed for this tenant, free there (docs/adr/0066 D2)
+      description: The project key proposed for this team, free there (docs/adr/0066 D2)
 RepositoryProposal:
   type: object
-  required: [identity, remote, name, tenant, tenants, reason]
+  required: [identity, remote, name, team, teams, tenant, tenants, reason]
   description: The project the agent proposes to create for an unbound repository (docs/adr/0066 D2, D3)
   properties:
     identity: {type: string}
@@ -1028,20 +1060,31 @@ RepositoryProposal:
     name:
       type: string
       description: The proposed project name, the repository's name
+    team:
+      type: [string, 'null']
+      description: The proposed team's slug; null when the person chooses from `teams`
+    teams:
+      type: array
+      description: The team proposed, or the teams to choose from, each with the key that is free there
+      items:
+        $ref: '#/ProposalTeam'
     tenant:
       type: [string, 'null']
-      description: The proposed tenant's slug; null when the person chooses from `tenants`
+      deprecated: true
+      description: Deprecated, replaced by `team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
     tenants:
       type: array
-      description: The tenant proposed, or the tenants to choose from, each with the key that is free there
+      deprecated: true
+      description: Deprecated, replaced by `teams`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
       items:
-        $ref: '#/ProposalTenant'
+        $ref: '#/ProposalTeam'
     reason:
       type: string
       enum: [only-tenant, remote-owner, choose]
       description: |
-        Why the tenant: the only one the caller may create projects in; the one that binds
-        repositories under the same remote owner; or none chosen, the list to choose from
+        Why the team: `only-tenant`, the only one the caller may create projects in — the value keeps
+        the name before (docs/adr/0005 D1) —; `remote-owner`, the one that binds repositories under the
+        same remote owner; or `choose`, none chosen, the list to choose from
 RepositoryLookup:
   type: object
   required: [status, remotes, bindings, proposal, proposal_unavailable]
@@ -1076,6 +1119,11 @@ RepositoryLookup:
       identity: github.com/acme/mobile-app
       remote: git@github.com:acme/mobile-app.git
       name: mobile-app
+      team: acme
+      teams:
+        - slug: acme
+          name: Acme
+          key: MA
       tenant: acme
       tenants:
         - slug: acme
@@ -1151,7 +1199,7 @@ Ticket:
     id: {type: string, format: uuid}
     key:
       type: string
-      description: The canonical key, <tenant>/<PROJECT>-<number> (docs/adr/0007 D2)
+      description: The canonical key, <team>/<PROJECT>-<number> (docs/adr/0007 D2)
     project: {type: string, description: The project's key}
     number: {type: integer}
     type:
@@ -1215,7 +1263,7 @@ Ticket:
         - type: 'null'
     confidential:
       type: boolean
-      description: Visible to the tenant's administrators, the assignee and the reporter only (docs/adr/0065)
+      description: Visible to the team's administrators, the assignee and the reporter only (docs/adr/0065)
     opened_at: {type: string, format: date-time}
     decided_at: {type: [string, 'null'], format: date-time}
     done_at: {type: [string, 'null'], format: date-time}
@@ -1316,7 +1364,7 @@ TicketCreate:
     effort:
       $ref: '#/Effort'
     parent: {type: string, description: 'A ticket key of the same project, short or full'}
-    assignee: {type: string, format: uuid, description: A member of the tenant}
+    assignee: {type: string, format: uuid, description: A member of the team}
     horizon:
       description: The horizon the ticket is filed into; later when left out (docs/adr/0010 D3)
       allOf:
@@ -1548,10 +1596,10 @@ Comment:
     body: |-
       Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.
 
-      ![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)
+      ![The failed sign-in](/api/v1/teams/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)
 
       @Ada Lovelace, see Q1 before we change the form.
-    body_html: "<p>Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.</p>\n<p><img src=\"/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content\" alt=\"The failed sign-in\"></p>\n<p>@Ada Lovelace, see Q1 before we change the form.</p>"
+    body_html: "<p>Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.</p>\n<p><img src=\"/api/v1/teams/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content\" alt=\"The failed sign-in\"></p>\n<p>@Ada Lovelace, see Q1 before we change the form.</p>"
     withdrawn: false
     withdrawn_at: null
     edited: false
@@ -1573,7 +1621,7 @@ CommentWrite:
       items: {type: string, format: uuid}
       description: |
         The persons the comment mentions, by id (docs/adr/0015 D5 as amended 2026-10-05): each must be
-        a member of the tenant who sees the ticket, else `400 validation_failed` at `/mentions/<i>`.
+        a member of the team who sees the ticket, else `400 validation_failed` at `/mentions/<i>`.
         Each is told in their inbox (`mentioned`) and watches the ticket while the comment stands. The
         text names them as the writer likes — the API reads no text, so a name typed without the list
         tells nobody. Left out of a new comment, nobody is mentioned; left out of an edit, the
@@ -1755,18 +1803,18 @@ Attachment:
     agent: null
     token: null
     created_at: '2026-10-05T14:48:00Z'
-    content_url: /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content
+    content_url: /api/v1/teams/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content
 AttachmentUsage:
   type: object
-  description: What the tenant's attachments hold against its quota (docs/adr/0016 D6)
+  description: What the team's attachments hold against its quota (docs/adr/0016 D6)
   required: [used_bytes, attachments, quota_bytes]
   properties:
-    used_bytes: {type: integer, format: int64, description: 'The sizes of every attachment of the tenant, summed'}
-    attachments: {type: integer, format: int64, description: How many attachments the tenant holds}
+    used_bytes: {type: integer, format: int64, description: 'The sizes of every attachment of the team, summed'}
+    attachments: {type: integer, format: int64, description: How many attachments the team holds}
     quota_bytes:
       type: [integer, 'null']
       format: int64
-      description: COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota
+      description: COWORK_ATTACHMENT_TEAM_QUOTA; null where the installation sets no quota
   example:
     used_bytes: 73400320
     attachments: 41
@@ -1774,11 +1822,11 @@ AttachmentUsage:
 AttachmentConsistency:
   type: object
   description: |
-    The tenant's latest consistency check of its attachments (docs/adr/0059 D4): the files whose
+    The team's latest consistency check of its attachments (docs/adr/0059 D4): the files whose
     metadata is there and whose bytes the bucket lacks — dangling — and the objects under the
-    tenant's prefix that no metadata names — orphans —, with the counts exact and each list at most
+    team's prefix that no metadata names — orphans —, with the counts exact and each list at most
     1000 entries long. `check_id` is null, and everything else of the check empty, while no check has
-    run in the tenant. Beside it, `last_exported_at`: the second line of the tenant's backup
+    run in the team. Beside it, `last_exported_at`: the second line of the team's backup
     (docs/adr/0059 D2).
   required: [check_id, checked_at, dangling, accepted, orphans, orphan_bytes, dangling_attachments, orphaned_objects,
     orphan_removal, last_exported_at]
@@ -1811,8 +1859,8 @@ AttachmentConsistency:
       type: [string, 'null']
       format: date-time
       description: |
-        When a project of the tenant or the whole tenant was last exported, by anybody, as the act
-        `exported` records it; a ticket's Markdown or context is no export of the tenant. Null while
+        When a project of the team or the whole team was last exported, by anybody, as the act
+        `exported` records it; a ticket's Markdown or context is no export of the team. Null while
         none was.
   # The night after a restore that brought the database back from an earlier point than the bucket.
   example:
@@ -1849,16 +1897,16 @@ DanglingAttachment:
     file_name: {type: string}
     size: {type: integer, format: int64}
     content_type: {type: string}
-    ticket: {type: string, description: 'The key of its ticket, tenant/PROJECT-number'}
+    ticket: {type: string, description: 'The key of its ticket, team/PROJECT-number'}
     ticket_deleted: {type: boolean, description: The ticket is in the bin; the purge removes the file with it}
     uploaded_at: {type: string, format: date-time}
     accepted: {type: boolean, description: An administrator accepted the loss}
 OrphanedObject:
   type: object
-  description: An object under the tenant's prefix that no metadata names
+  description: An object under the team's prefix that no metadata names
   required: [key, size, last_modified]
   properties:
-    key: {type: string, description: 'The object key in the bucket, <tenant-id>/<attachment-id> where it is one the backend wrote'}
+    key: {type: string, description: 'The object key in the bucket, <team-id>/<attachment-id> where it is one the backend wrote'}
     size: {type: integer, format: int64}
     last_modified: {type: string, format: date-time}
 OrphanRemovalRecord:
@@ -1981,7 +2029,7 @@ TimeEntryList:
     total: {type: integer, description: With page and per_page only}
     page: {type: integer}
     per_page: {type: integer}
-  # A ticket's entries, which come with their total; the tenant's list has its own example.
+  # A ticket's entries, which come with their total; the team's list has its own example.
   example:
     items:
       - *example-time-entry
@@ -2026,14 +2074,17 @@ TimeReport:
   type: object
   required: [group_by, items, total_minutes]
   properties:
-    group_by: {type: string, enum: [ticket, project, person, tenant]}
+    group_by:
+      type: string
+      enum: [ticket, project, person, team, tenant]
+      description: As asked; `tenant` is the deprecated name of `team` (docs/adr/0005 D1, docs/adr/0046 D7)
     items:
       type: array
       items:
         type: object
         required: [key, label, minutes]
         properties:
-          key: {type: string, description: 'The ticket key, the project key, the person id, or tenant'}
+          key: {type: string, description: 'The ticket key, the project key, the person id, or `team` — `tenant` under the deprecated `group_by=tenant`'}
           label: {type: string}
           minutes: {type: integer}
     total_minutes: {type: integer}
@@ -2135,7 +2186,7 @@ Question:
         - $ref: '#/TokenMark'
         - type: 'null'
     asked_of:
-      description: The person asked; null for a question open in the tenant
+      description: The person asked; null for a question open in the team
       oneOf:
         - $ref: '#/Person'
         - type: 'null'
@@ -2194,7 +2245,7 @@ QuestionCreate:
     asked_of:
       type: string
       format: uuid
-      description: A member who can see the ticket; omitted, the question is open in the tenant
+      description: A member who can see the ticket; omitted, the question is open in the team
 QuestionPatch:
   type: object
   additionalProperties: false
@@ -2387,11 +2438,11 @@ TicketList:
 DeletedTicket:
   type: object
   description: |
-    A ticket in its tenant's bin (docs/adr/0024 D1): what an administrator needs to restore or
+    A ticket in its team's bin (docs/adr/0024 D1): what an administrator needs to restore or
     purge it.
   required: [key, project, number, type, title, state, confidential, deleted_at, deleted_by, purge_at]
   properties:
-    key: {type: string, description: '<tenant>/<PROJECT>-<number>'}
+    key: {type: string, description: '<team>/<PROJECT>-<number>'}
     project: {type: string}
     number: {type: integer}
     type:
@@ -2475,7 +2526,7 @@ SavedFilter:
     name: {type: string}
     owner:
       $ref: '#/Person'
-    shared: {type: boolean, description: 'Shown to every member of the tenant, with its owner'}
+    shared: {type: boolean, description: 'Shown to every member of the team, with its owner'}
     parameters:
       $ref: '#/SavedFilterParameters'
     redacted:
@@ -2639,7 +2690,7 @@ Account:
     username: {type: string}
     display_name: {type: string}
     role:
-      description: The person's highest role in this tenant; null when they have none any more
+      description: The person's highest role in this team; null when they have none any more
       oneOf:
         - $ref: '#/Role'
         - type: 'null'
@@ -2749,7 +2800,7 @@ ChatAvailability:
   properties:
     available:
       type: boolean
-      description: The members of the tenant may hold a conversation (POST …/chat)
+      description: The members of the team may hold a conversation (POST …/chat)
     providers:
       type: array
       description: The configured providers in the configured order, the first the default of a turn; empty without one
@@ -2904,8 +2955,8 @@ ChatUiEvent:
     path:
       type: string
       description: |
-        The page to show, a path of this UI in the turn's tenant: /t/<tenant>/tickets/<PROJECT>-<number>,
-        /t/<tenant>/p/<PROJECT>/backlog or /t/<tenant>/p/<PROJECT>/board
+        The page to show, a path of this UI in the turn's team: /t/<team>/tickets/<PROJECT>-<number>,
+        /t/<team>/p/<PROJECT>/backlog or /t/<team>/p/<PROJECT>/board
 ChatTurnEnd:
   type: string
   enum: [answered, step_limit, stopped, error]
@@ -2966,11 +3017,16 @@ InboxReason:
     comment that mentions them (docs/adr/0015 D5)
 InboxEntry:
   type: object
-  required: [id, tenant, ticket, reason, act, blocker, withdrawn, read, created_at]
+  required: [id, team, tenant, ticket, reason, act, blocker, withdrawn, read, created_at]
   properties:
     id: {type: string, format: uuid}
+    team:
+      $ref: '#/TeamRef'
     tenant:
-      $ref: '#/TenantRef'
+      deprecated: true
+      description: Deprecated, replaced by `team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
+      allOf:
+        - $ref: '#/TeamRef'
     ticket:
       $ref: '#/TicketRef'
     reason:
@@ -2999,11 +3055,12 @@ InboxList:
       type: [string, 'null']
     unread:
       type: integer
-      description: The person's unread notifications in the tenants the request reaches
+      description: The person's unread notifications in the teams the request reaches
   # Ada Lovelace told that Grace Hopper's comment on acme/WEB-42 mentions her.
   example:
     items:
       - id: 01a10c96-0240-7196-85bb-eeab014066b7
+        team: {slug: acme, name: Acme}
         tenant: {slug: acme, name: Acme}
         ticket: {key: acme/WEB-42, title: Sign-in fails in Safari when the password contains a space, state: in-progress}
         reason: mentioned
@@ -3032,10 +3089,15 @@ InboxReadThrough:
       description: The newest notification the person saw; it and every older one are marked read
 MyTicket:
   type: object
-  required: [tenant, ticket, place]
+  required: [team, tenant, ticket, place]
   properties:
+    team:
+      $ref: '#/TeamRef'
     tenant:
-      $ref: '#/TenantRef'
+      deprecated: true
+      description: Deprecated, replaced by `team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
+      allOf:
+        - $ref: '#/TeamRef'
     ticket:
       $ref: '#/Ticket'
     place:
@@ -3058,16 +3120,22 @@ MyTicketList:
   # What Grace Hopper reads: acme/WEB-42 is assigned to her.
   example:
     items:
-      - tenant: {slug: acme, name: Acme}
+      - team: {slug: acme, name: Acme}
+        tenant: {slug: acme, name: Acme}
         ticket: *example-ticket
         place: 1
     next_cursor: null
 Decision:
   type: object
-  required: [tenant, ticket, question]
+  required: [team, tenant, ticket, question]
   properties:
+    team:
+      $ref: '#/TeamRef'
     tenant:
-      $ref: '#/TenantRef'
+      deprecated: true
+      description: Deprecated, replaced by `team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
+      allOf:
+        - $ref: '#/TeamRef'
     ticket:
       $ref: '#/TicketRef'
     question:
@@ -3085,14 +3153,15 @@ DecisionList:
   # What Ada Lovelace reads: Q1 of acme/WEB-42 is asked of her.
   example:
     items:
-      - tenant: {slug: acme, name: Acme}
+      - team: {slug: acme, name: Acme}
+        tenant: {slug: acme, name: Acme}
         ticket: {key: acme/WEB-42, title: Sign-in fails in Safari when the password contains a space, state: in-progress}
         question: *example-question
     next_cursor: null
 Dashboard:
   type: object
   description: |
-    The tenant's dashboard, the nine fixed tiles of docs/adr/0018 D6, read in one read-only
+    The team's dashboard, the nine fixed tiles of docs/adr/0018 D6, read in one read-only
     transaction. Every tile counts only what the caller can see: the visibility predicate holds
     each ticket, question and time entry it reads, so a restricted project or a confidential
     ticket the caller cannot see counts nowhere and is named nowhere (docs/adr/0034 D4,
@@ -3257,7 +3326,7 @@ DashboardTicket:
   description: A ticket a tile names, with the time the tile measures it from
   required: [key, title, since]
   properties:
-    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number>'}
+    key: {type: string, description: 'The canonical key, <team>/<PROJECT>-<number>'}
     title: {type: string}
     since: {type: string, format: date-time}
 DashboardSecurity:
@@ -3290,7 +3359,7 @@ DashboardBlock:
   type: object
   required: [key, title, since, kind]
   properties:
-    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number>'}
+    key: {type: string, description: 'The canonical key, <team>/<PROJECT>-<number>'}
     title: {type: string}
     since: {type: string, format: date-time, description: When the ticket entered blocked}
     kind:
@@ -3374,7 +3443,7 @@ DashboardRecent:
   type: object
   required: [key, type, title, state, updated_at]
   properties:
-    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number>'}
+    key: {type: string, description: 'The canonical key, <team>/<PROJECT>-<number>'}
     type:
       $ref: '#/TicketType'
     title: {type: string}
@@ -3395,11 +3464,16 @@ SnippetPart:
     match: {type: boolean, description: The piece is a word the query found}
 SearchHit:
   type: object
-  required: [tenant, key, title, type, state, found_in, comment, question, snippet]
+  required: [team, tenant, key, title, type, state, found_in, comment, question, snippet]
   properties:
+    team:
+      $ref: '#/TeamRef'
     tenant:
-      $ref: '#/TenantRef'
-    key: {type: string, description: 'The canonical key, <tenant>/<PROJECT>-<number> (docs/adr/0007 D2)'}
+      deprecated: true
+      description: Deprecated, replaced by `team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
+      allOf:
+        - $ref: '#/TeamRef'
+    key: {type: string, description: 'The canonical key, <team>/<PROJECT>-<number> (docs/adr/0007 D2)'}
     title: {type: string}
     type:
       $ref: '#/TicketType'
@@ -3430,7 +3504,8 @@ SearchHitList:
   # q=macOS, which only a comment of acme/WEB-42 holds.
   example:
     items:
-      - tenant: {slug: acme, name: Acme}
+      - team: {slug: acme, name: Acme}
+        tenant: {slug: acme, name: Acme}
         key: acme/WEB-42
         title: Sign-in fails in Safari when the password contains a space
         type: bug
@@ -3469,7 +3544,7 @@ ImportFormat:
   description: |
     The grammar a file was read in. `repository`: a ticket file of a repository's docs/tickets/ —
     `id: T<n>`, `urgency`, `blocked-by`, `filed-from`, the `local_` prefix (docs/adr/0063 D3).
-    `export`: cowork's own grammar v1, `key: <tenant>/<PROJECT>-<n>` (docs/adr/0044 D1). `plain`: a
+    `export`: cowork's own grammar v1, `key: <team>/<PROJECT>-<n>` (docs/adr/0044 D1). `plain`: a
     file without frontmatter, an archived record that becomes one done task (docs/adr/0063 D4)
 ImportMessage:
   type: object
@@ -3637,7 +3712,7 @@ ImportFile:
         file name, or the number of an export's key
     key:
       type: [string, 'null']
-      description: The key the ticket gets — or got — in the project, `<tenant>/<PROJECT>-<n>`
+      description: The key the ticket gets — or got — in the project, `<team>/<PROJECT>-<n>`
     conflict:
       type: [string, 'null']
       description: The key of the project's ticket that holds the number, a deleted one included
@@ -4016,15 +4091,22 @@ ImportExecution:
 ExportManifest:
   type: object
   description: '`manifest.json` of an export archive (docs/adr/0051 D4)'
-  required: [format, tenant, projects, exported_at, exported_by, tickets, confidential_not_included]
+  required: [format, team, tenant, projects, exported_at, exported_by, tickets, confidential_not_included]
   properties:
     format:
       type: string
       enum: [cowork export v1]
-    tenant: {type: string, description: 'The tenant''s slug'}
+    team: {type: string, description: 'The team''s slug'}
+    tenant:
+      type: string
+      deprecated: true
+      description: |
+        Deprecated, replaced by `team`, which it repeats; written for one release and dropped in a
+        later one (docs/adr/0005 D1, docs/adr/0046 D7). The importer reads an archive that names only
+        `tenant`, as every archive before carries it, for good (docs/adr/0051 D4)
     projects:
       type: array
-      description: The project of a project export; every project the caller sees, by key, of a tenant export
+      description: The project of a project export; every project the caller sees, by key, of a team export
       items:
         $ref: '#/ExportManifestProject'
     exported_at: {type: string, format: date-time}
@@ -4040,6 +4122,7 @@ ExportManifest:
   # A member's export of WEB after the import: two confidential tickets are not theirs to read.
   example:
     format: cowork export v1
+    team: acme
     tenant: acme
     projects:
       - key: WEB
@@ -4065,7 +4148,7 @@ ExportLink:
   description: One link of `links.json`, once (docs/adr/0051 D4, docs/adr/0012 D1)
   required: [source, type, target]
   properties:
-    source: {type: string, description: 'The source''s key, <tenant>/<PROJECT>-<n>'}
+    source: {type: string, description: 'The source''s key, <team>/<PROJECT>-<n>'}
     type:
       $ref: '#/LinkType'
     target: {type: string, description: 'The target''s key; relates-to is stored and written once'}
@@ -4088,4 +4171,4 @@ ExportAttachment:
     name: safari-sign-in.png
     type: image/png
     size: 186779
-    url: /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content
+    url: /api/v1/teams/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content

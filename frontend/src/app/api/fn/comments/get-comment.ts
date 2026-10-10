@@ -12,9 +12,9 @@ import { Comment } from '../../models/comment';
 export interface GetComment$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -35,7 +35,7 @@ export interface GetComment$Params {
 export function getComment(http: HttpClient, rootUrl: string, params: GetComment$Params, context?: HttpContext): Observable<StrictHttpResponse<Comment>> {
   const rb = new RequestBuilder(rootUrl, getComment.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('comment', params.comment, {});
@@ -51,4 +51,4 @@ export function getComment(http: HttpClient, rootUrl: string, params: GetComment
   );
 }
 
-getComment.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}';
+getComment.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments/{comment}';

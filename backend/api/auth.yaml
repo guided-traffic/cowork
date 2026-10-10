@@ -51,7 +51,7 @@ local:
       `429 too_many_attempts` — the client being the TCP peer, or behind
       `COWORK_TRUSTED_PROXIES` the first address of `X-Forwarded-For`, from the
       right, that is not one of them (docs/adr/0035 D2). While no
-      tenant exists, only a global administrator may log in: anyone else, with
+      team exists, only a global administrator may log in: anyone else, with
       the right password, gets `403 not_initialised` and no session
       (docs/adr/0032 D5).
 
@@ -160,7 +160,7 @@ callback:
       and must pass the gate: one of them is in `COWORK_OIDC_ALLOWED_GROUPS` or
       is `COWORK_ADMIN_GROUP` (docs/adr/0030 D1). The person is found by
       issuer and subject, or made (docs/adr/0029 D5), and their memberships
-      are derived from the tenants' group mappings (docs/adr/0030 D2). Then the
+      are derived from the teams' group mappings (docs/adr/0030 D2). Then the
       session is made as the local login makes it — a new cookie, and the
       session the request presented ended (docs/adr/0031 D5) — the state
       cookie is cleared, and the answer is `303` to `return_to`.
@@ -178,7 +178,7 @@ callback:
       `account_selection_required` or any other, since the person did not ask
       for that attempt — when the state cookie still opens, stale or not
       (docs/adr/0029 D6); `not_allowed` — the person is outside the
-      gate, or deactivated (docs/adr/0024 D5); `not_initialised` — no tenant
+      gate, or deactivated (docs/adr/0024 D5); `not_initialised` — no team
       exists and the person is not in `COWORK_ADMIN_GROUP` (docs/adr/0032 D5);
       `oidc_unavailable` — no identity provider is configured. A refused
       login is recorded (docs/adr/0026); the reason reaches the log, never the

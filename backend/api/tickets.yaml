@@ -1,9 +1,9 @@
-# The key resolver (docs/adr/0023 D3): a ticket by its key, under the tenant
+# The key resolver (docs/adr/0023 D3): a ticket by its key, under the team
 # it names. The key is one path segment, <PROJECT>-<number>, split at its last
 # hyphen.
 resolve:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - name: key
       in: path
       required: true
@@ -28,7 +28,7 @@ resolve:
         $ref: './components/responses.yaml#/Problem'
 links:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:
@@ -58,7 +58,7 @@ links:
         $ref: './components/responses.yaml#/Problem'
 link:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/PathLinkType'
@@ -66,7 +66,7 @@ link:
   put:
     operationId: linkTickets
     tags: [tickets]
-    summary: Link this ticket, as the source, to another ticket of the tenant
+    summary: Link this ticket, as the source, to another ticket of the team
     description: |
       Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second
       act for an existing one. A member's act with `write` scope, in the agent baseline
@@ -99,7 +99,7 @@ link:
         $ref: './components/responses.yaml#/Problem'
 transitions:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   post:
@@ -160,7 +160,7 @@ transitions:
         $ref: './components/responses.yaml#/Problem'
 rank:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   put:
@@ -200,7 +200,7 @@ rank:
         $ref: './components/responses.yaml#/Problem'
 prerequisites:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:
@@ -241,7 +241,7 @@ prerequisites:
         $ref: './components/responses.yaml#/Problem'
 interest:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:
@@ -310,7 +310,7 @@ interest:
         $ref: './components/responses.yaml#/Problem'
 markdown:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:
@@ -378,7 +378,7 @@ markdown:
         $ref: './components/responses.yaml#/Problem'
 context:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:
@@ -480,13 +480,13 @@ context:
 
               > Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.
               >
-              > ![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)
+              > ![The failed sign-in](/api/v1/teams/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)
               >
               > @Ada Lovelace, see Q1 before we change the form.
 
               ## Attachments
 
-              - safari-sign-in.png — image/png, 182.4 KiB — /api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content
+              - safari-sign-in.png — image/png, 182.4 KiB — /api/v1/teams/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content
 
               ## Recent activity
 

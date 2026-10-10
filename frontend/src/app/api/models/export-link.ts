@@ -9,7 +9,7 @@ import { LinkType } from '../models/link-type';
 export interface ExportLink {
 
   /**
-   * The source's key, <tenant>/<PROJECT>-<n>
+   * The source's key, <team>/<PROJECT>-<n>
    */
   source: string;
 

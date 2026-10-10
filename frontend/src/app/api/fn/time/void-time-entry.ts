@@ -12,9 +12,9 @@ import { TimeEntry } from '../../models/time-entry';
 export interface VoidTimeEntry$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -35,7 +35,7 @@ export interface VoidTimeEntry$Params {
 export function voidTimeEntry(http: HttpClient, rootUrl: string, params: VoidTimeEntry$Params, context?: HttpContext): Observable<StrictHttpResponse<TimeEntry>> {
   const rb = new RequestBuilder(rootUrl, voidTimeEntry.PATH, 'put');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('entry', params.entry, {});
@@ -51,4 +51,4 @@ export function voidTimeEntry(http: HttpClient, rootUrl: string, params: VoidTim
   );
 }
 
-voidTimeEntry.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}/void';
+voidTimeEntry.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries/{entry}/void';

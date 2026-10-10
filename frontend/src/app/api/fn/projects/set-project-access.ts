@@ -13,9 +13,9 @@ import { ProjectAccessSet } from '../../models/project-access-set';
 export interface SetProjectAccess$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -32,7 +32,7 @@ export interface SetProjectAccess$Params {
 export function setProjectAccess(http: HttpClient, rootUrl: string, params: SetProjectAccess$Params, context?: HttpContext): Observable<StrictHttpResponse<ProjectAccessEntry>> {
   const rb = new RequestBuilder(rootUrl, setProjectAccess.PATH, 'put');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('person_id', params.person_id, {});
     rb.body(params.body, 'application/json');
@@ -48,4 +48,4 @@ export function setProjectAccess(http: HttpClient, rootUrl: string, params: SetP
   );
 }
 
-setProjectAccess.PATH = '/api/v1/tenants/{tenant}/projects/{project}/access/{person_id}';
+setProjectAccess.PATH = '/api/v1/teams/{team}/projects/{project}/access/{person_id}';

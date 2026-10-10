@@ -12,9 +12,9 @@ import { Question } from '../../models/question';
 export interface WithdrawQuestion$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -35,7 +35,7 @@ export interface WithdrawQuestion$Params {
 export function withdrawQuestion(http: HttpClient, rootUrl: string, params: WithdrawQuestion$Params, context?: HttpContext): Observable<StrictHttpResponse<Question>> {
   const rb = new RequestBuilder(rootUrl, withdrawQuestion.PATH, 'put');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('question', params.question, {});
@@ -51,4 +51,4 @@ export function withdrawQuestion(http: HttpClient, rootUrl: string, params: With
   );
 }
 
-withdrawQuestion.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/withdrawal';
+withdrawQuestion.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/questions/{question}/withdrawal';

@@ -8,7 +8,7 @@
 export interface DashboardTicket {
 
   /**
-   * The canonical key, <tenant>/<PROJECT>-<number>
+   * The canonical key, <team>/<PROJECT>-<number>
    */
   key: string;
   since: string;

@@ -12,9 +12,9 @@ import { ImportJob } from '../../models/import-job';
 export interface CreateImport$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -34,7 +34,7 @@ export interface CreateImport$Params {
 export function createImport(http: HttpClient, rootUrl: string, params: CreateImport$Params, context?: HttpContext): Observable<StrictHttpResponse<ImportJob>> {
   const rb = new RequestBuilder(rootUrl, createImport.PATH, 'post');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.body(params.body, 'multipart/form-data');
   }
@@ -49,4 +49,4 @@ export function createImport(http: HttpClient, rootUrl: string, params: CreateIm
   );
 }
 
-createImport.PATH = '/api/v1/tenants/{tenant}/projects/{project}/imports';
+createImport.PATH = '/api/v1/teams/{team}/projects/{project}/imports';

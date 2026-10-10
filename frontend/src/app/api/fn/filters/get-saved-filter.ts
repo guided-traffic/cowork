@@ -12,9 +12,9 @@ import { SavedFilter } from '../../models/saved-filter';
 export interface GetSavedFilter$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The saved filter's id
@@ -25,7 +25,7 @@ export interface GetSavedFilter$Params {
 export function getSavedFilter(http: HttpClient, rootUrl: string, params: GetSavedFilter$Params, context?: HttpContext): Observable<StrictHttpResponse<SavedFilter>> {
   const rb = new RequestBuilder(rootUrl, getSavedFilter.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('filter', params.filter, {});
   }
 
@@ -39,4 +39,4 @@ export function getSavedFilter(http: HttpClient, rootUrl: string, params: GetSav
   );
 }
 
-getSavedFilter.PATH = '/api/v1/tenants/{tenant}/filters/{filter}';
+getSavedFilter.PATH = '/api/v1/teams/{team}/filters/{filter}';

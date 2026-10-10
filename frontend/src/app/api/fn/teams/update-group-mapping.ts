@@ -13,9 +13,9 @@ import { GroupMappingPatch } from '../../models/group-mapping-patch';
 export interface UpdateGroupMapping$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The group mapping's id
@@ -33,7 +33,7 @@ export interface UpdateGroupMapping$Params {
 export function updateGroupMapping(http: HttpClient, rootUrl: string, params: UpdateGroupMapping$Params, context?: HttpContext): Observable<StrictHttpResponse<GroupMapping>> {
   const rb = new RequestBuilder(rootUrl, updateGroupMapping.PATH, 'patch');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('mapping_id', params.mapping_id, {});
     rb.header('If-Match', params['If-Match'], {});
     rb.body(params.body, 'application/json');
@@ -49,4 +49,4 @@ export function updateGroupMapping(http: HttpClient, rootUrl: string, params: Up
   );
 }
 
-updateGroupMapping.PATH = '/api/v1/tenants/{tenant}/group-mappings/{mapping_id}';
+updateGroupMapping.PATH = '/api/v1/teams/{team}/group-mappings/{mapping_id}';

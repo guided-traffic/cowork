@@ -1,20 +1,20 @@
-# The local accounts of a tenant, /api/v1/tenants/{tenant}/accounts
-# (docs/adr/0033 D1, D4, D5, docs/adr/0031 D4). For the tenant's administrators
+# The local accounts of a team, /api/v1/teams/{team}/accounts
+# (docs/adr/0033 D1, D4, D5, docs/adr/0031 D4). For the team's administrators
 # with `admin` scope; an agent never (docs/adr/0043 D3). Creating an account and
 # resetting a password take a browser session only (docs/adr/0033 D1, D5): what
 # they make — an account, a password the administrator knows — would outlive
 # the revocation of a leaked token. The other routes remove or restrict access
 # and stay open to an administrator's token. An account is a person across the
-# whole installation, so a tenant manages the accounts its administrators
-# created and no others: another tenant's account, a global administrator, the
+# whole installation, so a team manages the accounts its administrators
+# created and no others: another team's account, a global administrator, the
 # local administrator all answer 404, like an unknown username.
 accounts:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: listAccounts
     tags: [accounts]
-    summary: The local accounts the tenant manages
+    summary: The local accounts the team manages
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
@@ -30,14 +30,14 @@ accounts:
   post:
     operationId: createAccount
     tags: [accounts]
-    summary: Create a local account in the tenant
+    summary: Create a local account in the team
     description: |
       The administrator sets a temporary password; the person changes it at the
       first login, before anything else (docs/adr/0033 D4). The account gets a
-      marked grant with the given role in this tenant (docs/adr/0030 D3) and
-      is managed by this tenant. There is no registration and no invitation:
+      marked grant with the given role in this team (docs/adr/0030 D3) and
+      is managed by this team. There is no registration and no invitation:
       this route is the gate (D1). A username is unique in the installation,
-      so `409 username_taken` also tells an administrator that another tenant
+      so `409 username_taken` also tells an administrator that another team
       has the name.
 
       A browser session only: a token, an administrator's included, answers
@@ -70,7 +70,7 @@ accounts:
         $ref: './components/responses.yaml#/Problem'
 accountPassword:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/Username'
   put:
     operationId: resetAccountPassword
@@ -102,7 +102,7 @@ accountPassword:
         $ref: './components/responses.yaml#/Problem'
 accountLockout:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/Username'
   delete:
     operationId: unlockAccount
@@ -127,7 +127,7 @@ accountLockout:
         $ref: './components/responses.yaml#/Problem'
 accountDeactivation:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/Username'
   put:
     operationId: deactivateAccount
@@ -138,8 +138,8 @@ accountDeactivation:
       sessions end (docs/adr/0024 D5); the person and every act they made stay.
       Not for the administrator's own account (`403 forbidden`). Deactivating a
       deactivated account changes nothing. A deactivation that would leave the
-      tenant without an administrator who can log in is `409 last_admin` and
-      changes nothing (docs/adr/0034 D1); it takes the tenant's lock, so two
+      team without an administrator who can log in is `409 last_admin` and
+      changes nothing (docs/adr/0034 D1); it takes the team's lock, so two
       administrators who deactivate each other at once are decided one after
       the other.
     responses:
@@ -149,7 +149,7 @@ accountDeactivation:
         $ref: './components/responses.yaml#/Problem'
 accountSessions:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/Username'
   delete:
     operationId: endAccountSessions

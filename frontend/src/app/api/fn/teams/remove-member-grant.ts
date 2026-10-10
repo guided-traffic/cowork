@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface RemoveMemberGrant$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * A person's id
@@ -24,7 +24,7 @@ export interface RemoveMemberGrant$Params {
 export function removeMemberGrant(http: HttpClient, rootUrl: string, params: RemoveMemberGrant$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, removeMemberGrant.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('person_id', params.person_id, {});
   }
 
@@ -38,4 +38,4 @@ export function removeMemberGrant(http: HttpClient, rootUrl: string, params: Rem
   );
 }
 
-removeMemberGrant.PATH = '/api/v1/tenants/{tenant}/members/{person_id}/grant';
+removeMemberGrant.PATH = '/api/v1/teams/{team}/members/{person_id}/grant';

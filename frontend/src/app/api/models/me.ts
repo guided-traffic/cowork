@@ -6,7 +6,7 @@ export interface Me {
   display_name: string;
 
   /**
-   * The person is a global administrator: they create tenants and hold no role
+   * The person is a global administrator: they create teams and hold no role
    * in any of them until they grant themselves one (docs/adr/0004 D4,
    * docs/adr/0034 D2)
    */

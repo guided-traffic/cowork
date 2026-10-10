@@ -12,9 +12,9 @@ import { Dashboard } from '../../models/dashboard';
 export interface GetDashboard$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * A project key, negatable with !
@@ -40,7 +40,7 @@ export interface GetDashboard$Params {
 export function getDashboard(http: HttpClient, rootUrl: string, params: GetDashboard$Params, context?: HttpContext): Observable<StrictHttpResponse<Dashboard>> {
   const rb = new RequestBuilder(rootUrl, getDashboard.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.query('project', params.project, {"style":"form","explode":true});
     rb.query('from', params.from, {});
     rb.query('to', params.to, {});
@@ -57,4 +57,4 @@ export function getDashboard(http: HttpClient, rootUrl: string, params: GetDashb
   );
 }
 
-getDashboard.PATH = '/api/v1/tenants/{tenant}/dashboard';
+getDashboard.PATH = '/api/v1/teams/{team}/dashboard';

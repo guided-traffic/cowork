@@ -4,7 +4,7 @@
 export interface QuestionCreate {
 
   /**
-   * A member who can see the ticket; omitted, the question is open in the tenant
+   * A member who can see the ticket; omitted, the question is open in the team
    */
   asked_of?: string;
   options?: string;

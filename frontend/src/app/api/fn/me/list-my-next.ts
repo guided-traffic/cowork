@@ -12,15 +12,25 @@ import { MyTicketList } from '../../models/my-ticket-list';
 export interface ListMyNext$Params {
 
 /**
- * Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names
- * none of them is `404 not_found`, whether or not the tenant exists
+ * Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
+ * none of them is `404 not_found`, whether or not the team exists. Not together with the
+ * deprecated `tenant` (`400 validation_failed`)
+ */
+  team?: string;
+
+/**
+ * Deprecated: replaced by `team`, which it means, kept in /api/v1 for one release and removed in a
+ * later one (docs/adr/0005 D1, docs/adr/0046 D7). Not together with `team`
+ * (`400 validation_failed`)
+ *
+ * @deprecated
  */
   tenant?: string;
 
 /**
- * Narrows a person-level list further to one project of the tenant `tenant` names, by its key; it
- * needs `tenant` (`400 validation_failed` without). A key that names no project the person sees
- * there lists nothing
+ * Narrows a person-level list further to one project of the team `team` names, by its key; it
+ * needs `team` or the deprecated `tenant` (`400 validation_failed` without). A key that names no
+ * project the person sees there lists nothing
  */
   project?: string;
 
@@ -43,6 +53,7 @@ export interface ListMyNext$Params {
 export function listMyNext(http: HttpClient, rootUrl: string, params?: ListMyNext$Params, context?: HttpContext): Observable<StrictHttpResponse<MyTicketList>> {
   const rb = new RequestBuilder(rootUrl, listMyNext.PATH, 'get');
   if (params) {
+    rb.query('team', params.team, {});
     rb.query('tenant', params.tenant, {});
     rb.query('project', params.project, {});
     rb.query('cursor', params.cursor, {});

@@ -12,15 +12,15 @@ import { ChatAvailability } from '../../models/chat-availability';
 export interface GetChatAvailability$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 }
 
 export function getChatAvailability(http: HttpClient, rootUrl: string, params: GetChatAvailability$Params, context?: HttpContext): Observable<StrictHttpResponse<ChatAvailability>> {
   const rb = new RequestBuilder(rootUrl, getChatAvailability.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
   }
 
   return http.request(
@@ -33,4 +33,4 @@ export function getChatAvailability(http: HttpClient, rootUrl: string, params: G
   );
 }
 
-getChatAvailability.PATH = '/api/v1/tenants/{tenant}/chat';
+getChatAvailability.PATH = '/api/v1/teams/{team}/chat';

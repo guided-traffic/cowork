@@ -5,7 +5,7 @@ import { BlockKind } from '../models/block-kind';
 export interface DashboardBlock {
 
   /**
-   * The canonical key, <tenant>/<PROJECT>-<number>
+   * The canonical key, <team>/<PROJECT>-<number>
    */
   key: string;
   kind: BlockKind;

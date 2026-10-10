@@ -8,27 +8,28 @@ import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
 import { Member } from '../../models/member';
-import { MemberGrantSet } from '../../models/member-grant-set';
+import { MemberAdd } from '../../models/member-add';
 
-export interface SetMemberGrant$Params {
-
-/**
- * The tenant's slug (docs/adr/0005 D4)
- */
-  tenant: string;
+export interface AddMember$Params {
 
 /**
- * A person's id
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  person_id: string;
-      body: MemberGrantSet
+  team: string;
+
+/**
+ * A UUID the client generates per act and repeats on every retry of it; an
+ * agent's POST requires one (docs/adr/0045 D3, D4).
+ */
+  'Idempotency-Key'?: string;
+      body: MemberAdd
 }
 
-export function setMemberGrant(http: HttpClient, rootUrl: string, params: SetMemberGrant$Params, context?: HttpContext): Observable<StrictHttpResponse<Member>> {
-  const rb = new RequestBuilder(rootUrl, setMemberGrant.PATH, 'put');
+export function addMember(http: HttpClient, rootUrl: string, params: AddMember$Params, context?: HttpContext): Observable<StrictHttpResponse<Member>> {
+  const rb = new RequestBuilder(rootUrl, addMember.PATH, 'post');
   if (params) {
-    rb.path('tenant', params.tenant, {});
-    rb.path('person_id', params.person_id, {});
+    rb.path('team', params.team, {});
+    rb.header('Idempotency-Key', params['Idempotency-Key'], {});
     rb.body(params.body, 'application/json');
   }
 
@@ -42,4 +43,4 @@ export function setMemberGrant(http: HttpClient, rootUrl: string, params: SetMem
   );
 }
 
-setMemberGrant.PATH = '/api/v1/tenants/{tenant}/members/{person_id}/grant';
+addMember.PATH = '/api/v1/teams/{team}/members';

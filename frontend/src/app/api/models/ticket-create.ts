@@ -14,7 +14,7 @@ export interface TicketCreate {
   after?: number;
 
   /**
-   * A member of the tenant
+   * A member of the team
    */
   assignee?: string;
 

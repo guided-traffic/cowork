@@ -7,9 +7,9 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { InterestList } from '../../models/interest-list';
+import { SearchHitList } from '../../models/search-hit-list';
 
-export interface ListInterest$Params {
+export interface SearchTeam$Params {
 
 /**
  * The team's slug (docs/adr/0005 D1, D4)
@@ -17,14 +17,10 @@ export interface ListInterest$Params {
   team: string;
 
 /**
- * The project's key (docs/adr/0007 D1)
+ * The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length
+ * is capped by the server, and a query of white space alone is `validation_failed`
  */
-  project: string;
-
-/**
- * The ticket's number in its project
- */
-  number: number;
+  q: string;
 
 /**
  * The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -35,22 +31,15 @@ export interface ListInterest$Params {
  * Items per page; the server caps it at its configured maximum
  */
   limit?: number;
-
-/**
- * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
- */
-  'If-None-Match'?: string;
 }
 
-export function listInterest(http: HttpClient, rootUrl: string, params: ListInterest$Params, context?: HttpContext): Observable<StrictHttpResponse<InterestList>> {
-  const rb = new RequestBuilder(rootUrl, listInterest.PATH, 'get');
+export function searchTeam(http: HttpClient, rootUrl: string, params: SearchTeam$Params, context?: HttpContext): Observable<StrictHttpResponse<SearchHitList>> {
+  const rb = new RequestBuilder(rootUrl, searchTeam.PATH, 'get');
   if (params) {
     rb.path('team', params.team, {});
-    rb.path('project', params.project, {});
-    rb.path('number', params.number, {});
+    rb.query('q', params.q, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
-    rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
   return http.request(
@@ -58,9 +47,9 @@ export function listInterest(http: HttpClient, rootUrl: string, params: ListInte
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<InterestList>;
+      return r as StrictHttpResponse<SearchHitList>;
     })
   );
 }
 
-listInterest.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/interest';
+searchTeam.PATH = '/api/v1/teams/{team}/search';

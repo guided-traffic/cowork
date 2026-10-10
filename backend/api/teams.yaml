@@ -1,22 +1,22 @@
-# The installation's tenants, /api/v1/tenants: a global administrator lists
+# The installation's teams, /api/v1/teams: a global administrator lists
 # them all and creates one (docs/adr/0005 D5, docs/adr/0034 D2).
-tenants:
+teams:
   get:
-    operationId: listTenants
-    tags: [tenants]
-    summary: Every tenant of the installation, for a global administrator
+    operationId: listTeams
+    tags: [teams]
+    summary: Every team of the installation, for a global administrator
     description: |
-      Every tenant by slug, with the role the caller holds in it — the highest
+      Every team by slug, with the role the caller holds in it — the highest
       of their mapping and their grant — or `null` where they hold none
-      (docs/adr/0034 D2). It is how a global administrator finds a tenant in
+      (docs/adr/0034 D2). It is how a global administrator finds a team in
       which they have no role: there they see its administration — the
-      tenant and its settings, its members, its group mappings — and grant
+      team and its settings, its members, its group mappings — and grant
       themselves a role (`PUT …/members/{person_id}/grant` with their own id),
       and nothing of its work until they have. A person who is not a global
-      administrator is `403 forbidden`; the tenants they belong to are in
+      administrator is `403 forbidden`; the teams they belong to are in
       `GET /api/v1/me`. A browser session only, which no agent mark carries: a
       token is `403 session_required`, so a leaked token of a global
-      administrator lists no tenant beyond the person's own.
+      administrator lists no team beyond the person's own.
     security:
       - sessionCookie: []
     parameters:
@@ -24,22 +24,22 @@ tenants:
       - $ref: './components/parameters.yaml#/Limit'
     responses:
       '200':
-        description: A page of tenants, by slug
+        description: A page of teams, by slug
         content:
           application/json:
             schema:
-              $ref: './components/schemas.yaml#/TenantSummaryList'
+              $ref: './components/schemas.yaml#/TeamSummaryList'
       default:
         $ref: './components/responses.yaml#/Problem'
   post:
-    operationId: createTenant
-    tags: [tenants]
-    summary: Create a tenant
+    operationId: createTeam
+    tags: [teams]
+    summary: Create a team
     description: |
-      A global administrator, in a browser session: no token creates a tenant
+      A global administrator, in a browser session: no token creates a team
       (`403 session_required`), and a person who is not a global administrator
-      is `403 forbidden`. The creator becomes the tenant's first administrator
-      by a marked grant, recorded with the tenant (docs/adr/0032 D7); a global
+      is `403 forbidden`. The creator becomes the team's first administrator
+      by a marked grant, recorded with the team (docs/adr/0032 D7); a global
       administrator has no other role in it (docs/adr/0034 D2). The slug is
       immutable and never reused (docs/adr/0005 D4).
     parameters:
@@ -51,13 +51,13 @@ tenants:
       content:
         application/json:
           schema:
-            $ref: './components/schemas.yaml#/TenantCreate'
+            $ref: './components/schemas.yaml#/TeamCreate'
           example:
             slug: acme
             name: Acme
     responses:
       '201':
-        description: The tenant
+        description: The team
         headers:
           ETag:
             $ref: './components/headers.yaml#/ETag'
@@ -66,7 +66,7 @@ tenants:
         content:
           application/json:
             schema:
-              $ref: './components/schemas.yaml#/Tenant'
+              $ref: './components/schemas.yaml#/Team'
             example:
               slug: acme
               name: Acme
@@ -78,40 +78,40 @@ tenants:
               updated_at: '2026-03-02T08:45:00Z'
       default:
         $ref: './components/responses.yaml#/Problem'
-# Everything under one tenant, /api/v1/tenants/{tenant}/… (docs/adr/0023 D1).
-# An unknown slug, a tenant the person is not a member of, and a token
-# restricted to another tenant answer alike: 404 not_found (D5). A global
-# administrator without a role in the tenant reaches, in a browser session that
-# no agent marks, its administration — getTenant, listMembers,
+# Everything under one team, /api/v1/teams/{team}/… (docs/adr/0023 D1).
+# An unknown slug, a team the person is not a member of, and a token
+# restricted to another team answer alike: 404 not_found (D5). A global
+# administrator without a role in the team reaches, in a browser session that
+# no agent marks, its administration — getTeam, listMembers,
 # listGroupMappings — and the grant of a role to themselves, setMemberGrant;
-# every other route of the tenant answers them that 404 too (docs/adr/0034 D2).
-tenant:
+# every other route of the team answers them that 404 too (docs/adr/0034 D2).
+team:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
-    operationId: getTenant
-    tags: [tenants]
-    summary: The tenant and its settings
+    operationId: getTeam
+    tags: [teams]
+    summary: The team and its settings
     description: |
       Every member reads it; a global administrator who holds no role in the
-      tenant too, in a browser session, as part of its administration
+      team too, in a browser session, as part of its administration
       (docs/adr/0034 D2).
     responses:
       '200':
-        description: The tenant
+        description: The team
         headers:
           ETag:
             $ref: './components/headers.yaml#/ETag'
         content:
           application/json:
             schema:
-              $ref: './components/schemas.yaml#/Tenant'
+              $ref: './components/schemas.yaml#/Team'
       default:
         $ref: './components/responses.yaml#/Problem'
   patch:
-    operationId: updateTenant
-    tags: [tenants]
-    summary: Change the tenant's name or settings
+    operationId: updateTeam
+    tags: [teams]
+    summary: Change the team's name or settings
     description: |
       An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
       `If-Match` is required (docs/adr/0050 D3).
@@ -128,30 +128,30 @@ tenant:
       content:
         application/json:
           schema:
-            $ref: './components/schemas.yaml#/TenantPatch'
+            $ref: './components/schemas.yaml#/TeamPatch'
           example:
             members_create_projects: false
     responses:
       '200':
-        description: The changed tenant
+        description: The changed team
         headers:
           ETag:
             $ref: './components/headers.yaml#/ETag'
         content:
           application/json:
             schema:
-              $ref: './components/schemas.yaml#/Tenant'
+              $ref: './components/schemas.yaml#/Team'
       default:
         $ref: './components/responses.yaml#/Problem'
 audit:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: listAudit
-    tags: [tenants]
-    summary: The tenant's audit record (docs/adr/0026 D6)
+    tags: [teams]
+    summary: The team's audit record (docs/adr/0026 D6)
     description: |
-      For the tenant's administrators. Filters combine with AND; a repeated
+      For the team's administrators. Filters combine with AND; a repeated
       `action` with OR. Newest first, paged by cursor, or by number with a total
       (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
       cell that could start a formula prefixed with an apostrophe. A CSV answer
@@ -208,7 +208,7 @@ audit:
         $ref: './components/responses.yaml#/Problem'
 projects:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: listProjects
     tags: [projects]
@@ -243,13 +243,13 @@ projects:
     tags: [projects]
     summary: Create a project
     description: |
-      `write` scope. A member creates projects while the tenant allows it,
+      `write` scope. A member creates projects while the team allows it,
       an administrator always (docs/adr/0034 D9); an agent needs the
       `create-project` capability (docs/adr/0043 D4).
 
       With `repository`, the project is created and the repository bound in one
       recorded act, and the creation is idempotent over the remote
-      (docs/adr/0066 D3, D5): when a project of the tenant binds the repository
+      (docs/adr/0066 D3, D5): when a project of the team binds the repository
       and path already, the answer is 200 with that project and nothing is
       created or bound — 409 `repository_bound` when the caller cannot see it.
     parameters:
@@ -269,7 +269,7 @@ projects:
               remote: git@github.com:acme/website.git
     responses:
       '200':
-        description: A project of the tenant binds the repository already; that project
+        description: A project of the team binds the repository already; that project
         headers:
           ETag:
             $ref: './components/headers.yaml#/ETag'
@@ -294,7 +294,7 @@ projects:
         $ref: './components/responses.yaml#/Problem'
 project:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
   get:
     operationId: getProject
@@ -345,7 +345,7 @@ project:
         $ref: './components/responses.yaml#/Problem'
 projectArchive:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
   put:
     operationId: archiveProject
@@ -381,7 +381,7 @@ projectArchive:
         $ref: './components/responses.yaml#/Problem'
 projectRank:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
   put:
     operationId: sortProjectRank
@@ -415,13 +415,13 @@ projectRank:
               $ref: './components/schemas.yaml#/ProjectRankSorted'
       default:
         $ref: './components/responses.yaml#/Problem'
-tenantTickets:
+teamTickets:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
-    operationId: listTenantTickets
+    operationId: listTeamTickets
     tags: [tickets]
-    summary: The tenant's tickets across its projects, newest first
+    summary: The team's tickets across its projects, newest first
     description: |
       The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
       value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
@@ -476,7 +476,7 @@ tenantTickets:
         $ref: './components/responses.yaml#/Problem'
 projectTickets:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
   get:
     operationId: listProjectTickets
@@ -620,7 +620,7 @@ projectTickets:
         $ref: './components/responses.yaml#/Problem'
 ticket:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:
@@ -691,11 +691,11 @@ ticket:
   delete:
     operationId: deleteTicket
     tags: [tickets]
-    summary: Delete a ticket into the tenant's bin
+    summary: Delete a ticket into the team's bin
     description: |
-      A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+      A team administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
       docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
-      like a missing one everywhere but the tenant's bin (`GET …/deleted-tickets`) — every route of
+      like a missing one everywhere but the team's bin (`GET …/deleted-tickets`) — every route of
       it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
       lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
       (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
@@ -709,16 +709,16 @@ ticket:
         $ref: './components/responses.yaml#/Problem'
 deletedTickets:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: listDeletedTickets
     tags: [tickets]
-    summary: The tenant's bin of deleted tickets
+    summary: The team's bin of deleted tickets
     description: |
-      The tenant administrators' view of the deleted tickets they can see, the last deleted first,
+      The team administrators' view of the deleted tickets they can see, the last deleted first,
       each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
       list in which a deleted ticket exists. An administrator's, with `read` scope; a token
-      restricted to a project is refused like an unknown tenant.
+      restricted to a project is refused like an unknown team.
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
@@ -739,14 +739,14 @@ deletedTickets:
         $ref: './components/responses.yaml#/Problem'
 deletedTicket:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/TicketKeyPath'
   delete:
     operationId: purgeTicket
     tags: [tickets]
     summary: Purge a deleted ticket for good
     description: |
-      A tenant administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+      A team administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
       **in a browser session only**: the one irreversible act on a ticket, so a token — an
       administrator's `admin` token included — answers `403 session_required`, and the purge job
       does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
@@ -765,14 +765,14 @@ deletedTicket:
         $ref: './components/responses.yaml#/Problem'
 deletedTicketRestore:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/TicketKeyPath'
   put:
     operationId: restoreTicket
     tags: [tickets]
     summary: Restore a deleted ticket from the bin
     description: |
-      A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+      A team administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
       docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
       as it was, its links, comments and place in the rank with it; the version rises. Recorded as
       `restored` and published.
@@ -790,7 +790,7 @@ deletedTicketRestore:
         $ref: './components/responses.yaml#/Problem'
 ticketBody:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:
@@ -858,7 +858,7 @@ ticketBody:
         $ref: './components/responses.yaml#/Problem'
 ticketHorizon:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   put:
@@ -899,7 +899,7 @@ ticketHorizon:
         $ref: './components/responses.yaml#/Problem'
 ticketConfidential:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   put:
@@ -907,7 +907,7 @@ ticketConfidential:
     tags: [tickets]
     summary: Set or lift the confidential flag
     description: |
-      A tenant administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
+      A team administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
       Lifting needs a reason and is recorded (D3), and a browser session: it shows the
       ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
       Setting the flag stays open to an administrator's token.

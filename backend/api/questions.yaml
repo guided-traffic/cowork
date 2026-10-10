@@ -1,7 +1,7 @@
 # Open questions on a ticket (docs/adr/0011 D2, docs/adr/0066 D8).
 questions:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:
@@ -33,7 +33,7 @@ questions:
     description: |
       A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The person
       asked must be a member who can see the ticket; without one the question is open in the
-      tenant.
+      team.
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
     requestBody:
@@ -65,7 +65,7 @@ questions:
         $ref: './components/responses.yaml#/Problem'
 question:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/QuestionNumber'
@@ -114,7 +114,7 @@ question:
         $ref: './components/responses.yaml#/Problem'
 questionAnswer:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/QuestionNumber'
@@ -124,7 +124,7 @@ questionAnswer:
     summary: Answer a question, or change one's answer
     description: |
       Only a person decides an answer (docs/adr/0011 D2): the person asked, or any member when
-      the question is open in the tenant; a person changes their own answer. An agent-marked
+      the question is open in the team; a person changes their own answer. An agent-marked
       request needs `record-answer` and writes its person's answer down, marked as recorded by
       an agent, and changes only an answer an agent of the same person recorded
       (docs/adr/0066 D8). `If-Match` once the question is answered.
@@ -176,7 +176,7 @@ questionAnswer:
         $ref: './components/responses.yaml#/Problem'
 questionWithdrawal:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/QuestionNumber'

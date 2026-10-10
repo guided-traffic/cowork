@@ -6,11 +6,11 @@ import { OrphanedObject } from '../models/orphaned-object';
 import { OrphanRemovalRecord } from '../models/orphan-removal-record';
 
 /**
- * The tenant's latest consistency check of its attachments (docs/adr/0059 D4): the files whose
+ * The team's latest consistency check of its attachments (docs/adr/0059 D4): the files whose
  * metadata is there and whose bytes the bucket lacks — dangling — and the objects under the
- * tenant's prefix that no metadata names — orphans —, with the counts exact and each list at most
+ * team's prefix that no metadata names — orphans —, with the counts exact and each list at most
  * 1000 entries long. `check_id` is null, and everything else of the check empty, while no check has
- * run in the tenant. Beside it, `last_exported_at`: the second line of the tenant's backup
+ * run in the team. Beside it, `last_exported_at`: the second line of the team's backup
  * (docs/adr/0059 D2).
  */
 export interface AttachmentConsistency {
@@ -37,8 +37,8 @@ export interface AttachmentConsistency {
   dangling_attachments: Array<DanglingAttachment>;
 
   /**
-   * When a project of the tenant or the whole tenant was last exported, by anybody, as the act
-   * `exported` records it; a ticket's Markdown or context is no export of the tenant. Null while
+   * When a project of the team or the whole team was last exported, by anybody, as the act
+   * `exported` records it; a ticket's Markdown or context is no export of the team. Null while
    * none was.
    */
   last_exported_at: (string | null);

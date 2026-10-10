@@ -7,22 +7,28 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { Tenant } from '../../models/tenant';
-import { TenantCreate } from '../../models/tenant-create';
+import { GroupMapping } from '../../models/group-mapping';
+import { GroupMappingCreate } from '../../models/group-mapping-create';
 
-export interface CreateTenant$Params {
+export interface CreateGroupMapping$Params {
+
+/**
+ * The team's slug (docs/adr/0005 D1, D4)
+ */
+  team: string;
 
 /**
  * A UUID the client generates per act and repeats on every retry of it; an
  * agent's POST requires one (docs/adr/0045 D3, D4).
  */
   'Idempotency-Key'?: string;
-      body: TenantCreate
+      body: GroupMappingCreate
 }
 
-export function createTenant(http: HttpClient, rootUrl: string, params: CreateTenant$Params, context?: HttpContext): Observable<StrictHttpResponse<Tenant>> {
-  const rb = new RequestBuilder(rootUrl, createTenant.PATH, 'post');
+export function createGroupMapping(http: HttpClient, rootUrl: string, params: CreateGroupMapping$Params, context?: HttpContext): Observable<StrictHttpResponse<GroupMapping>> {
+  const rb = new RequestBuilder(rootUrl, createGroupMapping.PATH, 'post');
   if (params) {
+    rb.path('team', params.team, {});
     rb.header('Idempotency-Key', params['Idempotency-Key'], {});
     rb.body(params.body, 'application/json');
   }
@@ -32,9 +38,9 @@ export function createTenant(http: HttpClient, rootUrl: string, params: CreateTe
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<Tenant>;
+      return r as StrictHttpResponse<GroupMapping>;
     })
   );
 }
 
-createTenant.PATH = '/api/v1/tenants';
+createGroupMapping.PATH = '/api/v1/teams/{team}/group-mappings';

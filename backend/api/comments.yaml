@@ -1,7 +1,7 @@
 # The comment thread and the activity list of a ticket (docs/adr/0015).
 comments:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:
@@ -47,7 +47,7 @@ comments:
             body: |-
               Reproduced with Safari 18.0 on macOS 15: the request carries the password without its trailing space.
 
-              ![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)
+              ![The failed sign-in](/api/v1/teams/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)
 
               @Ada Lovelace, see Q1 before we change the form.
             mentions: [019cadb4-4b00-7719-ade7-c2d450e9b5f3]
@@ -67,7 +67,7 @@ comments:
         $ref: './components/responses.yaml#/Problem'
 comment:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/CommentID'
@@ -108,7 +108,7 @@ comment:
             body: |-
               Reproduced with Safari 18.0 and 18.1 on macOS 15: the request carries the password without its trailing space. Chrome and Firefox send it whole.
 
-              ![The failed sign-in](/api/v1/tenants/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)
+              ![The failed sign-in](/api/v1/teams/acme/projects/WEB/tickets/42/attachments/01a10c89-3100-77d9-8eb9-8c1723d7d64c/content)
 
               @Ada Lovelace, see Q1 before we change the form.
     responses:
@@ -125,7 +125,7 @@ comment:
         $ref: './components/responses.yaml#/Problem'
 commentRevisions:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/CommentID'
@@ -147,7 +147,7 @@ commentRevisions:
         $ref: './components/responses.yaml#/Problem'
 commentWithdrawal:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/CommentID'
@@ -157,7 +157,7 @@ commentWithdrawal:
     summary: Withdraw a comment
     description: |
       Hides the text and keeps the entry (docs/adr/0015 D3): the author, a person for their
-      agents' comments, an agent for comments an agent of the same person wrote, or a tenant
+      agents' comments, an agent for comments an agent of the same person wrote, or a team
       administrator. Idempotent.
     responses:
       '200':
@@ -188,7 +188,7 @@ commentWithdrawal:
         $ref: './components/responses.yaml#/Problem'
 activity:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:

@@ -62,7 +62,7 @@ export interface ImportFile {
   format: (ImportFormat | null);
 
   /**
-   * The key the ticket gets — or got — in the project, `<tenant>/<PROJECT>-<n>`
+   * The key the ticket gets — or got — in the project, `<team>/<PROJECT>-<n>`
    */
   key: (string | null);
   links: Array<ImportLink>;

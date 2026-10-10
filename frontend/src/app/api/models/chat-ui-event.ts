@@ -10,8 +10,8 @@ export interface ChatUiEvent {
   action: ChatUiAction;
 
   /**
-   * The page to show, a path of this UI in the turn's tenant: /t/<tenant>/tickets/<PROJECT>-<number>,
-   * /t/<tenant>/p/<PROJECT>/backlog or /t/<tenant>/p/<PROJECT>/board
+   * The page to show, a path of this UI in the turn's team: /t/<team>/tickets/<PROJECT>-<number>,
+   * /t/<team>/p/<PROJECT>/backlog or /t/<team>/p/<PROJECT>/board
    */
   path: string;
 }

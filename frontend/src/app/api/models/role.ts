@@ -3,7 +3,7 @@
 
 
 /**
- * A tenant role, lowest first (docs/adr/0034 D1)
+ * A team role, lowest first (docs/adr/0034 D1)
  */
 export type Role = 'viewer' | 'member' | 'admin';
 

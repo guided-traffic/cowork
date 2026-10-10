@@ -6,7 +6,7 @@ import { TicketState } from '../models/ticket-state';
 import { TicketType } from '../models/ticket-type';
 
 /**
- * A ticket in its tenant's bin (docs/adr/0024 D1): what an administrator needs to restore or
+ * A ticket in its team's bin (docs/adr/0024 D1): what an administrator needs to restore or
  * purge it.
  */
 export interface DeletedTicket {
@@ -15,7 +15,7 @@ export interface DeletedTicket {
   deleted_by: Person;
 
   /**
-   * <tenant>/<PROJECT>-<number>
+   * <team>/<PROJECT>-<number>
    */
   key: string;
   number: number;

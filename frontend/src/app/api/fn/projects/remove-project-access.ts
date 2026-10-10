@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface RemoveProjectAccess$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -29,7 +29,7 @@ export interface RemoveProjectAccess$Params {
 export function removeProjectAccess(http: HttpClient, rootUrl: string, params: RemoveProjectAccess$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, removeProjectAccess.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('person_id', params.person_id, {});
   }
@@ -44,4 +44,4 @@ export function removeProjectAccess(http: HttpClient, rootUrl: string, params: R
   );
 }
 
-removeProjectAccess.PATH = '/api/v1/tenants/{tenant}/projects/{project}/access/{person_id}';
+removeProjectAccess.PATH = '/api/v1/teams/{team}/projects/{project}/access/{person_id}';

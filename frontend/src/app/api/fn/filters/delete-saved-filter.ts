@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface DeleteSavedFilter$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The saved filter's id
@@ -24,7 +24,7 @@ export interface DeleteSavedFilter$Params {
 export function deleteSavedFilter(http: HttpClient, rootUrl: string, params: DeleteSavedFilter$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, deleteSavedFilter.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('filter', params.filter, {});
   }
 
@@ -38,4 +38,4 @@ export function deleteSavedFilter(http: HttpClient, rootUrl: string, params: Del
   );
 }
 
-deleteSavedFilter.PATH = '/api/v1/tenants/{tenant}/filters/{filter}';
+deleteSavedFilter.PATH = '/api/v1/teams/{team}/filters/{filter}';

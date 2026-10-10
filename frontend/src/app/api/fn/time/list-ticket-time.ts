@@ -12,9 +12,9 @@ import { TimeEntryList } from '../../models/time-entry-list';
 export interface ListTicketTime$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -45,7 +45,7 @@ export interface ListTicketTime$Params {
 export function listTicketTime(http: HttpClient, rootUrl: string, params: ListTicketTime$Params, context?: HttpContext): Observable<StrictHttpResponse<TimeEntryList>> {
   const rb = new RequestBuilder(rootUrl, listTicketTime.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.query('cursor', params.cursor, {});
@@ -63,4 +63,4 @@ export function listTicketTime(http: HttpClient, rootUrl: string, params: ListTi
   );
 }
 
-listTicketTime.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries';
+listTicketTime.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries';

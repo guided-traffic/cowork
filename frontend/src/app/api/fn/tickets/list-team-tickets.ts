@@ -9,12 +9,12 @@ import { RequestBuilder } from '../../request-builder';
 
 import { TicketList } from '../../models/ticket-list';
 
-export interface ListTenantTickets$Params {
+export interface ListTeamTickets$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * A project key, negatable with !
@@ -111,10 +111,10 @@ export interface ListTenantTickets$Params {
   'If-None-Match'?: string;
 }
 
-export function listTenantTickets(http: HttpClient, rootUrl: string, params: ListTenantTickets$Params, context?: HttpContext): Observable<StrictHttpResponse<TicketList>> {
-  const rb = new RequestBuilder(rootUrl, listTenantTickets.PATH, 'get');
+export function listTeamTickets(http: HttpClient, rootUrl: string, params: ListTeamTickets$Params, context?: HttpContext): Observable<StrictHttpResponse<TicketList>> {
+  const rb = new RequestBuilder(rootUrl, listTeamTickets.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.query('project', params.project, {"style":"form","explode":true});
     rb.query('state', params.state, {"style":"form","explode":true});
     rb.query('type', params.type, {"style":"form","explode":true});
@@ -154,4 +154,4 @@ export function listTenantTickets(http: HttpClient, rootUrl: string, params: Lis
   );
 }
 
-listTenantTickets.PATH = '/api/v1/tenants/{tenant}/tickets';
+listTeamTickets.PATH = '/api/v1/teams/{team}/tickets';

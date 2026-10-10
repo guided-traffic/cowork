@@ -1,20 +1,20 @@
 # Saved filters (docs/adr/0018 D5, docs/adr/0049 D6, D7): a named set of the
-# ticket lists' filter parameters, owned by a person in a tenant, optionally
-# shared with the tenant.
+# ticket lists' filter parameters, owned by a person in a team, optionally
+# shared with the team.
 savedFilters:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: listSavedFilters
     tags: [filters]
-    summary: The caller's saved filters and those shared with the tenant
+    summary: The caller's saved filters and those shared with the team
     description: |
-      The caller's own filters and every filter a member shared with the tenant, oldest first, each
+      The caller's own filters and every filter a member shared with the team, oldest first, each
       with its owner. Every filter is checked against the vocabularies as it is read
       (docs/adr/0049 D7): a value that no longer validates is in `warnings`. A filter of somebody
       else that names a project or a ticket the caller cannot see — or one that no longer exists —
       is answered `redacted`, without its parameters, as an act that names a hidden ticket is
-      (docs/adr/0065 D5). A token restricted to a project is refused like an unknown tenant.
+      (docs/adr/0065 D5). A token restricted to a project is refused like an unknown team.
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
@@ -41,7 +41,7 @@ savedFilters:
       The caller's own filter: any role, with `write` scope. The parameters are the ticket lists'
       (docs/adr/0049 D1) and are refused as the lists refuse them — an unknown parameter or a value
       outside its vocabulary is 400 at `/parameters/<name>` (D4). `me` stays `me`: whoever applies
-      the filter is meant. `shared` shows it to every member of the tenant with the owner beside
+      the filter is meant. `shared` shows it to every member of the team with the owner beside
       it. Recorded as `created`.
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
@@ -75,7 +75,7 @@ savedFilters:
         $ref: './components/responses.yaml#/Problem'
 savedFilter:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/SavedFilterID'
   get:
     operationId: getSavedFilter
@@ -100,8 +100,8 @@ savedFilter:
     summary: Rename, change, share or unshare a saved filter
     description: |
       Its owner's act with `write` scope and `If-Match` (docs/adr/0050 D3); `parameters` replaces
-      the whole set, checked as on creation. A tenant administrator unshares another person's
-      shared filter — one whose owner left the tenant among them — with `{"shared": false}` and
+      the whole set, checked as on creation. A team administrator unshares another person's
+      shared filter — one whose owner left the team among them — with `{"shared": false}` and
       nothing else, an administration act with `admin` scope that no agent makes
       (docs/adr/0018 D5, docs/adr/0043 D3): any other change of it is 403 `forbidden`, a token
       with less than `admin` scope 403 `insufficient_scope`, an agent 403 `agent_forbidden`; the
@@ -137,8 +137,8 @@ savedFilter:
     description: |
       Its owner's act with `write` scope, and never an agent's: a deletion is on the hard-off list
       (docs/adr/0043 D3), so an agent's request is 403 `agent_forbidden`, `hard-off: deleting,
-      restoring or purging`, before the filter is looked at. A tenant administrator deletes another
-      person's shared filter — one whose owner left the tenant among them —, an administration act
+      restoring or purging`, before the filter is looked at. A team administrator deletes another
+      person's shared filter — one whose owner left the team among them —, an administration act
       with `admin` scope (docs/adr/0018 D5): a token with less than `admin` scope is 403
       `insufficient_scope`. Another person's shared filter is 403 `forbidden` to everyone else, a
       filter the caller cannot see — or one already gone, or no longer shared — 404. Recorded as

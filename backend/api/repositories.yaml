@@ -1,23 +1,23 @@
 # The repositories a project owns, bound by their normalised remote identity,
-# and the lookup across the person's tenants (docs/adr/0066, docs/adr/0006 D3).
+# and the lookup across the person's teams (docs/adr/0066, docs/adr/0006 D3).
 lookup:
   get:
     operationId: lookupRepository
     tags: [repositories]
-    summary: The project a repository is bound to, across the person's tenants
+    summary: The project a repository is bound to, across the person's teams
     description: |
       Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
-      searches the projects the caller sees in every tenant of the person — a
-      restricted token in its own tenant and project only (docs/adr/0035 D3). The
+      searches the projects the caller sees in every team of the person — a
+      restricted token in its own team and project only (docs/adr/0035 D3). The
       remotes are tried in the order given, `origin` first by convention; the
       first one with a binding decides, and of its bindings those whose
       sub-directory covers `path`, the most specific first. One binding is
       `bound`; several are `ambiguous`, a data error the person resolves
       (docs/adr/0066 D6); none is `unbound`, with a proposal for a project made
-      from the first remote that has an identity (D2): the tenant — the only one
+      from the first remote that has an identity (D2): the team — the only one
       the caller may create projects in, else the one that binds repositories
       under the same owner, else the list to choose from — a key from the
-      repository's name, free in each tenant offered, and the name itself. A
+      repository's name, free in each team offered, and the name itself. A
       caller who may create a project nowhere gets no proposal and the reason.
       A remote that names no host is reported with a null identity. Send no
       credentials: cowork stores none, and a proxy's log may carry the query.
@@ -48,7 +48,7 @@ lookup:
         $ref: './components/responses.yaml#/Problem'
 repositories:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
   get:
     operationId: listRepositories
@@ -73,10 +73,10 @@ repositories:
     description: |
       Idempotent over the identity and the path: a repository the project binds
       already answers 200 and keeps the remote as last given (docs/adr/0066 D1,
-      D5); one another project of the tenant binds is 409 `repository_bound`, and
+      D5); one another project of the team binds is 409 `repository_bound`, and
       names that project only to a caller who sees it. Binding is the act of
       creating a project (docs/adr/0043 D4): `write` scope, an administrator, or
-      a member while the tenant lets members create projects
+      a member while the team lets members create projects
       (docs/adr/0034 D9), and an agent needs `create-project`. The remote's
       credentials are never stored.
     parameters:
@@ -109,7 +109,7 @@ repositories:
         $ref: './components/responses.yaml#/Problem'
 repository:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/RepositoryID'
   delete:

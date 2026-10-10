@@ -13,9 +13,9 @@ import { SavedFilterPatch } from '../../models/saved-filter-patch';
 export interface UpdateSavedFilter$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The saved filter's id
@@ -33,7 +33,7 @@ export interface UpdateSavedFilter$Params {
 export function updateSavedFilter(http: HttpClient, rootUrl: string, params: UpdateSavedFilter$Params, context?: HttpContext): Observable<StrictHttpResponse<SavedFilter>> {
   const rb = new RequestBuilder(rootUrl, updateSavedFilter.PATH, 'patch');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('filter', params.filter, {});
     rb.header('If-Match', params['If-Match'], {});
     rb.body(params.body, 'application/json');
@@ -49,4 +49,4 @@ export function updateSavedFilter(http: HttpClient, rootUrl: string, params: Upd
   );
 }
 
-updateSavedFilter.PATH = '/api/v1/tenants/{tenant}/filters/{filter}';
+updateSavedFilter.PATH = '/api/v1/teams/{team}/filters/{filter}';

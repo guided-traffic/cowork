@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface RemoveInterest$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -29,7 +29,7 @@ export interface RemoveInterest$Params {
 export function removeInterest(http: HttpClient, rootUrl: string, params: RemoveInterest$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, removeInterest.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
   }
@@ -44,4 +44,4 @@ export function removeInterest(http: HttpClient, rootUrl: string, params: Remove
   );
 }
 
-removeInterest.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest';
+removeInterest.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/interest';

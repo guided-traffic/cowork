@@ -13,16 +13,16 @@ import { DanglingAcceptance } from '../../models/dangling-acceptance';
 export interface AcceptDanglingAttachments$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
       body: ConsistencyCheckRef
 }
 
 export function acceptDanglingAttachments(http: HttpClient, rootUrl: string, params: AcceptDanglingAttachments$Params, context?: HttpContext): Observable<StrictHttpResponse<DanglingAcceptance>> {
   const rb = new RequestBuilder(rootUrl, acceptDanglingAttachments.PATH, 'post');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.body(params.body, 'application/json');
   }
 
@@ -36,4 +36,4 @@ export function acceptDanglingAttachments(http: HttpClient, rootUrl: string, par
   );
 }
 
-acceptDanglingAttachments.PATH = '/api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance';
+acceptDanglingAttachments.PATH = '/api/v1/teams/{team}/attachment-consistency/dangling-acceptance';

@@ -22,12 +22,21 @@ export interface ExportManifest {
   format: 'cowork export v1';
 
   /**
-   * The project of a project export; every project the caller sees, by key, of a tenant export
+   * The project of a project export; every project the caller sees, by key, of a team export
    */
   projects: Array<ExportManifestProject>;
 
   /**
-   * The tenant's slug
+   * The team's slug
+   */
+  team: string;
+
+  /**
+   * Deprecated, replaced by `team`, which it repeats; written for one release and dropped in a
+   * later one (docs/adr/0005 D1, docs/adr/0046 D7). The importer reads an archive that names only
+   * `tenant`, as every archive before carries it, for good (docs/adr/0051 D4)
+   *
+   * @deprecated
    */
   tenant: string;
 

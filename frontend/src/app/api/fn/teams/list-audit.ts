@@ -7,39 +7,37 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
+import { AuditAction } from '../../models/audit-action';
+import { AuditList } from '../../models/audit-list';
 
-export interface ListTenantTime$Csv$Params {
+export interface ListAudit$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
- * The first day of the period, inclusive
+ * A person's id
+ */
+  actor?: string;
+
+/**
+ * A token's id
+ */
+  token?: string;
+  action?: Array<AuditAction>;
+  entity_type?: string;
+
+/**
+ * Inclusive lower bound of the time
  */
   from?: string;
 
 /**
- * The last day of the period, inclusive
+ * Exclusive upper bound of the time
  */
   to?: string;
-
-/**
- * A project key
- */
-  project?: string;
-
-/**
- * A ticket key, <PROJECT>-<number>
- */
-  ticket?: string;
-
-/**
- * A person id, or me
- */
-  person?: string;
-  include_voided?: boolean;
 
 /**
  * The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -58,16 +56,16 @@ export interface ListTenantTime$Csv$Params {
   per_page?: 25 | 50 | 100;
 }
 
-export function listTenantTime$Csv(http: HttpClient, rootUrl: string, params: ListTenantTime$Csv$Params, context?: HttpContext): Observable<StrictHttpResponse<string>> {
-  const rb = new RequestBuilder(rootUrl, listTenantTime$Csv.PATH, 'get');
+export function listAudit(http: HttpClient, rootUrl: string, params: ListAudit$Params, context?: HttpContext): Observable<StrictHttpResponse<AuditList>> {
+  const rb = new RequestBuilder(rootUrl, listAudit.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
+    rb.query('actor', params.actor, {});
+    rb.query('token', params.token, {});
+    rb.query('action', params.action, {"style":"form","explode":true});
+    rb.query('entity_type', params.entity_type, {});
     rb.query('from', params.from, {});
     rb.query('to', params.to, {});
-    rb.query('project', params.project, {});
-    rb.query('ticket', params.ticket, {});
-    rb.query('person', params.person, {});
-    rb.query('include_voided', params.include_voided, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
     rb.query('page', params.page, {});
@@ -75,13 +73,13 @@ export function listTenantTime$Csv(http: HttpClient, rootUrl: string, params: Li
   }
 
   return http.request(
-    rb.build({ responseType: 'text', accept: 'text/csv', context })
+    rb.build({ responseType: 'json', accept: 'application/json', context })
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<string>;
+      return r as StrictHttpResponse<AuditList>;
     })
   );
 }
 
-listTenantTime$Csv.PATH = '/api/v1/tenants/{tenant}/time-entries';
+listAudit.PATH = '/api/v1/teams/{team}/audit';

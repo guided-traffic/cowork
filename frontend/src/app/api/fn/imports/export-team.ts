@@ -8,18 +8,18 @@ import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
 
-export interface ExportTenant$Params {
+export interface ExportTeam$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 }
 
-export function exportTenant(http: HttpClient, rootUrl: string, params: ExportTenant$Params, context?: HttpContext): Observable<StrictHttpResponse<Blob>> {
-  const rb = new RequestBuilder(rootUrl, exportTenant.PATH, 'get');
+export function exportTeam(http: HttpClient, rootUrl: string, params: ExportTeam$Params, context?: HttpContext): Observable<StrictHttpResponse<Blob>> {
+  const rb = new RequestBuilder(rootUrl, exportTeam.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
   }
 
   return http.request(
@@ -32,4 +32,4 @@ export function exportTenant(http: HttpClient, rootUrl: string, params: ExportTe
   );
 }
 
-exportTenant.PATH = '/api/v1/tenants/{tenant}/export';
+exportTeam.PATH = '/api/v1/teams/{team}/export';

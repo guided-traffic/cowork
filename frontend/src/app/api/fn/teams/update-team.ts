@@ -7,28 +7,28 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { Tenant } from '../../models/tenant';
-import { TenantPatch } from '../../models/tenant-patch';
+import { Team } from '../../models/team';
+import { TeamPatch } from '../../models/team-patch';
 
-export interface UpdateTenant$Params {
+export interface UpdateTeam$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The `ETag` of the version the client read. Required on overwriting writes:
  * without it the answer is 428, with a stale one 412 (docs/adr/0050 D3).
  */
   'If-Match'?: string;
-      body: TenantPatch
+      body: TeamPatch
 }
 
-export function updateTenant(http: HttpClient, rootUrl: string, params: UpdateTenant$Params, context?: HttpContext): Observable<StrictHttpResponse<Tenant>> {
-  const rb = new RequestBuilder(rootUrl, updateTenant.PATH, 'patch');
+export function updateTeam(http: HttpClient, rootUrl: string, params: UpdateTeam$Params, context?: HttpContext): Observable<StrictHttpResponse<Team>> {
+  const rb = new RequestBuilder(rootUrl, updateTeam.PATH, 'patch');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.header('If-Match', params['If-Match'], {});
     rb.body(params.body, 'application/json');
   }
@@ -38,9 +38,9 @@ export function updateTenant(http: HttpClient, rootUrl: string, params: UpdateTe
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<Tenant>;
+      return r as StrictHttpResponse<Team>;
     })
   );
 }
 
-updateTenant.PATH = '/api/v1/tenants/{tenant}';
+updateTeam.PATH = '/api/v1/teams/{team}';

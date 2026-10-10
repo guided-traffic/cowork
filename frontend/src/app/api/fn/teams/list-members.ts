@@ -7,14 +7,14 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { MemberTokenList } from '../../models/member-token-list';
+import { MemberList } from '../../models/member-list';
 
-export interface ListTenantTokens$Params {
+export interface ListMembers$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -38,10 +38,10 @@ export interface ListTenantTokens$Params {
   'If-None-Match'?: string;
 }
 
-export function listTenantTokens(http: HttpClient, rootUrl: string, params: ListTenantTokens$Params, context?: HttpContext): Observable<StrictHttpResponse<MemberTokenList>> {
-  const rb = new RequestBuilder(rootUrl, listTenantTokens.PATH, 'get');
+export function listMembers(http: HttpClient, rootUrl: string, params: ListMembers$Params, context?: HttpContext): Observable<StrictHttpResponse<MemberList>> {
+  const rb = new RequestBuilder(rootUrl, listMembers.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
     rb.query('page', params.page, {});
@@ -54,9 +54,9 @@ export function listTenantTokens(http: HttpClient, rootUrl: string, params: List
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<MemberTokenList>;
+      return r as StrictHttpResponse<MemberList>;
     })
   );
 }
 
-listTenantTokens.PATH = '/api/v1/tenants/{tenant}/tokens';
+listMembers.PATH = '/api/v1/teams/{team}/members';

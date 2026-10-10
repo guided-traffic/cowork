@@ -7,20 +7,20 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { Tenant } from '../../models/tenant';
+import { Team } from '../../models/team';
 
-export interface GetTenant$Params {
+export interface GetTeam$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 }
 
-export function getTenant(http: HttpClient, rootUrl: string, params: GetTenant$Params, context?: HttpContext): Observable<StrictHttpResponse<Tenant>> {
-  const rb = new RequestBuilder(rootUrl, getTenant.PATH, 'get');
+export function getTeam(http: HttpClient, rootUrl: string, params: GetTeam$Params, context?: HttpContext): Observable<StrictHttpResponse<Team>> {
+  const rb = new RequestBuilder(rootUrl, getTeam.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
   }
 
   return http.request(
@@ -28,9 +28,9 @@ export function getTenant(http: HttpClient, rootUrl: string, params: GetTenant$P
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<Tenant>;
+      return r as StrictHttpResponse<Team>;
     })
   );
 }
 
-getTenant.PATH = '/api/v1/tenants/{tenant}';
+getTeam.PATH = '/api/v1/teams/{team}';

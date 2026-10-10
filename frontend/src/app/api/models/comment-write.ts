@@ -6,7 +6,7 @@ export interface CommentWrite {
 
   /**
    * The persons the comment mentions, by id (docs/adr/0015 D5 as amended 2026-10-05): each must be
-   * a member of the tenant who sees the ticket, else `400 validation_failed` at `/mentions/<i>`.
+   * a member of the team who sees the ticket, else `400 validation_failed` at `/mentions/<i>`.
    * Each is told in their inbox (`mentioned`) and watches the ticket while the comment stands. The
    * text names them as the writer likes — the API reads no text, so a name typed without the list
    * tells nobody. Left out of a new comment, nobody is mentioned; left out of an edit, the

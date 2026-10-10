@@ -7,14 +7,14 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { GroupMappingList } from '../../models/group-mapping-list';
+import { MemberTokenList } from '../../models/member-token-list';
 
-export interface ListGroupMappings$Params {
+export interface ListTeamTokens$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -27,17 +27,25 @@ export interface ListGroupMappings$Params {
   limit?: number;
 
 /**
+ * A numbered page, from 1 (docs/adr/0048 D2); not with cursor
+ */
+  page?: number;
+  per_page?: 25 | 50 | 100;
+
+/**
  * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
  */
   'If-None-Match'?: string;
 }
 
-export function listGroupMappings(http: HttpClient, rootUrl: string, params: ListGroupMappings$Params, context?: HttpContext): Observable<StrictHttpResponse<GroupMappingList>> {
-  const rb = new RequestBuilder(rootUrl, listGroupMappings.PATH, 'get');
+export function listTeamTokens(http: HttpClient, rootUrl: string, params: ListTeamTokens$Params, context?: HttpContext): Observable<StrictHttpResponse<MemberTokenList>> {
+  const rb = new RequestBuilder(rootUrl, listTeamTokens.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
+    rb.query('page', params.page, {});
+    rb.query('per_page', params.per_page, {});
     rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
@@ -46,9 +54,9 @@ export function listGroupMappings(http: HttpClient, rootUrl: string, params: Lis
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<GroupMappingList>;
+      return r as StrictHttpResponse<MemberTokenList>;
     })
   );
 }
 
-listGroupMappings.PATH = '/api/v1/tenants/{tenant}/group-mappings';
+listTeamTokens.PATH = '/api/v1/teams/{team}/tokens';

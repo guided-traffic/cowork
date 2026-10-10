@@ -3,7 +3,7 @@
 
 import { MembershipOrigin } from '../models/membership-origin';
 import { Role } from '../models/role';
-import { TenantRef } from '../models/tenant-ref';
+import { TeamRef } from '../models/team-ref';
 export interface Membership {
 
   /**
@@ -12,5 +12,12 @@ export interface Membership {
    */
   origins: Array<MembershipOrigin>;
   role: Role;
-  tenant: TenantRef;
+  team: TeamRef;
+
+  /**
+   * Deprecated, replaced by `team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
+   *
+   * @deprecated
+   */
+  tenant: TeamRef;
 }

@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface ExportTicket$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -29,7 +29,7 @@ export interface ExportTicket$Params {
 export function exportTicket(http: HttpClient, rootUrl: string, params: ExportTicket$Params, context?: HttpContext): Observable<StrictHttpResponse<string>> {
   const rb = new RequestBuilder(rootUrl, exportTicket.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
   }
@@ -44,4 +44,4 @@ export function exportTicket(http: HttpClient, rootUrl: string, params: ExportTi
   );
 }
 
-exportTicket.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown';
+exportTicket.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/markdown';

@@ -12,9 +12,9 @@ import { SavedFilterList } from '../../models/saved-filter-list';
 export interface ListSavedFilters$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -35,7 +35,7 @@ export interface ListSavedFilters$Params {
 export function listSavedFilters(http: HttpClient, rootUrl: string, params: ListSavedFilters$Params, context?: HttpContext): Observable<StrictHttpResponse<SavedFilterList>> {
   const rb = new RequestBuilder(rootUrl, listSavedFilters.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
     rb.header('If-None-Match', params['If-None-Match'], {});
@@ -51,4 +51,4 @@ export function listSavedFilters(http: HttpClient, rootUrl: string, params: List
   );
 }
 
-listSavedFilters.PATH = '/api/v1/tenants/{tenant}/filters';
+listSavedFilters.PATH = '/api/v1/teams/{team}/filters';

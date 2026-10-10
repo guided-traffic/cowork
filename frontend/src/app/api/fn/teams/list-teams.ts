@@ -7,20 +7,9 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { SearchHitList } from '../../models/search-hit-list';
+import { TeamSummaryList } from '../../models/team-summary-list';
 
-export interface SearchTenant$Params {
-
-/**
- * The tenant's slug (docs/adr/0005 D4)
- */
-  tenant: string;
-
-/**
- * The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length
- * is capped by the server, and a query of white space alone is `validation_failed`
- */
-  q: string;
+export interface ListTeams$Params {
 
 /**
  * The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -33,11 +22,9 @@ export interface SearchTenant$Params {
   limit?: number;
 }
 
-export function searchTenant(http: HttpClient, rootUrl: string, params: SearchTenant$Params, context?: HttpContext): Observable<StrictHttpResponse<SearchHitList>> {
-  const rb = new RequestBuilder(rootUrl, searchTenant.PATH, 'get');
+export function listTeams(http: HttpClient, rootUrl: string, params?: ListTeams$Params, context?: HttpContext): Observable<StrictHttpResponse<TeamSummaryList>> {
+  const rb = new RequestBuilder(rootUrl, listTeams.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
-    rb.query('q', params.q, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
   }
@@ -47,9 +34,9 @@ export function searchTenant(http: HttpClient, rootUrl: string, params: SearchTe
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<SearchHitList>;
+      return r as StrictHttpResponse<TeamSummaryList>;
     })
   );
 }
 
-searchTenant.PATH = '/api/v1/tenants/{tenant}/search';
+listTeams.PATH = '/api/v1/teams';

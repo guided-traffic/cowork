@@ -6,7 +6,7 @@ import { ChatUnavailableReason } from '../models/chat-unavailable-reason';
 export interface ChatAvailability {
 
   /**
-   * The members of the tenant may hold a conversation (POST …/chat)
+   * The members of the team may hold a conversation (POST …/chat)
    */
   available: boolean;
 

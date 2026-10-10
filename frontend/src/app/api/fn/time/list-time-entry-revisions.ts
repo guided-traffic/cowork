@@ -12,9 +12,9 @@ import { TimeEntryRevisionList } from '../../models/time-entry-revision-list';
 export interface ListTimeEntryRevisions$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -45,7 +45,7 @@ export interface ListTimeEntryRevisions$Params {
 export function listTimeEntryRevisions(http: HttpClient, rootUrl: string, params: ListTimeEntryRevisions$Params, context?: HttpContext): Observable<StrictHttpResponse<TimeEntryRevisionList>> {
   const rb = new RequestBuilder(rootUrl, listTimeEntryRevisions.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('entry', params.entry, {});
@@ -63,4 +63,4 @@ export function listTimeEntryRevisions(http: HttpClient, rootUrl: string, params
   );
 }
 
-listTimeEntryRevisions.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}/revisions';
+listTimeEntryRevisions.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries/{entry}/revisions';

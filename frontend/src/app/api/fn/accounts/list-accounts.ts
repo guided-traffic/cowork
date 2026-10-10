@@ -12,9 +12,9 @@ import { AccountList } from '../../models/account-list';
 export interface ListAccounts$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -30,7 +30,7 @@ export interface ListAccounts$Params {
 export function listAccounts(http: HttpClient, rootUrl: string, params: ListAccounts$Params, context?: HttpContext): Observable<StrictHttpResponse<AccountList>> {
   const rb = new RequestBuilder(rootUrl, listAccounts.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
   }
@@ -45,4 +45,4 @@ export function listAccounts(http: HttpClient, rootUrl: string, params: ListAcco
   );
 }
 
-listAccounts.PATH = '/api/v1/tenants/{tenant}/accounts';
+listAccounts.PATH = '/api/v1/teams/{team}/accounts';

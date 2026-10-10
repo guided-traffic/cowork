@@ -4,12 +4,19 @@
   "description": "The optional binding of a repository to a cowork project (docs/adr/0066 D4). A repository is found by its remote; this file is needed only for a repository without a remote, or to bind a fork to the original's project. When it is present it wins, and a disagreement with the server's binding is reported. The nearest file at or above the working directory applies.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["tenant", "project"],
+  "required": ["project"],
+  "anyOf": [{"required": ["team"]}, {"required": ["tenant"]}],
   "properties": {
+    "team": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+      "description": "The team's slug (docs/adr/0005 D1)."
+    },
     "tenant": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
-      "description": "The tenant's slug."
+      "description": "Deprecated: the team's slug under the name before, replaced by `team` and read for one release beside it; both together must name the same slug (docs/adr/0005 D1).",
+      "deprecated": true
     },
     "project": {
       "type": "string",

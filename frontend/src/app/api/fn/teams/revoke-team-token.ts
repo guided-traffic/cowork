@@ -8,19 +8,19 @@ import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
 
-export interface RevokeTenantToken$Params {
+export interface RevokeTeamToken$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
   token_id: string;
 }
 
-export function revokeTenantToken(http: HttpClient, rootUrl: string, params: RevokeTenantToken$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
-  const rb = new RequestBuilder(rootUrl, revokeTenantToken.PATH, 'delete');
+export function revokeTeamToken(http: HttpClient, rootUrl: string, params: RevokeTeamToken$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
+  const rb = new RequestBuilder(rootUrl, revokeTeamToken.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('token_id', params.token_id, {});
   }
 
@@ -34,4 +34,4 @@ export function revokeTenantToken(http: HttpClient, rootUrl: string, params: Rev
   );
 }
 
-revokeTenantToken.PATH = '/api/v1/tenants/{tenant}/tokens/{token_id}';
+revokeTeamToken.PATH = '/api/v1/teams/{team}/tokens/{token_id}';

@@ -12,9 +12,9 @@ import { CommentRevisionList } from '../../models/comment-revision-list';
 export interface ListCommentRevisions$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -45,7 +45,7 @@ export interface ListCommentRevisions$Params {
 export function listCommentRevisions(http: HttpClient, rootUrl: string, params: ListCommentRevisions$Params, context?: HttpContext): Observable<StrictHttpResponse<CommentRevisionList>> {
   const rb = new RequestBuilder(rootUrl, listCommentRevisions.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('comment', params.comment, {});
@@ -63,4 +63,4 @@ export function listCommentRevisions(http: HttpClient, rootUrl: string, params: 
   );
 }
 
-listCommentRevisions.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}/revisions';
+listCommentRevisions.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments/{comment}/revisions';

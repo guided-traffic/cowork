@@ -14,7 +14,7 @@ import { DashboardTime } from '../models/dashboard-time';
 import { DashboardWeek } from '../models/dashboard-week';
 
 /**
- * The tenant's dashboard, the nine fixed tiles of docs/adr/0018 D6, read in one read-only
+ * The team's dashboard, the nine fixed tiles of docs/adr/0018 D6, read in one read-only
  * transaction. Every tile counts only what the caller can see: the visibility predicate holds
  * each ticket, question and time entry it reads, so a restricted project or a confidential
  * ticket the caller cannot see counts nowhere and is named nowhere (docs/adr/0034 D4,

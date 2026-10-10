@@ -13,9 +13,9 @@ import { Transition } from '../../models/transition';
 export interface TransitionTicket$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -38,7 +38,7 @@ export interface TransitionTicket$Params {
 export function transitionTicket(http: HttpClient, rootUrl: string, params: TransitionTicket$Params, context?: HttpContext): Observable<StrictHttpResponse<Ticket>> {
   const rb = new RequestBuilder(rootUrl, transitionTicket.PATH, 'post');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.header('Idempotency-Key', params['Idempotency-Key'], {});
@@ -55,4 +55,4 @@ export function transitionTicket(http: HttpClient, rootUrl: string, params: Tran
   );
 }
 
-transitionTicket.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions';
+transitionTicket.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/transitions';

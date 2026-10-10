@@ -7,37 +7,40 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { AuditAction } from '../../models/audit-action';
-import { AuditList } from '../../models/audit-list';
+import { TimeEntryList } from '../../models/time-entry-list';
 
-export interface ListAudit$Params {
+export interface ListTeamTime$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
- * A person's id
- */
-  actor?: string;
-
-/**
- * A token's id
- */
-  token?: string;
-  action?: Array<AuditAction>;
-  entity_type?: string;
-
-/**
- * Inclusive lower bound of the time
+ * The first day of the period, inclusive
  */
   from?: string;
 
 /**
- * Exclusive upper bound of the time
+ * The last day of the period, inclusive
  */
   to?: string;
+
+/**
+ * A project key
+ */
+  project?: string;
+
+/**
+ * A ticket key, <PROJECT>-<number>
+ */
+  ticket?: string;
+
+/**
+ * A person id, or me
+ */
+  person?: string;
+  include_voided?: boolean;
 
 /**
  * The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -56,16 +59,16 @@ export interface ListAudit$Params {
   per_page?: 25 | 50 | 100;
 }
 
-export function listAudit(http: HttpClient, rootUrl: string, params: ListAudit$Params, context?: HttpContext): Observable<StrictHttpResponse<AuditList>> {
-  const rb = new RequestBuilder(rootUrl, listAudit.PATH, 'get');
+export function listTeamTime(http: HttpClient, rootUrl: string, params: ListTeamTime$Params, context?: HttpContext): Observable<StrictHttpResponse<TimeEntryList>> {
+  const rb = new RequestBuilder(rootUrl, listTeamTime.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
-    rb.query('actor', params.actor, {});
-    rb.query('token', params.token, {});
-    rb.query('action', params.action, {"style":"form","explode":true});
-    rb.query('entity_type', params.entity_type, {});
+    rb.path('team', params.team, {});
     rb.query('from', params.from, {});
     rb.query('to', params.to, {});
+    rb.query('project', params.project, {});
+    rb.query('ticket', params.ticket, {});
+    rb.query('person', params.person, {});
+    rb.query('include_voided', params.include_voided, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
     rb.query('page', params.page, {});
@@ -77,9 +80,9 @@ export function listAudit(http: HttpClient, rootUrl: string, params: ListAudit$P
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<AuditList>;
+      return r as StrictHttpResponse<TimeEntryList>;
     })
   );
 }
 
-listAudit.PATH = '/api/v1/tenants/{tenant}/audit';
+listTeamTime.PATH = '/api/v1/teams/{team}/time-entries';
