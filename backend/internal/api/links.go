@@ -241,7 +241,9 @@ func setLink(ctx context.Context, w *store.Writer, t tenantScope, e linkEnds, po
 			return made, created, err
 		}
 	}
-	return store.RelatedLink{}, false, errors.New("the link was stored and removed again while it was set")
+	// The link a racing writer stored is gone again, its other end with it:
+	// the answer of an other end that names nothing.
+	return store.RelatedLink{}, false, noSuchTicket()
 }
 
 // addLink creates the link the ends describe, with its act on both tickets;

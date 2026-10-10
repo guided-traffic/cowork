@@ -77,6 +77,70 @@ func relationsOf(ctx context.Context, t *testing.T, team, ticket uuid.UUID, kind
 	return rels
 }
 
+// An act recorded in another team's record holds the ticket it is recorded at
+// against the deletion of its row until the transaction ends — a purge waits
+// for it and empties it with the rest —, and one recorded at a ticket a purge
+// took away since the crossing named it records nothing and fails nothing
+// (docs/adr/0024 D2 as made concrete 2026-10-10).
+func TestAnActElsewhereHoldsItsTicketAgainstAPurge(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	c := newCrossing(t)
+	db := openRuntime(t)
+	admin, err := pgx.Connect(ctx, env.AdminURL)
+	require.NoError(t, err)
+	defer func() { _ = admin.Close(ctx) }()
+	// childElsewhere is the far end of PA's one child in another team, CB.
+	childElsewhere := func(w *store.Writer) store.FarEnd {
+		rels, err := w.RelationsElsewhere(ctx, c.PA)
+		require.NoError(t, err)
+		for _, r := range rels {
+			if r.Kind == store.RelationChild {
+				return r.Far
+			}
+		}
+		t.Fatal("no child of PA in another team")
+		return store.FarEnd{}
+	}
+	held := store.Event{EntityType: "ticket", Action: "updated", Reason: "the held act"}
+	acts := func() int64 {
+		n, err := fixtures(t).QueryCount(ctx, `SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND reason = 'the held act'`, c.CB)
+		require.NoError(t, err)
+		return n
+	}
+
+	_, err = db.Mutate(as(c.MemberA), c.A, func(w *store.Writer) error {
+		if err := w.RecordElsewhere(ctx, childElsewhere(w), held); err != nil {
+			return err
+		}
+		tx, err := admin.Begin(ctx)
+		require.NoError(t, err)
+		defer func() { _ = tx.Rollback(ctx) }()
+		_, err = tx.Exec(ctx, "SET LOCAL lock_timeout = '300ms'")
+		require.NoError(t, err)
+		_, err = tx.Exec(ctx, "DELETE FROM tickets WHERE id = $1", c.CB)
+		var pgErr *pgconn.PgError
+		require.True(t, errors.As(err, &pgErr) && pgErr.Code == "55P03", "the deletion waits for the act's transaction: %v", err)
+		w.Record(store.Event{EntityType: "seed", Action: "created"})
+		return nil
+	})
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, acts(), "the act stands")
+
+	_, err = db.Mutate(as(c.MemberA), c.A, func(w *store.Writer) error {
+		far := childElsewhere(w)
+		_, err := admin.Exec(ctx, "DELETE FROM tickets WHERE id = $1", c.CB)
+		require.NoError(t, err)
+		if err := w.RecordElsewhere(ctx, far, held); err != nil {
+			return err
+		}
+		w.Record(store.Event{EntityType: "seed", Action: "created"})
+		return nil
+	})
+	require.NoError(t, err, "a ticket purged since the crossing named it fails nothing")
+	assert.EqualValues(t, 1, acts(), "and records nothing")
+}
+
 // The setting a crossing admits itself by is set in the function's body and
 // never by a SET clause, which PostgreSQL refuses to an owner role that is no
 // superuser (verified on PostgreSQL 18.6); the owner's policy applies inside

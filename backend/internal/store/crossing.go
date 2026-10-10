@@ -478,8 +478,11 @@ func (r *Reader) RelationsElsewhere(ctx context.Context, ticket uuid.UUID) ([]Fa
 // rows, the notifications they tell and their publication on that team's
 // streams, as the caller's acts — each act's ticket is the far end. The
 // transaction is bound to the far team for those statements alone and to its
-// own team again after them. A FarEnd comes only from a crossing of this file.
-func (w *Writer) RecordElsewhere(ctx context.Context, far FarEnd, events ...Event) error {
+// own team again after them. The far ticket is held against a deletion of its
+// row until the transaction ends, so a purge of it waits for these acts and
+// empties them with the rest; one a purge took away before records nothing. A
+// FarEnd comes only from a crossing of this file.
+func (w *Writer) RecordElsewhere(ctx context.Context, far FarEnd, events ...Event) (err error) {
 	if far.team == uuid.Nil || far.ticket == uuid.Nil || far.team == w.TenantID {
 		return errors.New("store: an act elsewhere is recorded at a ticket of another team")
 	}
@@ -488,6 +491,18 @@ func (w *Writer) RecordElsewhere(ctx context.Context, far FarEnd, events ...Even
 	}
 	if _, err := w.tx.Exec(ctx, "SELECT set_config('app.tenant_id', $1, true)", far.team.String()); err != nil {
 		return fmt.Errorf("bind the transaction to the other team: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			return
+		}
+		if _, err = w.tx.Exec(ctx, "SELECT set_config('app.tenant_id', $1, true)", uuidText(w.TenantID)); err != nil {
+			err = fmt.Errorf("bind the transaction to its team again: %w", err)
+		}
+	}()
+	held, err := w.holdFarTicket(ctx, far)
+	if err != nil || !held {
+		return err
 	}
 	kept := w.events
 	w.events = make([]Event, 0, len(events))
@@ -498,16 +513,26 @@ func (w *Writer) RecordElsewhere(ctx context.Context, far FarEnd, events ...Even
 		}
 		w.events = append(w.events, e)
 	}
-	err := w.writeEvents(ctx, far.team, w.caller, Idempotency{}, false)
+	err = w.writeEvents(ctx, far.team, w.caller, Idempotency{}, false)
 	w.flushed = w.flushed || err == nil
 	w.events = kept
+	return err
+}
+
+// holdFarTicket locks the far ticket's row FOR KEY SHARE in the far team's
+// own context, the transaction bound to it: a purge's deletion of the row
+// waits for the transaction, and an update of the ticket does not. False
+// where the row is gone — purged since the crossing named it.
+func (w *Writer) holdFarTicket(ctx context.Context, far FarEnd) (bool, error) {
+	var id uuid.UUID
+	err := w.tx.QueryRow(ctx, "SELECT id FROM tickets WHERE tenant_id = $1 AND id = $2 FOR KEY SHARE", far.team, far.ticket).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
 	if err != nil {
-		return err
+		return false, fmt.Errorf("hold the ticket of the other team: %w", err)
 	}
-	if _, err := w.tx.Exec(ctx, "SELECT set_config('app.tenant_id', $1, true)", uuidText(w.TenantID)); err != nil {
-		return fmt.Errorf("bind the transaction to its team again: %w", err)
-	}
-	return nil
+	return true, nil
 }
 
 // farEndOf reads one row of end_relations_elsewhere or end_team_relations.

@@ -422,8 +422,9 @@ another.
 - **An act in another team** — a link's act on its other end, the end of a relation at a purge, a
   settled prerequisite — is written by the runtime role with the transaction bound to that team for
   those statements alone (`Writer.RecordElsewhere`), under that team's own policies, at a far end
-  only a crossing hands out; a unit test refuses a binding of `app.tenant_id` anywhere else and
-  `app.crossing` in any Go or query file (`TestOnlyTheCrossingFunctionsCross`).
+  only a crossing hands out, whose row it holds against a purge until it commits; a unit test
+  refuses a binding of `app.tenant_id` anywhere else and `app.crossing` in any Go or query file
+  (`TestOnlyTheCrossingFunctionsCross`).
 - **The start-up check.** `cowork serve` refuses a database whose crossing policies name another role
   than the owner of the tables, or whose crossing functions are not that owner's
   (`DB.CheckCrossing`, `TestServeRefusesACrossingOfAnotherOwner`): a change of ownership past the

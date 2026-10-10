@@ -422,8 +422,12 @@ of a ticket inside a crossing that changes more than its kind may: `derive` the 
 columns, and on a ticket of the transaction's own team the seeded stages, `done_by_hand` and
 `updated_at` besides; `purge` the `parent_id`. An act on a ticket of
 another team is no crossing's: `Writer.RecordElsewhere(ctx, far, events...)` binds the transaction to
-the far team — `set_config('app.tenant_id', …)` —, writes the audit rows, their notifications and
-their publication there as the caller's acts, under that team's own policies, and binds it back; a
+the far team — `set_config('app.tenant_id', …)` —, locks the far ticket's row `FOR KEY SHARE` there
+(`holdFarTicket`), writes the audit rows, their notifications and their publication as the caller's
+acts, under that team's own policies, and binds it back. The lock makes a purge of the far ticket,
+whose deletion locks the row `FOR UPDATE`, wait for the transaction and empty its acts with the
+rest; a far ticket whose row a purge took away since the crossing named it records nothing, where
+its publication would have found no row (`TestAnActElsewhereHoldsItsTicketAgainstAPurge`). A
 `FarEnd` has unexported fields, so only a crossing of the store makes one, and a handler cannot
 record into a team of its choosing.
 

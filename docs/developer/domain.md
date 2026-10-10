@@ -246,7 +246,9 @@ ticket", like a missing one (`noSuchTicket`). A link is an act on both tickets (
 existing link is `200` without a second act, a new one `201` — also for two writers at once, the
 same link twice or a `relates-to` from both ends: the insert (`InsertLink`, `ON CONFLICT DO
 NOTHING`) waits for the other writer's commit and takes the conflict, and `setLink` reads the link
-back, whichever end stored it ([ADR 0045] D1; `TestALinkSetAtOnceFromBothEndsIsOneLink`). Two
+back, whichever end stored it ([ADR 0045] D1; `TestALinkSetAtOnceFromBothEndsIsOneLink`); a link
+the racing writer stored that is gone again when it is read back — its other end deleted since —
+answers `404 not_found` "no such ticket", as an other end that names nothing. Two
 `PATCH`es of one ticket's parent with the same `If-Match` give one `200` and one `412`. Removing is a write on the source
 alone, whatever the caller reads of the other end — inside the team a `relates-to` from either end —:
 by the other end's key, either route with `DELETE`, or by the link's id, `DELETE …/links/{link}`
