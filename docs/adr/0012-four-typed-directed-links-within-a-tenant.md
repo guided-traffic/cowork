@@ -105,15 +105,20 @@ short form inside the team ([ADR 0007](0007-a-ticket-key-is-globally-unique-tena
 D3) —, sending the canonical key; the detail page reads `…/relations` and `…/prerequisite-tree` and
 shows each link end and each node by its head, a link to it only where the person may open it, the
 placeholder `<team> [Confidential]` where they may not see it, and a node of the person's own team
-they read with its assignee and its stage; it removes a link by its id from its source — this
+they read with its assignee and its stage; ~~it removes a link by its id from its source — this
 ticket for an outgoing link, a placeholder's included, the other ticket for an incoming one the
 person reads. *(Made concrete by the implementer, open to the owner's objection:)* an incoming link
 from a ticket the person may not open, or may not see, is offered no removal: its source is a
-ticket the person cannot write, whose team removes it. The activity and the inbox name a settled
-prerequisite of another team by its head (D5).
+ticket the person cannot write, whose team removes it.~~ *(2026-10-10, D2 as amended again by the
+owner, below:)* a writer of the ticket removes any of its links by the link's id, outgoing or
+incoming, of any team, whatever they read of the other end, and a link that is gone already is no
+failure. ~~The activity and the inbox name a settled prerequisite of another team by its head
+(D5).~~ *(2026-10-10, after the security review:)* The activity and the inbox say that a ticket of
+another team that blocks it was closed, naming none, as the act names it in its refs alone (D5).
 
-**Amended again 2026-10-10 by the owner (built the same day in the data layer and the API; the UI
-outstanding):** D2 — a link is removed by a writer of either end. The adversarial review of the build
+**Amended again 2026-10-10 by the owner (built the same day in the data layer and the API; ~~the UI
+outstanding~~ *(2026-10-10: and in the UI, below)*):** D2 — a link is removed by a writer of either
+end. The adversarial review of the build
 found that a viewer of team A who is a member of team B lets a B ticket block an A ticket, which A
 then reaches `done` only over a person's override and A's agents cannot close, and that nobody in A
 could remove the link, removing it being a write on its source in B; the owner chose that a writer of
@@ -132,6 +137,13 @@ link that does not touch the ticket in the path exactly as none, `404` "no such 
 answered `204` and removed nothing before; the key routes stay idempotent, `204` for a key that names
 no link. Of two removals of one link at once, from its two ends, one removes it and records the act
 on both tickets, and the other finds it gone — `404` by id, `204` by key — and records nothing.
+Built in the UI the same day: the detail page offers a member or an administrator of the ticket's
+team the removal of every link of the ticket, outgoing or incoming, of any team, whether or not they
+may open the other end or see it, by the link's id at the ticket shown; the list loads again at
+once, and a `404` — the link removed from its other end meanwhile — is taken for removed, not
+toasted. A viewer is offered no removal. The end-to-end tier walks a member of one team removing a
+`blocks` link another team keeps onto its ticket
+([`relations.spec.ts`](../../frontend/e2e/relations.spec.ts)).
 
 ## Context
 

@@ -52,8 +52,9 @@ of another project or team by its head. *(Made concrete by the implementer, open
 objection:)* the chooser offers open tickets alone, as it did inside the project, so the browser
 sets no closed ticket as a parent; the compact cards of the board's *Next* name no parent.
 
-**Amended again 2026-10-10 by the owner (built the same day in the data layer and the API; the
-browser outstanding):** D2 — a parent relation is removed by a writer of either end. The adversarial
+**Amended again 2026-10-10 by the owner (built the same day in the data layer and the API; ~~the
+browser outstanding~~ *(2026-10-10: and in the browser, below)*):** D2 — a parent relation is
+removed by a writer of either end. The adversarial
 review of the build found that a viewer of team A who is a member of team B makes a B ticket the
 child of an A ticket, whose derived progress A then shows and whose own progress A can no longer
 set, and that nobody in A could end the relation, removing it being a write on the child in B; the
@@ -78,7 +79,15 @@ D1 as made concrete 2026-10-10). The child records `updated` — in its own team
 ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D1), each naming the
 other ticket in its refs; a patch that takes a child away from a parent of another team records
 `detached` on that parent in its team's record. A relation that is no child of the ticket in the
-path, or none, answers `404` "no such child", the same body whatever the reason.
+path, or none, answers `404` "no such child", the same body whatever the reason. Built in the
+browser the same day: the children card of the parent's page offers a member or an administrator of
+the parent's team the removal of every child, of any team, whether or not they may open it or see
+it, by the handle its relation carries; the child's page clears the parent in its chooser, as
+before. The list loads again at once, a `404` — the child gone meanwhile — is taken for removed,
+and a viewer is offered no removal. The parent's activity says *detached the child* with its key,
+or *a child* where the reader does not see it. The end-to-end tier walks a member of one team
+removing a child of another team from under its ticket
+([`relations.spec.ts`](../../frontend/e2e/relations.spec.ts)).
 
 ## Context
 
@@ -111,8 +120,8 @@ of the parent's team, the parent visible to them, a confidential one included. A
 cannot read is refused exactly like one that does not exist, because ticket numbers are a sequence
 per project ([ADR 0022](0022-uuidv7-everywhere-sequences-only-for-ticket-numbers.md)) and any key
 taken would let a person try `SUT-1`, `SUT-2`, … and read the heads. ~~Removing it is a write on the
-child alone.~~ *(Amended again 2026-10-10 by the owner, built the same day in the data layer and
-the API:)* Removing it is a write on either end: a `member` or `admin` of the child's team clears it
+child alone.~~ *(Amended again 2026-10-10 by the owner, built the same day in the data layer,
+the API and the browser:)* Removing it is a write on either end: a `member` or `admin` of the child's team clears it
 on the child, one of the parent's team detaches the child from the parent, whether or not they read
 the other end, and the removal is recorded in the records of both teams. The API names the parent by its canonical key
 ([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md)); the browser

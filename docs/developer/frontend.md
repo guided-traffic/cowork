@@ -92,7 +92,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `TenantService` | The current team's settings (`GET /api/v1/teams/{team}`), written with `If-Match`, and the role's `isAdmin` and `canWrite`; an answer that arrives after a team switch is not shown; an answer whose `members_create_projects` differs from the settings held asks for `me` again — once more after a load on its way, which may predate the change ([`refresh`](../../frontend/src/app/core/refresh.ts)) —, so that the plus of the team's group follows without waiting for the next entry into the team |
 | `TicketRecords` | Attachments (multipart upload with an `Idempotency-Key`, to the ticket or to one of its comments) and time entries: booking, the correction with the entry's version as `If-Match`, voiding, an entry's earlier values |
 | `TicketActions` | Filing, field changes with the cached `ETag` as `If-Match` (a `412` becomes `StaleWrite` with the fresh ticket) — or, for an editor that was open a while, over the version it began with (`update(key, patch, since)`, [the editors](#an-editor-belongs-to-its-ticket)) —, the body replaced over the version its editor began with (`replaceBody`), transitions from the cached state, the move in the rank, the horizon (`setHorizon`, `PUT …/horizon` — `later` included, which clears the horizon set), the confidential flag, the sort of a project's rank by the score (`sortByScore`), after which the open lists load again, and a team administrator's deletion (`delete`, which drops the ticket from the cache) with the open tickets that wait on it first (`dependents`, the first step of `…/prerequisite-tree?direction=up`, each by its head, of any team; a placeholder, whose state is not the person's to read, left out). A `412` of the horizon, the flag, the body or an editor's fields is written over once while what the write changes is still as it was read (`writeOver`), and is a `StaleWrite` otherwise; every answer goes into the cache |
-| `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links — made by the other end's canonical key, `PUT …/links/{type}/{other_team}/{other}`, removed by their id from their source, `DELETE …/links/{link}` —, the person's stake |
+| `Conversation` | Comments — written, edited with their version as `If-Match`, their earlier texts, withdrawn —, questions — asked, their text edited with `If-Match`, answered, withdrawn —, links — made by the other end's canonical key, `PUT …/links/{type}/{other_team}/{other}`, removed by their id from the ticket shown, either end of them, `DELETE …/links/{link}` —, a child detached by the handle its relation carries (`removeChild`, `DELETE …/children/{child}`), the person's stake |
 | `AuthService` | `/auth/options`, `/auth/local` — whose success forgets the identity provider (`SignInMemory`) —, `/auth/logout` — which forgets it first, before the backend is asked, and hands back the identity provider's logout where the backend names one —, `hasSession` (`GET /api/v1/me` asked anew: an answer is yes, a `401` no, anything else thrown), the password change; the session cookie is `HttpOnly`, no script sees it |
 | `SignInMemory` | What the browser remembers of the sign-in, for [the login page](#the-login-page)'s own sign-in: `cowork.sign-in` in `localStorage`, `oidc` once the button started the provider's sign-in, forgotten by a local sign-in and a sign-out; `cowork.sign-in.attempt` in `sessionStorage`, noted when the page leaves for its own attempt, cleared once the tab has a session again. Every access in `try`/`catch`; storage that throws remembers nothing, says the tab tried, and notes no attempt ([`sign-in-memory.ts`](../../frontend/src/app/core/sign-in-memory.ts)) |
 | `TokensService` | The person's own tokens in numbered pages (`table`, [`tablePages`](../../frontend/src/app/core/table-pages.ts)), each naming the project it is restricted to by its key (`restricted_project`); `create` hands the plaintext to its caller once and keeps nothing; the projects of a team for the new token's restriction, which the dialog sends as `team` and whose refusal it shows at `/team` or `/tenant` |
@@ -245,13 +245,13 @@ belongs to the team it was asked in: another team's pages close it.
 another client's write ─► backend: NOTIFY at commit ─► SSE: event ticket.changed {key, version}
         │
         ▼
-EventStreamService.events ─► TicketsService: cached and older, or of the kind derived? GET the ticket ─► cache entry ─► every view showing it
+EventStreamService.events ─► TicketsService: cached and older, or a change that moves no version? GET the ticket ─► cache entry ─► every view showing it
                          ├─► TicketsService: the parent of a ticket a detail view shows? GET that ticket (its parent's head)
                          └─► every open list reloads once per burst (150 ms) ─► new or moved tickets appear
 TicketRelations (detail page): comment/question/link of its key ─► that part and the activity reload
                               link of its key, or ticket/link of a ticket its tree shows ─► the prerequisite tree reloads
                               ticket of a link end or a child it shows ─► the links or the children reload
-                              derived of its key, or created/updated/restored of another ticket ─► the children reload
+                              derived or detached of its key, or created/updated/restored of another ticket ─► the children reload
 ```
 
 ```
@@ -285,8 +285,13 @@ itself while a card is dragged ([the board](#the-board)), the team board every s
 the ticket — its version counts its own fields only ([ADR 0050] D1) — while `link.changed` and
 `interest.changed` refetch a ticket the cache holds at the version it holds, because a link changes
 its `open_prerequisites` and a stake its `score` without a new version; so does a `ticket.changed`
-of the kind `derived`, which says that a child of another team moved a parent's derived stages
-([events.md](events.md#publication), [ADR 0017] D3) — the event names the version the cache holds. `project.changed` — the
+whose act moves no version (`changesWithoutVersion` in
+[`tickets.service.ts`](../../frontend/src/app/core/tickets.service.ts)): the kind `derived` — a
+child, of the parent's team or another, moved a parent's derived stages
+([events.md](events.md#publication), [ADR 0017] D3) —, `detached` — a child left the parent —, and
+`updated` on a ticket that has a parent, which its parent's side detaching it records without
+moving its version ([ADR 0008] D2); the event names the version the cache holds. An `updated` of a
+ticket without a parent is a write that moved its version, whose answer the cache holds already. `project.changed` — the
 sort of a project's rank by the score, kind `ranked`, or an import's execution, kind `imported` —
 loads the open lists again, which hold the order and bring the new versions of the tickets it moved
 and the tickets it created; it names no ticket. An import's tickets, questions and links publish
@@ -932,9 +937,11 @@ by its head ([relations across teams](#relations-across-teams)).
 An act of the activity reads as its person and its action (`describe`): the sort of the project's
 rank as *sorted the backlog by score*, the act on the horizon, which the record keeps as
 `overridden`, as *set the horizon to now* or *returned the ticket to later* by its `after`
-([ADR 0010] D1), a prerequisite of another team that settled, `prerequisite_settled`, as *closed
-Globex · API-7, which blocks it, as done* by the head its `after` names ([ADR 0012] D5) — the
-inbox's `happening` says the same of its notification. Its parts around the ticket are [`TicketRelations`](../../frontend/src/app/features/ticket/ticket-relations.ts),
+([ADR 0010] D1), a prerequisite of another team that settled, `prerequisite_settled`, as *closed a
+ticket of another team that blocks it* — the act names the ticket in its refs alone, which no
+reader of this team's record reads ([ADR 0012] D5), and the inbox's `happening` says the same of its
+notification —, a child that left the ticket, `detached`, as *detached the child COW-20* by the key
+its `before` names, or *detached a child* where the act is withheld from the person. Its parts around the ticket are [`TicketRelations`](../../frontend/src/app/features/ticket/ticket-relations.ts),
 which the page provides; everything else reads the ticket through the cache. The body, a comment, a
 question's options and its answer show as the server rendered them, through
 [`RenderedText`](../../frontend/src/app/shared/rendered-text.ts) and Angular's sanitiser; the body's
@@ -950,8 +957,8 @@ a search hit's — scrolls the page to that part once it has loaded.
 | [`TicketBody`](../../frontend/src/app/features/ticket/ticket-body.ts) | The body edited as Markdown and replaced as a whole ([ADR 0011] D1), `PUT …/body` over the version the editing began with | Written over at once while the body is still the one it began with; otherwise the editor keeps the text and shows [`ConflictNote`](../../frontend/src/app/shared/conflict-note.ts): *Write mine over it*, or *Take the new version* into the editor |
 | [`TicketFields`](../../frontend/src/app/features/ticket/ticket-fields.ts) | The fields; the horizon as a select — `PUT …/horizon` with the choice, `later` clearing the horizon set — and after a horizon other than `later` a field for the reason a person may add (Enter sends the horizon again with it, Escape, an empty Enter or leaving the field drops it, as in the backlog); the parent from [`ParentPicker`](../../frontend/src/app/features/ticket/parent-picker.ts); for a team administrator (the session's role `admin`) the confidential flag in [`ConfidentialDialog`](../../frontend/src/app/features/ticket/confidential-dialog.ts), which sets it with an optional reason and lifts it only with one ([ADR 0065] D3, D6) | The page's dialog for a field and for the horizon; the confidential dialog says so in its form |
 | [`PrerequisiteTree`](../../frontend/src/app/features/ticket/prerequisite-tree.ts) | Nothing: `GET …/prerequisite-tree`, 200 nodes, *Prerequisites* or *Dependents* (`direction=up`), across teams | — |
-| *Children* (the page's own card) | Nothing: `GET …/relations?kind=child`, fifty a page, *Load more* for the next | — |
-| *Links* (the page's own card) and [`LinkAdder`](../../frontend/src/app/features/ticket/conversation-forms.ts) | A link to a ticket of any team (`PUT …/links/{type}/{other_team}/{other}`), its removal by its id from its source (`DELETE …/links/{link}`); the list is `GET …/relations?kind=link` | — |
+| *Children* (the page's own card) | The removal of a child of any team by the handle its relation carries (`DELETE …/children/{child}`); the list is `GET …/relations?kind=child`, fifty a page, *Load more* for the next | — |
+| *Links* (the page's own card) and [`LinkAdder`](../../frontend/src/app/features/ticket/conversation-forms.ts) | A link to a ticket of any team (`PUT …/links/{type}/{other_team}/{other}`), its removal by its id from the ticket shown, outgoing or incoming (`DELETE …/links/{link}`); the list is `GET …/relations?kind=link` | — |
 | [`CommentItem`](../../frontend/src/app/features/ticket/comment-item.ts) | Its author edits it over its version and attaches files to it; its author or a team administrator withdraws it, after the page's dialog asked; *edited* shows its earlier texts, until a newer version of the comment — an edit, a withdrawal, which hides them as it hides the text — closes them. An edit sends the comment's mentions: those it holds, but one whose `@<name>` the text held and the edit took out, and the persons picked in the edit | The editor keeps the text and shows the conflict note; *Write mine over it* goes over the comment as its event brought it |
 | [`EditQuestion`](../../frontend/src/app/features/ticket/conversation-forms.ts) | The asker changes an open question's text, options and recommendation over its version | As a comment |
 | [`TimeCard`](../../frontend/src/app/features/ticket/records-cards.ts) | The author corrects an entry in its row over its version, or voids it; *corrected* shows its earlier values | Time entries are not published: the card loads them again and shows the conflict note |
@@ -998,11 +1005,14 @@ enters the tree through a change elsewhere shows at the next of those.
 **The children and the links** are cards of the side panel, after the fields: each other end by its
 head — key, state, title, its team where it is of another team, `<team> [Confidential]` where the
 person may not see it. The children load fifty at a time, in the order they were filed, and *Load
-more* adds a page; a reload asks for every page held again (`TicketRelations.childPages`). A link
-is removed from its source by its id: this ticket for an outgoing link — one whose other end is a
-placeholder included, which shows no key —, the other ticket for an incoming one the person reads;
-an incoming link from a ticket the person may not open, or may not see, offers no removal, because
-its source is a ticket they cannot write.
+more* adds a page; a reload asks for every page held again (`TicketRelations.childPages`). A
+member or an administrator — who writes the ticket — removes any of its relations from it, whatever
+team the other end is in and whether or not they may open it ([ADR 0008] D2, [ADR 0012] D2 as
+amended again on 2026-10-10): a child by the handle its relation carries, an outgoing or an
+incoming link by its id, from this ticket either way, a placeholder's too; the parent in the
+fields' chooser. A viewer is offered no removal. The part loads again at once; a `404` says that
+the relation is gone already — the other end or another person removed it meanwhile — and is no
+failure: the part loads again and nothing is toasted. Anything else is toasted.
 
 **Files.** A raster attachment — PNG, JPEG, GIF, WebP, the types the backend delivers inline
 ([ADR 0016] D5) — shows a preview, [`FilePreview`](../../frontend/src/app/features/ticket/file-preview.ts):
@@ -1067,7 +1077,6 @@ says no more of it than the head holds. The pieces are in
 | `headName`, `headLabel` | The head in a line of text: the short key of a ticket of the page's team, `Globex · API-7` — the team's name and the short key — of another team's, `Globex [Confidential]` for a placeholder; with the title after it |
 | `headRoute` | The ticket's page in its own team, `/t/<team>/tickets/<KEY>`, or none for a head the person may not open and for a placeholder |
 | `parentChip` | The chip of the backlog's row and of the board's card: the parent's name, its link or none, `Parent <name>` for a screen reader, its title — and that the person cannot open it — in the tooltip |
-| `settledPrerequisite` | The prerequisite of another team a `prerequisite_settled` act names, by its head, and the state it reached ([ADR 0012] D5) |
 
 **The parent chooser**, [`ParentPicker`](../../frontend/src/app/features/ticket/parent-picker.ts), is
 a PrimeNG select with its filter: before the person types it offers the open tickets of the
@@ -1094,11 +1103,19 @@ inside the ticket's team (`typedKey`: the team lower-cased, the key upper-cased)
 goes to `PUT …/links/{type}/{other_team}/{other}`; a key the person cannot read is the server's
 `404`, the miss of a key that names nothing.
 
-**Live.** `TicketsService` fetches a ticket it holds again on a `ticket.changed` of the kind
-`derived` — a child of another team moved the parent's derived stages, its version unchanged
-([ADR 0017] D3, [ADR 0054] D2) — and a ticket a detail view shows on a `ticket.changed` of its
-parent, of any team of the person, since the parent's head is in no version of the child.
-`TicketRelations` loads the children again on the ticket's own `derived`, on a change of a child it
+**Removal from either end.** The detail page offers a writer of the ticket the removal of any of
+its relations ([the detail page](#the-detail-page)): `Conversation.removeChild` with the child's
+handle — opaque, it shows no id of a child the person may not see — and `Conversation.unlink` with
+the link's id, both at the ticket shown, which the server takes from either end of a relation, as
+`system:relation` in the other team's record where the person holds no role there. The parent's own
+activity says *detached the child COW-20*, or *a child* where the person does not see it.
+
+**Live.** `TicketsService` fetches a ticket it holds again on a `ticket.changed` whose act moves no
+version — `derived`, a child moved the parent's derived stages ([ADR 0017] D3, [ADR 0054] D2);
+`detached`, a child left it; `updated` on a ticket that has a parent, which the parent's side
+detached ([ADR 0008] D2) — and a ticket a detail view shows on a `ticket.changed` of its parent, of
+any team of the person, since the parent's head is in no version of the child. `TicketRelations`
+loads the children again on the ticket's own `derived` and `detached`, on a change of a child it
 shows, and on another ticket's `created`, `updated` or `restored`, which may have made it a child or
 ended that; the links on a change of a link end it shows; each through `ConditionalPages`, so an
 unchanged list is a `304`. A head of a team the person holds no role in changes without an event the
@@ -1463,7 +1480,8 @@ state with the verification note — the page is a person's; an agent may close 
 `in-progress` and `review` —, its withdrawal to `done_from` with a reason, `dropped` with a reason
 and the reopen of a dropped ticket. A ticket done by its stages has no move; a lower stage is its
 way out. The page offers only moves the server accepts, and the server still decides. A write's own
-event refetches nothing, because the write put that version into the cache already.
+event refetches nothing, because the write put that version into the cache already — but for an
+act that moves no version, a detach's ([how a change reaches the screen](#how-a-change-reaches-the-screen)).
 
 ## The development loop
 
