@@ -81,7 +81,7 @@ TEST_S3_ENDPOINT ?= http://localhost:$(MINIO_PORT)
 # runner's Docker daemon, which need not see the job's files. Its issuer
 # follows DEX_PORT. Every credential in it is a development value.
 # renovate: datasource=docker depName=ghcr.io/dexidp/dex
-DEX_IMAGE ?= ghcr.io/dexidp/dex:v2.45.1@sha256:8499afd690c437f52301efd2b05b2455da5bd2dfc20332cd697dc9937f808462
+DEX_IMAGE ?= ghcr.io/dexidp/dex:v2.46.0@sha256:933fcd3f523338c847b88ef84a7145fb2fcb7b9917f08418612afeaaa2001777
 DEX_CONTAINER ?= cowork-dex
 DEX_PORT ?= 5556
 DEX_ISSUER = http://localhost:$(DEX_PORT)/dex
