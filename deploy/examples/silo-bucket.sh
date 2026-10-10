@@ -39,8 +39,8 @@ trap 'rm -f "$policy_file"; mcli alias remove "$ALIAS" >/dev/null 2>&1 || true' 
 mcli alias set "$ALIAS" "$SILO_URL" "$SILO_ROOT_USER" "$SILO_ROOT_PASSWORD"
 mcli mb --ignore-existing "$ALIAS/$BUCKET"
 
-# The backend writes, reads and deletes objects under <tenant-id>/<attachment-id>,
-# and its daily consistency check lists the bucket's keys under each tenant's
+# The backend writes, reads and deletes objects under <team-id>/<attachment-id>,
+# and its daily consistency check lists the bucket's keys under each team's
 # prefix (docs/operations/installation.md#object-storage); it never creates or
 # deletes a bucket.
 cat >"$policy_file" <<EOF

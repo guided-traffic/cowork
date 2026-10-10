@@ -4,7 +4,7 @@
 # PostgreSQL (make postgres-up), Silo (make minio-up) and Dex (make dex-up) in containers, the
 # backend built from source on :8080 with the local administrator `dev` (docs/adr/0032) and Dex as
 # its identity provider (docs/adr/0029 D3), the group mapping team-red -> member and, on the first
-# run, demo data in the tenant `dev`, and ng serve on https://localhost:4200 (a self-signed
+# run, demo data in the team `dev`, and ng serve on https://localhost:4200 (a self-signed
 # certificate the browser asks about once), which reloads the page on every
 # saved change. The browser logs in like on an installation: as `dev` with the development-only
 # password below, or with "Sign in with Dex" as a user of hack/dex/config.yaml (docs/adr/0038 D2,
@@ -55,7 +55,7 @@ step "the backend, built from source"
 make -s migrate POSTGRES_PORT="$POSTGRES_PORT"
 (cd backend && go build -o "../$STATE/cowork" ./cmd/cowork)
 
-step "the person dev with the tenant dev, a second person, and a token for the demo data"
+step "the person dev with the team dev, a second person, and a token for the demo data"
 seed() { (cd backend && COWORK_DEV_SEED_DATABASE_URL="$DB_ADMIN" go run ./test/devseed "$@"); }
 token=$(seed -agent=false | awk '/^token:/ {print $2}')
 [ -n "$token" ] || { echo "make dev-seed printed no token"; exit 1; }
@@ -111,7 +111,7 @@ for i in $(seq 1 60); do
 	[ "$i" -lt 60 ] || { cat "$STATE/backend.log"; echo "the backend did not become ready"; exit 1; }
 done
 
-step "the group mapping team-red -> member and demo data in the tenant dev (the projects only when it has none yet)"
+step "the group mapping team-red -> member and demo data in the team dev (the projects only when it has none yet)"
 COWORK_DEV_ADMIN="$ADMIN_USER" COWORK_DEV_ADMIN_PASSWORD="$ADMIN_PASSWORD" COWORK_BASE_URL="$UI" \
 	python3 hack/dev_demo.py http://127.0.0.1:8080 "$token" dev
 

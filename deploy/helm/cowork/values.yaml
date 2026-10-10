@@ -98,7 +98,7 @@ database:
 #            false turns it off, and nothing in the release migrates.
 #   job:     a Job, <fullname>-migrate, runs them as a Helm hook before every
 #            install and upgrade, and then the bootstrap — the local
-#            administrator and the bootstrap tenant (D2, D4). A failed Job fails
+#            administrator and the bootstrap team (D2, D4). A failed Job fails
 #            the release before a new pod starts. The Job runs before the
 #            release's own Secrets exist, so it takes existingSecret references
 #            only: database.existingSecret, database.owner.existingSecret and,
@@ -144,12 +144,19 @@ localAdmin:
   username: ""
   password: ""
 
-# The bootstrap tenant (docs/adr/0032 D6): created at start while no tenant
-# exists, with the local administrator, when set, as its first administrator
-# and auth.oidc.adminGroup, when set, mapped to its admin role; once a tenant
-# exists these values do nothing. Both, and localAdmin or auth.oidc.adminGroup,
-# or neither.
+# The bootstrap team (docs/adr/0032 D6), COWORK_BOOTSTRAP_TEAM_SLUG and
+# COWORK_BOOTSTRAP_TEAM_NAME: created at start while no team exists, with the
+# local administrator, when set, as its first administrator and
+# auth.oidc.adminGroup, when set, mapped to its admin role; once a team exists
+# these values do nothing. Both, and localAdmin or auth.oidc.adminGroup, or
+# neither.
 bootstrap:
+  team:
+    slug: ""
+    name: ""
+  # Deprecated: bootstrap.team under its name before, still read for one
+  # release where bootstrap.team leaves a value empty; the two set to
+  # different values, the chart refuses to render (docs/adr/0005 D1).
   tenant:
     slug: ""
     name: ""
@@ -209,7 +216,7 @@ auth:
     # match exactly, case and all.
     allowedGroups: []
     # COWORK_ADMIN_GROUP: its members are global administrators — they create
-    # tenants and become the first administrator of each they create
+    # teams and become the first administrator of each they create
     # (docs/adr/0034 D2). Whoever may change this group at the provider
     # decides who administers the installation.
     adminGroup: ""
@@ -277,9 +284,9 @@ storage:
 # a provider, as the backend refuses to start on a chat variable without one.
 #
 # WARNING: a provider receives everything the chat reads for its person, in
-# every tenant, confidential tickets included — the providers configured here
+# every team, confidential tickets included — the providers configured here
 # are the only gate (the owner's decision of 2026-10-04, docs/security/chat.md).
-# Add a hosted provider only where every tenant's data may go to it.
+# Add a hosted provider only where every team's data may go to it.
 chat:
   # COWORK_CHAT_PROVIDERS and, per provider, COWORK_CHAT_<ID>_NAME, _KIND,
   # _URL, _MODEL and _API_KEY (the id upper-cased, its dashes as
@@ -296,7 +303,7 @@ chat:
   #          https:// anywhere, http:// only on the operator's network —
   #          localhost, a loopback or private address, a name without a dot or
   #          under .svc, .cluster.local, .internal, .local, .lan, .home.arpa or
-  #          .localhost —, because the key and the tenants' data travel in
+  #          .localhost —, because the key and the teams' data travel in
   #          every request. No user, query or fragment.
   #   model: the model by the name its provider knows it, e.g.
   #          qwen/qwen3-30b-a3b-2507 or claude-sonnet-4-5.
@@ -418,8 +425,8 @@ metrics:
     # CoworkAttachmentsOutOfStep fires: the time a restore of the database
     # and the bucket takes to be settled (docs/adr/0059 D5).
     restoreWindow: 24h
-    # How many days a tenant may go without an export — of a project of it or
-    # of the whole tenant — before CoworkExportOverdue fires: your export
+    # How many days a team may go without an export — of a project of it or
+    # of the whole team — before CoworkExportOverdue fires: your export
     # schedule's interval with room for a run that failed (docs/adr/0059 D2).
     # A whole number, at least 1.
     exportMaxAgeDays: 7
@@ -489,10 +496,14 @@ backend:
     attachmentMaxBytes: 10485760
     # COWORK_ATTACHMENT_MAX_PER_TICKET.
     attachmentMaxPerTicket: 100
-    # COWORK_ATTACHMENT_TENANT_QUOTA, in bytes: what one tenant's attachments
+    # COWORK_ATTACHMENT_TEAM_QUOTA, in bytes: what one team's attachments
     # hold together; 0, the default, sets no quota. An installation of several
-    # tenants sets one, so that no tenant fills the storage all of them share
+    # teams sets one, so that no team fills the storage all of them share
     # (docs/adr/0016 D6, docs/security/attachments.md H-10).
+    attachmentTeamQuota: 0
+    # Deprecated: attachmentTeamQuota under its name before, still read for one
+    # release while attachmentTeamQuota is 0; the two set to different values
+    # other than 0, the chart refuses to render (docs/adr/0005 D1).
     attachmentTenantQuota: 0
     # COWORK_MAX_IMPORT_BYTES, in bytes: an import's upload — a tar.gz, a zip
     # or Markdown files — and what its files hold unpacked; 0 for no bound
