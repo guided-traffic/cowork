@@ -9,8 +9,8 @@ JSON. The decisions are [ADR 0046] (spec first), [ADR 0047] (errors), [ADR 0045]
 contract), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
 against the tree on 2026-10-05, the examples ([below](#examples)) on 2026-10-06, the examples of the import and the export, the person of a
-horizon set and a parameter's failure on 2026-10-07, the team's names and their deprecated twins on
-2026-10-10.
+horizon set and a parameter's failure on 2026-10-07, the team's names and their deprecated twins,
+the person's projects and who may create one on 2026-10-10.
 
 ## The document
 
@@ -22,7 +22,7 @@ into the file of its path family.
 |---|---|
 | [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json`, `/schemas/cowork-yaml.json` — `security: []`, read before a client authenticates; the last answers [`cowork-yaml.schema.json`](../../backend/api/cowork-yaml.schema.json) |
 | [`auth.yaml`](../../backend/api/auth.yaml) | the browser's login flows, **outside `/api/v1`**: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` — see [the login flows](#the-login-flows) |
-| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents —, `/me/chat`, and the person-level lists: `/me/next`, `/me/inbox` with `/me/inbox/read` and `/me/inbox/{notification}/read`, `/me/assigned`, `/me/decisions` ([the person-level routes](#the-person-level-routes)) |
+| [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents —, `/me/chat`, and the person-level lists: `/me/next`, `/me/inbox` with `/me/inbox/read` and `/me/inbox/{notification}/read`, `/me/assigned`, `/me/decisions`, `/me/projects` ([the person-level routes](#the-person-level-routes)) |
 | [`search.yaml`](../../backend/api/search.yaml) | `/teams/{team}/search` and `/me/search` ([search.md](search.md)) |
 | [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's teams ([domain.md](domain.md#repositories)) |
 | [`teams.yaml`](../../backend/api/teams.yaml) | listing every team for a global administrator and creating one (`GET`, `POST /teams`), the team, its audit record, projects, archiving, the sort of a project's rank by the score (`…/projects/{project}/rank`), the ticket lists, a ticket, its deletion, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, its horizon (`…/horizon`) and confidential flag, and the bin of deleted tickets with its restoration and purge |
@@ -362,7 +362,7 @@ itself is [`internal/oidc`](../../backend/internal/oidc/oidc.go), the decision
 ## The person-level routes
 
 The routes under `/api/v1/me/` that list what spans teams — the inbox, "next for me", the tickets
-assigned to the person, the open decisions, the search ([ADR 0023] D2) — name no team in their
+assigned to the person, the open decisions, the search and the projects ([ADR 0023] D2) — name no team in their
 path, so no boundary admits them to one. `personTenants` in [`inbox.go`](../../backend/internal/api/inbox.go) reads the person's
 memberships in an `Installation` transaction, keeps a token restricted to a team to that team
 (`restricted`), narrows to the team the query names — `team`, or `tenant`, its deprecated name,
@@ -382,6 +382,23 @@ project's rank (`ListRankPlaces`) in the same transaction; the parts are merged 
 and cut to the page, which answers its weak `ETag` and `304` as the other polled lists do.
 `GET /api/v1/me/next` also takes `project`, a project key within the team the query names — without
 `team` or `tenant` it is `400 validation_failed` at `query:project`.
+**The person's projects** (`ListMyProjects`, `GET /api/v1/me/projects`, [ADR 0023] D2 as amended
+2026-10-10), the lists of the UI's sidebar, read each team's projects with the team's own query,
+`ListProjects` of [`queries/read/projects.sql`](../../backend/internal/store/queries/read/projects.sql)
+— `app_project_visible`, so a restricted project only for the team's administrators and the people
+on its access list, and a project-restricted token its own project; archived ones left out — after
+the cursor's key in the cursor's team, in the order of the teams' slugs, and stop reading teams
+once more than a page is read: the order is the team's slug, then the key, so a later team has
+nothing for the page. Each item is the project with its team, `{team, project}`, under `team`
+alone, and the route takes `team` alone, no `tenant`: a route new in the release has no name before
+that a client of the release before reads ([deprecated names](#deprecated-names)). It answers its
+weak `ETag` and `304` as the other polled lists do.
+`GET /api/v1/me` answers per membership `can_create_projects`, whether the role lets the person
+create a project in the team — `mayCreateProjects` in
+[`repositories.go`](../../backend/internal/api/repositories.go), the role `creating` asks for:
+`admin` always, `member` while the team's `members_create_projects` is on
+([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md) D9);
+a token's scope and an agent's capabilities are the route's own check, not this flag's.
 A global administrator without a role in a team holds no membership there, and these lists leave it
 out. Marking read needs `markRead` — any member, `write` scope, the agent baseline; the reads need no
 authorization beyond the person's membership, as `GET /api/v1/me` does. One notification is found by
@@ -648,7 +665,8 @@ list answers that `invalid_cursor`.
   questions by number; members, interest and a project's access list by person id; the group
   mappings by group; the installation's teams by slug; the team's tokens newest first; a team's bin the last deleted first, its
   position the deletion's time and the id; a team's saved filters by id; the person's inbox newest
-  first, merged across the teams by the notifications' ids, which order by time; "next for me" and
+  first, merged across the teams by the notifications' ids, which order by time; the person's projects
+  by their team's slug, then the key; "next for me" and
   the tickets assigned to the person by the score, highest first, then the ticket's id, and the open
   decisions by the score of their ticket — a done or dropped ticket's after the others — then the
   ticket's id and the question's number ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md)
@@ -662,8 +680,10 @@ list answers that `invalid_cursor`.
   the stored key, written so that it reads back to the same `float64` (`-Inf` for a ticket without a
   score), and the id, unique across teams, so every team's part resumes at the same place of one
   order. A score is shown on the ticket, so the position is not sealed. Every team is read for a
-  page after the position, and the parts are merged. The `cursor` parameter takes up to 1024
-  characters.
+  page after the position, and the parts are merged. The person's projects resume at
+  `<slug>/<KEY>`, neither of which holds a slash (`myProjectPosition`): a team before the slug is
+  past, the slug's team is read after the key, and the teams after it from their start. The
+  `cursor` parameter takes up to 1024 characters.
 
 ## Filters
 
@@ -762,7 +782,10 @@ not:
 - **The names.** Beside each new name its old one, deprecated, behaving as it did: the query
   parameter `team` beside `tenant` on `listMyInbox`, `markMyInboxRead`, `listMyNext`,
   `listMyAssigned`, `listMyDecisions` and `searchMyTeams`, both together `400 validation_failed` at
-  `query:tenant` whatever the values ([the person-level routes](#the-person-level-routes)); the
+  `query:tenant` whatever the values ([the person-level routes](#the-person-level-routes)) —
+  `listMyProjects`, new after the rename, takes `team` alone and names the team under `team` alone,
+  since no client of the release before reads it (made concrete by the implementer, open to the
+  owner's objection, [ADR 0023] D2) —; the
   properties `team`, `teams` and `restricted_team` beside `tenant`, `tenants` and `restricted_tenant`
   — on the way out both carry the same value; on the way in `TokenCreate` takes `tenant` as `team`,
   and both with different slugs are `400 validation_failed` at `/team` (`teamRestriction` in

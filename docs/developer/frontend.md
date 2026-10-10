@@ -1,13 +1,15 @@
 # The frontend
 
 How the Angular UI is put together: the folders, the theme and the logo, where state lives,
-how a change reaches the screen, the team's dashboard, the person-level pages and the inbox, the
+how a change reaches the screen, the shell with its navigation and a team's configuration, the
+team's dashboard, the person-level pages and the inbox, the
 search, the backlog, the two boards and the team's ticket list, the import and the export, the
 assistant, the generated client, and the development loop.
 Read against the tree on 2026-10-04, the search, the rendered texts, the deleted tickets, the
 saved filters, the team's ticket list, the score and "next for me", the numbered pages of the members and the
 tokens, the team's tokens, the attachments' usage and the mentions on 2026-10-05, the saved filters on the team board on
-2026-10-06, the import and the export on 2026-10-07. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
+2026-10-06, the import and the export on 2026-10-07, the navigation — the sidebar of every team,
+the dialog of a team's configuration, the page of every team — on 2026-10-10. The decisions are [ADR 0052] (PrimeNG, the preset, dark mode,
 the logo, the license, the content-security policy's build), [ADR 0053] (signals and services),
 [ADR 0054] (the event stream), [ADR 0055] (English, the browser's locale) and [ADR 0076] (the chat).
 The UI says team on every surface a person reads; the route `/t/:tenant`, whose `t` reads as team,
@@ -21,8 +23,8 @@ frontend/src/app/
 ├── brand/        # the logo: the mark (the board spark; two alternative glyphs for the preview) and the wordmark pill
 ├── theme/        # the PrimeNG preset over Aura, the theme service, providePrimeNG
 ├── core/         # services: session, projects, tickets, dashboard, event stream, inbox, chat, imports and exports, problems, entity cache, http
-├── layout/       # the shell (top bar with the bell, navigation), the assistant's panel, the team's scope, the live indicator
-├── features/     # one folder per page family: auth, home, me (the person's tokens and the person-level pages), search, tenant, project, ticket, time
+├── layout/       # the shell (top bar with the bell, navigation with every team of the person), the assistant's panel, the team's scope, the live indicator
+├── features/     # one folder per page family: auth, home (the start page, every team), me (the person's tokens and the person-level pages), search, tenant (a team's head, pages and configuration), project, ticket, time
 ├── shared/       # badges, rendered Markdown, the mark of an agent's or a token's act, the effort as a T-shirt size, the progress stages and their bar, the transition matrix, vocabulary meanings, the capabilities' meanings, time formatting, the note of a change made meanwhile, the download of a file the page holds
 └── dev/          # development-only pages (the design preview); replaced by an empty route list in production
 ```
@@ -75,8 +77,9 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 
 | Service | Holds |
 |---|---|
-| `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins), the current team from the route (`enter(slug)`), the membership's role; for a global administrator every team of the installation (`installation`, `GET /api/v1/teams`, every page), and `tenants` — the memberships, and every other team without a role — with `shown`, the current one by name; `oversight` while the current team is one a global administrator holds no role in, `mayGrantSelf` while they do not hold `admin` there, and `workTenant`, the current team unless so, which the services of the team's work follow (*a global administrator without a role*, below); `me` loads again on a `membership.changed` of the current team or one that names the person in any of their teams — a team joined appears in the team switch —, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below); once it knows the person, the tab may let its login page sign in by itself once more (`SignInMemory.clearTried`, [the login page](#the-login-page)) |
-| `ProjectsService` | The current team's projects, every page of them — of `workTenant`, none under `oversight`; the restriction (`restrict`, with `If-Match`); the list loads again when an event of the current team may have changed which projects the person sees (`ofTenant`, `changesVisibility`), on a `resync` and on a `poll` |
+| `SessionService` | `GET /api/v1/me` (the person and memberships, each with its origins and whether the person may create a project in its team, `can_create_projects`), the current team from the route (`enter(slug)`), the membership's role; for a global administrator every team of the installation (`installation`, `GET /api/v1/teams`, every page), and `tenants` — the memberships, and every other team without a role — with `shown`, the current one by name; `oversight` while the current team is one a global administrator holds no role in, `mayGrantSelf` while they do not hold `admin` there, and `workTenant`, the current team unless so, which the services of the team's work follow (*a global administrator without a role*, below); `me` loads again on a `membership.changed` of the current team or one that names the person in any of their teams — a team joined appears in the sidebar —, a `resync` and a `poll`; tells the browser's other tabs on `cowork.session` whose session this one has, and of a sign-out (*signing in and out*, below); once it knows the person, the tab may let its login page sign in by itself once more (`SignInMemory.clearTried`, [the login page](#the-login-page)) |
+| `ProjectsService` | The current team's projects, every page of them — of `workTenant`, none under `oversight` —, which its group in the sidebar and its pages show; a project created in the team the form names (`create(team, …)`, the sidebar's plus of any team), the restriction (`restrict`, with `If-Match`); the list loads again when an event of the current team may have changed which projects the person sees (`ofTenant`, `changesVisibility`), on a `resync` and on a `poll` |
+| `MyProjectsService` | The projects of every team of the person, `GET /api/v1/me/projects`, every page of it through `ConditionalPages`, by team (`of(slug)`), for the sidebar's groups of the other teams ([the navigation](#the-shell-and-its-navigation)); project acts are on no event stream, so the list loads again when the tab is shown again or the window gets the focus back — once for both within a second (`shownAgainWithin`) —, when the pages enter or leave a team, on a `membership.changed` of any team that may change what the person sees (`changesVisibility`), a `resync` and a `poll`; a load again that fails keeps the list |
 | `TicketsService` | The `EntityCache<Ticket>` keyed by the canonical key; list resources that return keys — `projectTickets`, `tenantTickets` (the team's front page and [its ticket list](#the-teams-ticket-list), a numbered page each), and `projectTicketPages`, which follows the cursor for as many pages as it is asked for and says the version each ticket had in the answer; `ticket(key)` for a detail view; `openTickets(tenant, project)`, every page of a project's open tickets read once into the cache for the parent's choice — no open list, nothing reloads it; `reloadLists`, every open list once per burst. It reacts to the events of the team the pages show only (`ofTenant`): the person-level stream carries the events of every team of the person |
 | `EventStreamService` | The one `EventSource`, opened as the person-level stream (`?me=true`) on the team the pages show — `connect` — or, where they show none, on the person's first team — `personal`, which the shell sets —; its status, and the events as an Observable: the ticket events, `membership.changed` and `project.changed` of every team of the person, and `inbox.changed`. `ofTenant(event, tenant)` says whether an event concerns a page of the team, `changesMemberships(event, tenant)` whether it may have changed who belongs to it, `changesExistence(event)` whether a ticket was deleted, restored or purged — what changes lists no other event tells of, the inbox and its count among them |
 | `InboxService` | The person's unread count for the bell, from one entry of `GET /api/v1/me/inbox` once the person is known, then from the stream's `inbox.changed`, loaded again on `resync`, `poll` and a `membership.changed` that may change what the person sees in any of their teams (`changesVisibility`) — a team left takes its notifications out of the count; marking one notification read and every one up to the newest seen, each answer's count taken over. `followPages`, which the person-level pages load their pages with, lives beside it |
@@ -95,7 +98,7 @@ One service per domain in [`core/`](../../frontend/src/app/core/), signals and `
 | `AccountsService` | The local accounts the current team manages, loaded only while the person is its administrator (anybody else would get a `403`); create, reset, unlock, deactivate, end sessions |
 | `TenantTokensService` | A numbered page of the tokens that can act in the team, for its administrators, through a `ConditionalPages` of its own, and an administrator's revocation of one ([`tenant-tokens.service.ts`](../../frontend/src/app/core/tenant-tokens.service.ts)) |
 | `AuditService` | A numbered page of the team's audit record, and its CSV: the JSON's first page gives the server's `Date`, which ends the period of the download, then numbered pages of a hundred rows as CSV, put together with the header once, at most the newest 10 000 rows (*The audit record*, below) |
-| `TenantsService` | Creating a team (a global administrator, in a session), then `me` and the installation's teams again so the new membership shows |
+| `TenantsService` | Creating a team (a global administrator, in a session), then `me` and the installation's teams again so the new membership shows — in the sidebar and on the page of every team |
 | `DeletedTicketsService` | The current team's bin of deleted tickets, every page of it, loaded only while the person is its administrator; a restoration, whose answer goes into the ticket cache, and a purge; loads again on a `ticket.changed` of its team whose kind is `deleted`, `restored` or `purged` (`changesExistence`) — the purge job's included —, on `resync` and on `poll`, through `ConditionalPages` |
 | `AttachmentConsistencyService` | The current team's latest consistency check of its attachments, with the time of its last export, loaded only while the person is its administrator, through `ConditionalPages`; accepting the loss of its missing files and removing its orphaned objects, each naming the check shown; loads again after either act, after the settings page's export of the team (`exported`), on `resync` and on `poll` — the check is on no event stream |
 | `SavedFiltersService` | The saved filters of `workTenant` — the person's own and the shared ones —, every page of them, through `ConditionalPages`; `create` with the form's key, `update` with the filter's version as `If-Match`, `remove`; filters are not on the event stream, so the list loads again after each act, on `resync`, `poll` and when a filter bar opens its select |
@@ -208,13 +211,15 @@ which would otherwise write onto the next ticket. A project's access section goe
 the project while another team's projects load, its question with it.
 
 **A global administrator without a role** in the team the pages show ([ADR 0034] D2) sees its
-administration only. The team switcher in the top bar and the start page list every team of the
-installation, the ones without a role marked `(no role)` and `no role`; a global administrator is
-sent to a sole team only once the installation's list has answered, and offered the first team
-only while the installation has none. Under `oversight` the navigation shows *Overview*, *Members*,
-*Group mappings* and *Settings* and no projects or time; the dashboard shows the team's name and
-none of its work; the members show without the addresses and without controls, the group mappings
-without their select, their removal and *New mapping*, the settings disabled. Above every page of
+administration only. The page of every team ([below](#the-page-of-every-team)) and the start page
+of a person without a membership list every team of the installation, the ones without a role
+marked `no role`; a global administrator is offered the first team only while the installation has
+none. Such a team is no team of theirs, so the sidebar has no group for it; under `oversight` the
+team's head shows its name and, beside it, the gear of its configuration
+([`team-header.ts`](../../frontend/src/app/features/tenant/team-header.ts)), whose dialog has
+*Members*, *Group mappings* and *Settings*; the dashboard shows the team's name and none of its
+work, and no tab of it; the members show without the addresses and without controls, the group
+mappings without their select, their removal and *New mapping*, the settings disabled. Above every page of
 such a team `TenantScope` shows [`SelfGrant`](../../frontend/src/app/features/tenant/self-grant.ts),
 loaded with `@defer`: that the person has no role here and sees the administration only, a select of
 the role — `admin` first — and *Grant yourself a role*, which asks first through
@@ -306,6 +311,98 @@ cursor by cursor sends each page's tag with that page's cursor; the pages a load
 are forgotten when it ends, and a load that fails keeps the ones held before it. A poll that finds
 nothing new therefore moves no list and costs the backend a hash per page, not a body.
 
+## The shell and its navigation
+
+[`Shell`](../../frontend/src/app/layout/shell.ts) is the frame of every page but the login and the
+password page ([ADR 0023] D4 as amended 2026-10-10). **The top bar** holds the logo, the search box,
+the live indicator, the bell, the assistant's toggle, the theme and the person's menu — for a global
+administrator *All teams* first ([the page of every team](#the-page-of-every-team)), then *Your
+tokens*, *Change password* for a local account and *Sign out*. It names no team and switches none:
+the sidebar is the way between the person's teams. **The sidebar** holds *For you* — the
+person-level pages ([below](#the-person-level-pages)) —, the groups of the person's teams, and at its
+foot the version of the backend alone, `version` of `GET /api/v1/version` (its `commit` and
+`build_time` are the operator's, [build-test-lint.md](build-test-lint.md)), or *backend
+unreachable*. The links of both parts share [`_nav.scss`](../../frontend/src/app/layout/_nav.scss).
+
+**The groups** are [`TeamNav`](../../frontend/src/app/layout/team-nav.ts): one for every membership
+of `GET /api/v1/me`, by slug — compared as plain strings, the order `/me/projects` answers in —, on
+every page, a person-level page included. A team a global administrator only oversees is no
+membership and has no group ([ADR 0034] D2). A group is
+
+| Part | What it is |
+|---|---|
+| The toggle (`nav-team-toggle-<slug>`) | A chevron button named *Projects of <team>*, `aria-expanded` and `aria-controls` the projects; disabled for the team the pages show, whose group stays open |
+| The team's name (`nav-team-<slug>`) | A link to `/t/<slug>`, the dashboard; for the current team in the highlight's colour (`active`, `aria-current="true"`), and on its dashboard with the highlight's ground as well (`aria-current="page"`) |
+| The gear (`nav-team-config-<slug>`) | A link named *Configuration of <team>* to the configuration's settings — `gearTab(configTabs(…))` of [`config-tabs.ts`](../../frontend/src/app/features/tenant/config-tabs.ts): the settings, which every role shows, or the first tab the role shows without them —, carrying the history state `openedFromPage` ([a team's configuration](#a-teams-configuration)); the gear of another team makes that team the current one, its stream included |
+| The plus (`nav-new-project-<slug>`) | Where the membership's `can_create_projects` says the person may create a project in the team: [`NewProjectDialog`](../../frontend/src/app/features/project/new-project-dialog.ts) with that team (`team`), headed *New project in <team>*, which creates the project there (`ProjectsService.create(team, …)`, its `Idempotency-Key` one per content and team) and opens its board — whichever team the pages show |
+| The projects (`nav-project-<slug>-<KEY>`) | By key, archived ones left out, each a link to its board, the current one marked (`active`, `aria-current="true"`); *No projects yet* once the team is known to have none, nothing while it is not |
+
+**Where the projects come from.** The current team's are `ProjectsService`'s while it holds them —
+its stream keeps them live as before —, the other teams' `MyProjectsService`'s, which also stands in
+for the current team while `ProjectsService` loads it after the pages entered it. Project acts reach
+no event stream ([events.md](events.md)), so `MyProjectsService` reads `/me/projects` again when the
+person may look at it anew ([where state lives](#where-state-lives)), each read a `304` while nothing
+changed. **The current project** is the address's (`placeOf`): `/t/<slug>/p/<KEY>/…` and a ticket's
+page `/t/<slug>/tickets/<KEY>-<number>`, the key before the last hyphen.
+
+**A group collapses**, and the browser remembers it per team: the slugs of the collapsed groups as a
+JSON list in `localStorage` under `cowork.nav.collapsed` (`collapsedKey`), a convenience only
+([ADR 0053] D6), every read and write in `try`/`catch` — storage that throws remembers nothing, and
+a value that is no list of strings is read as none. The current team's group is open whatever the
+browser remembers, and collapses as remembered once the pages leave the team.
+
+### A team's configuration
+
+[`TeamConfig`](../../frontend/src/app/features/tenant/team-config.ts) is one large modal dialog
+over the team's dashboard, a tab for each page of the configuration the person's role shows
+(`configTabs` of [`config-tabs.ts`](../../frontend/src/app/features/tenant/config-tabs.ts)) — the
+members and the settings to everybody, the accounts, the tokens, the audit record and the deleted
+tickets to the team's administrators, the group mappings to them and to a global administrator who
+only oversees the team. **Each tab is the page at its address** — `/t/<slug>/members`, `…/accounts`,
+`…/group-mappings`, `…/tokens`, `…/settings`, `…/audit`, `…/deleted-tickets` —: the seven routes are
+the children of a route without a path of its own under `t/:tenant`
+([`app.routes.ts`](../../frontend/src/app/app.routes.ts)), tried after the dashboard, the board, the
+tickets and the time and left for the routes below it when none of its children matches, and its
+component shows the dashboard, [`TenantDashboard`](../../frontend/src/app/features/tenant/dashboard.ts)
+itself, unfiltered — its inputs come from no address there —, and the dialog with a
+`<router-outlet>`. The pages are as they were: they take the team from the route
+(`session.tenant()`, which `TenantScope` sets), and keep their filters, their paging, the
+restoration and the purge. Their own heading says what the tab says, so the dialog keeps it for a
+screen reader and the focus a page gives it, out of sight (`.page > h1`, `.page > .head > h1`).
+
+The dialog is `min(96rem, calc(100vw - 3rem))` wide and `calc(100vh - 3rem)` high, headed
+*Configuration of <team>*, its cross *Close the configuration*; the tabs stand above a pane that
+scrolls. **A tab replaces the address** (`replaceUrl`), so the back button and closing lead out of
+the dialog, not through its tabs. **Closing** — the cross, or Escape while no dialog of a page lies
+over it (PrimeNG closes the topmost by its `z-index`) — goes back in the history when a link of the
+application opened the dialog: the gear's and the tabs' links carry the history state
+`openedFromPage`, which the browser keeps with the entry across the back button and a reload, and
+which `Location.getState()` reads when the dialog opens. An address opened directly — a bookmark, a
+typed or pasted address — carries none, and closing goes to `/t/<slug>` in place of the address.
+
+**A page's own dialogs lie over the configuration**, appended to the document's body: the form
+dialogs of the members, the accounts and the mappings (`appendTo="body"` on *Add a member*, *New
+account*, *New group mapping*, the password reset, and
+[`SecretDialog`](../../frontend/src/app/shared/secret-dialog.ts)), PrimeNG's confirmation, whose
+default is the body, and the overlays of the paginators and of the audit record's selects, which the
+pane's scrolling would clip otherwise. The specs of those form dialogs find their elements in the
+dialog's own window, the mask around it (`container()` of PrimeNG's `Dialog`).
+
+### The page of every team
+
+[`AllTeams`](../../frontend/src/app/features/home/all-teams.ts), `/teams`, is what *All teams* in the
+person menu of a global administrator opens: [`TeamTiles`](../../frontend/src/app/features/home/team-tiles.ts),
+a tile for every team of `session.tenants()` — for a global administrator every team of the
+installation — with its slug and the person's role in it or `no role`, each a link to the team's
+dashboard and, for a team without a role, to its oversight; the start page shows the same tiles to a
+person without a membership. *New team* opens the form of the first team
+([`first-tenant.ts`](../../frontend/src/app/features/home/first-tenant.ts) with `first` false, which
+leaves the heading to the dialog) in a dialog: a new form each time it opens, kept open while the
+team is on its way — not closable, Escape held by `keepOpenWhile` — so that a refusal lands in it;
+once the team exists, `TenantsService` loads `me` and the installation's teams again, the creator
+is its administrator and finds it in the sidebar, and its dashboard opens. Anybody else who opens
+the address sees their own teams, headed *Your teams*, and no *New team*.
+
 ## The dashboard
 
 The team's front page, `/t/:tenant`, is its dashboard ([ADR 0018] D6;
@@ -314,9 +411,17 @@ The team's front page, `/t/:tenant`, is its dashboard ([ADR 0018] D6;
 of `GET …/dashboard` ([api.md](api.md#the-dashboard)), then a card per counted project with its
 open tickets by state, linked to its board, and the eight open tickets updated last — what the
 front page held before the dashboard, now counted by the server over every open ticket instead of
-one page of them. It is *Overview* in the navigation, before *Board*, and *Overview* stays marked
-whatever filters the address holds: its link matches the path exactly and ignores the query
-(`frontPageActive` in [`shell.ts`](../../frontend/src/app/layout/shell.ts)).
+one page of them. The team's name in the sidebar leads to it.
+
+**The team's head**, [`TeamHeader`](../../frontend/src/app/features/tenant/team-header.ts), stands
+on the dashboard, the team board, the team's ticket list and the time report ([ADR 0018] D6 as
+amended 2026-10-10): the team's name as the page's heading and the four as tabs, *Overview*,
+*Board*, *Tickets* and *Time*, router links to `/t/<slug>`, `…/board`, `…/tickets` and `…/time` as
+a project's header has its board and backlog, the one shown marked (`aria-current="page"`).
+*Overview* and *Tickets* match their path exactly and ignore the query, so a filtered dashboard or
+list keeps its tab marked and a ticket's own page marks none. The pages under it keep their own line
+— a sentence, the filters — and no heading of their own. Under `oversight` the head shows the team's
+name and the gear of its configuration, and no tab.
 
 | Tile | Shows |
 |---|---|
@@ -349,8 +454,9 @@ PrimeNG's chart component would bring Chart.js, a dependency the project does no
 page's lazy chunk, and draw on a canvas, which cannot take a `light-dark()` token: every colour
 would have to be resolved from the computed style and the chart drawn again on a change of scheme.
 Nine tiles of counts and short series do not need it. The page is a lazy chunk of its own, about
-26 kB; what it puts into the initial bundle is its route and the navigation's match for *Overview*
-— 386 bytes, `make frontend-build` on 2026-10-05.
+26 kB; what it put into the initial bundle was its route and the navigation's match for *Overview*
+— 386 bytes, `make frontend-build` on 2026-10-05; the team's head that carries the tab is in the
+page's chunk.
 
 **Live.** The page's resource is `DashboardService`'s: an act on a ticket or a question of the
 team it shows — a ticket's deletion and restoration among them —, an import executed into one of
@@ -374,15 +480,16 @@ to me", one component, [`my-tickets.ts`](../../frontend/src/app/features/me/my-t
 input `list` the routes `/me/next` and `/me/assigned` set from their `data`; the inbox
 ([`inbox.ts`](../../frontend/src/app/features/me/inbox.ts), `/me/inbox`) and "Open
 decisions" ([`decisions.ts`](../../frontend/src/app/features/me/decisions.ts), `/me/decisions`). The
-navigation offers them to every person, in a section *For you* above the team's, "Next for me"
-first; the top bar holds
+navigation offers them to every person, in a section *For you* above the groups of the person's
+teams ([the shell](#the-shell-and-its-navigation)), "Next for me" first; the top bar holds
 the bell — a link to the inbox with the unread count, `99+` above ninety-nine, named `Inbox, 3 unread`
 — which `InboxService` keeps live. **The start page `/` is "next for me"**
 ([`home.ts`](../../frontend/src/app/features/home/home.ts), [ADR 0023] D4 as amended 2026-10-05) for
 every person with a membership, one team or many; a person with none chooses among the teams they
-may open, and a global administrator in an installation without one makes the first. Nothing sends a
-person with one team to it any more: on the person-level pages the top bar names that team as a
-link to `/t/<slug>` ([`shell.html`](../../frontend/src/app/layout/shell.html), `soleTenant`). Each page reads its list with the generated client a page of 50 at
+may open — the tiles of [the page of every team](#the-page-of-every-team) —, and a global
+administrator in an installation without one makes the first. Nothing sends a person with one team
+to it: the sidebar lists that team, as it lists every team of the person, a link to `/t/<slug>` on
+every page. Each page reads its list with the generated client a page of 50 at
 a time and *Load more* adds one — `followPages` asks for every loaded page again on a reload, so the
 order stays the server's — and links each ticket to `/t/<team>/tickets/<PROJECT>-<number>`
 ([`person-list.ts`](../../frontend/src/app/features/me/person-list.ts) `ticketRoute`). A page reads the
@@ -643,8 +750,9 @@ card must not be moved from under the pointer — and applies what changed once 
 ## The team board
 
 The team board ([`tenant-board.ts`](../../frontend/src/app/features/tenant/tenant-board.ts),
-`/t/:tenant/board`, [ADR 0018] D4 as amended 2026-10-05) is *Board* in the navigation, right after
-*Overview*; under `oversight` the link is not there and the page shows nothing of the work. It has
+`/t/:tenant/board`, [ADR 0018] D4 as amended 2026-10-05) is the *Board* tab of the team's head, right
+after *Overview* ([ADR 0018] D6 as amended 2026-10-10); under `oversight` the tab is not there and
+the page shows nothing of the work. It has
 a swimlane, [`BoardLane`](../../frontend/src/app/features/tenant/board-lane.ts), for each project of
 `ProjectsService` — the projects the person sees, which the list gives without the archived ones —
 in the order of the list, the projects' keys. A swimlane names its project with a link to the
@@ -712,9 +820,9 @@ refetches the cached tickets, so a card moves where another person moved it.
 
 The team's tickets across its projects
 ([`tenant-tickets.ts`](../../frontend/src/app/features/tenant/tenant-tickets.ts), `/t/:tenant/tickets`,
-mirroring `GET …/tickets`; [ADR 0018] D5, [ADR 0023] D4) are *Tickets* in the navigation, right
-after *Board*, marked active on the list whatever its query and not on a ticket's own page; under
-`oversight` the link is not there and the page shows none of the work. It is a table over
+mirroring `GET …/tickets`; [ADR 0018] D5, [ADR 0023] D4) are the *Tickets* tab of the team's head,
+right after *Board*, marked on the list whatever its query and not on a ticket's own page; under
+`oversight` the tab is not there and the page shows none of the work. It is a table over
 `TicketsService.tenantTickets`, newest first: the key, the project beside it — its name from
 `ProjectsService`, linked to the project's board, or its key where that list does not hold it, an
 archived project's —, the title with the type and the security class, the horizon with its meaning
@@ -973,7 +1081,10 @@ share one shape: a page lists, its administrators change a row in place, and a r
 explain is its own message above the list (`p-message`) — `last_admin` (the team would be left
 without an administrator), `person_not_found` (the person left the team), a mapping that changed
 meanwhile — while anything else is a toast. The roles, their meanings and the origins' badges are
-[`roles.ts`](../../frontend/src/app/features/tenant/roles.ts).
+[`roles.ts`](../../frontend/src/app/features/tenant/roles.ts). The team's pages of this section — the
+members, the accounts, the group mappings, the tokens, the settings, the audit record and the
+deleted tickets — are the tabs of [a team's configuration](#a-teams-configuration), each at its own
+address.
 
 **A row's select shows its write.** NgModel writes a value back into a control only when the bound
 value changes, so a select bound to the list would keep a refused choice on screen. The page binds a
@@ -998,7 +1109,7 @@ page that holds the meaning, each meaning once.
 | Page | What it does |
 |---|---|
 | [`members.ts`](../../frontend/src/app/features/tenant/members.ts), `/t/:tenant/members` | The members in numbered pages of 25, 50 or 100 ([`tablePages`](../../frontend/src/app/core/table-pages.ts)), loaded again on `membership.changed`, a `resync` and a `poll`, a row the answer of a grant names put into the page at once: name — for administrators with the e-mail address under it, which tells two persons of one name apart —, username, the effective role, and each origin as a badge — `mapping` and `grant` with their roles, `local account` where the person has one — a username and a password of their own, wherever the account was made. For administrators: *Add member* ([`add-member-dialog.ts`](../../frontend/src/app/features/tenant/add-member-dialog.ts), by e-mail address or username, the refusals `person_not_found`, `person_ambiguous` and `grant_exists` under the field), the grant as a select in the row (`PUT …/grant`), and its removal, which asks first and says what stays — the mapped role, or nothing. A change that takes the administrator's own administrator role away asks first. Anybody else sees the list without the controls |
-| [`group-mappings.ts`](../../frontend/src/app/features/tenant/group-mappings.ts), `/t/:tenant/group-mappings` | For administrators, linked beside *Accounts*: every mapping with its group, its role and its removal; for a global administrator without a role there, the list alone. A global administrator who administers the team (`global_admin` of `/api/v1/me` and the `admin` role, `mayMap`) gets the role as a select (`PATCH` with the mapping's version as `If-Match`; a `412` reloads the list) and *New mapping* ([`new-mapping-dialog.ts`](../../frontend/src/app/features/tenant/new-mapping-dialog.ts)), which sends the group as typed, without the spaces around it; any other administrator reads the role as text under one line that says only a global administrator creates and changes mappings ([ADR 0030] D7). A change or removal asks first with a warning when it takes the editor's own administrator role away: the mapping is theirs (`includes_caller`) and gives `admin`, and neither a grant of theirs nor another mapping of theirs gives `admin` |
+| [`group-mappings.ts`](../../frontend/src/app/features/tenant/group-mappings.ts), `/t/:tenant/group-mappings` | For administrators, the tab beside *Accounts*: every mapping with its group, its role and its removal; for a global administrator without a role there, the list alone. A global administrator who administers the team (`global_admin` of `/api/v1/me` and the `admin` role, `mayMap`) gets the role as a select (`PATCH` with the mapping's version as `If-Match`; a `412` reloads the list) and *New mapping* ([`new-mapping-dialog.ts`](../../frontend/src/app/features/tenant/new-mapping-dialog.ts)), which sends the group as typed, without the spaces around it; any other administrator reads the role as text under one line that says only a global administrator creates and changes mappings ([ADR 0030] D7). A change or removal asks first with a warning when it takes the editor's own administrator role away: the mapping is theirs (`includes_caller`) and gives `admin`, and neither a grant of theirs nor another mapping of theirs gives `admin` |
 | [`project-access.ts`](../../frontend/src/app/features/project/project-access.ts), in the project's settings | For administrators: the restriction switch (`PUT …/restriction` with the project's `If-Match`; a `412` says so and reloads the projects) and the access list of [`AccessList`](../../frontend/src/app/features/project/access-list.ts), which the section provides, so it lives as long as the page. A restriction asks first with its own [`ConfirmDialog`](../../frontend/src/app/shared/confirm-dialog.ts), saying how many people are on the list — or, when nobody is, that only the team's administrators will see the project, and no number while the list is not loaded; opening asks as well, saying that the project and its tickets become visible to every member of the team, a confidential ticket excepted ([ADR 0065] D1). The list shows whether the project is restricted or not, because it may be filled before the restriction so that nobody on it loses the project in between: a team member is added with `member` or `viewer`, changed in the row, taken off. A row shows the person's e-mail address under the name, and the picker offers each member as *name (address)* where the member list has one, the label its options are named by and its filter searches. A row's select and its removal are disabled while the row's change or removal is out, and a removal takes the entry out of the list at once. The section starts again — its choice, an open question and its message gone — only for another project's key: the projects load again on events and hand in a new object for the same project |
 
 **A table in numbered pages** — the audit record, the members, the person's tokens, the team's
@@ -1010,7 +1121,7 @@ member, and a list a row is dragged in, the backlog, keeps its cursor.
 
 **The team's tokens** ([`tenant-tokens.ts`](../../frontend/src/app/features/tenant/tenant-tokens.ts),
 `/t/:tenant/tokens`, [ADR 0035](../adr/0035-personal-access-tokens.md) D5) are its administrators'
-page, linked after *Audit record*: every token that can act in the team — the members'
+tab, after *Group mappings*: every token that can act in the team — the members'
 unrestricted ones, shown as reaching *every team of the person*, and those restricted to this
 team, with their project — with its person, scope, agent flag and capabilities, dates, last use
 and state, in numbered pages. *Revoke* asks first through
@@ -1022,7 +1133,7 @@ team — a person who left takes their tokens out of it —, a `resync` and a `p
 nothing changed. A member who is no administrator reads that the list is the administrators'.
 
 **The audit record** ([`audit.ts`](../../frontend/src/app/features/tenant/audit.ts),
-`/t/:tenant/audit`, [ADR 0026] D6) is its administrators' page, linked after *Group mappings*: every
+`/t/:tenant/audit`, [ADR 0026] D6) is its administrators' tab, after *Settings*: every
 act newest first — the person, or the system actor in code type; the agent and the token through
 [`AgentMark`](../../frontend/src/app/shared/agent-mark.ts); the action; the entity, with a link to
 its ticket; the reason, the note and each changed field as `field: before → after` in JSON. The
@@ -1046,8 +1157,8 @@ the page says as team: the entity filter offers `team` and asks for `entity_type
 origin `"team"`; the CSV is the server's and keeps the stored words.
 
 **The deleted tickets** ([`deleted-tickets.ts`](../../frontend/src/app/features/tenant/deleted-tickets.ts),
-`/t/:tenant/deleted-tickets`, mirroring `GET …/deleted-tickets`; [ADR 0024] D1, D2), linked for a
-team's administrators below *Time*: the bin of `DeletedTicketsService`, each ticket with its key,
+`/t/:tenant/deleted-tickets`, mirroring `GET …/deleted-tickets`; [ADR 0024] D1, D2), the last tab
+for a team's administrators: the bin of `DeletedTicketsService`, each ticket with its key,
 type, title, confidential mark, state, who deleted it and when, and when the purge removes it.
 *Restore* brings one back at once — it undoes a deletion and asks nothing. *Purge* asks twice: first
 naming the day the job would purge it and what goes, then *Purge for good*, a danger button, with
@@ -1059,7 +1170,7 @@ restoration or a purge in the team (`changesExistence`). Anybody else reads that
 administrators'.
 
 **The team's settings** ([`tenant-settings.ts`](../../frontend/src/app/features/tenant/tenant-settings.ts),
-`/t/:tenant/settings`) give its administrators the export of the whole team
+`/t/:tenant/settings`), the tab the gear opens, give its administrators the export of the whole team
 ([the import and the export](#the-import-and-the-export)) and show them what the team's attachments hold — the sum, the
 number of files and the quota, with a meter where there is one (`byteSize` of
 [`shared/bytes.ts`](../../frontend/src/app/shared/bytes.ts), `quotaShare`), or that

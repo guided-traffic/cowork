@@ -329,10 +329,11 @@ done; the pods still run it at their start and find it in step.
 
 **The first team.** While no team exists, only a global administrator may log in; anyone
 else with the right password gets `403 not_initialised` and no session. The local administrator
-logs in and creates the first team (`POST /api/v1/teams`) — it becomes its first
-administrator by a marked grant — or `bootstrap.team.slug` and `.name` have the start create
-it and grant the administrator. Once a team exists the bootstrap values do nothing, whatever
-they say. The administrator of a team then creates the accounts of its people
+logs in and creates the first team — on the start page, which offers its form while no team
+exists, or `POST /api/v1/teams` — and becomes its first administrator by a marked grant; or
+`bootstrap.team.slug` and `.name` have the start create it and grant the administrator. Once a
+team exists the bootstrap values do nothing, whatever they say; a global administrator makes a
+further team under *All teams* in the person menu of the UI (`/teams`), or with the same request. The administrator of a team then creates the accounts of its people
 (`POST …/accounts`, [README, API](../../README.md#api-backend)): there is no registration and
 no invitation link, and no e-mail, so a forgotten password is an administrator's reset. Creating
 an account, resetting a password and unlocking an account take a **browser session**: a script

@@ -43,7 +43,10 @@ written ([ADR 0024] D1, D2). Saved filters are not published; their list, like t
 **A project's creation** is published as a notification of the entity `project`, with the
 team and the project and nothing else (`Event.NewProject`, set by `insertProject` in
 [`projects.go`](../../backend/internal/api/projects.go)): it changes what a stream may admit, and no
-client is told of it — `Filter.Admits` refuses it, so it is neither sent nor replayed.
+client is told of it — `Filter.Admits` refuses it, so it is neither sent nor replayed. The UI's
+sidebar reads the projects of the person's other teams again when the person may look at them anew
+— the tab or the window back, a team entered or left —, not on an event
+([frontend.md](frontend.md#the-shell-and-its-navigation)).
 
 **The sort of a project's rank by the score** is published as a notification of the entity
 `project-rank` (`store.EntityProjectRank`), with the team, the project and the project's key,

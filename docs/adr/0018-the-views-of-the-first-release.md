@@ -174,12 +174,18 @@ ticket one identity moves moving the other's tile within five seconds, a deleted
 ([ADR 0056](0056-end-to-end-playwright-against-the-built-containers-with-two-identities.md) D3).
 Not verified: the owner's review, and how long the queries take over a large tenant.)*
 
-**Amended 2026-10-10 by the owner (not built)**, after a walk through the UI before use: D6 — the
+**Amended 2026-10-10 by the owner (~~not built~~ built the same day)**, after a walk through the UI before use: D6 — the
 tenant's dashboard, which a team's name in the sidebar opens, carries D4's board, D5's tenant list
 and the time report as its tabs; none of them is a link of the navigation any more, which keeps the
 sidebar for the daily work ([ADR 0023](0023-the-tenant-is-in-the-path.md) D4). Where this Status
 says "in the navigation beside the tenant's front page" or "beside the tenant board", that is the
-place before.
+place before. *(Built 2026-10-10:)* the head of the four pages,
+[`features/tenant/team-header.ts`](../../frontend/src/app/features/tenant/team-header.ts) — the
+team's name and the tabs *Overview*, *Board*, *Tickets* and *Time*, router links to `/t/{slug}`,
+`/t/{slug}/board`, `/t/{slug}/tickets` and `/t/{slug}/time` as a project's header has its board and
+backlog, *Overview* and *Tickets* marked whatever their filters; a global administrator who only
+oversees the team sees its name alone ([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D2). The team's configuration lies over the dashboard (ADR 0023 D4).
 
 ## Context
 
@@ -276,7 +282,7 @@ period.** The tiles of the first release: open tickets by state; open by severit
 `security: live` and `boundary` with the oldest named; `blocked` with the oldest block and
 its reason kind; age distribution of open tickets; throughput (`done` per week, last eight
 weeks); lead time (median `filed`→`done`, last thirty days); open decisions with the oldest
-named; time booked in the period by project. *(Amended 2026-10-10 by the owner, not built: the
+named; time booked in the period by project. *(Amended 2026-10-10 by the owner, ~~not built~~ built the same day: the
 dashboard is the team's front page that the team's name in the sidebar opens, and it carries D4's
 board, D5's tenant list and the time report as tabs beside its tiles, each at the address it has
 today — `/t/{slug}/board`, `/t/{slug}/tickets`, `/t/{slug}/time`.)* No tile is configurable and no custom

@@ -41,8 +41,9 @@ a ticket of one can need a change in the other. D1 is restated for it and names 
 one crossing, the relation between tickets of two teams, read as the other ticket's head; D6 and the
 *Consequences* lose the tenant switcher to the sidebar of
 [ADR 0023](0023-the-tenant-is-in-the-path.md) D4. The rules this replaces are marked in place.
-~~Nothing of the amendment is built.~~ *(2026-10-10:)* D1's expand is built, below; the contract of
-D1, D3's crossing and D6's sidebar are not.
+~~Nothing of the amendment is built.~~ *(2026-10-10:)* D1's expand is built, below, and so are D6's
+sidebar and the *Consequences*' "All teams" (the second paragraph below); the contract of D1 and D3's
+crossing are not.
 
 **Built** (2026-10-10): D1's expand. Every surface says team, and each name before stays readable
 for one release, deprecated, behaving as it did: the API's team family, `/api/v1/teams` and
@@ -76,6 +77,12 @@ account's origin `tenant`; and the database's names — the UI labels each a tea
 contract — the twins, the old parameters, properties, arguments, keys, variables, values and the
 metrics' old label removed —, which a later release does once no supported client reads them;
 until 1.0 no commit carries a breaking mark ([ADR 0003](0003-test-and-ci-policy.md) D9).
+
+**Built** (2026-10-10, the same day): D6's sidebar and the *Consequences*' "All teams" — nobody sees
+a tenant switcher any more: the sidebar lists every team of the person with its projects, a person
+with one membership that one, and a global administrator reaches every team of the installation
+through "All teams" in the person menu, the UI route `/teams`
+([ADR 0023](0023-the-tenant-is-in-the-path.md) D4, where what was built is named).
 
 ## Context
 
@@ -145,7 +152,7 @@ D7); a slug that is taken answers `409 tenant_slug_taken`, and a slug is never r
 **D6 — One tenant is the common installation, and it gets no special mode.** The data model
 and the API always carry the tenant; there is no flag that turns tenancy off and no second
 code path. A person with exactly one membership lands in that tenant and sees no tenant
-switcher *(2026-10-10: nobody does — the sidebar lists every team of the person, ADR 0023 D4)*; an installation grows from one tenant to several by creating them, without a
+switcher *(2026-10-10, built the same day: nobody does — the sidebar lists every team of the person, ADR 0023 D4)*; an installation grows from one tenant to several by creating them, without a
 migration or a reconfiguration. How the first tenant and the first administrator come to
 exist on a fresh installation is one decision, taken in the identity block of the catalog.
 
@@ -157,7 +164,7 @@ exist on a fresh installation is one decision, taken in the identity block of th
 - The API path carries the tenant slug; the alternative (a header) has lost most of its
   appeal, since a person with several memberships would otherwise switch context by header.
 - ~~The UI has a tenant switcher that is invisible to the person with one membership, and a
-  membership list per tenant.~~ *(2026-10-10:)* The UI's sidebar lists every team of the person
+  membership list per tenant.~~ *(2026-10-10, built the same day:)* The UI's sidebar lists every team of the person
   with its projects, and a global administrator reaches the other teams through "All teams"
   ([ADR 0023](0023-the-tenant-is-in-the-path.md) D4). The single-tenant installation sees neither tenancy nor slug
   except in the URL.

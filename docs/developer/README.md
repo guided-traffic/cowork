@@ -106,7 +106,7 @@ change.
 | [storage.md](storage.md) | You touch attachments or the object storage, or the consistency check of the bytes against their metadata |
 | [events.md](events.md) | You touch the event stream, from `NOTIFY` to the Ingress |
 | [metrics.md](metrics.md) | You touch the Prometheus metrics: the registry and who records what, the metrics listener, the generated Grafana dashboard, the consistency family read from the database; or you add an instrument |
-| [frontend.md](frontend.md) | You touch the UI: the folders, the theme and the logo, the services, how an event reaches the screen, the pages — the import and the export among them —, the generated client, `make dev` |
+| [frontend.md](frontend.md) | You touch the UI: the folders, the theme and the logo, the services, how an event reaches the screen, the shell with the sidebar of every team and a team's configuration, the pages — the import and the export among them —, the generated client, `make dev` |
 | [markdown-grammar.md](markdown-grammar.md) | You touch the Markdown export or the context document, or need their exact form |
 | [import-and-export.md](import-and-export.md) | You touch the import or the project and team export: the dry run and its report, the execution, how a ticket file is read and mapped, the archive, `cowork-mcp export` |
 | [rendered-markdown.md](rendered-markdown.md) | You touch how a body, a comment, a question's options or its answer becomes HTML: the renderer, the sanitiser's allow-list, the fields and the route that answer it, the component that shows it |
@@ -154,7 +154,9 @@ dashboard in [api.md](api.md#the-dashboard), [data-access.md](data-access.md#the
 and [frontend.md](frontend.md#the-dashboard); the inbox
 and the person-level lists — "next for me" among them — are sections of [data-access.md](data-access.md#notifications),
 [api.md](api.md#the-person-level-routes), [events.md](events.md#the-person-level-stream) and
-[frontend.md](frontend.md#the-person-level-pages); the team board is a section of
+[frontend.md](frontend.md#the-person-level-pages); the sidebar of every team with its projects —
+over `/me/projects` — and a team's configuration as one dialog are sections of
+[frontend.md](frontend.md#the-shell-and-its-navigation) and [api.md](api.md#the-person-level-routes); the team board is a section of
 [frontend.md](frontend.md#the-team-board), over the project board's list and the event stream as
 they are, narrowed by a saved filter as the backlog's lists are, and the team's ticket list one of
 [frontend.md](frontend.md#the-teams-ticket-list),
