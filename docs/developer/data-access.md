@@ -539,7 +539,11 @@ close one that none of them sees. They are the first locks a transaction takes �
 the blocks', which `LockGraph` refuses the other way round —, before the rank's row lock and any
 ticket row: the transition to `blocked` takes the blocks' lock before it writes the ticket, and an
 import's execution before it inserts. A transaction waiting for one holds no other but the parents'
-lock, so two writers never wait on each other in a circle. The check that follows a lock is a new
+lock, so two writers never wait on each other in a circle. The price is the import's: an execution
+that may make a `blocks` link (`Upload.MayLinkBlocks`) holds the installation's blocks lock for its
+whole run, up to `COWORK_REQUEST_TIMEOUT`, and every `blocks` link, block on a ticket and such
+import in any team waits for it — whether a link it makes touches an existing ticket is known only
+under the rank's row lock, too late to take the graph lock (ADR 0012, residual risks). The check that follows a lock is a new
 statement and sees every write committed before the lock was granted, so two concurrent writes
 cannot pass the check together. golang-migrate takes a single `bigint` key; the two-key space
 never meets it. A transaction that takes a team's lock and persons' locks takes the team's first

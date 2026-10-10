@@ -235,6 +235,18 @@ an agent only while the links stand; a person who wants it to hold gives the age
 
 - The `blocks` cycle check is a graph walk per write; cheap at the sizes expected, and the
   place to look if link creation ever gets slow.
+- *(Added 2026-10-10 after the security review.)* D4's lock: the installation's lock of the `blocks` graph is one lock for every team, and an import's execution
+  that may make a `blocks` link — one in `links.json`, or any file's `blocked-by`, whether or not
+  the link it becomes touches a ticket the upload does not bring — takes it first and holds it for
+  the whole execution, up to the request timeout (`COWORK_REQUEST_TIMEOUT`, 30 seconds by default,
+  none at `0`). Meanwhile every `blocks` link, every block that names a ticket, and every other
+  such import in any team of the installation waits: an import of 1,500 files with one `blocked-by`
+  held it for 4 seconds in the security review, and a `PUT` of a `blocks` link in another team
+  waited 3.7 seconds for it. The lock order — the graph locks first, before the rank's row lock
+  — is what keeps an import from deadlocking with those writers, and whether an execution makes a
+  link that touches an existing ticket is known only from the analysis under the rank's row lock,
+  too late to take the graph lock then; a narrower lock is not built. Splitting a large import by
+  directory bounds the wait.
 - D1's table gives `relates-to` no consumer beyond navigation; if it stays that way it is
   still worth having as the honest name for "these belong together".
 - *(Added 2026-10-06, accepted by the owner with D7's amendment.)* D7's override is a person's

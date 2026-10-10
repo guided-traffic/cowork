@@ -341,6 +341,19 @@ make a `blocks` link takes the installation's lock of the `blocks` graph before 
   timeout, 30 seconds by default, or rolls back. One import at a time per replica bounds the
   memory; the operations page says to keep the backend's memory limit well above the variable
   and to split an import by directory.
+- *(2026-10-10, after the security review.)* An execution that may make a `blocks` link stalls the
+  links of every team: the installation's lock of the `blocks` graph is one lock for every team, and an import's execution
+  that may make a `blocks` link — one in `links.json`, or any file's `blocked-by`, whether or not
+  the link it becomes touches a ticket the upload does not bring — takes it first and holds it for
+  the whole execution, up to the request timeout (`COWORK_REQUEST_TIMEOUT`, 30 seconds by default,
+  none at `0`). Meanwhile every `blocks` link, every block that names a ticket, and every other
+  such import in any team of the installation waits: an import of 1,500 files with one `blocked-by`
+  held it for 4 seconds in the security review, and a `PUT` of a `blocks` link in another team
+  waited 3.7 seconds for it. The lock order — the graph locks first, before the rank's row lock
+  — is what keeps an import from deadlocking with those writers, and whether an execution makes a
+  link that touches an existing ticket is known only from the analysis under the rank's row lock,
+  too late to take the graph lock then; a narrower lock is not built. Splitting a large import by
+  directory bounds the wait.
 
 ## References
 
