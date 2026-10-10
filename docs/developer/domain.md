@@ -243,7 +243,11 @@ graph (`LockGraph(GraphBlocks)`) and refuses a cycle through any team (`BlocksRe
 end through `readable_ticket`, and one the caller does not read is `404 not_found`, "no such
 ticket", like a missing one (`noSuchTicket`). A link is an act on both tickets (`linked`,
 `unlinked`, each with the other ticket in `Refs`), the other end's in its own team's record. An
-existing link is `200` without a second act, a new one `201`. Removing is a write on the source
+existing link is `200` without a second act, a new one `201` — also for two writers at once, the
+same link twice or a `relates-to` from both ends: the insert (`InsertLink`, `ON CONFLICT DO
+NOTHING`) waits for the other writer's commit and takes the conflict, and `setLink` reads the link
+back, whichever end stored it ([ADR 0045] D1; `TestALinkSetAtOnceFromBothEndsIsOneLink`). Two
+`PATCH`es of one ticket's parent with the same `If-Match` give one `200` and one `412`. Removing is a write on the source
 alone, whatever the caller reads of the other end — inside the team a `relates-to` from either end —:
 by the other end's key, either route with `DELETE`, or by the link's id, `DELETE …/links/{link}`
 (`RemoveTicketLink`), the way to remove one whose other end is a placeholder; a missing link, or one

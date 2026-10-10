@@ -416,7 +416,8 @@ func blockTicket(ctx context.Context, r *store.Reader, t tenantScope, tc ticketC
 
 // linkWaitsOn records what a block waits on — a ticket of the team the caller
 // sees — as a blocks link from that ticket, when there is none yet
-// (docs/adr/0009 D2). The transition took the blocks graph's lock first.
+// (docs/adr/0009 D2); one a racing writer stored meanwhile stands as it is.
+// The transition took the blocks graph's lock first.
 func linkWaitsOn(ctx context.Context, w *store.Writer, t tenantScope, tc, waitsOn ticketCtx) error {
 	r := waitsOn.row
 	other := store.Readable{ID: r.ID, TenantID: t.ID, ProjectID: r.ProjectID, Head: store.Head{TeamSlug: t.Slug, TeamName: t.Name,
@@ -427,6 +428,6 @@ func linkWaitsOn(ctx context.Context, w *store.Writer, t tenantScope, tc, waitsO
 	if err == nil || !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	_, err = addLink(ctx, w, t, e, "/block/ticket")
+	_, _, err = addLink(ctx, w, t, e, "/block/ticket")
 	return err
 }

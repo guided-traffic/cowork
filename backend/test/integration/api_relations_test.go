@@ -524,6 +524,107 @@ func TestTwoWritersCrossingTwoTeamsInOppositeDirectionsBothFinish(t *testing.T) 
 	require.NoError(t, ctx.Err(), "no writer waited on the other")
 }
 
+// Two people setting the same link at once — a relates-to from both ends,
+// across teams and inside one, or the same directed link twice — both get the
+// answer for the link that now exists, whichever end stored it: one 201 and
+// one 200, never a 500. One row stands, with one act on each ticket
+// (docs/adr/0045 D1, docs/adr/0012 D1, D3).
+func TestALinkSetAtOnceFromBothEndsIsOneLink(t *testing.T) {
+	e := newRelEnv(t)
+	both := caller{Token: e.tk.Both}
+	cl := e.s.client(t, both)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	canonical := func(team string, source apigen.Ticket, typ apigen.LinkType, otherTeam string, other apigen.Ticket) func() int {
+		return func() int {
+			res, err := cl.LinkTicketToWithResponse(ctx, team, source.Project, source.Number, typ, otherTeam, shortOf(other))
+			if err != nil {
+				return 0
+			}
+			return res.StatusCode()
+		}
+	}
+	short := func(team string, source apigen.Ticket, typ apigen.LinkType, other apigen.Ticket) func() int {
+		return func() int {
+			res, err := cl.LinkTicketsWithResponse(ctx, team, source.Project, source.Number, typ, shortOf(other))
+			if err != nil {
+				return 0
+			}
+			return res.StatusCode()
+		}
+	}
+	count := func(sql string, args ...any) int64 {
+		n, err := e.f.QueryCount(ctx, sql, args...)
+		require.NoError(t, err)
+		return n
+	}
+	oneLink := func(what string, round int, a, b apigen.Ticket, codes []int) {
+		t.Helper()
+		slices.Sort(codes)
+		assert.Equal(t, []int{http.StatusOK, http.StatusCreated}, codes, "round %d: %s", round, what)
+		assert.EqualValues(t, 1, count(`SELECT count(*) FROM ticket_links
+			WHERE (source_id = $1 AND target_id = $2) OR (source_id = $2 AND target_id = $1)`, a.Id, b.Id),
+			"round %d: %s is one row", round, what)
+		for _, tk := range []apigen.Ticket{a, b} {
+			assert.EqualValues(t, 1, count(`SELECT count(*) FROM audit_events WHERE ticket_id = $1 AND action = 'linked'`, tk.Id),
+				"round %d: %s is one act on %s", round, what, tk.Key)
+		}
+	}
+	for round := range 8 {
+		a := e.fileIn(t, both, e.SlugA, "ALPHA", task(fmt.Sprintf("a%d", round)))
+		b := e.fileIn(t, both, e.SlugB, "BETA", task(fmt.Sprintf("b%d", round)))
+		oneLink("a relates-to across teams from both ends", round, a, b, simultaneously(
+			canonical(e.SlugA, a, apigen.LinkTypeRelatesTo, e.SlugB, b), canonical(e.SlugB, b, apigen.LinkTypeRelatesTo, e.SlugA, a)))
+
+		c := e.fileIn(t, both, e.SlugA, "ALPHA", task(fmt.Sprintf("c%d", round)))
+		d := e.fileIn(t, both, e.SlugA, "ALPHA", task(fmt.Sprintf("d%d", round)))
+		oneLink("a relates-to inside the team from both ends", round, c, d, simultaneously(
+			short(e.SlugA, c, apigen.LinkTypeRelatesTo, d), short(e.SlugA, d, apigen.LinkTypeRelatesTo, c)))
+
+		f := e.fileIn(t, both, e.SlugA, "ALPHA", task(fmt.Sprintf("f%d", round)))
+		g := e.fileIn(t, both, e.SlugB, "BETA", task(fmt.Sprintf("g%d", round)))
+		oneLink("a blocks link across teams twice", round, f, g, simultaneously(
+			times(2, canonical(e.SlugA, f, apigen.LinkTypeBlocks, e.SlugB, g))...))
+
+		h := e.fileIn(t, both, e.SlugA, "ALPHA", task(fmt.Sprintf("h%d", round)))
+		i := e.fileIn(t, both, e.SlugA, "ALPHA", task(fmt.Sprintf("i%d", round)))
+		oneLink("a found-in link inside the team twice", round, h, i, simultaneously(
+			times(2, short(e.SlugA, h, apigen.LinkTypeFoundIn, i))...))
+	}
+	require.NoError(t, ctx.Err(), "no writer waited on the other for long")
+}
+
+// Two people setting a ticket's parent at once, with the same If-Match: one
+// write wins and the other is told the ticket moved on — 412, never a 500 —,
+// and the parent is set once (docs/adr/0050 D5, docs/adr/0008 D2).
+func TestAParentSetTwiceAtOnceIsSetOnce(t *testing.T) {
+	e := newRelEnv(t)
+	both := caller{Token: e.tk.Both}
+	cl := e.s.client(t, both)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	for round := range 8 {
+		parent := e.fileIn(t, both, e.SlugA, "ALPHA", task(fmt.Sprintf("parent%d", round)))
+		child := e.fileIn(t, both, e.SlugB, "BETA", task(fmt.Sprintf("child%d", round)))
+		etag := strconv.Quote(strconv.Itoa(child.Version))
+		set := func() int {
+			res, err := cl.UpdateTicketWithResponse(ctx, e.SlugB, child.Project, child.Number, &apigen.UpdateTicketParams{IfMatch: &etag},
+				apigen.TicketPatch{Parent: nullable.NewNullableWithValue(parent.Key)})
+			if err != nil {
+				return 0
+			}
+			return res.StatusCode()
+		}
+		codes := simultaneously(set, set)
+		slices.Sort(codes)
+		assert.Equal(t, []int{http.StatusOK, http.StatusPreconditionFailed}, codes, "round %d", round)
+		now := e.readIn(t, both, e.SlugB, child)
+		assert.Equal(t, parent.Key, now.Parent.MustGet(), "round %d", round)
+		assert.Equal(t, child.Version+1, now.Version, "round %d: one write", round)
+	}
+	require.NoError(t, ctx.Err())
+}
+
 // done is refused over an open prerequisite in another team whose state the
 // closer reads in its head, unless a person overrides with a reason; an agent
 // cannot; a placeholder neither shows nor refuses (docs/adr/0012 D7 as

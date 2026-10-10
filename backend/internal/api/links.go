@@ -217,35 +217,49 @@ func (e linkEnds) record(ctx context.Context, w *store.Writer, t tenantScope, ac
 	return nil
 }
 
+// setLinkAttempts bounds how often setLink reads a link a racing writer
+// stored and finds it gone again before it inserts its own.
+const setLinkAttempts = 3
+
 // setLink makes the link the ends describe, or finds the one made before
-// (docs/adr/0045 D1); created says it is new.
+// (docs/adr/0045 D1); created says it is new. A writer that raced another to
+// the same link — the same pair at once, or a relates-to from both ends at
+// once, whichever end stored it — gets the answer for the link that now
+// exists, never a refusal: the insert takes the conflict and the link is read
+// back.
 func setLink(ctx context.Context, w *store.Writer, t tenantScope, e linkEnds, pointer string) (store.RelatedLink, bool, error) {
-	existing, err := e.existing(ctx, w.Reader, t)
-	if err != nil {
-		return store.RelatedLink{}, false, err
+	for range setLinkAttempts {
+		existing, err := e.existing(ctx, w.Reader, t)
+		if err != nil {
+			return store.RelatedLink{}, false, err
+		}
+		if existing != nil {
+			return *existing, false, nil
+		}
+		made, created, err := addLink(ctx, w, t, e, pointer)
+		if err != nil || created {
+			return made, created, err
+		}
 	}
-	if existing != nil {
-		return *existing, false, nil
-	}
-	made, err := addLink(ctx, w, t, e, pointer)
-	return made, err == nil, err
+	return store.RelatedLink{}, false, errors.New("the link was stored and removed again while it was set")
 }
 
 // addLink creates the link the ends describe, with its act on both tickets;
 // a blocks link takes the installation's lock of the blocks graph and refuses
 // a cycle through any team first (docs/adr/0012 D4). pointer names the other
-// end in a refusal.
-func addLink(ctx context.Context, w *store.Writer, t tenantScope, e linkEnds, pointer string) (store.RelatedLink, error) {
+// end in a refusal. created is false, and nothing is recorded, where an equal
+// link stands by now, stored by a writer that raced this one.
+func addLink(ctx context.Context, w *store.Writer, t tenantScope, e linkEnds, pointer string) (link store.RelatedLink, created bool, err error) {
 	if e.typ == domain.LinkBlocks {
 		if err := w.LockGraph(ctx, store.GraphBlocks); err != nil {
-			return store.RelatedLink{}, err
+			return store.RelatedLink{}, false, err
 		}
 		cycle, err := w.BlocksReach(ctx, e.target, e.source)
 		if err != nil {
-			return store.RelatedLink{}, err
+			return store.RelatedLink{}, false, err
 		}
 		if cycle {
-			return store.RelatedLink{}, &problem.Error{Code: problem.LinkCycle,
+			return store.RelatedLink{}, false, &problem.Error{Code: problem.LinkCycle,
 				Detail: "the blocked ticket already blocks the other one over blocks links",
 				Errors: []problem.FieldError{{Pointer: pointer, Message: "would close a cycle"}}}
 		}
@@ -253,20 +267,23 @@ func addLink(ctx context.Context, w *store.Writer, t tenantScope, e linkEnds, po
 	caller := principal(ctx)
 	ins, err := w.InsertLink(ctx, writeq.InsertLinkParams{TenantID: t.ID, Type: e.typ, SourceID: e.source,
 		TargetID: e.target, CreatedBy: caller.PersonID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return store.RelatedLink{}, false, nil
+	}
 	if err != nil {
-		return store.RelatedLink{}, fmt.Errorf("insert the link: %w", err)
+		return store.RelatedLink{}, false, fmt.Errorf("insert the link: %w", err)
 	}
 	if err := e.record(ctx, w, t, actionLinked, ins.ID); err != nil {
-		return store.RelatedLink{}, err
+		return store.RelatedLink{}, false, err
 	}
 	// The principal does not carry its person's username; the maker is read
 	// back as the list reads them.
 	l, err := w.GetLink(ctx, readq.GetLinkParams{TenantID: t.ID, Type: e.typ, SourceID: e.source, TargetID: e.target})
 	if err != nil {
-		return store.RelatedLink{}, fmt.Errorf("read the new link: %w", err)
+		return store.RelatedLink{}, false, fmt.Errorf("read the new link: %w", err)
 	}
 	return store.RelatedLink{ID: ins.ID, Type: e.typ, Outgoing: e.outgoing(),
-		CreatedBy: store.Person{ID: l.CreatedBy, Username: l.CreatedByUsername, Name: l.CreatedByName}, CreatedAt: ins.CreatedAt}, nil
+		CreatedBy: store.Person{ID: l.CreatedBy, Username: l.CreatedByUsername, Name: l.CreatedByName}, CreatedAt: ins.CreatedAt}, true, nil
 }
 
 func ticketKey(t tenantScope, r store.TicketRow) string {

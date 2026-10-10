@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/guided-traffic/cowork/backend/internal/auth"
 	"github.com/guided-traffic/cowork/backend/internal/domain"
@@ -265,6 +266,11 @@ func (ex *execution) link(ctx context.Context, l importer.PlannedLink) error {
 	}
 	ins, err := ex.w.InsertLink(ctx, writeq.InsertLinkParams{TenantID: ex.t.ID, Type: l.Type, SourceID: source, TargetID: target,
 		CreatedBy: ex.caller.PersonID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// A writer outside the import stored the same link meanwhile: it
+		// stands, with its own acts.
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("insert the link: %w", err)
 	}

@@ -2,8 +2,14 @@
 -- (docs/adr/0012 D2 as amended 2026-10-10, migration 47).
 
 -- name: InsertLink :one
+-- A new link, or no row where an equal one stands by now: the same type
+-- between the same tickets in the same direction, or a relates-to of the pair
+-- stored from either end (ticket_links_relates_once). A writer that raced
+-- another to it waits for that one's commit here and reads the link back
+-- instead of failing (docs/adr/0045 D1).
 INSERT INTO ticket_links (tenant_id, type, source_id, target_id, created_by)
 VALUES (sqlc.arg(tenant_id), sqlc.arg(type), sqlc.arg(source_id), sqlc.arg(target_id), sqlc.arg(created_by))
+ON CONFLICT DO NOTHING
 RETURNING id, created_at;
 
 -- name: GetLinkByID :one
