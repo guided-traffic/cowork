@@ -123,8 +123,8 @@ export class TicketFields {
   private readonly key = computed(() => this.ticket().key);
   /** The tenant and the project the ticket is in, for the parent's choice. */
   protected readonly place = computed(() => {
-    const { tenant, key } = splitKey(this.key());
-    return { tenant, project: key.slice(0, key.lastIndexOf('-')) };
+    const { team, key } = splitKey(this.key());
+    return { tenant: team, project: key.slice(0, key.lastIndexOf('-')) };
   });
   /** A tenant administrator sets and lifts the confidential flag (docs/adr/0065 D6). */
   protected readonly administers = computed(() => this.session.membership()?.role === 'admin');

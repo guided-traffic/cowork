@@ -12,7 +12,16 @@ import { AuditQuery, AuditService } from '../../core/audit.service';
 import { MembersService } from '../../core/members.service';
 import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
-import { Audit, changes, entityTypes, period, tokenIdOrEmpty } from './audit';
+import {
+  Audit,
+  changes,
+  entityTypes,
+  period,
+  shownEntityType,
+  shownField,
+  storedEntityType,
+  tokenIdOrEmpty,
+} from './audit';
 
 const ada: Member = {
   person: { id: 'p1', username: 'ada', display_name: 'Ada Lovelace' },
@@ -96,6 +105,58 @@ describe('the audit page helpers', () => {
     expect(entityTypes).toContain('attachment_consistency');
     expect(new Set(entityTypes).size).toBe(entityTypes.length);
   });
+
+  // docs/adr/0005 D1: a team is stored as a tenant, and the record keeps that name.
+  it('offers a team as team, never by the name it is stored under', () => {
+    expect(entityTypes).toContain('team');
+    expect(entityTypes).not.toContain('tenant');
+  });
+
+  it('asks for the stored entity type of a team, and takes every other as it is typed', () => {
+    expect(storedEntityType('team')).toBe('tenant');
+    expect(storedEntityType('tenant')).toBe('tenant');
+    expect(storedEntityType('ticket')).toBe('ticket');
+    expect(storedEntityType('teams')).toBe('teams');
+  });
+
+  it('shows the stored entity type of a team as team, and every other as it is', () => {
+    expect(shownEntityType('tenant')).toBe('team');
+    expect(shownEntityType('team')).toBe('team');
+    expect(shownEntityType('ticket')).toBe('ticket');
+    expect(shownEntityType('tenant_x')).toBe('tenant_x');
+  });
+
+  it('shows a payload key that names the team as team, and every other as it is', () => {
+    expect(shownField('tenant')).toBe('team');
+    expect(shownField('tenants')).toBe('teams');
+    expect(shownField('restricted_tenant')).toBe('restricted_team');
+    expect(shownField('tenant_id')).toBe('team_id');
+    expect(shownField('subtenant')).toBe('subtenant');
+    expect(shownField('state')).toBe('state');
+  });
+
+  it("shows a team's grant and a local account's origin with the team's name, the values as stored", () => {
+    expect(
+      changes(
+        act('a', {
+          entity_type: 'membership',
+          before: null,
+          after: { tenant: 'acme', user: 'p1', role: 'admin', source: 'grant' },
+        }),
+      ),
+    ).toEqual(['team: "acme"', 'user: "p1"', 'role: "admin"', 'source: "grant"']);
+    expect(
+      changes(act('a', { entity_type: 'user', before: null, after: { origin: 'tenant' } })),
+    ).toEqual(['origin: "team"']);
+    expect(changes(act('a', { before: { title: 'tenant' }, after: { title: 'x' } }))).toEqual([
+      'title: "tenant" → "x"',
+    ]);
+    expect(
+      changes(
+        act('a', { entity_type: 'token', before: null, after: { restricted_tenant: 'acme' } }),
+      ),
+    ).toEqual(['restricted_team: "acme"']);
+  });
 });
 
 describe('Audit', () => {
@@ -170,7 +231,7 @@ describe('Audit', () => {
       const fixture = await render();
 
       expect(host(fixture).querySelector('h1')?.textContent).toBe('Audit record');
-      expect(page).toHaveBeenCalledExactlyOnceWith({ tenant: 'acme' }, 1, 25);
+      expect(page).toHaveBeenCalledExactlyOnceWith({ team: 'acme' }, 1, 25);
       const row = el(fixture, 'act-a1');
       expect(text(row?.querySelector('[data-testid="act-person"]'))).toBe('Ada Lovelace');
       expect(text(row?.querySelector('[data-testid="act-action"]'))).toBe('transitioned');
@@ -214,6 +275,25 @@ describe('Audit', () => {
       expect(viaToken?.querySelector('[data-testid="act-by-token"]')).not.toBeNull();
     });
 
+    it('shows an act on a team, which the record stores as a tenant, as one on a team', async () => {
+      page.mockResolvedValue(
+        pageOf([
+          act('a4', {
+            entity_type: 'tenant',
+            ticket_key: null,
+            action: 'created',
+            before: null,
+            after: { slug: 'acme', name: 'Acme Corp' },
+          }),
+        ]),
+      );
+      const fixture = await render();
+
+      const row = el(fixture, 'act-a4');
+      expect(text(row?.querySelector('[data-testid="act-entity"]'))).toBe('team');
+      expect(text(row)).not.toMatch(/tenant/i);
+    });
+
     it('says so when nothing matches, and when the record cannot be loaded', async () => {
       page.mockResolvedValue(pageOf([], 0));
       let fixture = await render();
@@ -240,7 +320,7 @@ describe('Audit', () => {
 
       expect(page).not.toHaveBeenCalled();
       expect(text(el(fixture, 'audit-notice'))).toBe(
-        'Only the administrators of this tenant read its audit record.',
+        'Only the administrators of this team read its audit record.',
       );
       expect(el(fixture, 'audit-csv')).toBeNull();
     });
@@ -253,10 +333,10 @@ describe('Audit', () => {
         .query(By.directive(Paginator))
         .triggerEventHandler('onPageChange', { page: 1, rows: 25, first: 25 });
       await settle(fixture);
-      expect(page).toHaveBeenLastCalledWith({ tenant: 'acme' }, 2, 25);
+      expect(page).toHaveBeenLastCalledWith({ team: 'acme' }, 2, 25);
 
       await choose(fixture, 'audit-actor', 'p1');
-      expect(page).toHaveBeenLastCalledWith({ tenant: 'acme', actor: 'p1' }, 1, 25);
+      expect(page).toHaveBeenLastCalledWith({ team: 'acme', actor: 'p1' }, 1, 25);
 
       await choose(fixture, 'audit-action', ['created', 'deleted']);
       typeInto(fixture, 'audit-entity', ' ticket ');
@@ -266,13 +346,27 @@ describe('Audit', () => {
       await settle(fixture);
 
       expect(lastQuery()).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         actor: 'p1',
         action: ['created', 'deleted'],
         entity_type: 'ticket',
         ...period('2026-10-01', '2026-10-03'),
       });
       expect(page.mock.lastCall?.[1]).toBe(1);
+    });
+
+    it('asks for the stored entity type of a team, typed as team (docs/adr/0005 D1)', async () => {
+      const fixture = await render();
+
+      typeInto(fixture, 'audit-entity', 'team');
+      await settle(fixture);
+
+      expect(lastQuery()).toEqual({ team: 'acme', entity_type: 'tenant' });
+      const offered = [...host(fixture).querySelectorAll('#audit-entities option')].map((option) =>
+        option.getAttribute('value'),
+      );
+      expect(offered).toContain('team');
+      expect(offered).not.toContain('tenant');
     });
 
     it('offers the members as actors by name and username', async () => {
@@ -296,7 +390,7 @@ describe('Audit', () => {
 
       typeInto(fixture, 'audit-token', tokenId.toUpperCase());
       await settle(fixture);
-      expect(lastQuery()).toEqual({ tenant: 'acme', token: tokenId });
+      expect(lastQuery()).toEqual({ team: 'acme', token: tokenId });
       expect(el(fixture, 'audit-token-error')).toBeNull();
     });
 
@@ -307,7 +401,7 @@ describe('Audit', () => {
       el(fixture, 'act-by-token')?.click();
       await settle(fixture);
 
-      expect(lastQuery()).toEqual({ tenant: 'acme', token: tokenId });
+      expect(lastQuery()).toEqual({ team: 'acme', token: tokenId });
       expect((el(fixture, 'audit-token') as HTMLInputElement).value).toBe(tokenId);
     });
 
@@ -321,7 +415,7 @@ describe('Audit', () => {
       el(fixture, 'audit-clear')?.click();
       await settle(fixture);
 
-      expect(lastQuery()).toEqual({ tenant: 'acme' });
+      expect(lastQuery()).toEqual({ team: 'acme' });
       expect(el(fixture, 'audit-clear')).toBeNull();
     });
   });
@@ -340,7 +434,7 @@ describe('Audit', () => {
         .triggerEventHandler('onPageChange', { page: 2, rows: 25, first: 50 });
       await settle(fixture);
 
-      expect(page).toHaveBeenLastCalledWith({ tenant: 'acme' }, 3, 25);
+      expect(page).toHaveBeenLastCalledWith({ team: 'acme' }, 3, 25);
       expect(paginator.first()).toBe(50);
     });
 
@@ -356,7 +450,7 @@ describe('Audit', () => {
       paginator.triggerEventHandler('onPageChange', { page: 1, rows: 100, first: 100 });
       await settle(fixture);
 
-      expect(page).toHaveBeenLastCalledWith({ tenant: 'acme' }, 1, 100);
+      expect(page).toHaveBeenLastCalledWith({ team: 'acme' }, 1, 100);
     });
   });
 
@@ -382,7 +476,7 @@ describe('Audit', () => {
       el(fixture, 'audit-csv')?.click();
       await settle(fixture);
 
-      expect(csv).toHaveBeenCalledExactlyOnceWith({ tenant: 'acme', actor: 'p1' });
+      expect(csv).toHaveBeenCalledExactlyOnceWith({ team: 'acme', actor: 'p1' });
       expect(created).toHaveBeenCalledOnce();
       const blob = created.mock.calls[0][0] as Blob;
       expect(blob.type).toBe('text/csv');

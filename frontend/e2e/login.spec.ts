@@ -65,7 +65,7 @@ test(
     // The same write without the header is refused by the CSRF check (docs/adr/0037).
     const refused = await page.evaluate(
       async ({ tenant, project }) => {
-        const response = await fetch(`/api/v1/tenants/${tenant}/projects/${project}/tickets`, {
+        const response = await fetch(`/api/v1/teams/${tenant}/projects/${project}/tickets`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

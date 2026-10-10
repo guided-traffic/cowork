@@ -23,9 +23,9 @@ import { ConditionalPages, PageFetcher } from '../../core/conditional';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
 import { keepShown, refresh } from '../../core/refresh';
 
-/** Where a ticket lives: the tenant, the project's key and the number. */
+/** Where a ticket lives: the team, the project's key and the number, as the API names them. */
 export interface TicketAddress {
-  tenant: string;
+  team: string;
   project: string;
   number: number;
 }
@@ -33,7 +33,9 @@ export interface TicketAddress {
 /** `acme`, `VKO-12` → the address; undefined for a key that is not `<PROJECT>-<number>`. */
 export function address(tenant: string | null, key: string): TicketAddress | undefined {
   const match = /^([A-Z][A-Z0-9]{1,9})-([1-9][0-9]*)$/.exec(key);
-  return tenant && match ? { tenant, project: match[1], number: Number(match[2]) } : undefined;
+  return tenant && match
+    ? { team: tenant, project: match[1], number: Number(match[2]) }
+    : undefined;
 }
 
 /** Which way the prerequisite tree is read: what blocks the ticket, or what it blocks. */
@@ -68,8 +70,8 @@ export class TicketRelations {
       const version = this.version();
       return at && version !== undefined ? { ...at, version } : undefined;
     },
-    loader: ({ params: { tenant, project, number } }) =>
-      keepShown(this.body, () => this.api.invoke(getTicketBody, { tenant, project, number })),
+    loader: ({ params: { team, project, number } }) =>
+      keepShown(this.body, () => this.api.invoke(getTicketBody, { team, project, number })),
   });
 
   readonly comments = this.part((params, page) => page(listComments, { ...params, limit: 200 }));
@@ -131,7 +133,7 @@ export class TicketRelations {
     ) {
       return;
     }
-    if (event.key !== `${at.tenant}/${at.project}-${at.number}`) {
+    if (event.key !== `${at.team}/${at.project}-${at.number}`) {
       // A ticket of the tree moved, or was linked to another: the tree may show it otherwise.
       if (
         (event.name === 'ticket.changed' || event.name === 'link.changed') &&

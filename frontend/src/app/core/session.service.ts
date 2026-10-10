@@ -13,8 +13,8 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
 import { getMe } from '../api/fn/me/get-me';
-import { listTenants } from '../api/fn/tenants/list-tenants';
-import { Me, Membership, Role, TenantSummary } from '../api/models';
+import { listTeams } from '../api/fn/teams/list-teams';
+import { Me, Membership, Role, TeamSummary } from '../api/models';
 import { changesMemberships, EventStreamService } from './event-stream.service';
 import { RELOAD } from './hard-navigation';
 import { keepShown, refresh } from './refresh';
@@ -106,14 +106,14 @@ export class SessionService {
     return person?.global_admin ? person.id : undefined;
   });
   /** Every tenant of the installation, every page of them, for a global administrator. */
-  readonly installation: ResourceRef<TenantSummary[] | undefined> = resource({
+  readonly installation: ResourceRef<TeamSummary[] | undefined> = resource({
     params: () => this.globalAdmin(),
     loader: () =>
       keepShown(this.installation, async () => {
-        const tenants: TenantSummary[] = [];
+        const tenants: TeamSummary[] = [];
         let cursor: string | undefined;
         do {
-          const page = await this.api.invoke(listTenants, { cursor, limit: 200 });
+          const page = await this.api.invoke(listTeams, { cursor, limit: 200 });
           tenants.push(...page.items);
           cursor = page.next_cursor ?? undefined;
         } while (cursor);
@@ -126,9 +126,9 @@ export class SessionService {
    * memberships', which `me` keeps current.
    */
   readonly tenants = computed<OpenableTenant[]>(() => {
-    const own: OpenableTenant[] = this.memberships().map(({ tenant, role }) => ({
-      slug: tenant.slug,
-      name: tenant.name,
+    const own: OpenableTenant[] = this.memberships().map(({ team, role }) => ({
+      slug: team.slug,
+      name: team.name,
       role,
     }));
     const others: OpenableTenant[] = (this.installation.hasValue() ? this.installation.value() : [])
@@ -140,7 +140,7 @@ export class SessionService {
   /** The tenant of the current page; null on the person-level pages. */
   readonly tenant = signal<string | null>(null);
   readonly membership = computed(() =>
-    this.memberships().find((membership) => membership.tenant.slug === this.tenant()),
+    this.memberships().find((membership) => membership.team.slug === this.tenant()),
   );
   /** The tenant of the current page with its name, whether the person holds a role in it or not. */
   readonly shown = computed(() => this.tenants().find((tenant) => tenant.slug === this.tenant()));

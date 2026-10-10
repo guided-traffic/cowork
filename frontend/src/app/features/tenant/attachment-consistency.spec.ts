@@ -170,7 +170,7 @@ describe('AttachmentConsistencySection', () => {
     expect(text(el(fixture, 'consistency-never'))).toContain('Not checked yet');
     expect(el(fixture, 'consistency-summary')).toBeNull();
     expect(text(el(fixture, 'consistency-last-export'))).toBe(
-      "Never exported. An export on a schedule is the second line of the tenant's backup.",
+      "Never exported. An export on a schedule is the second line of the team's backup.",
     );
   });
 
@@ -178,7 +178,7 @@ describe('AttachmentConsistencySection', () => {
     const fixture = await render();
 
     const line = el(fixture, 'consistency-last-export');
-    expect(text(line)).toBe('Last export yesterday, of the tenant or one of its projects.');
+    expect(text(line)).toBe('Last export yesterday, of the team or one of its projects.');
     expect(line?.previousElementSibling?.getAttribute('data-testid')).toBe('consistency-summary');
   });
 
@@ -306,7 +306,7 @@ describe('AttachmentConsistencySection', () => {
 
   it('toasts a refusal and reads the check again — a newer check replaced the lists', async () => {
     acceptLoss.mockRejectedValue(
-      refusal(409, 'consistency_check_stale', 'the check is not the tenant latest'),
+      refusal(409, 'consistency_check_stale', 'the check is not the team latest'),
     );
     const add = vi.spyOn(TestBed.inject(MessageService), 'add');
     const fixture = await render();
@@ -317,7 +317,7 @@ describe('AttachmentConsistencySection', () => {
     await settle(fixture);
 
     expect(add).toHaveBeenCalledWith(
-      expect.objectContaining({ detail: 'the check is not the tenant latest' }),
+      expect.objectContaining({ detail: 'the check is not the team latest' }),
     );
     expect(reload).toHaveBeenCalled();
   });

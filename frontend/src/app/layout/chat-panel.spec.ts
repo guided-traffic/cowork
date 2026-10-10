@@ -110,7 +110,7 @@ describe('ChatPanel', () => {
       await render();
 
       const empty = el('chat-empty')?.textContent?.replace(/\s+/g, ' ');
-      expect(empty).toContain('works in this tenant as your agent');
+      expect(empty).toContain('works in this team as your agent');
       expect(empty).toContain('Every act runs at once');
       expect(empty).toContain('Stop ends a turn at once');
       expect(empty).toContain('by default it does not decide, close or drop a ticket');
@@ -256,7 +256,7 @@ describe('ChatPanel', () => {
       await render();
 
       expect(el('chat-tool-refused')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        'Not opened: /me/tokens is not a ticket, a backlog or a board of this tenant.',
+        'Not opened: /me/tokens is not a ticket, a backlog or a board of this team.',
       );
     });
 

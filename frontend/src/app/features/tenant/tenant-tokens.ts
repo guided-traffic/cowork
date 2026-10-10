@@ -49,7 +49,7 @@ const scopeAccents: Record<Scope, string> = {
 
 /** Whether a token reaches beyond this tenant: one restricted to none reaches every tenant of its person. */
 export function unrestricted(token: MemberToken): boolean {
-  return token.restricted_tenant === null;
+  return token.restricted_team === null;
 }
 
 /**
@@ -60,12 +60,12 @@ export function unrestricted(token: MemberToken): boolean {
 export function revocationMessage(token: MemberToken): string {
   const person = token.person.display_name;
   const reach = unrestricted(token)
-    ? `It is not restricted to this tenant: revoking it ends it in every tenant ${person} ` +
+    ? `It is not restricted to this team: revoking it ends it in every team ${person} ` +
       'belongs to, not only here.'
-    : 'It is restricted to this tenant and ends here.';
+    : 'It is restricted to this team and ends here.';
   return (
     `${reach} Every request that presents it is refused from now on, and ${person} makes a new ` +
-    "one if they need it. A revocation cannot be undone; it is recorded in this tenant's audit record."
+    "one if they need it. A revocation cannot be undone; it is recorded in this team's audit record."
   );
 }
 

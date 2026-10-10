@@ -129,6 +129,32 @@ export async function expectScheme(page: Page): Promise<void> {
 }
 
 /**
+ * The page says team, never tenant (docs/adr/0005 D1): neither its text — what a screen reader
+ * reads of it included — nor a placeholder, a label, a title or an alternative text. The unit tier
+ * holds the templates and the code to it; this holds a page once it shows its data. Each line or
+ * attribute that says the word is named in the failure.
+ */
+export async function expectNoTenantShown(page: Page): Promise<void> {
+  const said = await page.evaluate(() => {
+    const word = /\btenants?\b/i;
+    const attributes = ['placeholder', 'aria-label', 'title', 'alt'];
+    const lines = document.body.innerText.split('\n').filter((line) => word.test(line));
+    for (const element of document.body.querySelectorAll(
+      '[placeholder], [aria-label], [title], [alt]',
+    )) {
+      for (const name of attributes) {
+        const value = element.getAttribute(name);
+        if (value !== null && word.test(value)) {
+          lines.push(`${element.tagName.toLowerCase()} ${name}: ${value}`);
+        }
+      }
+    }
+    return lines;
+  });
+  expect(said).toEqual([]);
+}
+
+/**
  * A drag as a person makes it, for the Angular CDK: press on the handle, move past the CDK's
  * threshold, travel to the target in steps — the CDK sorts and enters lists on pointer moves —,
  * rest, and release. `at` is where in the target the pointer goes, as fractions of its box.

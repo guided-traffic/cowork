@@ -56,7 +56,7 @@ export const addRefusals: Partial<Record<ProblemCode, string>> = {
     >
       <form class="form" (ngSubmit)="save()">
         <p class="muted lead">
-          A grant for somebody who is not a member of this tenant yet. Somebody of the identity
+          A grant for somebody who is not a member of this team yet. Somebody of the identity
           provider is found by the e-mail address it gave at their last sign-in, so they can be
           added once they have signed in; a local account by its username.
         </p>

@@ -36,7 +36,7 @@ export class ProjectsService {
           const projects: Project[] = [];
           let cursor: string | undefined;
           do {
-            const next = await page(listProjects, { tenant, cursor, limit: 200 });
+            const next = await page(listProjects, { team: tenant, cursor, limit: 200 });
             projects.push(...next.items);
             cursor = next.next_cursor ?? undefined;
           } while (cursor);
@@ -76,7 +76,7 @@ export class ProjectsService {
    */
   async create(body: ProjectCreate, idempotencyKey: string): Promise<Project> {
     const project = await this.api.invoke(createProject, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       'Idempotency-Key': idempotencyKey,
       body,
     });
@@ -86,7 +86,7 @@ export class ProjectsService {
 
   async update(project: Project, patch: ProjectPatch): Promise<Project> {
     const changed = await this.api.invoke(updateProject, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       project: project.key,
       'If-Match': etagOf(project.version),
       body: patch,
@@ -105,7 +105,7 @@ export class ProjectsService {
   async restrict(project: Project, restricted: boolean): Promise<Project> {
     const tenant = this.session.tenant() as string;
     const changed = await this.api.invoke(setProjectRestriction, {
-      tenant,
+      team: tenant,
       project: project.key,
       'If-Match': etagOf(project.version),
       body: { restricted },
@@ -122,7 +122,7 @@ export class ProjectsService {
   /** Archives a project: its tickets stay, it leaves the lists and takes no new ticket (docs/adr/0006 D4). */
   async archive(project: Project): Promise<Project> {
     const archived = await this.api.invoke(archiveProject, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       project: project.key,
     });
     refresh(this.projects, this.injector);

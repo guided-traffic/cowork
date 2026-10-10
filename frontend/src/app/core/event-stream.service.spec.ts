@@ -130,14 +130,14 @@ describe('EventStreamService', () => {
     it('opens the stream of the tenant and is connecting until it is open', () => {
       service.connect('acme');
 
-      expect(sources.map((source) => source.url)).toEqual(['/api/v1/tenants/acme/events?me=true']);
+      expect(sources.map((source) => source.url)).toEqual(['/api/v1/teams/acme/events?me=true']);
       expect(service.status()).toBe('connecting');
     });
 
     it('writes the tenant into the path as one segment', () => {
       service.connect('a b/c');
 
-      expect(sources[0].url).toBe('/api/v1/tenants/a%20b%2Fc/events?me=true');
+      expect(sources[0].url).toBe('/api/v1/teams/a%20b%2Fc/events?me=true');
     });
 
     it('is live once the stream is open', () => {
@@ -235,8 +235,8 @@ describe('EventStreamService', () => {
 
       expect(sources[0].isClosed).toBe(true);
       expect(sources.map((source) => source.url)).toEqual([
-        '/api/v1/tenants/acme/events?me=true',
-        '/api/v1/tenants/globex/events?me=true',
+        '/api/v1/teams/acme/events?me=true',
+        '/api/v1/teams/globex/events?me=true',
       ]);
       expect(service.status()).toBe('connecting');
     });
@@ -266,8 +266,8 @@ describe('EventStreamService', () => {
       expect(service.status()).toBe('connecting');
       expect(events).toEqual([]);
       expect(sources.map((source) => source.url)).toEqual([
-        '/api/v1/tenants/acme/events?me=true',
-        '/api/v1/tenants/globex/events?me=true',
+        '/api/v1/teams/acme/events?me=true',
+        '/api/v1/teams/globex/events?me=true',
       ]);
     });
 
@@ -387,7 +387,7 @@ describe('EventStreamService', () => {
     it("is held on the person's tenant while no tenant page is open", () => {
       service.personal('acme');
 
-      expect(sources.map((source) => source.url)).toEqual(['/api/v1/tenants/acme/events?me=true']);
+      expect(sources.map((source) => source.url)).toEqual(['/api/v1/teams/acme/events?me=true']);
       expect(service.status()).toBe('connecting');
     });
 
@@ -397,9 +397,9 @@ describe('EventStreamService', () => {
       service.connect(null);
 
       expect(sources.map((source) => source.url)).toEqual([
-        '/api/v1/tenants/acme/events?me=true',
-        '/api/v1/tenants/globex/events?me=true',
-        '/api/v1/tenants/acme/events?me=true',
+        '/api/v1/teams/acme/events?me=true',
+        '/api/v1/teams/globex/events?me=true',
+        '/api/v1/teams/acme/events?me=true',
       ]);
       expect(sources.slice(0, 2).every((source) => source.isClosed)).toBe(true);
     });
@@ -463,9 +463,24 @@ describe('EventStreamService', () => {
       [{ project_id: 'j1' }, { projectId: 'j1' }, 'a restriction set or lifted'],
       [{ mapping_id: 'm1' }, { mappingId: 'm1' }, 'a group mapping'],
       [
+        { team: 'beta', tenant: 'beta', person_id: 'p1' },
+        { tenant: 'beta', personId: 'p1' },
+        'an act of another team of the person, named by both names (docs/adr/0054 D1)',
+      ],
+      [
+        { team: 'beta', person_id: 'p1' },
+        { tenant: 'beta', personId: 'p1' },
+        'a team named by team alone (docs/adr/0005 D1)',
+      ],
+      [
         { tenant: 'beta', person_id: 'p1' },
         { tenant: 'beta', personId: 'p1' },
-        'an act of another tenant of the person (docs/adr/0054 D1)',
+        'a team named by tenant alone, as a server of the release before sends it',
+      ],
+      [
+        { tenant: 'stale', team: 'beta', person_id: 'p1' },
+        { tenant: 'beta', personId: 'p1' },
+        'a team named differently by both names, which team decides',
       ],
     ])('turns the keys of %j into the event, with its id: %s', (data, keys) => {
       sources[0].send('membership.changed', JSON.stringify(data), 'e1');
@@ -495,6 +510,8 @@ describe('EventStreamService', () => {
       ['a project id that is null', '{"person_id":"p1","project_id":null}'],
       ['a mapping id that is an object', '{"mapping_id":{}}'],
       ['a tenant that is a number', '{"tenant":3,"person_id":"p1"}'],
+      ['a team that is a number', '{"team":3,"person_id":"p1"}'],
+      ['a team that is a number beside a tenant that is text', '{"team":3,"tenant":"beta"}'],
     ])('ignores %s', (_description, data) => {
       sources[0].send('membership.changed', data);
 
@@ -697,8 +714,8 @@ describe('EventStreamService', () => {
 
       vi.advanceTimersByTime(1);
       expect(sources.map((source) => source.url)).toEqual([
-        '/api/v1/tenants/acme/events?me=true',
-        '/api/v1/tenants/acme/events?me=true',
+        '/api/v1/teams/acme/events?me=true',
+        '/api/v1/teams/acme/events?me=true',
       ]);
       expect(service.status()).toBe('polling');
     });
@@ -1072,9 +1089,9 @@ describe('EVENT_SOURCE', () => {
   it('opens a native EventSource at the address by default', () => {
     vi.stubGlobal('EventSource', NativeEventSource);
 
-    const source = TestBed.inject(EVENT_SOURCE)('/api/v1/tenants/acme/events');
+    const source = TestBed.inject(EVENT_SOURCE)('/api/v1/teams/acme/events');
 
     expect(source).toBeInstanceOf(NativeEventSource);
-    expect((source as unknown as NativeEventSource).url).toBe('/api/v1/tenants/acme/events');
+    expect((source as unknown as NativeEventSource).url).toBe('/api/v1/teams/acme/events');
   });
 });

@@ -21,7 +21,7 @@ import { Select } from 'primeng/select';
 import { Skeleton } from 'primeng/skeleton';
 import { Tooltip } from 'primeng/tooltip';
 import type { PaginatorState } from 'primeng/types/paginator';
-import { ListTenantTickets$Params } from '../../api/fn/tickets/list-tenant-tickets';
+import { ListTeamTickets$Params } from '../../api/fn/tickets/list-team-tickets';
 import { SavedFilter, SavedFilterParameters, Ticket } from '../../api/models';
 import { EFFORT } from '../../api/models/effort-array';
 import { MembersService } from '../../core/members.service';
@@ -48,7 +48,7 @@ import {
 } from './tenant-tickets-model';
 
 /** The sizes of a numbered page (docs/adr/0048 D2). */
-export type PerPage = NonNullable<ListTenantTickets$Params['per_page']>;
+export type PerPage = NonNullable<ListTeamTickets$Params['per_page']>;
 
 /** A page holds as many tickets as the API gives when it is not told (docs/adr/0048 D2). */
 export const defaultPerPage: PerPage = 50;
@@ -186,10 +186,10 @@ export class TenantTickets {
   });
 
   /** What the list asks for; nothing under a tenant whose work the person does not see. */
-  private readonly request = computed<ListTenantTickets$Params | undefined>(() => {
+  private readonly request = computed<ListTeamTickets$Params | undefined>(() => {
     const tenant = this.session.workTenant();
     return tenant
-      ? { ...this.filter(), tenant, page: this.page(), per_page: this.perPage() }
+      ? { ...this.filter(), team: tenant, page: this.page(), per_page: this.perPage() }
       : undefined;
   });
   protected readonly list = this.tickets.tenantTickets(() => this.request());

@@ -7,7 +7,7 @@ function file(contentType: Attachment['content_type'], id = 'a-1'): Attachment {
     id,
     file_name: 'shot.png',
     content_type: contentType,
-    content_url: `/api/v1/tenants/acme/projects/COW/tickets/12/attachments/${id}/content`,
+    content_url: `/api/v1/teams/acme/projects/COW/tickets/12/attachments/${id}/content`,
   } as Attachment;
 }
 
@@ -43,7 +43,7 @@ describe('FilePreview', () => {
 
     const img = image(fixture) as HTMLImageElement;
     expect(img.getAttribute('src')).toBe(
-      '/api/v1/tenants/acme/projects/COW/tickets/12/attachments/a-1/content',
+      '/api/v1/teams/acme/projects/COW/tickets/12/attachments/a-1/content',
     );
     expect(img.getAttribute('loading')).toBe('lazy');
     expect(img.alt).toBe('shot.png');

@@ -14,7 +14,7 @@ export async function seedVisualBoard(
   baseURL: string,
   token: string,
 ): Promise<void> {
-  await admin.ensureTenant(visualTenant, 'Visual check');
+  await admin.ensureTeam(visualTenant, 'Visual check');
   const seed = await Seed.create(baseURL, token, visualTenant);
   try {
     if (!(await seed.ensureProject(visualProject, 'The board in the dark'))) {

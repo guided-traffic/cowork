@@ -2,7 +2,7 @@ import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideApiConfiguration } from '../api/api-configuration';
-import { Me, Tenant } from '../api/models';
+import { Me, Team } from '../api/models';
 import { SessionService } from './session.service';
 import { TenantService } from './tenant.service';
 
@@ -15,26 +15,29 @@ const person: Me = {
   memberships: [
     {
       role: 'admin',
+      team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'acme', name: 'Acme Corp' },
       origins: [{ source: 'grant', role: 'admin' }],
     },
     {
       role: 'member',
+      team: { slug: 'globex', name: 'Globex' },
       tenant: { slug: 'globex', name: 'Globex' },
       origins: [{ source: 'grant', role: 'member' }],
     },
     {
       role: 'viewer',
+      team: { slug: 'initech', name: 'Initech' },
       tenant: { slug: 'initech', name: 'Initech' },
       origins: [{ source: 'grant', role: 'viewer' }],
     },
   ],
 };
 
-function tenant(slug: string, overrides: Partial<Tenant> = {}): Tenant {
+function tenant(slug: string, overrides: Partial<Team> = {}): Team {
   return {
     slug,
-    name: `Tenant ${slug}`,
+    name: `Team ${slug}`,
     members_create_projects: false,
     time_visible_to_members: false,
     time_locked_until: null,
@@ -75,10 +78,10 @@ describe('TenantService', () => {
   };
   const request = (url: string) => http.expectOne((r) => r.url === url);
   /** Enters the tenant and answers the load of its settings. */
-  const enter = async (slug: string, settings: Partial<Tenant> = {}) => {
+  const enter = async (slug: string, settings: Partial<Team> = {}) => {
     session.enter(slug);
     await settle();
-    request(`/api/v1/tenants/${slug}`).flush(tenant(slug, settings));
+    request(`/api/v1/teams/${slug}`).flush(tenant(slug, settings));
     await settle();
   };
 
@@ -114,14 +117,14 @@ describe('TenantService', () => {
   });
 
   describe('the settings of the tenant', () => {
-    it('are asked for at /api/v1/tenants/<slug>, without a doubled slash', async () => {
+    it('are asked for at /api/v1/teams/<slug>, without a doubled slash', async () => {
       session.enter('acme');
       await settle();
 
-      const sent = request('/api/v1/tenants/acme');
+      const sent = request('/api/v1/teams/acme');
 
       expect(sent.request.method).toBe('GET');
-      expect(sent.request.url).toBe('/api/v1/tenants/acme');
+      expect(sent.request.url).toBe('/api/v1/teams/acme');
       expect(service.tenant.status()).toBe('loading');
       sent.flush(tenant('acme'));
       await settle();
@@ -130,7 +133,7 @@ describe('TenantService', () => {
     it('are not there until they arrive, and are the answer once they have', async () => {
       session.enter('acme');
       await settle();
-      const sent = request('/api/v1/tenants/acme');
+      const sent = request('/api/v1/teams/acme');
       expect(service.value()).toBeUndefined();
 
       sent.flush(tenant('acme', { members_create_projects: true, version: 7 }));
@@ -146,7 +149,7 @@ describe('TenantService', () => {
       session.enter('acme');
       await settle();
 
-      request('/api/v1/tenants/acme').flush(forbidden, { status: 403, statusText: 'Forbidden' });
+      request('/api/v1/teams/acme').flush(forbidden, { status: 403, statusText: 'Forbidden' });
       await settle();
 
       expect(service.tenant.status()).toBe('error');
@@ -160,7 +163,7 @@ describe('TenantService', () => {
 
       session.enter('globex');
       await settle();
-      const sent = request('/api/v1/tenants/globex');
+      const sent = request('/api/v1/teams/globex');
       expect(service.value()).toBeUndefined();
 
       sent.flush(tenant('globex', { name: 'Globex' }));
@@ -183,7 +186,7 @@ describe('TenantService', () => {
 
       expect(service.tenant.reload()).toBe(true);
       await settle();
-      const again = request('/api/v1/tenants/acme');
+      const again = request('/api/v1/teams/acme');
 
       expect(service.tenant.status()).toBe('reloading');
       expect(service.value()?.name).toBe('Acme Corp');
@@ -205,7 +208,7 @@ describe('TenantService', () => {
 
       expect(service.isAdmin()).toBe(expected);
 
-      request(`/api/v1/tenants/${slug}`).flush(tenant(slug));
+      request(`/api/v1/teams/${slug}`).flush(tenant(slug));
       await settle();
       expect(service.isAdmin()).toBe(expected);
     });
@@ -243,7 +246,7 @@ describe('TenantService', () => {
     it('is true for an administrator before the settings are loaded, who needs no setting', async () => {
       session.enter('acme');
       await settle();
-      const sent = request('/api/v1/tenants/acme');
+      const sent = request('/api/v1/teams/acme');
 
       expect(service.value()).toBeUndefined();
       expect(service.canCreateProjects()).toBe(true);
@@ -258,7 +261,7 @@ describe('TenantService', () => {
     ])('is false for %s, %s, until the settings say otherwise', async (slug) => {
       session.enter(slug);
       await settle();
-      const sent = request(`/api/v1/tenants/${slug}`);
+      const sent = request(`/api/v1/teams/${slug}`);
 
       expect(service.canCreateProjects()).toBe(false);
 
@@ -270,7 +273,7 @@ describe('TenantService', () => {
       session.enter('globex');
       await settle();
 
-      request('/api/v1/tenants/globex').flush(forbidden, { status: 403, statusText: 'Forbidden' });
+      request('/api/v1/teams/globex').flush(forbidden, { status: 403, statusText: 'Forbidden' });
       await settle();
 
       expect(service.canCreateProjects()).toBe(false);
@@ -291,14 +294,14 @@ describe('TenantService', () => {
       expect(service.canCreateProjects()).toBe(false);
 
       const done = service.update({ members_create_projects: true });
-      request('/api/v1/tenants/globex').flush(
+      request('/api/v1/teams/globex').flush(
         tenant('globex', { members_create_projects: true, version: 5 }),
       );
       await done;
       expect(service.canCreateProjects()).toBe(true);
 
       const back = service.update({ members_create_projects: false });
-      request('/api/v1/tenants/globex').flush(
+      request('/api/v1/teams/globex').flush(
         tenant('globex', { members_create_projects: false, version: 6 }),
       );
       await back;
@@ -323,7 +326,7 @@ describe('TenantService', () => {
     it('patches the tenant over the version that is held, as If-Match (docs/adr/0050 D3)', async () => {
       const done = service.update({ name: 'Acme Inc' });
 
-      const sent = request('/api/v1/tenants/acme');
+      const sent = request('/api/v1/teams/acme');
       expect(sent.request.method).toBe('PATCH');
       expect(sent.request.headers.get('If-Match')).toBe('"4"');
       expect(sent.request.body).toEqual({ name: 'Acme Inc' });
@@ -339,24 +342,24 @@ describe('TenantService', () => {
 
     it('shows the answer at once, as the settings, without asking again', async () => {
       const done = service.update({ time_visible_to_members: true });
-      request('/api/v1/tenants/acme').flush(
+      request('/api/v1/teams/acme').flush(
         tenant('acme', { time_visible_to_members: true, version: 5 }),
       );
       await done;
       await settle();
 
-      http.expectNone((r) => r.url === '/api/v1/tenants/acme');
+      http.expectNone((r) => r.url === '/api/v1/teams/acme');
       expect(service.value()?.time_visible_to_members).toBe(true);
       expect(service.value()?.version).toBe(5);
     });
 
     it('goes on over the version of the answer, so that a second change does not meet a stale one', async () => {
       const first = service.update({ name: 'One' });
-      request('/api/v1/tenants/acme').flush(tenant('acme', { name: 'One', version: 5 }));
+      request('/api/v1/teams/acme').flush(tenant('acme', { name: 'One', version: 5 }));
       await first;
 
       const second = service.update({ name: 'Two' });
-      const sent = request('/api/v1/tenants/acme');
+      const sent = request('/api/v1/teams/acme');
       expect(sent.request.headers.get('If-Match')).toBe('"5"');
       sent.flush(tenant('acme', { name: 'Two', version: 6 }));
       await second;
@@ -367,7 +370,7 @@ describe('TenantService', () => {
     it('sends the patch as it is, a member that is null included', async () => {
       const done = service.update({ time_locked_until: null, members_create_projects: true });
 
-      const sent = request('/api/v1/tenants/acme');
+      const sent = request('/api/v1/teams/acme');
       expect(sent.request.body).toEqual({ time_locked_until: null, members_create_projects: true });
       sent.flush(tenant('acme', { members_create_projects: true, version: 5 }));
       await done;
@@ -376,7 +379,7 @@ describe('TenantService', () => {
     it('needs no key, being a patch of settings that exist', async () => {
       const done = service.update({ name: 'Acme Inc' });
 
-      const sent = request('/api/v1/tenants/acme');
+      const sent = request('/api/v1/teams/acme');
       expect(sent.request.headers.has('Idempotency-Key')).toBe(false);
       sent.flush(tenant('acme', { version: 5 }));
       await done;
@@ -385,7 +388,7 @@ describe('TenantService', () => {
     it('rejects with the HTTP error of a 412 and keeps the settings and the version it had', async () => {
       const outcome = rejection(service.update({ name: 'Acme Inc' }));
 
-      request('/api/v1/tenants/acme').flush(
+      request('/api/v1/teams/acme').flush(
         { ...forbidden, status: 412, code: 'precondition_failed' },
         { status: 412, statusText: 'Precondition Failed' },
       );
@@ -394,21 +397,21 @@ describe('TenantService', () => {
 
       expect((error as HttpErrorResponse).status).toBe(412);
       expect(service.value()?.version).toBe(4);
-      expect(service.value()?.name).toBe('Tenant acme');
+      expect(service.value()?.name).toBe('Team acme');
     });
 
     it('rejects with the HTTP error of a 403 for a person who may not change the settings', async () => {
       const outcome = rejection(service.update({ name: 'Acme Inc' }));
 
-      request('/api/v1/tenants/acme').flush(forbidden, { status: 403, statusText: 'Forbidden' });
+      request('/api/v1/teams/acme').flush(forbidden, { status: 403, statusText: 'Forbidden' });
 
       expect(((await outcome) as HttpErrorResponse).status).toBe(403);
-      expect(service.value()?.name).toBe('Tenant acme');
+      expect(service.value()?.name).toBe('Team acme');
     });
 
     it('asks again with the version of the answer after a refusal was resolved by a reload', async () => {
       const outcome = rejection(service.update({ name: 'Acme Inc' }));
-      request('/api/v1/tenants/acme').flush(
+      request('/api/v1/teams/acme').flush(
         { ...forbidden, status: 412, code: 'precondition_failed' },
         { status: 412, statusText: 'Precondition Failed' },
       );
@@ -416,11 +419,11 @@ describe('TenantService', () => {
 
       service.tenant.reload();
       await settle();
-      request('/api/v1/tenants/acme').flush(tenant('acme', { name: 'Theirs', version: 9 }));
+      request('/api/v1/teams/acme').flush(tenant('acme', { name: 'Theirs', version: 9 }));
       await settle();
       const done = service.update({ name: 'Acme Inc' });
 
-      const sent = request('/api/v1/tenants/acme');
+      const sent = request('/api/v1/teams/acme');
       expect(sent.request.headers.get('If-Match')).toBe('"9"');
       sent.flush(tenant('acme', { name: 'Acme Inc', version: 10 }));
       await done;
@@ -431,7 +434,7 @@ describe('TenantService', () => {
 
       const done = service.update({ name: 'Globex Inc' });
 
-      const sent = request('/api/v1/tenants/globex');
+      const sent = request('/api/v1/teams/globex');
       expect(sent.request.headers.get('If-Match')).toBe('"4"');
       sent.flush(tenant('globex', { name: 'Globex Inc', version: 5 }));
       await done;
@@ -441,11 +444,11 @@ describe('TenantService', () => {
     // pages of the new one, nor abort the new one's load (docs/adr/0053 D4).
     it('does not show the answer of one tenant as the settings of the next', async () => {
       const done = service.update({ name: 'Acme Inc' });
-      const sent = request('/api/v1/tenants/acme');
+      const sent = request('/api/v1/teams/acme');
 
       session.enter('globex');
       await settle();
-      const globex = request('/api/v1/tenants/globex');
+      const globex = request('/api/v1/teams/globex');
       sent.flush(tenant('acme', { name: 'Acme Inc', version: 5 }));
       await done;
       globex.flush(tenant('globex', { name: 'Globex' }));
@@ -459,7 +462,7 @@ describe('TenantService', () => {
     it('sends no version, there being none held, and passes the refusal of the backend on', async () => {
       session.enter('acme');
       await settle();
-      const loading = request('/api/v1/tenants/acme');
+      const loading = request('/api/v1/teams/acme');
 
       const outcome = rejection(service.update({ name: 'Acme Inc' }));
       const sent = http.expectOne((r) => r.method === 'PATCH');

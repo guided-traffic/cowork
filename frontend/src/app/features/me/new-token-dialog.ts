@@ -38,9 +38,9 @@ export const scopeMeanings: Record<Scope, string> = {
     'Reads, and does what a member does: files and moves tickets, comments, books time, creates ' +
     'projects where you may, and revokes your other tokens.',
   admin:
-    'Does what write does, and what your admin role allows: tenant settings and the time lock, ' +
+    'Does what write does, and what your admin role allows: team settings and the time lock, ' +
     "archiving projects, the confidential flag, withdrawing other people's comments, and " +
-    'unlocking, ending the sessions of and deactivating (for good) the local accounts of the tenant.',
+    'unlocking, ending the sessions of and deactivating (for good) the local accounts of the team.',
 };
 
 /**
@@ -248,7 +248,7 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
 
         <div class="row">
           <div class="field">
-            <span id="token-tenant-label">Restrict to a tenant</span>
+            <span id="token-tenant-label">Restrict to a team</span>
             <p-select
               [options]="tenantOptions()"
               optionLabel="label"
@@ -256,15 +256,15 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
               [ngModel]="tenant()"
               (ngModelChange)="setTenant($event)"
               name="tenant"
-              placeholder="Any tenant of yours"
+              placeholder="Any team of yours"
               [showClear]="true"
               size="small"
-              [invalid]="!!errors()['tenant']"
+              [invalid]="!!teamError()"
               [pt]="tenantPt()"
               ariaLabelledBy="token-tenant-label"
               data-testid="token-tenant"
             />
-            @if (errors()['tenant']; as error) {
+            @if (teamError(); as error) {
               <small
                 class="error"
                 id="token-tenant-error"
@@ -299,7 +299,7 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
                   id="token-project-failed"
                   role="alert"
                   data-testid="token-project-failed"
-                  >The projects of this tenant could not be loaded.</small
+                  >The projects of this team could not be loaded.</small
                 >
               }
               @if (errors()['project']; as error) {
@@ -316,7 +316,7 @@ const scopes: Scope[] = ['read', 'write', 'admin'];
         </div>
         <small class="muted">
           A token that is restricted is useless anywhere else. An unrestricted one reaches every
-          tenant you belong to, now and later.
+          team you belong to, now and later.
         </small>
 
         <div class="field">
@@ -489,9 +489,9 @@ export class NewTokenDialog {
     scopes.map((value) => ({ value, disabled: value === 'admin' && this.agent() })),
   );
   protected readonly tenantOptions = computed(() =>
-    this.session.memberships().map(({ tenant }) => ({
-      slug: tenant.slug,
-      label: `${tenant.name} (${tenant.slug})`,
+    this.session.memberships().map(({ team }) => ({
+      slug: team.slug,
+      label: `${team.name} (${team.slug})`,
     })),
   );
   /** The projects of the tenant chosen, which only exists while there is one. */
@@ -534,11 +534,13 @@ export class NewTokenDialog {
       ),
     ),
   );
+  /**
+   * The refusal of the team restriction: the API points at `/team`, the property the form sends,
+   * and a server before it at `/tenant`, the property's name before (docs/adr/0005 D1).
+   */
+  protected readonly teamError = computed(() => this.errors()['team'] ?? this.errors()['tenant']);
   protected readonly tenantPt = computed(() =>
-    selectAria(
-      !!this.errors()['tenant'],
-      describedBy(this.errors()['tenant'] && 'token-tenant-error'),
-    ),
+    selectAria(!!this.teamError(), describedBy(this.teamError() && 'token-tenant-error')),
   );
   protected readonly projectPt = computed(() =>
     selectAria(
@@ -593,7 +595,7 @@ export class NewTokenDialog {
             capabilities: selectableCapabilities.filter((each) => this.capabilities().includes(each)),
           }
         : {}),
-      ...(tenant ? { tenant, ...(project ? { project } : {}) } : {}),
+      ...(tenant ? { team: tenant, ...(project ? { project } : {}) } : {}),
       ...(days !== null ? { lifetime_days: days } : {}),
     };
     this.saving.set(true);

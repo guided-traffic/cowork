@@ -72,6 +72,7 @@ async function gzip(bytes: Uint8Array<ArrayBuffer>): Promise<Blob> {
 
 const manifest: ExportManifest = {
   format: 'cowork export v1',
+  team: 'acme',
   tenant: 'acme',
   projects: [
     { key: 'VKO', name: 'Vertrag', archived: false, tickets: 2, confidential_not_included: 1 },

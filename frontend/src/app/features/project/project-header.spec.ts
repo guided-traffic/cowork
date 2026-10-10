@@ -33,6 +33,7 @@ class Page {}
 
 const manifest = (tickets: number, left: number): ExportManifest => ({
   format: 'cowork export v1',
+  team: 'acme',
   tenant: 'acme',
   projects: [
     { key: 'COW', name: 'Cowork', archived: false, tickets, confidential_not_included: left },

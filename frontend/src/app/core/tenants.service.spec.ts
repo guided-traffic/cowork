@@ -2,7 +2,7 @@ import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { provideApiConfiguration } from '../api/api-configuration';
-import { Me, Tenant } from '../api/models';
+import { Me, Team } from '../api/models';
 import { SessionService } from './session.service';
 import { TenantsService } from './tenants.service';
 
@@ -16,7 +16,7 @@ const administrator = (memberships: Me['memberships'] = []): Me => ({
   memberships,
 });
 
-const acme: Tenant = {
+const acme: Team = {
   slug: 'acme',
   name: 'Acme Corp',
   version: 1,
@@ -48,10 +48,10 @@ describe('TenantsService', () => {
     TestBed.tick();
   };
   const write = () =>
-    http.expectOne((request) => request.method === 'POST' && request.url === '/api/v1/tenants');
+    http.expectOne((request) => request.method === 'POST' && request.url === '/api/v1/teams');
   /** The list of the installation's tenants a global administrator's session loads (docs/adr/0034 D2). */
   const installation = () =>
-    http.expectOne((request) => request.method === 'GET' && request.url === '/api/v1/tenants');
+    http.expectOne((request) => request.method === 'GET' && request.url === '/api/v1/teams');
   const noTenants = { items: [], next_cursor: null };
   const body = { slug: 'acme', name: 'Acme Corp' };
   const key = '0199aaaa-2222-7000-8000-000000000001';
@@ -80,11 +80,11 @@ describe('TenantsService', () => {
     }
   });
 
-  it('posts the slug and the name to /api/v1/tenants and hands back the tenant that was made', async () => {
+  it('posts the slug and the name to /api/v1/teams and hands back the tenant that was made', async () => {
     const done = service.create(body, key);
 
     const sent = write();
-    expect(sent.request.url).toBe('/api/v1/tenants');
+    expect(sent.request.url).toBe('/api/v1/teams');
     expect(sent.request.body).toEqual(body);
     expect(sent.request.headers.has('If-Match')).toBe(false);
     sent.flush(acme);
@@ -113,7 +113,7 @@ describe('TenantsService', () => {
     expect(((await lost) as HttpErrorResponse).status).toBe(0);
     await settle();
     http.expectNone('/api/v1/me');
-    http.expectNone((request) => request.method === 'GET' && request.url === '/api/v1/tenants');
+    http.expectNone((request) => request.method === 'GET' && request.url === '/api/v1/teams');
 
     const retry = service.create(body, key);
     const again = write();
@@ -150,6 +150,7 @@ describe('TenantsService', () => {
       administrator([
         {
           role: 'admin',
+          team: { slug: 'acme', name: 'Acme Corp' },
           tenant: { slug: 'acme', name: 'Acme Corp' },
           origins: [{ source: 'grant', role: 'admin' }],
         },
@@ -158,7 +159,7 @@ describe('TenantsService', () => {
     installation().flush({ items: [{ slug: 'acme', name: 'Acme Corp', role: 'admin' }], next_cursor: null });
     await settle();
 
-    expect(session.memberships().map((membership) => membership.tenant.slug)).toEqual(['acme']);
+    expect(session.memberships().map((membership) => membership.team.slug)).toEqual(['acme']);
     expect(session.installation.value()?.map((tenant) => tenant.slug)).toEqual(['acme']);
     expect(session.soleTenant()).toBe('acme');
   });
@@ -179,6 +180,7 @@ describe('TenantsService', () => {
       administrator([
         {
           role: 'admin',
+          team: { slug: 'acme', name: 'Acme Corp' },
           tenant: { slug: 'acme', name: 'Acme Corp' },
           origins: [{ source: 'grant', role: 'admin' }],
         },
@@ -208,7 +210,7 @@ describe('TenantsService', () => {
       expect(error).toBeInstanceOf(HttpErrorResponse);
       expect((error as HttpErrorResponse).status).toBe(status);
       http.expectNone('/api/v1/me');
-      http.expectNone((request) => request.method === 'GET' && request.url === '/api/v1/tenants');
+      http.expectNone((request) => request.method === 'GET' && request.url === '/api/v1/teams');
     },
   );
 });

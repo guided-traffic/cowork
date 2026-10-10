@@ -28,7 +28,7 @@
     @for (group of groups(); track group.ticket.key) {
       <article class="panel group" [attr.data-testid]="'group-' + group.ticket.key">
         <header class="group-head">
-          <span class="tenant" data-testid="tenant">{{ group.tenant.name }}</span>
+          <span class="tenant" data-testid="tenant">{{ group.team.name }}</span>
           <a
             class="ticket"
             [routerLink]="route(group.ticket.key)"

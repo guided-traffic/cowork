@@ -61,7 +61,7 @@ describe('the saved filter in a backlog', () => {
 
     expect(notesOf(filter, backlogLeftOut)).toEqual([
       'state: not a value of state: triaged',
-      'project: a backlog is one project; the tenant’s ticket list applies this condition',
+      'project: a backlog is one project; the team’s ticket list applies this condition',
     ]);
   });
 
@@ -114,7 +114,7 @@ describe('the saved filter on a board', () => {
       ({ warnings: [], parameters }) as unknown as SavedFilter;
 
     expect(notesOf(filter({ include_terminal: true, project: ['OPS'] }), boardLeftOut)).toEqual([
-      'include_terminal: a board shows no closed ticket; the tenant’s ticket list applies this condition',
+      'include_terminal: a board shows no closed ticket; the team’s ticket list applies this condition',
     ]);
     expect(notesOf(filter({ project: ['OPS'], horizon: ['now'] }), boardLeftOut)).toEqual([]);
   });

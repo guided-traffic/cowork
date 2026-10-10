@@ -284,7 +284,7 @@ describe('describe', () => {
 });
 
 describe('TicketDetail', () => {
-  const base = '/api/v1/tenants/acme/projects/COW/tickets/12';
+  const base = '/api/v1/teams/acme/projects/COW/tickets/12';
   const urls = {
     comments: `${base}/comments?limit=200`,
     activity: `${base}/activity?order=desc&limit=100`,
@@ -436,14 +436,14 @@ describe('TicketDetail', () => {
 
       expect(shownKey?.()).toBe('acme/OPS-3');
       expect(http.match(() => true).map((request) => request.request.url)).toEqual([
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/comments',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/activity',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/questions',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/links',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/interest',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/attachments',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/time-entries',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/prerequisites',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/comments',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/activity',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/questions',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/links',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/interest',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/attachments',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/time-entries',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/prerequisites',
       ]);
     });
 
@@ -1564,7 +1564,7 @@ describe('TicketDetail', () => {
         comment: 'c-1',
         file_name: 'shot.png',
         content_type: 'image/png',
-        content_url: '/api/v1/tenants/acme/projects/COW/tickets/12/attachments/a-1/content',
+        content_url: '/api/v1/teams/acme/projects/COW/tickets/12/attachments/a-1/content',
         sha256: 'ab12',
         size: 2048,
         uploaded_by: ada,

@@ -55,6 +55,7 @@ const me = (username: string | null = 'ada'): Me => ({
   memberships: [
     {
       role: 'admin',
+      team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'acme', name: 'Acme Corp' },
       origins: [{ source: 'grant', role: 'admin' }],
     },
@@ -173,7 +174,7 @@ describe('Accounts', () => {
 
       expect(host(fixture).querySelector('h1')?.textContent).toBe('Accounts');
       expect(host(fixture).querySelector('.lead')?.textContent).toContain(
-        'The local accounts this tenant created',
+        'The local accounts this team created',
       );
       expect(el(fixture, 'new-account')?.textContent?.trim()).toBe('New account');
     });
@@ -225,7 +226,7 @@ describe('Accounts', () => {
       expect(cells(fixture, 'ada')[2].textContent?.trim()).toBe('admin');
       expect(roleTip('ada')).toBe(roleMeanings.admin);
       expect(cells(fixture, 'lee')[2].textContent?.trim()).toBe('none');
-      expect(roleTip('lee')).toBe('The tenant has no grant for this person any more');
+      expect(roleTip('lee')).toBe('The team has no grant for this person any more');
     });
   });
 
@@ -347,7 +348,7 @@ describe('Accounts', () => {
       const fixture = await render();
 
       expect(el(fixture, 'accounts-notice')?.textContent?.trim()).toBe(
-        'Only the administrators of this tenant manage its accounts.',
+        'Only the administrators of this team manage its accounts.',
       );
       expect(el(fixture, 'accounts')).toBeNull();
       expect(el(fixture, 'new-account')).toBeNull();

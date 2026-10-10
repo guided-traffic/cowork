@@ -25,8 +25,8 @@
   @if (tenant.isAdmin() || session.oversight()) {
     <p class="muted lead">
       A mapping gives everyone whose groups at the identity provider include its group a role in
-      this tenant; several mapped groups give the highest of their roles. A change applies at once
-      to everyone whose groups cowork knows from their last sign-in, and to everyone else when they
+      this team; several mapped groups give the highest of their roles. A change applies at once to
+      everyone whose groups cowork knows from their last sign-in, and to everyone else when they
       next sign in. Grants made under Members stay as they are.
     </p>
     @if (tenant.isAdmin() && !mayMap()) {
@@ -136,7 +136,7 @@
     <p-skeleton width="24rem" height="2rem" />
   } @else {
     <p class="muted" data-testid="mappings-not-admin">
-      Only the administrators of this tenant manage its group mappings.
+      Only the administrators of this team manage its group mappings.
     </p>
   }
 </section>

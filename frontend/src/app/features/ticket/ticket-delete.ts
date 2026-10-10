@@ -91,8 +91,8 @@ export class TicketDelete {
         detail: `${short} is in the deleted tickets, where an administrator can restore it.`,
         life: 4000,
       });
-      const { tenant, project } = routeOf(ticket.key);
-      await this.router.navigate(['/t', tenant, 'p', project, 'backlog']);
+      const { team, project } = routeOf(ticket.key);
+      await this.router.navigate(['/t', team, 'p', project, 'backlog']);
     } catch (error) {
       this.problems.report(error);
     } finally {

@@ -192,7 +192,7 @@ export class Backlog {
     const q = this.debouncedQuery().trim();
     return {
       ...listParameters(this.extra(), this.selectedStates()),
-      tenant,
+      team: tenant,
       project: this.project(),
       pages: this.pages(),
       q: q === '' ? undefined : q,
@@ -210,7 +210,7 @@ export class Backlog {
     delete extra.state;
     return {
       ...extra,
-      tenant,
+      team: tenant,
       project: this.project(),
       pages: this.closedPages(),
       ...(doneAfter

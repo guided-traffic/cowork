@@ -197,7 +197,7 @@ export class Members {
     this.confirm.confirm({
       header: 'Give up your administrator role?',
       message:
-        `Your role here would be ${after}: you could no longer administer this tenant, and ` +
+        `Your role here would be ${after}: you could no longer administer this team, and ` +
         'only another administrator could give the role back.',
       acceptLabel: 'Change my grant',
       rejectLabel: 'Keep it',
@@ -229,12 +229,12 @@ export class Members {
         ? `You keep the role ${mapped} through a group mapping.`
         : `${name} keeps the role ${mapped} through a group mapping: a mapped membership stays until the mapping or their groups change.`
       : own
-        ? 'You have no other membership here and leave this tenant.'
-        : `${name} has no other membership here and is no longer a member of this tenant.`;
+        ? 'You have no other membership here and leave this team.'
+        : `${name} has no other membership here and is no longer a member of this team.`;
     const id = member.person.id;
     const lost = this.losesOwnAdmin(member, mapped);
     const warning = lost
-      ? ' You could no longer administer this tenant, and only another administrator could give the role back.'
+      ? ' You could no longer administer this team, and only another administrator could give the role back.'
       : '';
     this.confirm.confirm({
       header: own ? 'Remove your grant?' : `Remove the grant of ${name}?`,
@@ -257,7 +257,7 @@ export class Members {
             summary: 'Grant removed',
             detail: mapped
               ? `${name} keeps the role ${mapped} through a group mapping.`
-              : `${name} is no longer a member of this tenant.`,
+              : `${name} is no longer a member of this team.`,
             life: 4000,
           });
         } catch (error) {
@@ -343,7 +343,7 @@ export class Members {
     if (problem.code === 'last_admin') {
       this.notice.set(lastAdminNotice);
     } else if (problem.code === 'person_not_found') {
-      this.notice.set(`${member.person.display_name} is no longer a member of this tenant.`);
+      this.notice.set(`${member.person.display_name} is no longer a member of this team.`);
       refresh(this.members.members, this.injector);
       refresh(this.table.rows, this.injector);
     } else {

@@ -1,5 +1,11 @@
 import { keyOf, otherTenant, Seed, tenant, uniqueKey } from './support/api';
-import { asAdmin as test, expect, expectScheme, policyViolations } from './support/fixtures';
+import {
+  asAdmin as test,
+  expect,
+  expectNoTenantShown,
+  expectScheme,
+  policyViolations,
+} from './support/fixtures';
 import { baseURL, seedToken } from './support/identities';
 
 /** A word no other ticket of the run holds, so that the hits are this test's alone. */
@@ -14,7 +20,7 @@ function uniqueWord(): string {
 
 /**
  * The search (docs/adr/0018 D7, docs/adr/0025): the top bar's box, inside a tenant, lists that
- * tenant's hits with their snippets, the found word marked; *Search all your tenants* lists a second
+ * tenant's hits with their snippets, the found word marked; *Search all your teams* lists a second
  * tenant's beside them, each with its tenant, for the person in both; a hit in a comment opens the
  * ticket scrolled to that comment; the shell's content-security policy refuses nothing on the way.
  */
@@ -39,7 +45,7 @@ test(
     let found: { number: number };
     try {
       await elsewhere.project(other);
-      found = await elsewhere.file(other, { title: `Count the ${word} in the other tenant` });
+      found = await elsewhere.file(other, { title: `Count the ${word} in the other team` });
     } finally {
       await elsewhere.dispose();
     }
@@ -60,14 +66,16 @@ test(
     await expect(talkedHit.getByTestId('found-in')).toHaveText('in a comment');
     await expect(talkedHit.getByTestId('snippet').locator('mark')).toHaveText([word]);
     await expect(otherHit).toHaveCount(0);
+    await expectNoTenantShown(page);
 
     // Every tenant of the person: the other tenant's hit beside them, each with its tenant.
-    await page.getByRole('link', { name: 'Search all your tenants' }).click();
+    await page.getByRole('link', { name: 'Search all your teams' }).click();
     await expect(page).toHaveURL(new RegExp(`/me/search\\?q=${word}$`));
     await expect(page.getByTestId('search-headline')).toContainText('3 tickets for');
     await expect(otherHit.getByTestId('tenant')).toHaveText('Other end');
     await expect(titledHit.getByTestId('tenant')).toHaveText('End to end');
     await expect(talkedHit.getByTestId('tenant')).toHaveText('End to end');
+    await expectNoTenantShown(page);
 
     // The hit in a comment opens the ticket at that comment.
     await talkedHit.click();

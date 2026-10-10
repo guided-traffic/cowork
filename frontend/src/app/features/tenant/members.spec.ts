@@ -64,6 +64,7 @@ const me = (id = 'p1'): Me => ({
   memberships: [
     {
       role: 'admin',
+      team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'acme', name: 'Acme Corp' },
       origins: [{ source: 'grant', role: 'admin' }],
     },
@@ -609,7 +610,7 @@ describe('Members', () => {
         await settle(fixture);
 
         expect(el(fixture, 'members-notice')?.textContent?.trim()).toBe(
-          'Bob Example is no longer a member of this tenant.',
+          'Bob Example is no longer a member of this team.',
         );
         expect(reload).toHaveBeenCalled();
         expect(shownGrant(fixture, bob)).toBe('none');
@@ -771,7 +772,7 @@ describe('Members', () => {
         await ask(fixture, cyd);
 
         expect(dialog()?.textContent).toContain(
-          'Cyd Charisse has no other membership here and is no longer a member of this tenant.',
+          'Cyd Charisse has no other membership here and is no longer a member of this team.',
         );
       });
 
@@ -816,7 +817,7 @@ describe('Members', () => {
         await settle(fixture);
 
         expect(add).toHaveBeenCalledExactlyOnceWith(
-          expect.objectContaining({ detail: 'Cyd Charisse is no longer a member of this tenant.' }),
+          expect.objectContaining({ detail: 'Cyd Charisse is no longer a member of this team.' }),
         );
       });
 
@@ -939,7 +940,7 @@ describe('Members', () => {
         await ask(fixture, marked);
 
         expect(dialog()?.querySelector('.p-confirmdialog-message')?.textContent).toBe(
-          '<a href="x">y</a> has no other membership here and is no longer a member of this tenant.',
+          '<a href="x">y</a> has no other membership here and is no longer a member of this team.',
         );
         expect(dialog()?.querySelector('a')).toBeNull();
       });
@@ -952,9 +953,9 @@ describe('Members', () => {
 
           expect(dialog()?.textContent).toContain('Remove your grant?');
           expect(dialog()?.textContent).toContain(
-            'You have no other membership here and leave this tenant.',
+            'You have no other membership here and leave this team.',
           );
-          expect(dialog()?.textContent).toContain('You could no longer administer this tenant');
+          expect(dialog()?.textContent).toContain('You could no longer administer this team');
         });
 
         it('says which role a group mapping leaves them, and that it is no administrator role', async () => {
@@ -966,7 +967,7 @@ describe('Members', () => {
           expect(dialog()?.textContent).toContain(
             'You keep the role member through a group mapping.',
           );
-          expect(dialog()?.textContent).toContain('You could no longer administer this tenant');
+          expect(dialog()?.textContent).toContain('You could no longer administer this team');
         });
 
         it('does not warn when a group mapping keeps them an administrator', async () => {

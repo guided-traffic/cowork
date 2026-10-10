@@ -144,14 +144,14 @@ describe('DashboardService', () => {
     await vi.advanceTimersByTimeAsync(0);
     TestBed.tick();
   };
-  const url = '/api/v1/tenants/acme/dashboard';
+  const url = '/api/v1/teams/acme/dashboard';
   const pending = () => http.match((request) => request.url === url);
 
   beforeEach(() => {
     vi.useFakeTimers();
     stream = new Subject<StreamEvent>();
     query = signal<DashboardQuery | undefined>({
-      tenant: 'acme',
+      team: 'acme',
       project: ['ALPHA', '!BETA'],
       from: '2026-09-08',
       to: '2026-10-07',

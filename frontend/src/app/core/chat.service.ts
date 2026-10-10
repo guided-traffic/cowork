@@ -132,7 +132,7 @@ const changedText =
 const busyText = 'A turn of yours is running elsewhere: wait for it, or stop it.';
 
 /** What the conversation says once the person's turns elsewhere are stopped. */
-const stoppedElsewhereText = 'Your turns in this tenant are stopped. Send your message again.';
+const stoppedElsewhereText = 'Your turns in this team are stopped. Send your message again.';
 
 /** What the conversation says when the model answered nothing but white space. */
 const silentText = 'The assistant gave no answer.';
@@ -331,7 +331,7 @@ export class ChatService {
    */
   readonly availability = resource({
     params: () => this.session.workTenant() ?? undefined,
-    loader: ({ params: tenant }) => this.api.invoke(getChatAvailability, { tenant }),
+    loader: ({ params: tenant }) => this.api.invoke(getChatAvailability, { team: tenant }),
   });
   readonly available = computed(
     () => this.availability.hasValue() && this.availability.value().available,
@@ -517,7 +517,7 @@ export class ChatService {
   /** Asks the backend to stop the person's turns in a tenant; true once it answered. */
   private async stopTurns(tenant: string): Promise<boolean> {
     try {
-      await this.api.invoke(stopChatTurns, { tenant });
+      await this.api.invoke(stopChatTurns, { team: tenant });
       return true;
     } catch (error) {
       this.problems.report(error);
@@ -603,7 +603,7 @@ export class ChatService {
     };
     try {
       return await this.fetch(
-        this.api.rootUrl + runChatTurn.PATH.replace('{tenant}', encodeURIComponent(tenant)),
+        this.api.rootUrl + runChatTurn.PATH.replace('{team}', encodeURIComponent(tenant)),
         {
           method: 'POST',
           // The session's CSRF pair (docs/adr/0037): the browser sets Origin, this the header.

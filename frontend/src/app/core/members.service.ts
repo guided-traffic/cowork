@@ -1,10 +1,10 @@
 import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import { addMember } from '../api/fn/tenants/add-member';
-import { listMembers } from '../api/fn/tenants/list-members';
-import { removeMemberGrant } from '../api/fn/tenants/remove-member-grant';
-import { setMemberGrant } from '../api/fn/tenants/set-member-grant';
+import { addMember } from '../api/fn/teams/add-member';
+import { listMembers } from '../api/fn/teams/list-members';
+import { removeMemberGrant } from '../api/fn/teams/remove-member-grant';
+import { setMemberGrant } from '../api/fn/teams/set-member-grant';
 import { Member, MemberList, Role } from '../api/models';
 import { ConditionalPages } from './conditional';
 import { changesMemberships, EventStreamService } from './event-stream.service';
@@ -36,7 +36,7 @@ export class MembersService {
           const members: Member[] = [];
           let cursor: string | undefined;
           do {
-            const next = await page(listMembers, { tenant, cursor, limit: 200 });
+            const next = await page(listMembers, { team: tenant, cursor, limit: 200 });
             members.push(...next.items);
             cursor = next.next_cursor ?? undefined;
           } while (cursor);
@@ -63,7 +63,9 @@ export class MembersService {
    * `304` (docs/adr/0054 D7).
    */
   page(tenant: string, page: number, perPage: PerPage): Promise<MemberList> {
-    return this.numbered.load((fetch) => fetch(listMembers, { tenant, page, per_page: perPage }));
+    return this.numbered.load((fetch) =>
+      fetch(listMembers, { team: tenant, page, per_page: perPage }),
+    );
   }
 
   /**
@@ -75,7 +77,7 @@ export class MembersService {
   async add(person: string, role: Role, idempotencyKey: string): Promise<Member> {
     const tenant = this.session.tenant() as string;
     const member = await this.api.invoke(addMember, {
-      tenant,
+      team: tenant,
       'Idempotency-Key': idempotencyKey,
       body: { person, role },
     });
@@ -87,7 +89,7 @@ export class MembersService {
   async setGrant(personId: string, role: Role): Promise<Member> {
     const tenant = this.session.tenant() as string;
     const member = await this.api.invoke(setMemberGrant, {
-      tenant,
+      team: tenant,
       person_id: personId,
       body: { role },
     });
@@ -98,7 +100,7 @@ export class MembersService {
   /** Removes a member's grant: a mapped membership stays, and without one the person leaves the tenant. */
   async removeGrant(personId: string): Promise<void> {
     await this.api.invoke(removeMemberGrant, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       person_id: personId,
     });
     refresh(this.members, this.injector);

@@ -33,8 +33,9 @@ export interface MembershipEvent {
   /** The audit row's id, which is also the stream's event id (D5). */
   id: string;
   /**
-   * The tenant's slug (D1 as amended on 2026-10-05). A server that does not send it yet sends a
-   * stream's own tenant's events alone; {@link ofTenant} takes such an event for any tenant.
+   * The team's slug (D1 as amended on 2026-10-05), from the payload's `team`, or from `tenant`, the
+   * name a server before sends it under. A server that sends neither sends a stream's own tenant's
+   * events alone; {@link ofTenant} takes such an event for any tenant.
    */
   tenant?: string;
   /** The person whose membership or project access changed. */
@@ -201,9 +202,8 @@ function unreadOf(data: unknown): number | undefined {
   return typeof unread === 'number' && Number.isInteger(unread) && unread >= 0 ? unread : undefined;
 }
 
-/** The keys a `membership.changed` payload may carry, and the event's names for them. */
+/** The keys a `membership.changed` payload may carry beside its team, and the event's names for them. */
 const membershipKeys = {
-  tenant: 'tenant',
   person_id: 'personId',
   project_id: 'projectId',
   mapping_id: 'mappingId',
@@ -211,7 +211,10 @@ const membershipKeys = {
 
 /**
  * The payload of a `membership.changed`: an object with at least one of its keys, each a string;
- * anything else it carries is left out. Undefined for any other payload.
+ * anything else it carries is left out. Undefined for any other payload. The team's slug is
+ * `team`; `tenant` is its name before, which the server sends beside it for one release and a
+ * server before it sends alone (docs/adr/0005 D1, docs/adr/0054 D2): `team` decides where both are
+ * there.
  */
 function membershipPayload(
   data: unknown,
@@ -221,6 +224,13 @@ function membershipPayload(
   }
   const payload = data as Record<string, unknown>;
   const keys: Pick<MembershipEvent, 'tenant' | 'personId' | 'projectId' | 'mappingId'> = {};
+  const named = [payload['team'], payload['tenant']].filter((value) => value !== undefined);
+  if (named.some((value) => typeof value !== 'string')) {
+    return undefined;
+  }
+  if (named.length > 0) {
+    keys.tenant = named[0] as string;
+  }
   for (const [key, field] of Object.entries(membershipKeys)) {
     const value = payload[key];
     if (typeof value === 'string') {
@@ -312,7 +322,7 @@ export class EventStreamService {
   }
 
   private openStream(tenant: string): void {
-    const source = this.open(`/api/v1/tenants/${encodeURIComponent(tenant)}/events?me=true`);
+    const source = this.open(`/api/v1/teams/${encodeURIComponent(tenant)}/events?me=true`);
     this.source = source;
     source.onopen = () => {
       // A stream opened after polling is a new EventSource without Last-Event-ID, so the hub

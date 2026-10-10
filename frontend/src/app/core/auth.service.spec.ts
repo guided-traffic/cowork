@@ -16,6 +16,7 @@ const hans: Me = {
   memberships: [
     {
       role: 'admin',
+      team: { slug: 'acme', name: 'Acme' },
       tenant: { slug: 'acme', name: 'Acme' },
       origins: [{ source: 'grant', role: 'admin' }],
     },

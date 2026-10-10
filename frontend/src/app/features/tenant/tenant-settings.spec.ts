@@ -5,7 +5,7 @@ import { By } from '@angular/platform-browser';
 import { MessageService } from 'primeng/api';
 import { Subject } from 'rxjs';
 import type { MockInstance } from 'vitest';
-import { AttachmentUsage, Problem, Tenant } from '../../api/models';
+import { AttachmentUsage, Problem, Team } from '../../api/models';
 import { Api } from '../../api/api';
 import { AttachmentConsistencyService } from '../../core/attachment-consistency.service';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
@@ -14,7 +14,7 @@ import { SessionService } from '../../core/session.service';
 import { TenantService } from '../../core/tenant.service';
 import { changesUsage, quotaShare, TenantSettings } from './tenant-settings';
 
-function tenant(overrides: Partial<Tenant> = {}): Tenant {
+function tenant(overrides: Partial<Team> = {}): Team {
   return {
     slug: 'acme',
     name: 'Acme Corp',
@@ -61,7 +61,7 @@ describe('the attachment usage helpers', () => {
 });
 
 describe('TenantSettings', () => {
-  let value: WritableSignal<Tenant | undefined>;
+  let value: WritableSignal<Team | undefined>;
   let isAdmin: WritableSignal<boolean>;
   let update: MockInstance<TenantService['update']>;
   let usage: WritableSignal<AttachmentUsage | undefined>;
@@ -76,7 +76,7 @@ describe('TenantSettings', () => {
   beforeEach(() => {
     exportTenant = vi.fn<ImportsService['exportTenant']>();
     exported = vi.fn<AttachmentConsistencyService['exported']>();
-    value = signal<Tenant | undefined>(tenant());
+    value = signal<Team | undefined>(tenant());
     isAdmin = signal(true);
     update = vi.fn<TenantService['update']>().mockResolvedValue(tenant());
     usage = signal<AttachmentUsage | undefined>({
@@ -138,6 +138,7 @@ describe('TenantSettings', () => {
       filename: 'acme-20261007.tar.gz',
       manifest: {
         format: 'cowork export v1',
+        team: 'acme',
         tenant: 'acme',
         projects: [],
         exported_at: '2026-10-07T08:00:00Z',
@@ -218,7 +219,7 @@ describe('TenantSettings', () => {
     it('shows an administrator what the files hold of the quota, with a meter', async () => {
       const fixture = await render();
 
-      expect(getUsage).toHaveBeenCalledWith(expect.anything(), { tenant: 'acme' });
+      expect(getUsage).toHaveBeenCalledWith(expect.anything(), { team: 'acme' });
       expect(el(fixture, 'attachment-usage-text')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
         '75 MiB in 41 files of a quota of 100 MiB',
       );
@@ -234,7 +235,7 @@ describe('TenantSettings', () => {
       );
       expect(el(fixture, 'attachment-usage-meter')).toBeNull();
       expect(el(fixture, 'attachment-usage-no-quota')?.textContent).toContain(
-        'COWORK_ATTACHMENT_TENANT_QUOTA',
+        'COWORK_ATTACHMENT_TEAM_QUOTA',
       );
     });
 
@@ -272,7 +273,7 @@ describe('TenantSettings', () => {
       await settle(fixture);
 
       expect(getUsage).toHaveBeenCalledTimes(2);
-      expect(getUsage.mock.lastCall?.[1]).toEqual({ tenant: 'acme', 'If-None-Match': 'W/"usage"' });
+      expect(getUsage.mock.lastCall?.[1]).toEqual({ team: 'acme', 'If-None-Match': 'W/"usage"' });
       expect(el(fixture, 'attachment-usage-text')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
         '75 MiB in 41 files of a quota of 100 MiB',
       );
@@ -430,7 +431,7 @@ describe('TenantSettings', () => {
 
     it('toasts the problem and keeps what was typed when the write is refused', async () => {
       update.mockRejectedValue(
-        refusal(412, 'The tenant changed', 'Somebody saved the settings meanwhile.'),
+        refusal(412, 'The team changed', 'Somebody saved the settings meanwhile.'),
       );
       const add = vi.spyOn(TestBed.inject(MessageService), 'add');
       const fixture = await render();
@@ -441,7 +442,7 @@ describe('TenantSettings', () => {
 
       expect(add).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
-          summary: 'The tenant changed',
+          summary: 'The team changed',
           detail: 'Somebody saved the settings meanwhile.',
         }),
       );
@@ -450,9 +451,9 @@ describe('TenantSettings', () => {
     });
 
     it('shows its button as busy until the write is done', async () => {
-      let finish: (saved: Tenant) => void = () => undefined;
+      let finish: (saved: Team) => void = () => undefined;
       update.mockReturnValue(
-        new Promise<Tenant>((resolve) => {
+        new Promise<Team>((resolve) => {
           finish = resolve;
         }),
       );
@@ -489,7 +490,7 @@ describe('TenantSettings', () => {
       const fixture = await render();
 
       expect(host(fixture).querySelector('form p.muted.small')?.textContent).toBe(
-        "Only the tenant's administrators change these.",
+        "Only the team's administrators change these.",
       );
     });
 

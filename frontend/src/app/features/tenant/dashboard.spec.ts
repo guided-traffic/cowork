@@ -76,6 +76,7 @@ describe('TenantDashboard', () => {
     oversight = signal(false);
     membership = signal<Membership | undefined>({
       role: 'member',
+      team: { name: 'Acme Corp', slug: 'acme' },
       tenant: { name: 'Acme Corp', slug: 'acme' },
       origins: [{ source: 'grant', role: 'member' }],
     });
@@ -94,7 +95,7 @@ describe('TenantDashboard', () => {
             workTenant: computed(() => (oversight() ? null : tenant())),
             shown: computed(() => {
               const held = membership();
-              return held ? { ...held.tenant, role: held.role } : undefined;
+              return held ? { ...held.team, role: held.role } : undefined;
             }),
           },
         },
@@ -137,7 +138,7 @@ describe('TenantDashboard', () => {
       await render();
 
       expect(params()).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         project: [],
         from: '2026-09-08',
         to: '2026-10-07',
@@ -148,7 +149,7 @@ describe('TenantDashboard', () => {
       await render({ project: ['ALPHA', '!BETA'], from: '2026-09-01', to: '2026-09-30' });
 
       expect(params()).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         project: ['ALPHA', '!BETA'],
         from: '2026-09-01',
         to: '2026-09-30',
@@ -544,13 +545,13 @@ describe('TenantDashboard', () => {
       projects.list.set([project('ALPHA', 'Alpha')]);
       const { page } = await render({ project: 'NOSUCH' });
 
-      expect(text(page, '.projects')).toBe('No project of the tenant matches the filter.');
+      expect(text(page, '.projects')).toBe('No project of the team matches the filter.');
     });
 
     it('says the tenant has no projects yet', async () => {
       const { page } = await render();
 
-      expect(text(page, '.projects')).toBe('This tenant has no projects yet.');
+      expect(text(page, '.projects')).toBe('This team has no projects yet.');
     });
   });
 

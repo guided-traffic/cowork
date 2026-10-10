@@ -45,8 +45,7 @@ describe('ConditionalPages (docs/adr/0054 D7)', () => {
     await Promise.resolve();
     await Promise.resolve();
     return http.expectOne(
-      (each) =>
-        each.url === '/api/v1/tenants/acme/projects' && each.params.get('cursor') === cursor,
+      (each) => each.url === '/api/v1/teams/acme/projects' && each.params.get('cursor') === cursor,
     );
   };
 
@@ -56,7 +55,7 @@ describe('ConditionalPages (docs/adr/0054 D7)', () => {
       const keys: string[] = [];
       let cursor: string | undefined;
       do {
-        const next = await page(listProjects, { tenant: 'acme', cursor, limit: 200 });
+        const next = await page(listProjects, { team: 'acme', cursor, limit: 200 });
         keys.push(...next.items.map((each) => each.key));
         cursor = next.next_cursor ?? undefined;
       } while (cursor);

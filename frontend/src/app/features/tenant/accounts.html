@@ -30,9 +30,9 @@
 
   @if (tenant.isAdmin()) {
     <p class="muted lead">
-      The local accounts this tenant created, for people who have no identity elsewhere. An account
-      is one person for the whole installation: this tenant manages its password and its sessions,
-      whichever other tenants the person works in.
+      The local accounts this team created, for people who have no identity elsewhere. An account is
+      one person for the whole installation: this team manages its password and its sessions,
+      whichever other teams the person works in.
     </p>
     <div class="panel">
       <p-table
@@ -68,7 +68,7 @@
               } @else {
                 <span
                   class="muted"
-                  pTooltip="The tenant has no grant for this person any more"
+                  pTooltip="The team has no grant for this person any more"
                   [showDelay]="400"
                   >none</span
                 >
@@ -197,7 +197,7 @@
     <p-skeleton width="24rem" height="2rem" />
   } @else {
     <p class="muted" data-testid="accounts-notice">
-      Only the administrators of this tenant manage its accounts.
+      Only the administrators of this team manage its accounts.
     </p>
   }
 </section>

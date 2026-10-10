@@ -4,7 +4,7 @@ import { Api } from '../api/api';
 import { createImport } from '../api/fn/imports/create-import';
 import { executeImport } from '../api/fn/imports/execute-import';
 import { exportProject } from '../api/fn/imports/export-project';
-import { exportTenant } from '../api/fn/imports/export-tenant';
+import { exportTeam } from '../api/fn/imports/export-team';
 import { getImport } from '../api/fn/imports/get-import';
 import { ExportManifest, ImportCorrection, ImportJob } from '../api/models';
 import { attachmentName, readManifest } from './export-archive';
@@ -58,7 +58,7 @@ export class ImportsService {
    */
   async dryRun(tenant: string, project: string, files: readonly File[]): Promise<ImportJob> {
     const job = await this.api.invoke(createImport, {
-      tenant,
+      team: tenant,
       project,
       body: { file: [...files] },
     });
@@ -74,7 +74,7 @@ export class ImportsService {
     const at = `${tenant}/${project}/${id}`;
     const held = this.answered.get(at);
     this.answered.delete(at);
-    return held ?? this.api.invoke(getImport, { tenant, project, import: id });
+    return held ?? this.api.invoke(getImport, { team: tenant, project, import: id });
   }
 
   /** The execution of a dry run with the corrections (`POST …/imports/{import}/execution`). */
@@ -85,7 +85,7 @@ export class ImportsService {
     corrections: ImportCorrection[],
   ): Promise<ImportJob> {
     return this.api.invoke(executeImport, {
-      tenant,
+      team: tenant,
       project,
       import: id,
       body: { corrections },
@@ -95,15 +95,15 @@ export class ImportsService {
   /** The project's tickets the person reads, as an archive (`GET …/projects/{project}/export`). */
   exportProject(tenant: string, project: string): Promise<ExportArchive> {
     return this.archive(
-      () => this.api.invoke$Response(exportProject, { tenant, project }),
+      () => this.api.invoke$Response(exportProject, { team: tenant, project }),
       `${tenant}-${project}-export.tar.gz`,
     );
   }
 
-  /** Every project of the tenant the person sees, as one archive (`GET …/tenants/{tenant}/export`). */
+  /** Every project of the team the person sees, as one archive (`GET …/teams/{team}/export`). */
   exportTenant(tenant: string): Promise<ExportArchive> {
     return this.archive(
-      () => this.api.invoke$Response(exportTenant, { tenant }),
+      () => this.api.invoke$Response(exportTeam, { team: tenant }),
       `${tenant}-export.tar.gz`,
     );
   }

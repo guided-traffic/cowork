@@ -442,7 +442,7 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
       projectsLoading.set(false);
       await fixture.whenStable();
 
-      expect(text(page, '[data-testid="no-projects"]')).toBe('This tenant has no projects yet.');
+      expect(text(page, '[data-testid="no-projects"]')).toBe('This team has no projects yet.');
     });
 
     it('show nothing of the work to a global administrator without a role (docs/adr/0034 D2)', async () => {
@@ -487,7 +487,7 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
       await see(fixture, 'OPS');
 
       expect(lists[1].params()).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         project: 'OPS',
         pages: Number.POSITIVE_INFINITY,
         horizon: ['now', 'release', 'next'],
@@ -655,7 +655,7 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
       });
       expect(lanesShown(page)).toEqual(['COW', 'OPS']);
       expect(paramsOf('OPS')).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         project: 'OPS',
         pages: Number.POSITIVE_INFINITY,
         horizon: ['now', 'release', 'next'],
@@ -700,7 +700,7 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
 
       expect(bar(fixture).leftOut()).toEqual(boardLeftOut);
       expect(text(page, '[data-testid="filter-notes"]')).toBe(
-        'include_terminal: a board shows no closed ticket; the tenant’s ticket list applies this condition',
+        'include_terminal: a board shows no closed ticket; the team’s ticket list applies this condition',
       );
       expect(paramsOf('COW')).not.toHaveProperty('include_terminal');
       expect(paramsOf('COW')?.type).toEqual(['bug']);
@@ -732,7 +732,7 @@ describe('TenantBoard (docs/adr/0018 D4)', () => {
 
       expect(projectsWritten()).toBeNull();
       expect(paramsOf('COW')).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         project: 'COW',
         pages: Number.POSITIVE_INFINITY,
         horizon: ['now', 'release', 'next'],

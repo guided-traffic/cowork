@@ -7,10 +7,10 @@
 
   @if (tenantInfo.isAdmin()) {
     <p class="muted lead" data-testid="tenant-tokens-lead">
-      The personal access tokens that can act in this tenant: every member's tokens that are not
-      restricted to a tenant — they reach every tenant the member belongs to — and those restricted
-      to this one. A token restricted to another tenant is not shown. You see what a token is, never
-      the token itself; revoking an unrestricted one ends it in all of its person's tenants.
+      The personal access tokens that can act in this team: every member's tokens that are not
+      restricted to a team — they reach every team the member belongs to — and those restricted to
+      this one. A token restricted to another team is not shown. You see what a token is, never the
+      token itself; revoking an unrestricted one ends it in all of its person's teams.
     </p>
 
     <div class="panel">
@@ -74,13 +74,13 @@
                 <span
                   class="everywhere"
                   tabindex="0"
-                  pTooltip="Not restricted to a tenant: it acts in every tenant its person belongs to, and revoking it ends it in all of them."
+                  pTooltip="Not restricted to a team: it acts in every team its person belongs to, and revoking it ends it in all of them."
                   tooltipEvent="both"
                   [showDelay]="400"
-                  >every tenant of the person</span
+                  >every team of the person</span
                 >
               } @else {
-                this tenant
+                this team
                 @if (token.restricted_project; as project) {
                   <span class="muted"> / </span><span class="key">{{ project }}</span>
                 }
@@ -126,7 +126,7 @@
         <ng-template #emptymessage>
           <tr>
             <td colspan="10" class="muted empty" data-testid="tenant-tokens-empty">
-              {{ failure() ?? 'No token can act in this tenant.' }}
+              {{ failure() ?? 'No token can act in this team.' }}
             </td>
           </tr>
         </ng-template>
@@ -148,7 +148,7 @@
     <p-skeleton width="24rem" height="2rem" />
   } @else {
     <p class="muted" data-testid="tenant-tokens-notice">
-      The tokens of the tenant's members are its administrators' to see.
+      The tokens of the team's members are its administrators' to see.
     </p>
   }
 </section>

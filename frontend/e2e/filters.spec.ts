@@ -30,7 +30,7 @@ test(
     await member.page.getByRole('button', { name: 'Save filter' }).click();
     const dialog = member.page.getByRole('dialog', { name: 'Save filter' });
     await dialog.getByRole('textbox', { name: 'Name' }).fill(name);
-    await dialog.getByRole('switch', { name: /Share with the tenant/ }).check();
+    await dialog.getByRole('switch', { name: /Share with the team/ }).check();
     await dialog.getByRole('button', { name: 'Save' }).click();
     await expect(dialog).toBeHidden();
     await expect(member.page.getByRole('button', { name: `Stop sharing ${name}` })).toHaveAttribute(

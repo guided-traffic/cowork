@@ -22,11 +22,13 @@ import { maxLifetimeDays, NewTokenDialog, scopeMeanings } from './new-token-dial
 
 const acme: Membership = {
   role: 'admin',
+  team: { slug: 'acme', name: 'Acme Corp' },
   tenant: { slug: 'acme', name: 'Acme Corp' },
   origins: [{ source: 'grant', role: 'admin' }],
 };
 const globex: Membership = {
   role: 'member',
+  team: { slug: 'globex', name: 'Globex' },
   tenant: { slug: 'globex', name: 'Globex' },
   origins: [{ source: 'grant', role: 'member' }],
 };
@@ -54,6 +56,7 @@ const issued: TokenCreated = {
   expires_at: '2026-12-31T10:00:00Z',
   last_used_on: null,
   revoked_at: null,
+  restricted_team: null,
   restricted_tenant: null,
   restricted_project: null,
   state: 'active',
@@ -99,12 +102,12 @@ describe('the vocabulary of a token', () => {
   });
 
   it('names the strongest acts of the admin scope, the irreversible ones among them', () => {
-    expect(scopeMeanings.admin).toContain('tenant settings and the time lock');
+    expect(scopeMeanings.admin).toContain('team settings and the time lock');
     expect(scopeMeanings.admin).toContain('archiving projects');
     expect(scopeMeanings.admin).toContain('the confidential flag');
     expect(scopeMeanings.admin).toContain("withdrawing other people's comments");
     expect(scopeMeanings.admin).toContain(
-      'unlocking, ending the sessions of and deactivating (for good) the local accounts of the tenant',
+      'unlocking, ending the sessions of and deactivating (for good) the local accounts of the team',
     );
   });
 
@@ -268,7 +271,7 @@ describe('NewTokenDialog', () => {
       expect((el(fixture, 'token-agent')?.querySelector('input') as HTMLInputElement).checked).toBe(
         false,
       );
-      expect(label(fixture, 'token-tenant')).toBe('Any tenant of yours');
+      expect(label(fixture, 'token-tenant')).toBe('Any team of yours');
       const lifetime = el(fixture, 'token-lifetime')?.querySelector('input');
       expect(lifetime?.value).toBe('');
       expect(lifetime?.placeholder).toBe('Installation default');
@@ -636,7 +639,7 @@ describe('NewTokenDialog', () => {
       await choose(fixture, 'token-tenant', 'acme');
 
       expect(text(fixture, 'token-project-failed')).toBe(
-        'The projects of this tenant could not be loaded.',
+        'The projects of this team could not be loaded.',
       );
       expect(select(fixture, 'token-project').options()).toEqual([]);
     });
@@ -645,7 +648,7 @@ describe('NewTokenDialog', () => {
       const fixture = await render();
 
       expect(host(fixture).textContent).toContain(
-        'An unrestricted one reaches every tenant you belong to, now and later.',
+        'An unrestricted one reaches every team you belong to, now and later.',
       );
     });
   });
@@ -868,7 +871,7 @@ describe('NewTokenDialog', () => {
         agent: true,
         // In the order of the vocabulary, not of the clicks.
         capabilities: ['drop', 'rank', 'upload'],
-        tenant: 'acme',
+        team: 'acme',
         project: 'COW',
         lifetime_days: 30,
       });
@@ -914,7 +917,7 @@ describe('NewTokenDialog', () => {
       expect(create.mock.calls[0][0]).toStrictEqual({
         name: 'claude on my laptop',
         scope: 'read',
-        tenant: 'globex',
+        team: 'globex',
       });
     });
 
@@ -963,7 +966,7 @@ describe('NewTokenDialog', () => {
 
       expect((el(fixture, 'token-name') as HTMLInputElement).value).toBe('');
       expect(label(fixture, 'token-scope')).toBe('read');
-      expect(label(fixture, 'token-tenant')).toBe('Any tenant of yours');
+      expect(label(fixture, 'token-tenant')).toBe('Any team of yours');
       expect(el(fixture, 'token-lifetime')?.querySelector('input')?.value).toBe('');
     });
 
@@ -1012,7 +1015,7 @@ describe('NewTokenDialog', () => {
           { pointer: '/name', message: 'must not be blank' },
           { pointer: '/scope', message: 'an agent token has at most write scope' },
           { pointer: '/capabilities', message: 'only an agent token carries capabilities' },
-          { pointer: '/tenant', message: 'no such tenant' },
+          { pointer: '/team', message: 'no such team' },
           { pointer: '/project', message: 'no such project' },
           { pointer: '/lifetime_days', message: 'must be at least 1' },
         ]),
@@ -1032,7 +1035,7 @@ describe('NewTokenDialog', () => {
       expect(text(fixture, 'token-capabilities-error')).toBe(
         'only an agent token carries capabilities',
       );
-      expect(text(fixture, 'token-tenant-error')).toBe('no such tenant');
+      expect(text(fixture, 'token-tenant-error')).toBe('no such team');
       expect(text(fixture, 'token-project-error')).toBe('no such project');
       expect(text(fixture, 'token-lifetime-error')).toBe('must be at least 1');
       expect(fixture.componentInstance.visible()).toBe(true);
@@ -1040,6 +1043,27 @@ describe('NewTokenDialog', () => {
       expect(add).not.toHaveBeenCalled();
       expect(saveButton(fixture)?.disabled).toBe(false);
     });
+
+    // docs/adr/0005 D1: the form sends the restriction as team; a server of the release before
+    // points at its name before, /tenant.
+    it.each(['/team', '/tenant'])(
+      'shows the refusal of the team restriction at %s beside its field',
+      async (pointer) => {
+        create.mockRejectedValue(
+          refusal(422, 'validation_failed', [{ pointer, message: 'no such team' }]),
+        );
+        const fixture = await render();
+        await fill(fixture, 'claude');
+        await choose(fixture, 'token-tenant', 'acme');
+
+        submit(fixture);
+        await settle(fixture);
+
+        expect(text(fixture, 'token-tenant-error')).toBe('no such team');
+        const select = el(fixture, 'token-tenant')?.querySelector('[role="combobox"]');
+        expect(select?.getAttribute('aria-describedby')).toContain('token-tenant-error');
+      },
+    );
 
     it('toasts a refusal that names no field, such as a token asking for a token (session_required)', async () => {
       const body: Problem = {
@@ -1096,7 +1120,7 @@ describe('NewTokenDialog', () => {
           { pointer: '/name', message: 'must not be blank' },
           { pointer: '/scope', message: 'an agent token has at most write scope' },
           { pointer: '/capabilities', message: 'only an agent token carries capabilities' },
-          { pointer: '/tenant', message: 'no such tenant' },
+          { pointer: '/team', message: 'no such team' },
           { pointer: '/project', message: 'no such project' },
           { pointer: '/lifetime_days', message: 'must be at least 1' },
         ]),

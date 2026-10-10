@@ -100,13 +100,12 @@ export type LeftOut = Partial<Record<keyof SavedFilterParameters, string>>;
 
 /** What a backlog leaves out of a filter. */
 export const backlogLeftOut: LeftOut = {
-  project: 'a backlog is one project; the tenant’s ticket list applies this condition',
+  project: 'a backlog is one project; the team’s ticket list applies this condition',
 };
 
 /** What a board leaves out of a filter. */
 export const boardLeftOut: LeftOut = {
-  include_terminal:
-    'a board shows no closed ticket; the tenant’s ticket list applies this condition',
+  include_terminal: 'a board shows no closed ticket; the team’s ticket list applies this condition',
 };
 
 /** What a list says of a filter it applies: its warnings, and each condition it leaves out. */

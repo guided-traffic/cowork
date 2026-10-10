@@ -16,11 +16,13 @@ import { SESSION_CHANNEL, SessionChannel, SessionService } from './session.servi
 
 const asAdmin: Membership = {
   role: 'admin',
+  team: { slug: 'acme', name: 'Acme Corp' },
   tenant: { slug: 'acme', name: 'Acme Corp' },
   origins: [{ source: 'grant', role: 'admin' }],
 };
 const asMember: Membership = {
   role: 'member',
+  team: { slug: 'globex', name: 'Globex' },
   tenant: { slug: 'globex', name: 'Globex' },
   origins: [{ source: 'grant', role: 'member' }],
 };
@@ -219,11 +221,36 @@ describe('SessionService', () => {
     });
   });
 
+  // docs/adr/0005 D1: a membership names its team by `team`, and by `tenant` beside it for one
+  // release, deprecated; the pages read `team`. The two never differ in an answer of the server;
+  // here they do, so that a page reading the name before would show.
+  describe('a membership that names its team by team and the deprecated tenant', () => {
+    const named: Membership = {
+      role: 'member',
+      team: { slug: 'acme', name: 'Acme Corp' },
+      tenant: { slug: 'stale', name: 'Stale' },
+      origins: [{ source: 'grant', role: 'member' }],
+    };
+    beforeEach(() => load(person([named])));
+
+    it('takes the team from team', () => {
+      expect(service.tenants()).toEqual([{ slug: 'acme', name: 'Acme Corp', role: 'member' }]);
+      expect(service.soleTenant()).toBe('acme');
+
+      service.enter('acme');
+      expect(service.membership()).toBe(named);
+      expect(service.shown()?.name).toBe('Acme Corp');
+
+      service.enter('stale');
+      expect(service.membership()).toBeUndefined();
+    });
+  });
+
   describe('a person who is no global administrator', () => {
     beforeEach(() => load(person([asAdmin])));
 
     it("never asks for the installation's tenants, which would be a 403", () => {
-      http.expectNone((request) => request.url === '/api/v1/tenants');
+      http.expectNone((request) => request.url === '/api/v1/teams');
       expect(service.tenants()).toEqual([{ slug: 'acme', name: 'Acme Corp', role: 'admin' }]);
     });
 
@@ -246,7 +273,7 @@ describe('SessionService', () => {
       global_admin: true,
     });
     const tenantsRequest = () =>
-      http.expectOne((request) => request.method === 'GET' && request.url === '/api/v1/tenants');
+      http.expectOne((request) => request.method === 'GET' && request.url === '/api/v1/teams');
 
     it("names no sole tenant before the installation's tenants are known", async () => {
       await load(administrator([asAdmin]));
@@ -305,7 +332,7 @@ describe('SessionService', () => {
       http.expectOne('/api/v1/me').flush(administrator([asAdmin]));
       await settle();
 
-      http.expectNone((request) => request.url === '/api/v1/tenants');
+      http.expectNone((request) => request.url === '/api/v1/teams');
       expect(service.tenants()).toEqual([{ slug: 'acme', name: 'Acme Corp', role: 'admin' }]);
     });
 

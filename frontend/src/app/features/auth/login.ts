@@ -58,7 +58,7 @@ export const providerRefusals: Record<string, string> = {
   not_allowed:
     'This installation does not admit your account. Ask the people who run cowork for access.',
   not_initialised:
-    'This installation is not set up yet: until its first tenant exists, only its administrators can sign in.',
+    'This installation is not set up yet: until its first team exists, only its administrators can sign in.',
   oidc_failed: 'The sign-in through the identity provider did not complete. Try again.',
   oidc_unavailable: 'This installation offers no sign-in through an identity provider.',
 };

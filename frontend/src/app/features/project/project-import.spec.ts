@@ -15,7 +15,7 @@ import { Clock } from '../../shared/time';
 import { notesOf, ProjectImport } from './project-import';
 
 const id = '0199a3c2-1d2e-7f00-8000-00000000000a';
-const jobUrl = `/api/v1/tenants/acme/projects/VKO/imports/${id}`;
+const jobUrl = `/api/v1/teams/acme/projects/VKO/imports/${id}`;
 const ada = { id: 'p-ada', display_name: 'Ada Lovelace' };
 
 const member = (person: { id: string; display_name: string }): Member => ({
@@ -448,7 +448,7 @@ describe('ProjectImport', () => {
 
       el(fixture, 'import-dry-run')?.click();
       await tick(fixture);
-      const request = http.expectOne('/api/v1/tenants/acme/projects/VKO/imports');
+      const request = http.expectOne('/api/v1/teams/acme/projects/VKO/imports');
       expect(request.request.method).toBe('POST');
       const body = request.request.body as FormData;
       expect(body.getAll('file').map((part) => (part as File).name)).toEqual([
@@ -469,7 +469,7 @@ describe('ProjectImport', () => {
       el(fixture, 'import-dry-run')?.click();
       await tick(fixture);
       http
-        .expectOne('/api/v1/tenants/acme/projects/VKO/imports')
+        .expectOne('/api/v1/teams/acme/projects/VKO/imports')
         .flush(
           problem(400, 'validation_failed', [
             { pointer: '/file', message: 'the upload names docs/a.md twice' },
@@ -492,7 +492,7 @@ describe('ProjectImport', () => {
       el(fixture, 'import-dry-run')?.click();
       await tick(fixture);
       http
-        .expectOne('/api/v1/tenants/acme/projects/VKO/imports')
+        .expectOne('/api/v1/teams/acme/projects/VKO/imports')
         .flush(problem(413, 'payload_too_large'), { status: 413, statusText: 'Too Large' });
       await settle(fixture);
 

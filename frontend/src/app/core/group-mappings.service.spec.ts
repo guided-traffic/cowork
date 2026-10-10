@@ -40,16 +40,19 @@ const person = (admin = true): Me => ({
   password_change_required: false,
   memberships: [
     {
+      team: { slug: 'acme', name: 'Acme' },
       tenant: { slug: 'acme', name: 'Acme' },
       role: admin ? 'admin' : 'member',
       origins: [{ source: 'grant', role: admin ? 'admin' : 'member' }],
     },
     {
+      team: { slug: 'globex', name: 'Globex' },
       tenant: { slug: 'globex', name: 'Globex' },
       role: 'admin',
       origins: [{ source: 'mapping', role: 'admin' }],
     },
     {
+      team: { slug: 'initech', name: 'Initech' },
       tenant: { slug: 'initech', name: 'Initech' },
       role: 'viewer',
       origins: [{ source: 'grant', role: 'viewer' }],
@@ -57,8 +60,8 @@ const person = (admin = true): Me => ({
   ],
 });
 
-const listUrl = '/api/v1/tenants/acme/group-mappings';
-const membersUrl = '/api/v1/tenants/acme/members';
+const listUrl = '/api/v1/teams/acme/group-mappings';
+const membersUrl = '/api/v1/teams/acme/members';
 
 /** Fails a request: without an answer at all (status 0), or with a problem of the status. */
 const fail = (request: TestRequest, status: number) =>
@@ -98,7 +101,7 @@ describe('GroupMappingsService', () => {
     http.expectOne(
       (request) =>
         request.method === 'GET' &&
-        request.url === `/api/v1/tenants/${tenant}/group-mappings` &&
+        request.url === `/api/v1/teams/${tenant}/group-mappings` &&
         request.params.get('cursor') === cursor,
     );
   /** The page that the loader asks for once the previous one was taken, which is a promise away. */
@@ -109,7 +112,7 @@ describe('GroupMappingsService', () => {
   const noLoad = (tenant = 'acme') =>
     http.expectNone(
       (request) =>
-        request.method === 'GET' && request.url === `/api/v1/tenants/${tenant}/group-mappings`,
+        request.method === 'GET' && request.url === `/api/v1/teams/${tenant}/group-mappings`,
     );
 
   async function start(me: Me = person()) {
@@ -277,7 +280,7 @@ describe('GroupMappingsService', () => {
       stream.next({ name: 'membership.changed', id: 'e1', tenant: 'beta', mappingId: 'm1' });
       await settle();
 
-      http.expectNone((request) => request.url === '/api/v1/tenants/acme/group-mappings');
+      http.expectNone((request) => request.url === '/api/v1/teams/acme/group-mappings');
       http.expectNone('/api/v1/me');
     });
 
@@ -455,7 +458,7 @@ describe('GroupMappingsService', () => {
         page('globex').flush(pageOf(['team-red'], null));
         await settle();
         http
-          .expectOne((request) => request.url === '/api/v1/tenants/globex/members')
+          .expectOne((request) => request.url === '/api/v1/teams/globex/members')
           .flush(noMembers);
         await settle();
 
@@ -466,7 +469,7 @@ describe('GroupMappingsService', () => {
         expect(service.list()[0].role).toBe('member');
         page('globex').flush(pageOf(['team-red'], null));
         http
-          .expectOne((request) => request.url === '/api/v1/tenants/globex/members')
+          .expectOne((request) => request.url === '/api/v1/teams/globex/members')
           .flush(noMembers);
       });
 

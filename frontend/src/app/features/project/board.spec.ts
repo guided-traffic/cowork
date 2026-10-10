@@ -309,7 +309,7 @@ describe('Board', () => {
       await render();
 
       expect(openParams()).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         project: 'COW',
         pages: Number.POSITIVE_INFINITY,
         horizon: ['now', 'release', 'next'],
@@ -320,7 +320,7 @@ describe('Board', () => {
       await render();
 
       expect(doneParams()).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         project: 'COW',
         state: ['done'],
         done_after: '2026-09-19T12:00:00.000Z',

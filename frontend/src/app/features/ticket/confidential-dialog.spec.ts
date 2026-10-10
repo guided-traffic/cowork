@@ -65,7 +65,7 @@ describe('ConfidentialDialog', () => {
 
     expect(page().querySelector('.p-dialog-title')?.textContent).toBe('Make it confidential');
     expect(page().querySelector('.explain')?.textContent).toContain(
-      "Only the tenant's administrators, the assignee and the reporter will see COW-12",
+      "Only the team's administrators, the assignee and the reporter will see COW-12",
     );
     expect(send().disabled).toBe(false);
     send().click();

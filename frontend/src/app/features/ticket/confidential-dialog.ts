@@ -47,7 +47,7 @@ import { keepOpenWhile } from '../../shared/keep-open';
             body, its comments, its questions, its files and its time. The activity records who
             lifted the flag, and why.
           } @else {
-            Only the tenant's administrators, the assignee and the reporter will see
+            Only the team's administrators, the assignee and the reporter will see
             {{ shortKey() }} — not the other members, and nobody's agent beyond those. Assigning the
             ticket admits the new assignee.
           }

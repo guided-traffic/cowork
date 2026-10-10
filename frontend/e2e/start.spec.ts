@@ -1,5 +1,5 @@
 import { keyOf, tenant } from './support/api';
-import { asAdmin as test, expect, expectScheme } from './support/fixtures';
+import { asAdmin as test, expect, expectNoTenantShown, expectScheme } from './support/fixtures';
 
 /**
  * The start page is "next for me" (docs/adr/0018 D3, docs/adr/0023 D4 as amended 2026-10-05): a
@@ -28,13 +28,16 @@ test(
     await expect(row).toContainText('Pick this up next');
     await expect(row.getByTestId('tenant')).toHaveText('End to end');
     await expect(row.getByTestId('whose')).toHaveText('yours');
+    await expectNoTenantShown(page);
 
     // One tenant: no switcher, its name in the top bar, a link to it.
     const banner = page.getByRole('banner');
-    await expect(banner.getByRole('combobox', { name: 'Tenant' })).toHaveCount(0);
+    await expect(banner.getByRole('combobox', { name: 'Team' })).toHaveCount(0);
     await banner.getByRole('link', { name: 'End to end', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/t/${tenant}$`));
     await expect(page.getByRole('heading', { name: 'End to end', level: 1 })).toBeVisible();
     await expect(page.getByTestId('nav-overview')).toHaveClass(/\bactive\b/);
+    await expect(page.getByTestId('tile-state')).toBeVisible();
+    await expectNoTenantShown(page);
   },
 );

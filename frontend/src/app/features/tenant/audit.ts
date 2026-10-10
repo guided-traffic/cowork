@@ -42,10 +42,40 @@ export const entityTypes = [
   'project_access',
   'membership',
   'group_mapping',
-  'tenant',
+  'team',
   'token',
   'user',
 ];
+
+/**
+ * A team is stored as a tenant (docs/adr/0005 D1): the record keeps the entity type `tenant`, the
+ * payload key `tenant` and a local account's origin `tenant`, which the page says as team. The
+ * filter takes the name it shows and asks for the stored one.
+ */
+const storedEntityTypes: Readonly<Record<string, string>> = { team: 'tenant' };
+
+/** The entity type the record stores for the one a person typed: `team` → `tenant`. */
+export function storedEntityType(typed: string): string {
+  return storedEntityTypes[typed] ?? typed;
+}
+
+/** The entity type as the page shows it: `tenant` → `team`. */
+export function shownEntityType(stored: string): string {
+  return Object.entries(storedEntityTypes).find(([, value]) => value === stored)?.[0] ?? stored;
+}
+
+/** A payload key as the page shows it: `tenant` → `team`, `restricted_tenant` → `restricted_team`. */
+export function shownField(field: string): string {
+  return field.replace(/(^|_)tenant(s?)(?=_|$)/g, '$1team$2');
+}
+
+/** A payload value as the page shows it, as JSON: a local account's origin `tenant` is `"team"`. */
+function shownValue(field: string, value: unknown): string {
+  if (value === undefined) {
+    return '—';
+  }
+  return JSON.stringify(field === 'origin' && value === 'tenant' ? 'team' : value);
+}
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -82,11 +112,10 @@ export function changes(event: AuditEvent): string[] {
     return [];
   }
   const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])];
-  const shown = (value: unknown) => (value === undefined ? '—' : JSON.stringify(value));
   return fields.map((field) =>
     field in before
-      ? `${field}: ${shown(before[field])} → ${shown(after[field])}`
-      : `${field}: ${shown(after[field])}`,
+      ? `${shownField(field)}: ${shownValue(field, before[field])} → ${shownValue(field, after[field])}`
+      : `${shownField(field)}: ${shownValue(field, after[field])}`,
   );
 }
 
@@ -133,6 +162,7 @@ export class Audit {
   protected readonly perPageOptions: PerPage[] = [25, 50, 100];
   protected readonly dateTime = dateTime;
   protected readonly changes = changes;
+  protected readonly shownEntityType = shownEntityType;
   protected readonly shortKey = shortKey;
 
   protected readonly actor = signal<string | null>(null);
@@ -162,11 +192,11 @@ export class Audit {
       const token = this.token().trim();
       const entity = this.entity().trim();
       return {
-        tenant,
+        team: tenant,
         ...(this.actor() ? { actor: this.actor() as string } : {}),
         ...(token ? { token: token.toLowerCase() } : {}),
         ...(this.action().length > 0 ? { action: this.action() } : {}),
-        ...(entity ? { entity_type: entity } : {}),
+        ...(entity ? { entity_type: storedEntityType(entity) } : {}),
         ...period(this.fromDay(), this.untilDay()),
       };
     },
@@ -267,7 +297,7 @@ export class Audit {
       const url = URL.createObjectURL(new Blob([csv.text], { type: 'text/csv' }));
       const link = this.document.createElement('a');
       link.href = url;
-      link.download = `audit-${query.tenant}-${csv.until.slice(0, 19).replace(/[:T]/g, '-')}.csv`;
+      link.download = `audit-${query.team}-${csv.until.slice(0, 19).replace(/[:T]/g, '-')}.csv`;
       link.click();
       URL.revokeObjectURL(url);
       if (csv.total > csvRowLimit) {

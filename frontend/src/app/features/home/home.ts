@@ -38,7 +38,7 @@ import { FirstTenant } from './first-tenant';
       <app-my-tickets list="next" />
     } @else {
       <section class="page">
-        <h1>Your tenants</h1>
+        <h1>Your teams</h1>
         <div class="tenants">
           @for (tenant of session.tenants(); track tenant.slug) {
             <a
@@ -50,7 +50,7 @@ import { FirstTenant } from './first-tenant';
               <span class="muted">{{ tenant.slug }} · {{ tenant.role ?? 'no role' }}</span>
             </a>
           } @empty {
-            <p class="muted">You are not a member of any tenant yet.</p>
+            <p class="muted">You are not a member of any team yet.</p>
           }
         </div>
       </section>

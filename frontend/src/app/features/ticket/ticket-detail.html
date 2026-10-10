@@ -3,7 +3,7 @@
 <section class="page">
   <nav class="crumbs muted">
     @if (at(); as a) {
-      <a [routerLink]="['/t', a.tenant, 'p', a.project, 'board']">{{ a.project }}</a>
+      <a [routerLink]="['/t', a.team, 'p', a.project, 'board']">{{ a.project }}</a>
       <span>/</span>
       <span class="tabular">{{ key() }}</span>
     }
@@ -20,7 +20,7 @@
           @if (t.confidential) {
             <span
               class="pill"
-              pTooltip="Visible to the tenant's administrators, the assignee and the reporter"
+              pTooltip="Visible to the team's administrators, the assignee and the reporter"
               ><i class="pi pi-lock"></i>confidential</span
             >
           }

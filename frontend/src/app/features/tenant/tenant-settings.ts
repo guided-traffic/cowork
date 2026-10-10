@@ -117,7 +117,7 @@ export function quotaShare(usage: AttachmentUsage): number | null {
               </button>
             </div>
           } @else {
-            <p class="muted small">Only the tenant's administrators change these.</p>
+            <p class="muted small">Only the team's administrators change these.</p>
           }
         </form>
         <p class="muted small">
@@ -150,13 +150,13 @@ export function quotaShare(usage: AttachmentUsage): number | null {
               </div>
             } @else if (u.quota_bytes === null) {
               <p class="muted small" data-testid="attachment-usage-no-quota">
-                The installation sets no quota per tenant
-                (<code>COWORK_ATTACHMENT_TENANT_QUOTA</code>): the tenant's files are bounded only
-                by the size of each file and their number per ticket.
+                The installation sets no quota per team (<code>COWORK_ATTACHMENT_TEAM_QUOTA</code>):
+                the team's files are bounded only by the size of each file and their number per
+                ticket.
               </p>
             }
             <p class="muted small">
-              Every file of the tenant counts, on tickets you see and on those you do not, and on a
+              Every file of the team counts, on tickets you see and on those you do not, and on a
               deleted ticket until the purge removes it. An upload that would go above the quota is
               refused before it is stored.
             </p>
@@ -168,7 +168,7 @@ export function quotaShare(usage: AttachmentUsage): number | null {
         <section class="card usage" data-testid="tenant-export" aria-labelledby="export-heading">
           <h2 id="export-heading">Export</h2>
           <p class="muted small">
-            Every project of the tenant you see, archived ones too, as one archive: each ticket's
+            Every project of the team you see, archived ones too, as one archive: each ticket's
             Markdown document, with a manifest of the links and one of the attachments — their
             names, never their bytes. The export is recorded in the audit record; kept on a schedule
             of the installation's, it is the second line of a backup.
@@ -193,7 +193,7 @@ export function quotaShare(usage: AttachmentUsage): number | null {
               } @else {
                 <i class="pi pi-download"></i>
               }
-              Export the tenant
+              Export the team
             </button>
           </div>
         </section>
@@ -309,7 +309,7 @@ export class TenantSettings {
     params: () => this.administered(),
     loader: ({ params: tenant }): Promise<AttachmentUsage> =>
       keepShown(this.attachmentUsage, () =>
-        this.conditional.load((fetch) => fetch(getAttachmentUsage, { tenant })),
+        this.conditional.load((fetch) => fetch(getAttachmentUsage, { team: tenant })),
       ),
   });
   protected readonly usage = computed(() =>

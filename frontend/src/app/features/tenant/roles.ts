@@ -5,9 +5,9 @@ export const roles: Role[] = ['viewer', 'member', 'admin'];
 
 /** What each role may do, in a line (docs/adr/0034 D1), shown beside the choice. */
 export const roleMeanings: Record<Role, string> = {
-  viewer: 'Reads what the tenant shares and watches tickets; changes nothing.',
+  viewer: 'Reads what the team shares and watches tickets; changes nothing.',
   member: 'Does the daily work: files and moves tickets, comments, books time.',
-  admin: 'Does what a member does, and administers the tenant: accounts, settings, projects.',
+  admin: 'Does what a member does, and administers the team: accounts, settings, projects.',
 };
 
 /** The higher of two roles, as a mapped and a granted role combine (docs/adr/0030 D4); null for none. */
@@ -27,7 +27,7 @@ export function roleFrom(origins: MembershipOrigin[], source: MembershipSource):
 export const originMeanings: Record<MembershipSource | 'local', string> = {
   mapping:
     "Derived from the identity provider's groups by a group mapping: it changes when the mapping or the person's groups change.",
-  grant: 'Granted by an administrator of this tenant: it stays until an administrator removes it.',
+  grant: 'Granted by an administrator of this team: it stays until an administrator removes it.',
   local:
     'Has a local account: signs in with a username and a password of their own, not through the identity provider.',
 };
@@ -41,4 +41,4 @@ export const originAccents: Record<MembershipSource | 'local', string> = {
 
 /** What a page says when a change would leave the tenant without an administrator (`last_admin`). */
 export const lastAdminNotice =
-  'Not changed: the tenant would be left without an administrator. Make somebody else an administrator first.';
+  'Not changed: the team would be left without an administrator. Make somebody else an administrator first.';

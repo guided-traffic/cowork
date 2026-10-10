@@ -65,6 +65,8 @@ export class TokensService {
 
   /** The projects of one tenant the person belongs to, for the restriction of a new token. */
   projectsOf(tenant: string): Promise<Project[]> {
-    return everyPage((cursor) => this.api.invoke(listProjects, { tenant, cursor, limit: 200 }));
+    return everyPage((cursor) =>
+      this.api.invoke(listProjects, { team: tenant, cursor, limit: 200 }),
+    );
   }
 }

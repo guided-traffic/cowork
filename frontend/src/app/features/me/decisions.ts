@@ -27,7 +27,7 @@ import { reloadOn, shortKey, ticketRoute } from './person-list';
 export function askedOf(decision: Decision, person: string | undefined): string {
   return decision.question.asked_of?.id === person && person !== undefined
     ? 'asked of you'
-    : 'open in the tenant';
+    : 'open in the team';
 }
 
 /**
@@ -59,7 +59,7 @@ export function askedOf(decision: Decision, person: string | undefined): string 
       <div class="panel">
         @for (item of items(); track item.question.id) {
           <div class="row" [attr.data-testid]="'decision-' + item.question.id">
-            <span class="tenant" data-testid="tenant">{{ item.tenant.name }}</span>
+            <span class="tenant" data-testid="tenant">{{ item.team.name }}</span>
             <a class="ticket" [routerLink]="route(item.ticket.key)">
               <span class="ticket-key tabular">{{ shortKey(item.ticket.key) }}</span>
               <span class="ticket-title">{{ item.ticket.title }}</span>

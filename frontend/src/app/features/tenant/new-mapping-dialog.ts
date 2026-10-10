@@ -23,7 +23,7 @@ import { keepOpenWhile } from '../../shared/keep-open';
 import { roleMeanings, roles } from './roles';
 
 /** What the form says under the group's field when the tenant maps the group already. */
-export const mappingExists = 'This tenant maps that group already: change its role in the list.';
+export const mappingExists = 'This team maps that group already: change its role in the list.';
 
 /**
  * Maps a group of the identity provider to a role in the tenant (docs/adr/0030 D2). The group is

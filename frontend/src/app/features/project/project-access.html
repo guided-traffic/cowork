@@ -14,16 +14,16 @@
     <span
       >Restricted
       <span class="muted"
-        >— only the tenant's administrators and the people on the list see it</span
+        >— only the team's administrators and the people on the list see it</span
       ></span
     >
   </label>
   <p class="muted small" data-testid="access-hint">
     @if (restricted()) {
       Each person on the list sees the project with the role of their entry at most, and never with
-      more than their role in the tenant. Nobody else but the administrators sees it at all.
+      more than their role in the team. Nobody else but the administrators sees it at all.
     } @else {
-      Every member of the tenant sees this project. The list counts only while the project is
+      Every member of the team sees this project. The list counts only while the project is
       restricted: fill it before restricting, so that nobody on it loses the project in between.
     }
   </p>
@@ -142,7 +142,7 @@
     </button>
   </form>
   <small class="muted small" data-testid="access-meaning"
-    >{{ candidateRole() }}: {{ accessMeanings[candidateRole()] }} The tenant's administrators see
+    >{{ candidateRole() }}: {{ accessMeanings[candidateRole()] }} The team's administrators see
     every project without an entry.</small
   >
 </section>

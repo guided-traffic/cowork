@@ -750,7 +750,7 @@ describe('conversation forms', () => {
         http = TestBed.inject(HttpTestingController);
       });
 
-      const url = '/api/v1/tenants/acme/projects/COW/tickets/12/questions/2/answer';
+      const url = '/api/v1/teams/acme/projects/COW/tickets/12/questions/2/answer';
 
       it('sends the version of an answered question as If-Match, so that a change overwrites only what was read', async () => {
         const fixture = await answerTo(

@@ -20,6 +20,7 @@ function token(id: string, overrides: Partial<MemberToken> = {}): MemberToken {
     scope: 'write',
     agent: false,
     capabilities: [],
+    restricted_team: null,
     restricted_tenant: null,
     restricted_project: null,
     created_at: '2026-10-01T10:00:00Z',
@@ -31,8 +32,15 @@ function token(id: string, overrides: Partial<MemberToken> = {}): MemberToken {
   };
 }
 
-const everywhere = token('t1', { name: 'laptop' });
-const here = token('t2', { name: 'ci', restricted_tenant: 'acme', restricted_project: 'COW' });
+// restricted_tenant is the deprecated name of restricted_team, which the server sends alike; here
+// it differs, so that a page reading it would show (docs/adr/0005 D1).
+const everywhere = token('t1', { name: 'laptop', restricted_tenant: 'not read' });
+const here = token('t2', {
+  name: 'ci',
+  restricted_team: 'acme',
+  restricted_tenant: null,
+  restricted_project: 'COW',
+});
 
 const pageOf = (
   items: MemberToken[],
@@ -55,11 +63,11 @@ describe('the tenant tokens helpers', () => {
 
   it('says before a revocation that an unrestricted token ends in every tenant of its person', () => {
     expect(revocationMessage(everywhere)).toMatch(
-      /^It is not restricted to this tenant: revoking it ends it in every tenant Sam Rivera belongs to, not only here\./,
+      /^It is not restricted to this team: revoking it ends it in every team Sam Rivera belongs to, not only here\./,
     );
-    expect(revocationMessage(here)).toMatch(/^It is restricted to this tenant and ends here\./);
+    expect(revocationMessage(here)).toMatch(/^It is restricted to this team and ends here\./);
     expect(revocationMessage(here)).toContain('cannot be undone');
-    expect(revocationMessage(here)).toContain("recorded in this tenant's audit record");
+    expect(revocationMessage(here)).toContain("recorded in this team's audit record");
   });
 });
 
@@ -126,14 +134,14 @@ describe('TenantTokens', () => {
     expect(first?.textContent).toContain('laptop');
     expect(first?.textContent).toContain('Sam Rivera');
     expect(first?.querySelector('[data-testid="reach"]')?.textContent?.trim()).toBe(
-      'every tenant of the person',
+      'every team of the person',
     );
     expect(
       el(fixture, 'tenant-token-t2')
         ?.querySelector('[data-testid="reach"]')
         ?.textContent?.replace(/\s+/g, ' ')
         .trim(),
-    ).toBe('this tenant / COW');
+    ).toBe('this team / COW');
     expect(host(fixture).textContent).not.toContain('cwk_');
   });
 
@@ -160,7 +168,7 @@ describe('TenantTokens', () => {
     await settle(fixture);
     expect(dialog()?.textContent).toContain('Revoke laptop of Sam Rivera?');
     expect(dialog()?.textContent).toContain(
-      'revoking it ends it in every tenant Sam Rivera belongs to, not only here',
+      'revoking it ends it in every team Sam Rivera belongs to, not only here',
     );
     expect(revoke).not.toHaveBeenCalled();
     const calls = page.mock.calls.length;
@@ -177,7 +185,7 @@ describe('TenantTokens', () => {
 
     el(fixture, 'tenant-token-revoke-t2')?.click();
     await settle(fixture);
-    expect(dialog()?.textContent).toContain('It is restricted to this tenant and ends here.');
+    expect(dialog()?.textContent).toContain('It is restricted to this team and ends here.');
     press('Keep it');
     await settle(fixture);
 

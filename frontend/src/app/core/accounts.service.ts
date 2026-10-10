@@ -40,7 +40,7 @@ export class AccountsService {
       const accounts: Account[] = [];
       let cursor: string | undefined;
       do {
-        const page = await this.api.invoke(listAccounts, { tenant, cursor, limit: 200 });
+        const page = await this.api.invoke(listAccounts, { team: tenant, cursor, limit: 200 });
         accounts.push(...page.items);
         cursor = page.next_cursor ?? undefined;
       } while (cursor);
@@ -62,7 +62,7 @@ export class AccountsService {
    */
   async create(body: AccountCreate, idempotencyKey: string): Promise<Account> {
     const account = await this.api.invoke(createAccount, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       'Idempotency-Key': idempotencyKey,
       body,
     });
@@ -74,7 +74,7 @@ export class AccountsService {
   /** Sets a new temporary password; every session of the account ends (docs/adr/0033 D5). */
   async reset(username: string, temporaryPassword: string): Promise<void> {
     await this.api.invoke(resetAccountPassword, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       username,
       body: { temporary_password: temporaryPassword },
     });
@@ -83,14 +83,14 @@ export class AccountsService {
 
   /** Forgets the failed logins and the lock of the account (docs/adr/0033 D6). */
   async unlock(username: string): Promise<void> {
-    await this.api.invoke(unlockAccount, { tenant: this.session.tenant() as string, username });
+    await this.api.invoke(unlockAccount, { team: this.session.tenant() as string, username });
     refresh(this.accounts, this.injector);
   }
 
   /** Deactivates the person for good: no login, no token, no session (docs/adr/0024 D5). */
   async deactivate(username: string): Promise<void> {
     await this.api.invoke(deactivateAccount, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       username,
     });
     refresh(this.accounts, this.injector);
@@ -99,7 +99,7 @@ export class AccountsService {
   /** Signs the account out everywhere, at once. */
   async endSessions(username: string): Promise<void> {
     await this.api.invoke(endAccountSessions, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       username,
     });
     refresh(this.accounts, this.injector);

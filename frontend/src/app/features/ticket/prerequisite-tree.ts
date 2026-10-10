@@ -217,7 +217,7 @@ export class PrerequisiteTree {
   );
 
   protected tenantOf(node: PrerequisiteNode): string {
-    return splitKey(node.key).tenant;
+    return splitKey(node.key).team;
   }
 
   protected shortKey(node: PrerequisiteNode): string {

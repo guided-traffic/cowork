@@ -11,8 +11,8 @@ import { splitKey } from '../../core/tickets.service';
 
 /** The route of a ticket by its canonical key, `acme/COW-12` → `/t/acme/tickets/COW-12`. */
 export function ticketRoute(key: string): string[] {
-  const { tenant, key: short } = splitKey(key);
-  return ['/t', tenant, 'tickets', short];
+  const { team, key: short } = splitKey(key);
+  return ['/t', team, 'tickets', short];
 }
 
 /** The short key a person reads beside the tenant's name, `acme/COW-12` → `COW-12`. */

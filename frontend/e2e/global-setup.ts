@@ -23,9 +23,9 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   try {
     await signIn(context, adminUser, adminPassword);
     const admin = new Session(context);
-    await admin.ensureTenant(tenant, 'End to end');
+    await admin.ensureTeam(tenant, 'End to end');
     await admin.ensureMapping(tenant, 'team-red', 'member');
-    await admin.ensureTenant(otherTenant, 'Other end');
+    await admin.ensureTeam(otherTenant, 'Other end');
     const token = await admin.createToken('e2e-seed');
     process.env['COWORK_E2E_TOKEN'] = token;
     await seedVisualBoard(admin, baseURL, token);

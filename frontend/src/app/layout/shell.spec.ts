@@ -25,11 +25,13 @@ import { initials, Shell } from './shell';
 
 const acme: Membership = {
   role: 'admin',
+  team: { name: 'Acme Corp', slug: 'acme' },
   tenant: { name: 'Acme Corp', slug: 'acme' },
   origins: [{ source: 'grant', role: 'admin' }],
 };
 const globex: Membership = {
   role: 'member',
+  team: { name: 'Globex', slug: 'globex' },
   tenant: { name: 'Globex', slug: 'globex' },
   origins: [{ source: 'grant', role: 'member' }],
 };
@@ -156,7 +158,7 @@ describe('Shell', () => {
           provide: SessionService,
           useValue: (() => {
             const tenants = computed<OpenableTenant[]>(() => [
-              ...memberships().map(({ tenant: t, role }) => ({ ...t, role })),
+              ...memberships().map(({ team: t, role }) => ({ ...t, role })),
               ...roleless(),
             ]);
             return {
@@ -164,7 +166,7 @@ describe('Shell', () => {
               memberships,
               tenants,
               tenant,
-              membership: computed(() => memberships().find((m) => m.tenant.slug === tenant())),
+              membership: computed(() => memberships().find((m) => m.team.slug === tenant())),
               shown: computed(() => tenants().find((t) => t.slug === tenant())),
               soleTenant: computed(() => (tenants().length === 1 ? tenants()[0].slug : null)),
               oversight,
@@ -457,7 +459,7 @@ describe('Shell', () => {
 
       expect(page.querySelector('[data-testid="tenant-name"]')).toBeNull();
       const select = fixture.debugElement.query(By.directive(Select));
-      expect((select.componentInstance as Select).options()).toEqual([acme.tenant, globex.tenant]);
+      expect((select.componentInstance as Select).options()).toEqual([acme.team, globex.team]);
       expect(select.nativeElement).toBe(page.querySelector('[data-testid="tenant-switch"]'));
       expect(select.nativeElement.querySelector('.p-select-label').textContent.trim()).toBe(
         'Acme Corp',
@@ -472,7 +474,7 @@ describe('Shell', () => {
 
       expect(
         page.querySelector('[data-testid="tenant-switch"] .p-select-label')?.textContent?.trim(),
-      ).toBe('Choose a tenant');
+      ).toBe('Choose a team');
     });
 
     it('goes to the tenant that is chosen in the switch', async () => {
@@ -493,7 +495,7 @@ describe('Shell', () => {
 
       const select = fixture.debugElement.query(By.directive(Select));
       expect((select.componentInstance as Select).options()).toEqual([
-        acme.tenant,
+        acme.team,
         { slug: 'initech', name: 'Initech (no role)' },
       ]);
     });
@@ -547,7 +549,7 @@ describe('Shell', () => {
       tenant.set(null);
       const { fixture, page } = await render();
       expect(page.querySelector('[data-testid="search-input"]')?.getAttribute('aria-label')).toBe(
-        'Search all your tenants',
+        'Search all your teams',
       );
 
       await submit(fixture, page, 'gate');
@@ -1174,10 +1176,10 @@ describe('Shell, creating a project', () => {
           useValue: {
             person: signal<Me | undefined>(ada),
             memberships: signal<Membership[]>([acme]),
-            tenants: signal<OpenableTenant[]>([{ ...acme.tenant, role: acme.role }]),
+            tenants: signal<OpenableTenant[]>([{ ...acme.team, role: acme.role }]),
             tenant: signal<string | null>('acme'),
             membership: signal<Membership | undefined>(acme),
-            shown: signal<OpenableTenant | undefined>({ ...acme.tenant, role: acme.role }),
+            shown: signal<OpenableTenant | undefined>({ ...acme.team, role: acme.role }),
             soleTenant: signal<string | null>('acme'),
             oversight: signal(false),
           },

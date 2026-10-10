@@ -296,7 +296,7 @@ describe('NewProjectDialog', () => {
   describe('a project that the server refuses', () => {
     it('shows the problem of the key beside the key, and keeps the dialog and what was typed', async () => {
       create.mockRejectedValue(
-        refusal(409, [{ pointer: '/key', message: 'The key COW is taken in this tenant.' }]),
+        refusal(409, [{ pointer: '/key', message: 'The key COW is taken in this team.' }]),
       );
       const fixture = await render();
       fill(fixture, 'cow', 'cowork');
@@ -305,7 +305,7 @@ describe('NewProjectDialog', () => {
       await settle(fixture);
 
       const error = (fixture.nativeElement as HTMLElement).querySelector('small.error');
-      expect(error?.textContent).toBe('The key COW is taken in this tenant.');
+      expect(error?.textContent).toBe('The key COW is taken in this team.');
       expect(fixture.componentInstance.visible()).toBe(true);
       expect((el(fixture, 'project-key') as HTMLInputElement).value).toBe('COW');
       expect((el(fixture, 'project-name') as HTMLInputElement).value).toBe('cowork');
