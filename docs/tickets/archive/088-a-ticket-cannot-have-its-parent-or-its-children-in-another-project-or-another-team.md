@@ -1,7 +1,7 @@
 ---
 id: T88
 title: a ticket cannot have its parent or its children in another project or another team
-state: in-progress
+state: done
 severity: medium      # the owner's teams file work for each other; today that is two unlinked tickets
 security: boundary
 threat: once built, a person who sees a ticket of team B (any role, and their agents' tokens) reads the head of its parent, child or link end in team A, in which they hold no role, and the readers of A's parent read B's children's progress in its aggregate — the owner's accepted trade-off, bounded by who may set a relation (only a person who can read both ends) and by what a head holds; nothing crosses a tenant before it is built
@@ -10,7 +10,8 @@ effort: L
 filed-from: the owners walk through the UI under make dev, 2026-10-10
 opened: 2026-10-10
 decided: 2026-10-10
-done:
+done: 2026-10-10
+shipped: 0.17.0 — a parent, children and links across projects and teams, the other end read as its head or <team> [Confidential], set by a writer of the near end who can read the far one and removed by a writer of either end, through owner-only crossings of the data layer; the derived progress across teams, the cycle walks under one lock per graph, export, import, purge, cowork-mcp and the UI
 ---
 
 ## Current state

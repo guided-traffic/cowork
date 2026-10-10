@@ -29,7 +29,8 @@ both present must name the same slug, else the file is refused naming both keys 
 schema says; the proposal's `team` and `teams` beside the deprecated `tenant` and `tenants`), built
 the same day ([`tools/workspace.go`](../../backend/internal/tools/workspace.go) `BindingFile`,
 [`cowork-yaml.schema.json`](../../backend/api/cowork-yaml.schema.json)); the proposal's reason
-`only-tenant` keeps its word. Made concrete by the implementer, open to the owner's objection: the
+`only-tenant` keeps its word until the release that contracts the rename, which names it `only-team`,
+that release's cowork-mcp taking both *(amended 2026-10-10 by the owner, not built)*. Made concrete by the implementer, open to the owner's objection: the
 file `create_project` offers names `tenant:` in this release, since a `cowork-mcp` of the release
 before drops a file that names `team`, and `team:` from the contract release on
 ([`tools/tool_project.go`](../../backend/internal/tools/tool_project.go)).

@@ -33,6 +33,12 @@ answers only the `404` of a path that reaches the frontend by mistake, and what 
 controller answers itself is the controller's page; D4: `backend_unreachable`, which nginx alone
 answered, left the catalogue).
 
+**Amended 2026-10-10 by the owner (not built):** the code `tenant_slug_taken` is renamed
+`team_slug_taken` in the release that contracts the rename of a tenant to a team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1); until then it keeps
+its name, its title says "Team slug taken", and that release's own clients take both codes. A code
+stays stable otherwise: this is the one rename, decided with the word it carries.
+
 ## Context
 
 The skeleton answered `{"error":{"code","message"}}` and called it provisional. Earlier

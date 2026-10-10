@@ -50,8 +50,10 @@ expand left, and where:
   ([richtext.go](../../backend/internal/richtext/richtext.go)).
 - **Path quotes in other ADRs** still name `/api/v1/tenants/…`, true while the twin family is served.
 - **The image workflow's label** says "multi-tenant" (.github/workflows/build.yml:62).
-- **An older deprecation of the same kind:** a token's `restricted_project_id` beside `restricted_project`
-  (ADR 0035 D2).
+- **Older deprecations of the same kind:** a token's `restricted_project_id` beside `restricted_project`
+  (ADR 0035 D2); and, since the relations across teams (0.17.0), the reads `GET …/tickets/{number}/links`
+  and `GET …/tickets/{number}/prerequisites`, kept with their old meaning beside `GET …/relations` and
+  `GET …/prerequisite-tree` (ADR 0012 D6, ADR 0046 D7).
 
 ## Required changes
 
@@ -73,7 +75,8 @@ expand left, and where:
   family for good; the old content route goes only after one of them.
 - The ADRs that quote `/api/v1/tenants/…` are amended in place; ADR 0005, 0023, 0046 record the contract
   as built.
-- The image workflow's label says team; a token's `restricted_project_id` goes.
+- The image workflow's label says team; a token's `restricted_project_id` goes, and so do the deprecated
+  reads of a ticket's links and prerequisites.
 - The problem code `tenant_slug_taken` becomes `team_slug_taken` and the repository proposal's reason
   `only-tenant` becomes `only-team`; that release's own clients — the UI and cowork-mcp — take both values
   for it. The stored values keep the old word, as the database's names do, and the UI keeps labelling them

@@ -74,7 +74,13 @@ field cannot carry the new name beside it or because it is stored — made concr
 implementer, open to the owner's objection —: the problem code
 `tenant_slug_taken`, whose title says "Team slug taken"; a repository proposal's reason
 `only-tenant`; the audit record's `entity_type` `tenant` and its payload key `tenant`; a local
-account's origin `tenant`; and the database's names — the UI labels each a team. Not built: the
+account's origin `tenant`; and the database's names — the UI labels each a team. *(Amended
+2026-10-10 by the owner, not built — the answer on the values that still name a tenant:)* the release
+that contracts the rename changes the two wire values a client reads — the problem code
+`tenant_slug_taken` to `team_slug_taken` and a repository proposal's reason `only-tenant` to
+`only-team` —, that release's own clients taking both values for it; the stored values — the audit
+record's `entity_type` `tenant` and payload key `tenant`, a local account's origin `tenant` — keep the
+word for good, as the database's names do, and the UI keeps labelling them a team. Not built: the
 contract — the twins, the old parameters, properties, arguments, keys, variables, values and the
 metrics' old label removed —, which a later release does once no supported client reads them;
 until 1.0 no commit carries a breaking mark ([ADR 0003](0003-test-and-ci-policy.md) D9).
