@@ -1,7 +1,7 @@
 ---
 id: T88
 title: a ticket cannot have its parent or its children in another project or another team
-state: decided
+state: in-progress
 severity: medium      # the owner's teams file work for each other; today that is two unlinked tickets
 security: boundary
 threat: once built, a person who sees a ticket of team B (any role, and their agents' tokens) reads the head of its parent, child or link end in team A, in which they hold no role, and the readers of A's parent read B's children's progress in its aggregate — the owner's accepted trade-off, bounded by who may set a relation (only a person who can read both ends) and by what a head holds; nothing crosses a tenant before it is built
@@ -213,3 +213,22 @@ of the same relation inside A.
   to Q1 is taken back — a child in team B looks parentless.
 
 **Answer:** (a), 2026-10-10.
+
+### Q7: Who may remove a relation that crosses teams?
+
+The adversarial review of the build found it: by ADR 0008 D2 and ADR 0012 D2 a viewer of team A who is a
+member of team B may make a B ticket the child of an A ticket, or let a B ticket block an A ticket. The
+effects land on A — A's parent shows derived progress and its own can no longer be set; A's ticket reaches
+`done` only over a person's override and A's agents cannot close it — and nobody in A can remove the
+relation, because removing it is a write on the child or the source, in B; taking the viewer's role away
+does not end it.
+
+- **(a) Recommended:** a writer of either end may remove the relation, recorded in both teams' audit
+  records; setting stays as decided. One more narrow crossing (the removal into the other team); the
+  affected team always has the remedy, and nobody learns more than today.
+- **(b)** parent and `blocks` need write in both teams to be set; `relates-to`, `duplicates`, `found-in`
+  keep the viewer rule: no constraint a team did not consent to, at the price of amending Q2's answer for
+  the two constraining relations.
+- **(c)** as decided, the gap written down: A's persons override `done` with a reason; A's agents cannot.
+
+**Answer:** _open_
