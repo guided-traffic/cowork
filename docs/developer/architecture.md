@@ -91,8 +91,8 @@ the person's token, like a script — no path to the database, nothing the API d
    the gate, the refresh interval, the display name ([ADR 0029] D1, D4).
 7. `bootstrap.Sync` keeps what the configuration says an installation starts with, as the
    runtime role under the advisory lock of the job `bootstrap`: the local administrator —
-   created, re-hashed, deactivated, taken over — and, while no tenant exists, the bootstrap
-   tenant with the local administrator's grant and the administrator group's mapping
+   created, re-hashed, deactivated, taken over — and, while no team exists, the bootstrap
+   team with the local administrator's grant and the administrator group's mapping
    ([`internal/bootstrap`](../../backend/internal/bootstrap/bootstrap.go),
    [ADR 0032] D2, D6, [ADR 0057] D4). A failure ends the process.
 8. `events.New` builds the event hub; `go db.Listen(ctx, hub.Publish, hub.SetUp)` starts the one
@@ -161,13 +161,17 @@ Everything under `/api/` runs the API pipeline of
 [`internal/api/api.go`](../../backend/internal/api/api.go), `ServeHTTP`:
 
 ```
-route in the document ─► authenticate ─► session rules ─► tenant boundary ─┬─► timeout ─► body limit ─► validate ─┬─► strict handler
+route in the document ─► authenticate ─► session rules ─► team boundary ───┬─► timeout ─► body limit ─► validate ─┬─► strict handler
   404 / 405               401 / 403 / 400   403 csrf /      404            │                413          400 / 404 │
                           (token or         agent_forbidden /              │                                       └─► runChatTurn: serveChat
                            session)         password_change_required       │                                           (the turn's own limits; a stream)
                                                                            └─► streamEvents: validate ─► serveEvents (no timeout, no limit)
 ```
 
+Before the route is found, a request under `/api/v1/tenants` — the deprecated twin of a team
+path, served for one release — is answered as that team path: `asTeamPath` hands the pipeline a
+copy of the request whose path names `/api/v1/teams`, so every step above is the team path's, while
+the request log keeps the path as it was sent ([api.md](api.md#deprecated-names)).
 Each step, and what it answers, is [api.md](api.md#the-pipeline). Every error is an
 RFC 9457 problem details body written by `problem.Write` ([ADR 0047]).
 
@@ -203,14 +207,14 @@ POST …/chat (session) ─► the pipeline above ─► serveChat: availability
                                                   · chat_busy + the registry ─► 200 text/event-stream
    ─► chat.Run, up to COWORK_CHAT_MAX_STEPS, within COWORK_CHAT_TURN_TIMEOUT, ended by a shutdown or a stop:
         llm.Provider.Complete ──► the picked provider (text streamed out as `text`)
-        each tool call, at once: tools.Tool.Call ─► apigen client ─► chat.Loopback (the turn's tenant only)
+        each tool call, at once: tools.Tool.Call ─► apigen client ─► chat.Loopback (the turn's team only)
                                          ─► the root handler: request id ─► request log ─► recoverer ─► the pipeline
                                             (cookie + X-Cowork-Agent: chat/<model>/<conversation> ─► an agent's request
                                              holding the person's chat capabilities)
                                          ─► `tool_result`
    ─► `error` (a failure) ─► `done`: the messages the turn added, and why — `stopped` after a stop
 
-DELETE …/chat/turns (session) ─► StopChatTurns ─► stopTurns: cancel the person's turns in the tenant
+DELETE …/chat/turns (session) ─► StopChatTurns ─► stopTurns: cancel the person's turns in the team
                                                    on this replica ─► 204 once they have ended
 ```
 
@@ -236,7 +240,7 @@ identity provider:
           its nonce compared; the groups from the token, else UserInfo
        ─► store.CompleteOIDCLogin, one transaction of system:identity-provider under the person's lock:
           the gate, deactivated, the init state ─► the person kept or made ─► memberships derived
-          in every tenant ─► the session, with its groups and the sealed refresh token
+          in every team ─► the session, with its groups and the sealed refresh token
        ─► 303 to return_to + the session cookie, the state cookie cleared — or 303 to /login?error=<code>
 ```
 
@@ -313,7 +317,7 @@ mounts in a kind cluster.
 `cowork_owner` and its runtime role `cowork_app`. `make dev` runs all of the following in one terminal, with demo data and the
 UI's dev server ([frontend.md](frontend.md#the-development-loop)). `make run` starts the backend on `:8080`:
 it migrates as `cowork_owner`, serves as `cowork_app` and makes a throw-away server key unless
-`COWORK_SESSION_KEY` is set. `make dev-seed` creates a person, a tenant, an admin membership and
+`COWORK_SESSION_KEY` is set. `make dev-seed` creates a person, a team, an admin membership and
 a token, and prints the token once. `make frontend-serve` starts the Angular dev server on
 `:4200` with [`frontend/proxy.conf.mjs`](../../frontend/proxy.conf.mjs) forwarding `/api`,
 `/auth`, `/healthz` and `/readyz` to the backend — the developer's stand-in for the Ingress, which
@@ -336,7 +340,7 @@ D2) — and, when LM Studio answers on `localhost:1234` with the model `COWORK_D
 
 The reactivation of a person, the deactivation of a person of the identity provider, and the list
 of one's own sessions; a global administrator's reading of the installation-level audit rows and
-the deletion of a tenant ([ADR 0034] D2); the
+the deletion of a team ([ADR 0034] D2); the
 revocation of a refresh token at the issuer when a session ends; the deletion of a project. The work lists in
 [docs/tickets/](../tickets/README.md) say in which order they come; each gets its section here, or a
 page of its own, when it exists.

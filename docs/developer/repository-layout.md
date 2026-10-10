@@ -9,7 +9,7 @@ cowork/
 ├── backend/                    # Go module github.com/guided-traffic/cowork/backend
 │   ├── api/                    # the API document, the contract (package apispec)
 │   │   ├── openapi.yaml        # the root: info, security, paths → one file per path family
-│   │   ├── meta.yaml, auth.yaml, me.yaml, tenants.yaml, accounts.yaml, members.yaml, tickets.yaml,
+│   │   ├── meta.yaml, auth.yaml, me.yaml, teams.yaml, accounts.yaml, members.yaml, tickets.yaml,
 │   │   │   questions.yaml, comments.yaml, time.yaml, attachments.yaml, events.yaml, repositories.yaml,
 │   │   │   chat.yaml
 │   │   ├── cowork-yaml.schema.json  # the schema of a repository's .cowork.yaml, served
@@ -23,7 +23,7 @@ cowork/
 │   │   ├── api/                # the pipeline and one handler per operation
 │   │   │   └── apigen/         # oapi-codegen output: server interface, models, client (generated)
 │   │   ├── auth/               # tokens, sessions, passwords, the principal and agent mark, authorization, sealing
-│   │   ├── bootstrap/          # the local administrator and the bootstrap tenant, synchronised at start
+│   │   ├── bootstrap/          # the local administrator and the bootstrap team, synchronised at start
 │   │   ├── chat/               # the chat in the UI: a turn's loop, the tools it offers, the loopback, the page tools
 │   │   ├── config/             # COWORK_* environment variables → Config
 │   │   ├── domain/             # vocabularies, keys, the horizon's default, transitions, attachment types

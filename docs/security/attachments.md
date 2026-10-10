@@ -40,10 +40,10 @@ like any other SVG — as a download.
   mark, the token it was uploaded through (its id and name), ticket and comment — is a row of
   `attachments`; the bytes are an object in
   S3-compatible storage and never enter PostgreSQL (ADR 0016 D1).
-- **The key.** An object's key is `<tenant-id>/<attachment-id>`, both made by the server;
+- **The key.** An object's key is `<team-id>/<attachment-id>`, both made by the server;
   nothing from the request enters it ([`storage/storage.go`](../../backend/internal/storage/storage.go)
   `Key`). A download derives it from the attachment row the caller has read through the
-  ticket's predicate, so an attachment of another tenant or of a hidden ticket is the `404` of
+  ticket's predicate, so an attachment of another team or of a hidden ticket is the `404` of
   one that does not exist.
 - **No presigned URL.** Nothing in the backend signs one; every download streams through the
   backend after the ticket's read check (ADR 0016 D4). A presigned URL would be a bearer
@@ -123,12 +123,13 @@ any web page, and the reason the type is the server's, sniffed, never the client
   other there, so they cannot pass the count together
   ([`store/jobs.go`](../../backend/internal/store/jobs.go) `LockAttachments`;
   `TestSimultaneousUploadsKeepTheCount`).
-- **The tenant's quota.** `COWORK_ATTACHMENT_TENANT_QUOTA` — bytes, `0`, the default, for none —
-  bounds what a tenant's attachments hold together
+- **The team's quota.** `COWORK_ATTACHMENT_TEAM_QUOTA` — bytes, `0`, the default, for none; its
+  name before, `COWORK_ATTACHMENT_TENANT_QUOTA`, is still read for this release —
+  bounds what a team's attachments hold together
   ([ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
-  D6 as amended 2026-10-05). Where it is set, the upload's transaction takes the tenant's quota
+  D6 as amended 2026-10-05). Where it is set, the upload's transaction takes the team's quota
   lock first (`LockAttachmentQuota`, before the ticket's), and, once the act is authorised, sums
-  the sizes of every attachment of the tenant — of every ticket, a confidential one and a
+  the sizes of every attachment of the team — of every ticket, a confidential one and a
   restricted project's included, which the uploader may not see — and refuses a file that would
   take the sum above the quota with `409 attachment_quota`, before the row or the object exists
   ([`api/attachments.go`](../../backend/internal/api/attachments.go) `withinQuota`). A deleted
@@ -136,23 +137,23 @@ any web page, and the reason the type is the server's, sniffed, never the client
   ([tenancy.md](tenancy.md#h-56) H-56), so a deletion frees nothing of the quota and a purge does
   (`TestADeletedTicketsFilesCountAgainstTheQuotaUntilThePurge`). An object whose removal failed
   after a purge counts no more, though it still occupies the bucket (H-13). The lock is
-  held until the upload commits, so uploads of one tenant pass the check one after the other —
-  also to different tickets (`TestSimultaneousUploadsKeepTheTenantQuota`) — and one tenant's
-  uploads never wait for another tenant's lock. They share the replica's memory slots all the same
+  held until the upload commits, so uploads of one team pass the check one after the other —
+  also to different tickets (`TestSimultaneousUploadsKeepTheTenantQuota`) — and one team's
+  uploads never wait for another team's lock. They share the replica's memory slots all the same
   (H-12): an upload takes its slot before it reads its body and keeps it while it waits for its
-  tenant's lock and its ticket's. Row-level security holds the sum to the tenant: another
-  tenant's files neither count against it nor show (`TestTheTenantAttachmentQuota`). The refusal
-  names the quota and the file's size, never the sum. The tenant's administrators read the sum,
-  the count and the quota (`GET …/attachment-usage`, on the tenant's settings page); anybody else
+  team's lock and its ticket's. Row-level security holds the sum to the team: another
+  team's files neither count against it nor show (`TestTheTeamAttachmentQuota`). The refusal
+  names the quota and the file's size, never the sum. The team's administrators read the sum,
+  the count and the quota (`GET …/attachment-usage`, on the team's settings page); anybody else
   is `403`, because the sum counts files they may not see.
 - **Shape.** One file per upload; the multipart body takes `file` and an optional
   `comment_id`, and nothing else.
-- **Order.** The act is authorised on the tenant role, the scope and, for an agent, the
+- **Order.** The act is authorised on the team role, the scope and, for an agent, the
   `upload` capability; the upload waits for a memory slot (H-12); the file is read, its type
   judged and its name sanitised; an agent's upload must carry an `Idempotency-Key`. Then, in
   one transaction, the ticket is read through its predicate, the role in its project is
   checked, a `comment_id` must name a comment of that ticket written by the caller's person,
-  the count is checked, the tenant's quota is checked, the row and its `uploaded` act are written,
+  the count is checked, the team's quota is checked, the row and its `uploaded` act are written,
   the object is put, and the transaction commits. When the row does not commit, or a concurrent request with the same key
   won, the object is deleted again ([`api/attachments.go`](../../backend/internal/api/attachments.go)
   `UploadAttachment`). A failed deletion leaves an object no row names, which the next
@@ -188,10 +189,10 @@ address another object.
   bytes — answers `404` with a detail saying the bytes are missing from storage, never a bare
   `404` (ADR 0059 D4).
 - The Markdown export of a ticket lists its attachments' names.
-- The consistency check's acts: one installation-level `checked` per run that checked a tenant, of
-  `system:consistency-check`, with the counts in all and, for each tenant out of step, its counts by
-  its id — never a file name or an object key; a run that found no tenant records none —; in the
-  tenant, `accepted` with the count of the files whose loss an administrator accepted, and `purged`
+- The consistency check's acts: one installation-level `checked` per run that checked a team, of
+  `system:consistency-check`, with the counts in all and, for each team out of step, its counts by
+  its id — never a file name or an object key; a run that found no team records none —; in the
+  team, `accepted` with the count of the files whose loss an administrator accepted, and `purged`
   on the entity `attachment_consistency` with the number of orphans the removal set out to remove
   and of those it kept, written in the confirming transaction before the objects go — never a key
   ([below](#the-consistency-check)).
@@ -199,7 +200,7 @@ address another object.
 ## The consistency check
 
 Once a day, in the hour after 03:00 UTC, and at a start that finds the last run older than that, the
-job `consistency-check` compares each tenant's attachment rows with the objects under its prefix
+job `consistency-check` compares each team's attachment rows with the objects under its prefix
 ([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D4; [docs/developer/storage.md](../developer/storage.md#the-consistency-check)) and keeps what
 disagrees: the files whose bytes are missing — dangling —, and the objects no row names — orphans.
@@ -209,25 +210,25 @@ memory whatever the number of objects.
 
 **What the lists tell, and to whom.** A missing file is listed with its name, size, type, upload
 time and its ticket's key — a ticket in the bin's among them; an orphan with its key, size and last
-change — no name, because no row has one. The lists are the tenant's and are read by its administrators alone: the route answers
-anybody else `403`, another tenant's person `404`, and row-level security holds both tables of
+change — no name, because no row has one. The lists are the team's and are read by its administrators alone: the route answers
+anybody else `403`, another team's person `404`, and row-level security holds both tables of
 [migration 42](../../backend/internal/store/migrations/000042_attachment_consistency.up.sql) to the
-tenant's administrators and the job by restrictive policies, whatever a query says
+team's administrators and the job by restrictive policies, whatever a query says
 (`TestTheConsistencyCheckIsTheTenantAdministratorsAndNoAgents`). An administrator sees every ticket —
 confidential ones and restricted projects' among them — and reads there nothing the tickets do not
-show them; a token restricted to a project is refused on every tenant-level route, this one too. What
-leaves the tenant is counts: the installation-level act per tenant id, the log line per tenant slug,
-the metrics per tenant id ([metrics.md](metrics.md)). `cowork check-consistency` prints counts per
-tenant, by its slug and id, never a file name; a removal that fails is logged with the object's key.
+show them; a token restricted to a project is refused on every team-level route, this one too. What
+leaves the team is counts: the installation-level act per team id, the log line per team slug,
+the metrics per team id ([metrics.md](metrics.md)). `cowork check-consistency` prints counts per
+team, by its slug and id, never a file name; a removal that fails is logged with the object's key.
 
-**The removal is irreversible**, and so it is held like the purge of a ticket: a tenant
+**The removal is irreversible**, and so it is held like the purge of a ticket: a team
 administrator's act, in a browser session — a token, an administrator's `admin` token included, is
 `403 session_required`, because nothing undoes it ([ADR 0035](../adr/0035-personal-access-tokens.md)
 D5) —, never an agent's ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
 D3), asked twice in the UI, and recorded. It names the check whose list the administrator was shown;
 a newer check, or a removal confirmed already, is `409 consistency_check_stale`, so nobody confirms a
 list they did not see. In the confirming transaction each listed orphan is asked again whether a row
-names it now, and one that does is kept; a key outside the tenant's prefix is never removed, whatever
+names it now, and one that does is kept; a key outside the team's prefix is never removed, whatever
 the stored list says; the objects go after the commit ([`api/consistency.go`](../../backend/internal/api/consistency.go)
 `planRemoval`). An orphan is judged only once its key's UUIDv7 is an hour old or more — an upload
 puts its object before its row commits —, so an upload in flight is never listed; an object under a
@@ -275,20 +276,23 @@ SHA-256 lets a reader confirm, without downloading, that a file is one they alre
 ADR 0016 accepts this among its residual risks.
 
 <a id="h-10"></a>
-### H-10 — The tenant's quota is off unless the installation sets it, and its refusal says how full the tenant is
+### H-10 — The team's quota is off unless the installation sets it, and its refusal says how full the team is
 
-Live today, in two ways. **Off by default**: `COWORK_ATTACHMENT_TENANT_QUOTA` is `0` unless the
+Live today, in two ways. **Off by default**: `COWORK_ATTACHMENT_TEAM_QUOTA` is `0` unless the
 operator sets it, because no number fits every installation and an upgrade must not start refusing
-uploads ([runtime.md](../operations/runtime.md#limits)). Until it is set, what bounds a tenant's
+uploads ([runtime.md](../operations/runtime.md#limits)). Until it is set, what bounds a team's
 storage is the per-file maximum times the per-ticket count times the number of tickets, which any
 member with `write` scope — or an agent with `upload` — can grow, at the defaults about a gibibyte
-per ticket, and one tenant can fill the storage every tenant of the installation shares; a quota on
-the bucket then stops every tenant at once. **A refusal is a signal**: a member who uploads files of
-chosen sizes learns, from which are refused, how many bytes the tenant has left once it is within one
+per ticket, and one team can fill the storage every team of the installation shares; a quota on
+the bucket then stops every team at once. **A refusal is a signal**: a member who uploads files of
+chosen sizes learns, from which are refused, how many bytes the team has left once it is within one
 file of the quota — a figure that counts the files of confidential tickets and restricted projects
 the member cannot see, and that moves when one of them is uploaded. It tells no name, no ticket and
-no content. Mitigation: set the quota on an installation of several tenants, with headroom above the
-largest tenant's use (the tenant's settings page shows it to its administrators); the audit view
+no content. Mitigation: set the quota on an installation of several teams, with headroom above the
+largest team's use (the team's settings page shows it to its administrators), under its name —
+`COWORK_ATTACHMENT_TEAM_QUOTA`, the chart's `backend.config.attachmentTeamQuota`: the name before is
+read in this release only, and through the chart without a warning
+([upgrade.md](../operations/upgrade.md#the-release-that-calls-a-tenant-a-team)); the audit view
 shows the uploads by token, and revoking the token stops a runaway client.
 
 <a id="h-11"></a>
@@ -300,7 +304,7 @@ that way. `COWORK_S3_ENDPOINT` may be `http://` or `https://`
 plain HTTP ([`storage.go`](../../backend/internal/storage/storage.go) `New`): every upload's and
 every download's bytes cross the network between the backend and the storage unencrypted,
 with the access key id in each request's signature, and so does the consistency check's daily
-listing, every tenant's object keys. The secret key does not travel; the bytes do. The signature
+listing, every team's object keys. The secret key does not travel; the bytes do. The signature
 covers the request, not the answer, so a peer on that path can also change the bytes a download
 delivers ([H-79](#h-79)). The chart passes `storage.endpoint` as given and does not warn. Mitigation: an
 `https://` endpoint — with `storage.tls.caConfigMap` for a private authority — or a mesh that
@@ -318,9 +322,9 @@ nothing reads an upload's body earlier (`TestAnUploadIsRefusedBeforeItsBodyIsRea
 request timeout bounds the read, so a body that trickles in gives its slot back at the
 deadline (`TestATricklingUploadEndsAtTheTimeout`); further uploads wait for a free slot until
 their request's time runs out, answered `504`. An upload keeps its slot while it waits for its
-ticket's lock and, under a quota, its tenant's, so a burst of one tenant's uploads holds slots that
-every tenant's uploads wait for. A
-burst by members of any tenant therefore holds up to about 60 MiB of file bytes at the
+ticket's lock and, under a quota, its team's, so a burst of one team's uploads holds slots that
+every team's uploads wait for. A
+burst by members of any team therefore holds up to about 60 MiB of file bytes at the
 defaults — six times the maximum — against the chart's 256 MiB memory limit, plus what the
 buffers' growth and the storage client add, which is not measured. With a maximum of 64 MiB
 or more, one upload at a time holds up to the maximum, so a maximum near the container's
@@ -340,7 +344,7 @@ Withdrawing the comment a file was attached to hides the comment's text;
 the file stays listed, downloadable and named in the export for every reader of the ticket. A
 screenshot uploaded by mistake with a secret in it stays readable until someone with the
 administrative database credential and access to the bucket removes both — outside the API,
-with the `uploaded` act left in the record. Inside the API, a tenant administrator can narrow who
+with the `uploaded` act left in the record. Inside the API, a team administrator can narrow who
 reads the file by setting the ticket confidential ([tenancy.md](tenancy.md) "The confidential
 flag"), or take it back only with the whole ticket: deleting the ticket hides its files at once,
 and purging it removes their rows and then their objects
@@ -349,7 +353,7 @@ D2, [tenancy.md](tenancy.md#a-deleted-ticket-answers-like-a-missing-one)). The o
 purge committed, so that a rollback leaves no row naming missing bytes; an object whose removal
 fails then stays in the bucket with no row naming it, and the log names its key (`an attachment
 object of a purged ticket could not be removed`). The next consistency check lists it as an orphan,
-and a tenant administrator can remove it ([the consistency check](#the-consistency-check)). Without
+and a team administrator can remove it ([the consistency check](#the-consistency-check)). Without
 object storage configured, a purge leaves the objects where an earlier configuration put them and logs
 the ticket and the number of its files, not their keys, and no check runs to list them. An uploaded
 file itself still cannot be taken back.
@@ -369,10 +373,10 @@ the consistency check never lists), access logs and backups are the storage's an
 Live wherever the key is granted `s3:ListBucket`, which the consistency check needs and the
 installation page asks for; a key without it fails the check at every hourly attempt, which
 `CoworkJobFailing` reports. Before the check, the key read, wrote and deleted objects whose keys it
-was given: an object's key is a tenant's id and an attachment's UUIDv7, which the database names and
+was given: an object's key is a team's id and an attachment's UUIDv7, which the database names and
 nobody guesses, so a storage key that leaked without the database read nothing it could find. With
-the listing, whoever holds the key enumerates every tenant's object keys and downloads every
-attachment of every tenant — confidential tickets' and restricted projects' included, without a
+the listing, whoever holds the key enumerates every team's object keys and downloads every
+attachment of every team — confidential tickets' and restricted projects' included, without a
 name, but with their bytes —, and can write over or delete any of them. The database's runtime credential, which lives beside the key in the same
 namespace, names every key as well, so a reader of both Secrets gains nothing by the listing. What an
 installation can do: keep the key in its own Secret, read by the backend alone; rotate it on a
@@ -381,15 +385,15 @@ key for the check, apart from the key that reads, is not built. Not verified: th
 controls, which cowork checks none of.
 
 <a id="h-69"></a>
-### H-69 — The objects of a tenant the database does not know are never listed
+### H-69 — The objects of a team the database does not know are never listed
 
-Live after a restore that brought the database back from before a tenant was created, while the
-bucket kept its files. The check lists the prefixes of the tenants the database knows, one by one
-(ADR 0059 D4), and so never reads `<tenant-id>/` of a tenant that is gone: those objects stay in the
+Live after a restore that brought the database back from before a team was created, while the
+bucket kept its files. The check lists the prefixes of the teams the database knows, one by one
+(ADR 0059 D4), and so never reads `<team-id>/` of a team that is gone: those objects stay in the
 bucket, unlisted, readable to whoever holds the storage key, and no administrator sees them. Nor is
 an object judged whose key names a UUIDv7 time in the future, or a noncurrent version of a versioned
 bucket, which no listing of the check reads. The operator finds them by listing the bucket's
-top-level prefixes against the tenants' ids, and removes them by hand.
+top-level prefixes against the teams' ids, and removes them by hand.
 
 <a id="h-70"></a>
 ### H-70 — An acceptance ends the alert on files that are lost
@@ -398,7 +402,7 @@ Live by design (ADR 0059 D5 as made concrete 2026-10-06). An administrator's acc
 session, or with an `admin`-scope token — counts the listed missing files as accepted, and the gauge
 and `CoworkAttachmentsOutOfStep` stop counting them. A leaked administrator's token, or an
 administrator who prefers silence, can so end the alert on a real loss; the files stay listed as
-accepted on the settings page, the act `accepted` is in the tenant's audit record with its actor and
+accepted on the settings page, the act `accepted` is in the team's audit record with its actor and
 its token, and the check forgets an acceptance once the bytes are back, so a later loss counts again.
 An installation that wants to know of every loss watches the act in the audit record, or
 `cowork_audit_acts_total{action="accepted"}`, which counts exactly these acts.

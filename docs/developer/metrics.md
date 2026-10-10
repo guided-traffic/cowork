@@ -40,7 +40,7 @@ A label value comes from one of three places and from nowhere else: a closed set
 kinds), the API document's route patterns, or a name in the code — a job's, an audit action, which
 the database's enum bounds. No value a request carries reaches a label: a route nobody names is
 `Unmatched`, a method HTTP does not define `other` (D5). The one exception is the consistency
-family's `tenant`, a tenant's id read from the database ([below](#the-consistency-family)). The closed sets are made at zero
+family's `team` — and `tenant` beside it, the same value, for one release —, a team's id read from the database ([below](#the-consistency-family)). The closed sets are made at zero
 (`initialise`), so a rate over them is defined from the first scrape.
 
 ## Who records what
@@ -48,7 +48,7 @@ family's `tenant`, a tenant's id read from the database ([below](#the-consistenc
 | Where | Records |
 |---|---|
 | [`httpserver/server.go`](../../backend/internal/httpserver/server.go) `instrument`, between `withRequestID` and `requestLog` | `Metrics.Request`: in flight while the handler runs, then the route, the method, the status and the duration; `handleGet` names `/healthz` and `/readyz` |
-| [`api/api.go`](../../backend/internal/api/api.go) `ServeHTTP` | `metrics.SetRoute(ctx, route.Path)` once the router found the operation: the pattern the document writes. The chat's tool calls come through the root handler as requests of their own |
+| [`api/api.go`](../../backend/internal/api/api.go) `ServeHTTP` | `metrics.SetRoute(ctx, route.Path)` once the router found the operation: the pattern the document writes — for a request to a deprecated twin under `/api/v1/tenants`, its team path's, since the pipeline read its path as the team path first ([api.md](api.md#the-pipeline)). The chat's tool calls come through the root handler as requests of their own |
 | [`api/authn.go`](../../backend/internal/api/authn.go), [`identity.go`](../../backend/internal/api/identity.go) | `TokenRefused`: `malformed` and `unknown` in `authenticateToken`, `revoked` and `expired` through `recordRefusal`, `not_allowed` through it from `tokenGate`, `session_only` in `authenticate` |
 | [`api/login.go`](../../backend/internal/api/login.go), [`oidc.go`](../../backend/internal/api/oidc.go) | `Login`: the local form's outcome after `RecordLoginAttempt` — `throttled` in `throttled` —, the identity provider's in `OidcCallback`'s `fail` and at its success |
 | [`events/hub.go`](../../backend/internal/events/hub.go) | `OpenStreams` in `Subscribe`, `remove` and `endAll`; `EventPublished` in `Publish`; `SubscriberDropped` — `behind` in `send`, `limit` in `limit`, `resync` in `SetUp` — only for a stream `end` actually ended; `Replay` in `Subscribe` with a `Last-Event-ID` |
@@ -89,13 +89,13 @@ registry answers, so a renamed instrument fails the test and not a panel.
 
 | Test | Holds |
 |---|---|
-| [`metrics_test.go`](../../backend/internal/metrics/metrics_test.go) | the naming rule; no forbidden label on any family, every family exercised (`exercise`), the tenant on the consistency family's three gauges alone, an id, and nothing else beside it (`tenantLabelled`); a request recorded by its pattern, `unmatched` and `other`; a nil registry; a job's consecutive failures; the pool read at a scrape; the schema read at most every ten seconds and the consistency family at most once a minute, each left out after a failure, and the age of the last export counted at every scrape; the closed sets at zero; the text format; the dashboard; the import boundary |
+| [`metrics_test.go`](../../backend/internal/metrics/metrics_test.go) | the naming rule; no forbidden label on any family, every family exercised (`exercise`), the team on the consistency family's three gauges alone, an id, as `team` and as `tenant` with the same value and nothing else beside them (`teamLabelled`); a request recorded by its pattern, `unmatched` and `other`; a nil registry; a job's consecutive failures; the pool read at a scrape; the schema read at most every ten seconds and the consistency family at most once a minute, each left out after a failure, and the age of the last export counted at every scrape; the closed sets at zero; the text format; the dashboard; the import boundary |
 | [`httpserver/server_test.go`](../../backend/internal/httpserver/server_test.go) | the route through the outer handler, the metrics listener's paths, `ServeAll` |
-| [`api/metrics_test.go`](../../backend/internal/api/metrics_test.go) | the route label is the document's pattern, never the tenant, project or number sent; a malformed token; a failed callback |
+| [`api/metrics_test.go`](../../backend/internal/api/metrics_test.go) | the route label is the document's pattern, never the team, project or number sent, and a twin's its team path's, never `{tenant}`; a malformed token; a failed callback |
 | [`events/hub_test.go`](../../backend/internal/events/hub_test.go) `TestTheHubRecordsItsInstruments` | open streams, published, the three drops — a shutdown none —, hits and misses |
 | [`store/metrics_test.go`](../../backend/internal/store/metrics_test.go) | the kinds of a failed statement, `ErrNoRows` none; an act's actor |
 | [`config_test.go`](../../backend/internal/config/config_test.go) `TestLoadMetricsAddr` | the default, the empty value that switches the listener off, an address without a port, the API's address |
-| [`api_consistency_test.go`](../../backend/test/integration/api_consistency_test.go) `TestTheConsistencyCheckFindsWhatARestoreLeftAndTheAdministratorSettlesIt`, `TestTheLastExportIsReadFromTheAuditRecord` | a second store with a registry of its own answers the counts a check stored, by tenant id, a clean tenant's zero included; and every tenant's age of its last export — from its creation before any, untouched by a ticket's Markdown, reset by a project's export —, the job's read across the tenants admitted to the export acts alone |
+| [`api_consistency_test.go`](../../backend/test/integration/api_consistency_test.go) `TestTheConsistencyCheckFindsWhatARestoreLeftAndTheAdministratorSettlesIt`, `TestTheLastExportIsReadFromTheAuditRecord` | a second store with a registry of its own answers the counts a check stored, by team id, a clean team's zero included; and every team's age of its last export — from its creation before any, untouched by a ticket's Markdown, reset by a project's export —, the job's read across the teams admitted to the export acts alone |
 | [`metrics_test.go`](../../backend/test/integration/metrics_test.go) `TestServeAnswersAScrapeOnItsMetricsListener` | the built binary against a database of its own: both listeners, a scrape after a few API requests — routes, acts by actor, a refused token, the pool, the schema, the jobs, no forbidden label —, the dirty flag seen while it serves, `SIGTERM`, and the empty variable |
 
 How to add an instrument is [adding-things.md](adding-things.md#an-instrument).
@@ -103,39 +103,54 @@ How to add an instrument is [adding-things.md](adding-things.md#an-instrument).
 ## The consistency family
 
 `cowork_consistency_dangling_attachments` and `cowork_consistency_orphaned_objects` are the counts of
-each tenant's latest consistency check of
+each team's latest consistency check of
 [ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D4 ([storage.md](storage.md#the-consistency-check)); `cowork_consistency_last_export_age_seconds` is
-the seconds since each tenant's last export, the second line of its backup (D2). They are the only
-family with a `tenant` label — the tenant's id, never its slug, which names a client on a port
-without authentication (ADR 0060 D5).
+the seconds since each team's last export, the second line of its backup (D2). They are the only
+family with a team's label, `team` — the team's id, never its slug, which names a team on a port
+without authentication (ADR 0060 D5) — and `tenant` beside it, the same id under the label's name
+before, for one release ([api.md](api.md#deprecated-names)). An operator's own dashboards and
+recording rules move to `team`; an operator's own alert groups by `team` only where no alert routing
+label of theirs has that name, and otherwise copies the id to another name with `label_replace`, as
+the contract release plans with `cowork_team`. The chart's own two alerts and the generated
+dashboard keep `tenant` in this release (below).
 
 **Read, not recorded.** The check runs on one replica, once a day, and an export on whichever replica
 serves it; a gauge set in that process would stay behind there and be missing on the others. So
 `consistencyCollector` reads the database at a scrape through `ObserveConsistency(read)` — the
-store's `consistencyForMetrics`, one `jobRead` that names the job `consistency-check` and no tenant
+store's `consistencyForMetrics`, one `jobRead` that names the job `consistency-check` and no team
 and reads `metrics.Consistency`: the stored results (`ListConsistencyCounts`, admitted by the policy
-`consistency_checks_counts`) and every tenant's last export (`ListLastExports`, admitted by
-`audit_exports_read` of migration 46, which lets the job read the acts of a project's or a tenant's
+`consistency_checks_counts`) and every team's last export (`ListLastExports`, admitted by
+`audit_exports_read` of migration 46, which lets the job read the acts of a project's or a team's
 export and no other row of the audit record, over the partial index `audit_exports_by_tenant`) —, at
 most once a minute and within two seconds, keeping the last answer between, and leaves the family
 out after a failed read, as `schemaCollector` does. Every replica answers the same, one that starts
-answers at once, and an acceptance, a removal or an export shows within a minute. A tenant without a
-result has no counts; every tenant has the age.
+answers at once, and an acceptance, a removal or an export shows within a minute. A team without a
+result has no counts; every team has the age.
 
-**The age.** `ListLastExports` answers, per tenant, the latest `exported` act on the entity
+**The age.** `ListLastExports` answers, per team, the latest `exported` act on the entity
 `project` or `tenant` — a ticket's Markdown and context record `exported` on the ticket and do not
-count —, or the tenant's `created_at` where there is none, so that a tenant nobody ever exported
+count —, or the team's `created_at` where there is none, so that a team nobody ever exported
 ages from its creation and the alert sees a schedule that was never set up. The collector keeps that
 time (`TenantExport.Since`) and counts the age at every scrape from its own clock, never below zero,
 so the age grows between two reads.
 
-`TestNoInstrumentCarriesAForbiddenLabel` holds the `tenant` label to these three gauges alone —
-their names in `tenantLabelled` —, its value to an id and the gauges to that one label;
+`TestNoInstrumentCarriesAForbiddenLabel` holds the labels `team` and `tenant` to these three gauges
+alone — their names in `teamLabelled` —, each value to an id, `tenant` to `team`'s value, and the
+gauges to those two labels;
 `TestTheLastExportsAgeIsCountedAtEveryScrape` the age between reads, after an export, against a
 clock ahead and after a failed read. The alert `CoworkAttachmentsOutOfStep` in
 [`prometheusrule.yaml`](../../deploy/helm/cowork/templates/prometheusrule.yaml) sums the two counts
-per tenant, `max` over the replicas, for `metrics.prometheusRule.restoreWindow`; `CoworkExportOverdue`
-takes the age per tenant, `max` over the replicas, above `metrics.prometheusRule.exportMaxAgeDays`
+per team, `max` over the replicas, for `metrics.prometheusRule.restoreWindow`; `CoworkExportOverdue`
+takes the age per team, `max` over the replicas, above `metrics.prometheusRule.exportMaxAgeDays`
 days, which the template holds to a whole number of at least 1 and defaults to 7 where the value is
-missing. The dashboard's row *Consistency and export* shows all three.
+missing. Both group by `tenant` and name the team's id by it, as the release before did, while
+their texts say team, and the dashboard's row *Consistency and export* shows all three by `tenant`
+(`teamLabelOfDashboard` in [`dashboard.go`](../../backend/internal/metrics/dashboard.go)): every image
+of an image rollback's window emits `tenant`
+([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D4),
+and an alert's own label `team` would collide with a routing label of that name —
+`metrics.prometheusRule.alertLabels`, which wins, gives `team` as its example —, so that two teams'
+alerts would share one label set, which Prometheus refuses to evaluate. The contract release moves
+the alerts to the team's label under a name no routing label collides with, `cowork_team` through
+`label_replace`, and the dashboard to `team`.

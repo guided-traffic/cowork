@@ -47,6 +47,17 @@ binding resolves the binding once before it runs (`Session.bindOnce` in
 [`tools/session.go`](../../backend/internal/tools/session.go)), so a short key works without
 `session_start` when the hook said the session is bound.
 
+Amended 2026-10-10 by the owner's rename of a tenant to a team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1; D1: the
+candidates of `session_start` narrowed with `?team=`, and the value of `search`'s `scope` for the
+bound team is `team`, `tenant` still taken for one release; D2: `create_project` takes `team`, its
+argument `tenant` taken in its place for one release, deprecated in its schema, and refused beside
+`team` with another slug), and built the same day in
+[`internal/tools`](../../backend/internal/tools/) (`renamed` and `rename` in
+[`tools.go`](../../backend/internal/tools/tools.go), `scopeTenant` in
+[`tool_tickets.go`](../../backend/internal/tools/tool_tickets.go)); every description says team. The
+names before go in a later release.
+
 ## Context
 
 The MCP server is a thin client of the API that can do nothing the API cannot
@@ -86,7 +97,8 @@ Thirteen names; `api` is the hatch, the twelve are the method.
 each tool calls the routes that exist — `get_ticket` and the active ticket of `session_start`
 `…/context`, `search` the ticket lists with `q`, `link` `PUT …/links/{type}/{other}` —, listed
 per tool in its `Operations`. Optional arguments beside the table's: `get_ticket` `comments`
-and `activity`; `search` `scope`, `project`, `state`, `type`, `assigned_to_me`,
+and `activity`; `search` `scope` *(2026-10-10: `project`, `team` — `tenant` taken in its place for
+one release — or `all`)*, `project`, `state`, `type`, `assigned_to_me`,
 `include_terminal` — and `query` itself is optional in one project, where a search without words lists
 the project's tickets in rank order, and asks for words outside one *(amended 2026-10-04: on a
 live run of the chat a model asked "which tickets are in WEB?" sent an empty query, which the
@@ -97,7 +109,7 @@ resolved through the member list as `open_question`'s `asked_of`; `transition`
 `block_kind`, `blocked_by` and `comment`; `api` `if_match`. `session_start` shows the
 ~~candidates in rank order while the score of [ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md)
 is not built~~ *(2026-10-05:)* candidates by score — the top of `GET /api/v1/me/next` narrowed to
-the bound project with `?tenant=` and `?project=`, passing over the tickets in progress, blocked or
+the bound project with ~~`?tenant=`~~ `?team=` *(2026-10-10)* and `?project=`, passing over the tickets in progress, blocked or
 waiting on an open prerequisite, each with its score and its place in its horizon of the backlog
 ([ADR 0014](0014-rank-is-the-decision-score-is-the-warning.md) D5) — and no inbox while [ADR 0020](0020-notifications-are-an-in-app-inbox-per-person.md)
 is not.)* *(Amended 2026-10-04: ~~`comment(key, text, explains_act?)`~~ `comment(key, text)` —
@@ -133,7 +145,7 @@ the state `analysed`.
 `record_answer(question, answer)` exists for tokens with the `record-answer` capability and
 writes down the answer the person gave in chat, marked as recorded by the agent — the
 decision stays the person's, [ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
-D8; `create_project(tenant, key, name, remote)` exists for the `create-project` capability,
+D8; ~~`create_project(tenant, key, name, remote)`~~ `create_project(team, key, name, remote)` *(2026-10-10: `tenant` taken for one release)* exists for the `create-project` capability,
 ADR 0066 D5)*. *(Made concrete 2026-10-04: `record_answer` takes the ticket's `key` beside the
 question's number; `create_project` an optional `path`, the sub-directory of a monorepo.)* Nothing that deletes, overrides a prerequisite refusal or administers members,
 tokens or tenants is a tool.

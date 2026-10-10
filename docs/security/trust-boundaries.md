@@ -2,12 +2,12 @@
 
 What the backend, its migration run — the init container, or the migration Job — and the frontend trust — the identity provider
 and the chat's model among it — whom they answer, and where the credentials they hold live, as
-built on 2026-10-07. Once a request is inside a tenant, how it is kept from other tenants and from
+built on 2026-10-07. Once a request is inside a team, how it is kept from other teams and from
 what it may not see is [tenancy.md](tenancy.md); what a token or an agent may do is
 [tokens.md](tokens.md); how a person logs in, what a session is and what keeps another site from
 writing with one is [local-accounts.md](local-accounts.md), [identity-provider.md](identity-provider.md),
 [sessions.md](sessions.md) and [csrf.md](csrf.md); what an upload may do is
-[attachments.md](attachments.md); what the chat in the UI may do, and what of a tenant reaches its
+[attachments.md](attachments.md); what the chat in the UI may do, and what of a team reaches its
 model, is [chat.md](chat.md); what the metrics port tells whoever reaches it is
 [metrics.md](metrics.md).
 
@@ -17,7 +17,7 @@ model, is [chat.md](chat.md); what the metrics port tells whoever reaches it is
 |---|---|---|
 | The backend process | Its environment: every `COWORK_*` variable — the runtime role's connection as a URL or its components, the server key, the object storage's access key —, and the standard variables its libraries read, which the chart sets none of: the database driver's `PG*`, `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`, `SSL_CERT_FILE` | [`backend/internal/config/config.go`](../../backend/internal/config/config.go) |
 | The backend process | Every TCP peer that reaches `COWORK_LISTEN_ADDR` — the Ingress controller's pods, and every other pod of the cluster that reaches the backend Service, since the chart ships no NetworkPolicy — for the routes that need no credential: `/healthz`, `/readyz`, `/api/v1/version`, `/api/v1/openapi.json`, the schema of a repository's binding file `/api/v1/schemas/cowork-yaml.json`, `/auth/options`, `/auth/local`, the login, which is origin-checked and throttled ([local-accounts.md](local-accounts.md)), and the identity provider's two browser navigations `/auth/oidc/login` and `/auth/callback`, which make a session only for the browser that holds the login's sealed state cookie ([identity-provider.md](identity-provider.md#the-login)). Every other route under `/api/v1` requires a bearer token or a session cookie, as the API document says per operation | [`backend/internal/api/api.go`](../../backend/internal/api/api.go) `ServeHTTP`, [`authn.go`](../../backend/internal/api/authn.go) `credentialsOf`, `authenticate` |
-| The backend process | Every TCP peer that reaches `COWORK_METRICS_ADDR` (`:8081` by default) — every pod of the cluster that reaches the backend pods, which the chart puts on no Service the Ingress routes — for `/metrics`, the one path of that listener, unauthenticated: the installation's activity in counts, of a tenant nothing but its id on the consistency check's two counts ([metrics.md](metrics.md), H-63) | [`main.go`](../../backend/cmd/cowork/main.go) `serve`, [`server.go`](../../backend/internal/httpserver/server.go) `NewMetrics` |
+| The backend process | Every TCP peer that reaches `COWORK_METRICS_ADDR` (`:8081` by default) — every pod of the cluster that reaches the backend pods, which the chart puts on no Service the Ingress routes — for `/metrics`, the one path of that listener, unauthenticated: the installation's activity in counts, of a team nothing but its id on the consistency check's two counts ([metrics.md](metrics.md), H-63) | [`main.go`](../../backend/cmd/cowork/main.go) `serve`, [`server.go`](../../backend/internal/httpserver/server.go) `NewMetrics` |
 | The backend process | The row of the presented token — its person, scope, restriction, agent flag and capabilities — or of the presented session cookie: its person, who is a global administrator or must change a temporary password, and for a person of the identity provider their groups as of their last login or refresh. It knows nothing else about the caller | [`authn.go`](../../backend/internal/api/authn.go), [`session.go`](../../backend/internal/api/session.go), [`store/tokens.go`](../../backend/internal/store/tokens.go) `LookupToken`, [`store/sessions.go`](../../backend/internal/store/sessions.go) `LookupSession` |
 | The backend process | The identity provider of `COWORK_OIDC_ISSUER`: its discovery document and the endpoints it names, its published keys, and what a verified ID token, a token answer and UserInfo say of a person — the subject, the groups, the name, the address and whether it is verified ([below](#the-identity-provider)) | [`backend/internal/oidc/oidc.go`](../../backend/internal/oidc/oidc.go), [identity-provider.md](identity-provider.md) |
 | The backend process | The chat's providers at their `COWORK_CHAT_<ID>_URL`, each with what a turn that picked it sends it — nothing it answers: its text goes to the person as text and its tool calls are requests the API judges as the person's agent's ([below](#the-chats-provider)) | [`backend/internal/llm`](../../backend/internal/llm/llm.go), [chat.md](chat.md) |
@@ -47,15 +47,15 @@ which can name the host and the user, goes to the log only
 ([`backend/internal/httpserver/server.go`](../../backend/internal/httpserver/server.go)
 `handleReadyz`). From inside the cluster as well, and on no Service: the metrics port of the backend
 pods, `/metrics`, which counts what the installation does and names no person, ticket or token, and
-a tenant only by its id on the consistency check's two counts ([metrics.md](metrics.md), H-63). Every other route answers `401 unauthenticated` with
-`WWW-Authenticate: Bearer realm="cowork"` before any tenant is looked up, so an anonymous
-caller learns nothing about which tenants exist. An unknown path answers `404` and a known
+a team only by its id on the consistency check's two counts ([metrics.md](metrics.md), H-63). Every other route answers `401 unauthenticated` with
+`WWW-Authenticate: Bearer realm="cowork"` before any team is looked up, so an anonymous
+caller learns nothing about which teams exist. An unknown path answers `404` and a known
 path with the wrong method `405`, also before authentication; the route table is the
 published API document anyway.
 
-With a token: what the token's person may do in the tenants the token reaches, narrowed by
+With a token: what the token's person may do in the teams the token reaches, narrowed by
 the token's scope and restriction and, for an agent, by the agent rules
-([tokens.md](tokens.md)); nothing of a tenant the person is not a member of, and nothing
+([tokens.md](tokens.md)); nothing of a team the person is not a member of, and nothing
 inside one that the person may not see ([tenancy.md](tenancy.md)). A token is a bearer
 credential: the backend cannot tell its person from someone who copied it. With a session
 cookie: what the person's role allows, with no agent rule and no scope, for writes only from
@@ -63,7 +63,7 @@ the installation's own origin ([sessions.md](sessions.md), [csrf.md](csrf.md)); 
 a bearer credential too ([sessions.md](sessions.md) H-15).
 
 What a token buys before the handler checks the role, the scope and the agent rules: the
-tenant boundary, and the request's validation against the API document, which reads a JSON
+team boundary, and the request's validation against the API document, which reads a JSON
 body — at most `COWORK_MAX_JSON_BODY`, 1 MiB by default — into memory, within the request
 timeout. An import's body is read only by its handler, after the writer's check and one
 import at a time per replica ([import-and-export.md](import-and-export.md#h-76) H-76). An upload's
@@ -121,7 +121,7 @@ then what keeps a peer from redirecting it ([below](#the-databases-own-controls)
 With `COWORK_OIDC_ISSUER` set, the backend is a relying party of one issuer, and the issuer is
 trusted for what it is asked: who a person is (the issuer and the subject), which groups they are
 in — which decides whether they get in, whether they administer the installation, and through the
-tenants' mappings which tenants they belong to in which role — their name, their e-mail address and
+teams' mappings which teams they belong to in which role — their name, their e-mail address and
 whether the issuer verified it ([identity-provider.md](identity-provider.md)). Whoever can change a
 person's groups at the issuer changes what they may do in cowork, from their next login or refresh;
 whoever controls the issuer's signing keys or its token endpoint can be anybody. Since the login page
@@ -152,10 +152,10 @@ chat in the UI
 ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)).
 A provider is a boundary the other way round from the issuer: it is trusted with what a turn sends
 it — the instructions, the conversation, and every tool's answer of the turn, which is the text of
-the tenant's tickets — and with nothing it answers. Its text reaches the person as text; its tool
+the team's tickets — and with nothing it answers. Its text reaches the person as text; its tool
 calls are requests of the person's session marked as the chat's agent, which the API judges like any
 agent's, with the capabilities the person chose; a refusal is an answer the model reads. Every
-configured provider may receive what the person can read in the turn's tenant, confidential tickets
+configured provider may receive what the person can read in the turn's team, confidential tickets
 included — a risk the owner accepted; the operator's list of providers is the only gate
 ([chat.md](chat.md#what-reaches-a-provider), H-37).
 
@@ -177,7 +177,7 @@ backend.
 | The runtime role's connection, `COWORK_DATABASE_URL` or its components `COWORK_DATABASE_HOST`, `_PORT`, `_NAME`, `_USER`, `_PASSWORD`, `_SSLMODE` | `database.existingSecret` (preferred) — the URL under `database.keys.url`, or the user and the password under their keys and the location there or in `database.existingConfigMap` —, or `database.url` rendered into a release Secret | the serving container, and the migration run, which needs the role's name for the grants; the migration Job connects as it for the bootstrap |
 | The owner role's connection, `COWORK_DATABASE_OWNER_URL` or its components `COWORK_DATABASE_OWNER_*` | `database.owner.existingSecret` (preferred, and the only source in job mode) with the same keys and `database.owner.existingConfigMap`, or `database.owner.url` rendered into a release Secret | the migration run only: the init container while `backend.config.migrateOnStart` is true in `onStart` mode, or the migration Job in job mode |
 | The server key, `COWORK_SESSION_KEY` | `session.existingSecret` only; the chart fails without it | the serving container |
-| The storage access key, `COWORK_S3_ACCESS_KEY_ID` and `COWORK_S3_SECRET_ACCESS_KEY` | `storage.existingSecret` only, required with `storage.endpoint` or `storage.existingConfigMap` | the serving container, and `cowork check-consistency` run in it; with `s3:ListBucket`, which the consistency check needs, it lists every tenant's object keys ([attachments.md](attachments.md#h-68) H-68) |
+| The storage access key, `COWORK_S3_ACCESS_KEY_ID` and `COWORK_S3_SECRET_ACCESS_KEY` | `storage.existingSecret` only, required with `storage.endpoint` or `storage.existingConfigMap` | the serving container, and `cowork check-consistency` run in it; with `s3:ListBucket`, which the consistency check needs, it lists every team's object keys ([attachments.md](attachments.md#h-68) H-68) |
 | The local administrator, `COWORK_LOCAL_ADMIN_USERNAME` and `COWORK_LOCAL_ADMIN_PASSWORD` | `localAdmin.existingSecret` (preferred; the key names are values), or `localAdmin.username` and `localAdmin.password` rendered into a release Secret | the serving container, and in job mode the migration Job, which runs the bootstrap before the pods; the account follows it at every start ([local-accounts.md](local-accounts.md) H-20) |
 | The identity provider's client secret, `COWORK_OIDC_CLIENT_SECRET` | `auth.oidc.existingSecret` only — there is no inline value — under `auth.oidc.keys.clientSecret`; the client id is a value, or from the same Secret under `auth.oidc.keys.clientId` | the serving container alone, which sends it to the issuer's token endpoint; the migration Job reads the issuer and the administrator group for the bootstrap and is not given it |
 | The issuer's refresh tokens | not in the chart; sealed in `sessions.refresh_token_sealed` under a key derived from the server key ([identity-provider.md](identity-provider.md#what-cowork-keeps-of-the-issuers-tokens)) | the issuer; whoever holds the database, the server key and the client secret ([identity-provider.md](identity-provider.md#h-27) H-27) |
@@ -341,11 +341,11 @@ the production bundle behind nginx with this policy, in Chromium and WebKit, in 
 with the API mocked: no violation was reported while the shell, the settings and the chat panel ran
 a turn; and again on 2026-10-04, after the routing moved to the Ingress, in Chromium behind the
 Ingress stand-in and behind ingress-nginx with the real backend: no violation through the login,
-the tenant page and the backlog. The end-to-end tier watches the policy on three paths over the
+the team page and the backlog. The end-to-end tier watches the policy on three paths over the
 built images behind the Ingress stand-in, in Chromium and WebKit and both colour schemes, and fails on
 any refusal: a ticket's page whose body renders headings, a table, code, a link, its own image and
 hostile lines ([`rendered.spec.ts`](../../frontend/e2e/rendered.spec.ts)), the search from the top
-bar through the results of a tenant and of every tenant of the person to a hit's comment
+bar through the results of a team and of every team of the person to a hit's comment
 ([`search.spec.ts`](../../frontend/e2e/search.spec.ts)), and an import from its files to its report
 ([`import.spec.ts`](../../frontend/e2e/import.spec.ts)); no violation is reported on any.
 Not verified: the other pages under the policy — the suite's other paths run under it but do not

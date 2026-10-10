@@ -47,7 +47,7 @@ left out.
 
 | Key | Value |
 |---|---|
-| `key` | the full key, `<tenant>/<PROJECT>-<n>` |
+| `key` | the full key, `<team>/<PROJECT>-<n>` |
 | `title` | the title |
 | `type`, `state`, `severity`, `security` | the vocabulary values |
 | `threat` | the threat; only when `security` is not `none` |

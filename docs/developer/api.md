@@ -2,14 +2,15 @@
 
 How `/api/v1` is built: the document that is the contract, its examples, what `make generate` makes of it,
 the pipeline every request runs before its handler, authentication — a token or a session —,
-the CSRF check, the dashboard, the tenant boundary, authorization, errors, idempotency, versions,
+the CSRF check, the dashboard, the team boundary, authorization, errors, idempotency, versions,
 paging, filters, the deprecated names a rename keeps for a release, and the media types beside
 JSON. The decisions are [ADR 0046] (spec first), [ADR 0047] (errors), [ADR 0045] (idempotency),
 [ADR 0048] (paging), [ADR 0049] (filters), [ADR 0050] (versions), [ADR 0028] (expand before
 contract), [ADR 0031] (sessions), [ADR 0037] (CSRF), [ADR 0029] (the identity provider's login);
 the reference table of routes and codes is [README.md, API](../../README.md#api-backend). Read
 against the tree on 2026-10-05, the examples ([below](#examples)) on 2026-10-06, the examples of the import and the export, the person of a
-horizon set and a parameter's failure on 2026-10-07.
+horizon set and a parameter's failure on 2026-10-07, the team's names and their deprecated twins on
+2026-10-10.
 
 ## The document
 
@@ -22,33 +23,47 @@ into the file of its path family.
 | [`meta.yaml`](../../backend/api/meta.yaml) | `/version`, `/openapi.json`, `/schemas/cowork-yaml.json` — `security: []`, read before a client authenticates; the last answers [`cowork-yaml.schema.json`](../../backend/api/cowork-yaml.schema.json) |
 | [`auth.yaml`](../../backend/api/auth.yaml) | the browser's login flows, **outside `/api/v1`**: `/auth/options`, `/auth/local`, `/auth/oidc/login`, `/auth/callback`, `/auth/logout` — see [the login flows](#the-login-flows) |
 | [`me.yaml`](../../backend/api/me.yaml) | `/me`, `/me/password`, `/me/tokens`, `/me/tokens/{token_id}`, `/me/token` — the token a request presents —, `/me/chat`, and the person-level lists: `/me/next`, `/me/inbox` with `/me/inbox/read` and `/me/inbox/{notification}/read`, `/me/assigned`, `/me/decisions` ([the person-level routes](#the-person-level-routes)) |
-| [`search.yaml`](../../backend/api/search.yaml) | `/tenants/{tenant}/search` and `/me/search` ([search.md](search.md)) |
-| [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's tenants ([domain.md](domain.md#repositories)) |
-| [`tenants.yaml`](../../backend/api/tenants.yaml) | listing every tenant for a global administrator and creating one (`GET`, `POST /tenants`), the tenant, its audit record, projects, archiving, the sort of a project's rank by the score (`…/projects/{project}/rank`), the ticket lists, a ticket, its deletion, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, its horizon (`…/horizon`) and confidential flag, and the bin of deleted tickets with its restoration and purge |
-| [`filters.yaml`](../../backend/api/filters.yaml) | the saved filters of a tenant: list, create, read, edit, delete ([filters](#filters)) |
-| [`accounts.yaml`](../../backend/api/accounts.yaml) | the tenant's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
-| [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list, and the tokens that can act in the tenant (`/tenants/{tenant}/tokens`) |
-| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{tenant}/{key}`, links, the prerequisite tree, transitions, the move in the rank, interest, the Markdown export and the context |
-| [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list, `attachments.yaml` also the tenant's attachment usage (`/tenants/{tenant}/attachment-usage`) and its consistency check with its two confirmations (`/tenants/{tenant}/attachment-consistency`, [storage.md](storage.md#the-consistency-check)) |
-| [`events.yaml`](../../backend/api/events.yaml) | `/tenants/{tenant}/events`, with `me=true` the person-level stream ([events.md](events.md#the-person-level-stream)) |
-| [`chat.yaml`](../../backend/api/chat.yaml) | `/tenants/{tenant}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose; `/tenants/{tenant}/chat/turns`: stopping the person's running turns ([chat.md](chat.md)) |
-| [`imports.yaml`](../../backend/api/imports.yaml) | a project's import — the dry run (`…/projects/{project}/imports`), its job and report (`…/imports/{import}`), its execution (`…/imports/{import}/execution`) — and the project's and the tenant's export (`…/projects/{project}/export`, `/tenants/{tenant}/export`), with the report, the corrections and the manifests as `Import*` and `Export*` in `components/schemas.yaml` ([import-and-export.md](import-and-export.md)) |
-| [`dashboard.yaml`](../../backend/api/dashboard.yaml) | `/tenants/{tenant}/dashboard`: the tenant's dashboard, each tile defined in its field of `components/schemas.yaml#/Dashboard` ([the dashboard](#the-dashboard)) |
+| [`search.yaml`](../../backend/api/search.yaml) | `/teams/{team}/search` and `/me/search` ([search.md](search.md)) |
+| [`repositories.yaml`](../../backend/api/repositories.yaml) | a project's repositories (list, bind, unbind) and `/me/repositories/lookup` across the person's teams ([domain.md](domain.md#repositories)) |
+| [`teams.yaml`](../../backend/api/teams.yaml) | listing every team for a global administrator and creating one (`GET`, `POST /teams`), the team, its audit record, projects, archiving, the sort of a project's rank by the score (`…/projects/{project}/rank`), the ticket lists, a ticket, its deletion, its body — read as Markdown and rendered ([rendered-markdown.md](rendered-markdown.md)), and replaced —, its horizon (`…/horizon`) and confidential flag, and the bin of deleted tickets with its restoration and purge |
+| [`filters.yaml`](../../backend/api/filters.yaml) | the saved filters of a team: list, create, read, edit, delete ([filters](#filters)) |
+| [`accounts.yaml`](../../backend/api/accounts.yaml) | the team's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
+| [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list, and the tokens that can act in the team (`/teams/{team}/tokens`) |
+| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{team}/{key}`, links, the prerequisite tree, transitions, the move in the rank, interest, the Markdown export and the context |
+| [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list, `attachments.yaml` also the team's attachment usage (`/teams/{team}/attachment-usage`) and its consistency check with its two confirmations (`/teams/{team}/attachment-consistency`, [storage.md](storage.md#the-consistency-check)) |
+| [`events.yaml`](../../backend/api/events.yaml) | `/teams/{team}/events`, with `me=true` the person-level stream ([events.md](events.md#the-person-level-stream)) |
+| [`chat.yaml`](../../backend/api/chat.yaml) | `/teams/{team}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose; `/teams/{team}/chat/turns`: stopping the person's running turns ([chat.md](chat.md)) |
+| [`imports.yaml`](../../backend/api/imports.yaml) | a project's import — the dry run (`…/projects/{project}/imports`), its job and report (`…/imports/{import}`), its execution (`…/imports/{import}/execution`) — and the project's and the team's export (`…/projects/{project}/export`, `/teams/{team}/export`), with the report, the corrections and the manifests as `Import*` and `Export*` in `components/schemas.yaml` ([import-and-export.md](import-and-export.md)) |
+| [`dashboard.yaml`](../../backend/api/dashboard.yaml) | `/teams/{team}/dashboard`: the team's dashboard, each tile defined in its field of `components/schemas.yaml#/Dashboard` ([the dashboard](#the-dashboard)) |
 | `components/schemas.yaml`, `parameters.yaml`, `responses.yaml`, `headers.yaml` | what the path files share; every operation answers `default` with `responses.yaml#/Problem`, whose four examples its errors share, and a response's example is the one of the schema it names ([examples](#examples)) |
 | `components/problem-codes.yaml` | the `ProblemCode` enum, **generated** from the code catalogue |
+
+A team's paths — `/api/v1/teams` and every `/api/v1/teams/{team}/…`, whichever family file holds
+them — are the only ones the source writes; their deprecated twins under `/api/v1/tenants`, served
+for one release, are in no family file: the bundler writes them ([deprecated names](#deprecated-names)).
 
 `make generate` turns it into code, in this order (the [`Makefile`](../../Makefile)):
 
 1. [`tools/problemdoc`](../../backend/tools/problemdoc/main.go) writes `problem-codes.yaml` and
    the table of codes in the root README between `<!-- problem-codes:start -->` and `…:end -->`.
 2. [`tools/specbundle`](../../backend/tools/specbundle/main.go) loads `openapi.yaml` with its
-   external references, internalises each under the last segment of its JSON pointer, validates
-   the result and writes `api/openapi.gen.json`.
+   external references, internalises each under the last segment of its JSON pointer and validates
+   the result; then `addTwins` writes, beside every path under `/api/v1/teams`, its deprecated twin
+   under `/api/v1/tenants` — the same operations, each `deprecated: true`, tagged `tenants`, its
+   summary and description saying what it stands for, with the path parameter `tenant`
+   (`TenantSlug`) in place of `team` (`TeamSlug`) and the operationId of the release before where the
+   rename renamed the operation (`renamedOperations`: `listTenants`, `createTenant`, `getTenant`,
+   `updateTenant`, `exportTenant`, `searchTenant`, `listTenantTickets`, `listTenantTime`,
+   `listTenantTokens`, `revokeTenantToken`), else its own with `Deprecated` appended
+   (`addMemberDeprecated`) — and writes `api/openapi.gen.json` once the whole validates again. A twin
+   the source writes itself fails the bundle, and a path under `/api/v1/tenants` that stands for no
+   team path fails the document test ([deprecated names](#deprecated-names)).
 3. oapi-codegen, configured by [`api/oapi-codegen.yaml`](../../backend/api/oapi-codegen.yaml),
    writes [`internal/api/apigen/api.gen.go`](../../backend/internal/api/apigen/api.gen.go): the
    models, the strict server interface on `net/http`'s mux, and the Go client the integration
    tests use. Nullable fields are `nullable.Nullable[T]`; every enum constant carries its type's
-   name (`EffortS`); `streamEvents` and `runChatTurn` are excluded, and
+   name (`EffortS`); `streamEvents` and `runChatTurn` are excluded, and so is every twin
+   (`exclude-tags: [tenants]`) — the server answers it as its team path, and no Go client calls one;
    `skip-prune` keeps the models only their bodies and events name — the turn's body and the data of
    its events, which `chat.go` reads and writes.
 4. `sqlc generate` (the data layer, [data-access.md](data-access.md)).
@@ -80,10 +95,10 @@ Where it is written is decided once:
   `examples:` with a `summary` each where two requests teach two things (`transitionTicket`: a step
   forward, a done by hand with its note).
 - **An answer has an example of its own** on the operation's media type where the schema's cannot
-  stand for it, because the act is what the answer shows — a ticket just filed, a new tenant's
+  stand for it, because the act is what the answer shows — a ticket just filed, a new team's
   settings, an archived or restricted project, a withdrawn comment or question, an answered
   question, a voided or corrected time entry, a mapping changed, a grant above the mapped role, the
-  chat's capabilities chosen, the tenant's time list without the ticket's total, an import executed
+  chat's capabilities chosen, the team's time list without the ticket's total, an import executed
   — and where the body
   names no schema of `components/schemas`: the CSV answers, the Markdown export and the context, the
   first lines of the event stream and of a turn of the chat, the two documents of [`meta.yaml`](../../backend/api/meta.yaml).
@@ -99,7 +114,7 @@ Where it is written is decided once:
   dry run do, and ng-openapi-gen writes that description into the comment of the Angular client's
   function, where oapi-codegen writes nothing.
 
-The examples are one world, so a reader can follow a ticket from one route to the next: the tenant
+The examples are one world, so a reader can follow a ticket from one route to the next: the team
 `acme` (*Acme*), its project `WEB` (*Website*, bound to `github.com/acme/website`), the ticket
 `acme/WEB-42` with its comment, question Q1, attachment and time, and four persons —
 Ada Lovelace (the local account `ada`, a global administrator who administers `acme`), Grace Hopper
@@ -137,7 +152,12 @@ entity; give an answer its own where the schema's cannot stand for it; then `mak
 log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/server.go):
 
 1. `Cache-Control: no-store` on every answer but the event stream's, which sets `no-cache`.
-2. **Route.** The kin router finds the operation in the document. No path: `404 not_found`. The
+2. **Route.** A path under `/api/v1/tenants` — a deprecated twin — is first read as its team path:
+   `asTeamPath` hands on a shallow copy of the request whose cloned URL names `/api/v1/teams` in its
+   place, so the route, the security, the boundary, the handler, the metrics' route label and a
+   problem's `instance` are the team path's, while the request log, which holds the request as it
+   came, keeps the path as it was sent ([deprecated names](#deprecated-names)). Then the kin
+   router finds the operation in the document. No path: `404 not_found`. The
    path with other methods: `405 method_not_allowed`, `Allow` listing the methods the document
    declares there. The document declares no `HEAD`, so a `HEAD` is `405` too.
 3. The `Accept` header is kept in the context for the routes that answer CSV, and the facts of
@@ -154,7 +174,7 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    ([Authentication](#authentication)); the `auth.Principal` and the `store.Caller` — with the
    keyed hash of the client's address every audit row of the request carries — go into the context. A public operation that writes and says
    `x-cowork-origin-check: true` — the login — gets the origin half of the CSRF check instead.
-   **For a request authenticated by a session** four more rules run here, before the tenant
+   **For a request authenticated by a session** four more rules run here, before the team
    boundary: **the CSRF check** on an unsafe method (`403 csrf`); on an operation marked
    `x-cowork-recorded-read` — the five reads that record an act — the page it comes from, where
    `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (`recordedRead`, `fromOwnPages`;
@@ -162,7 +182,7 @@ log and the panic recovery of [`httpserver`](../../backend/internal/httpserver/s
    is refused an operation that takes a session only (`403 agent_forbidden`); and the gate of a
    temporary password (`403 password_change_required` for everything but `getMe`,
    `changeMyPassword` and `logout`) — `sessionRules` in [`api.go`](../../backend/internal/api/api.go).
-5. **Tenant boundary**, when the path has `{tenant}`. The admitted `tenantScope` goes into the
+5. **Team boundary**, when the path has `{team}`. The admitted `tenantScope` goes into the
    context.
 6. `streamEvents` leaves here: request validation, then `serveEvents` — no timeout, no body
    limit, no generated handler ([events.md](events.md)).
@@ -216,24 +236,24 @@ only. A body the strict server cannot decode is `400 validation_failed`.
 with [`internal/auth`](../../backend/internal/auth/). **Two credentials, one resolver**
 ([ADR 0031] D6): `credentialsOf` reads from the document which of `bearerToken` and
 `sessionCookie` the operation declares — the default is both, written once at the root; the
-nineteen session-only operations (`createMyToken`, `createTenant`, `createAccount`,
+nineteen session-only operations (`createMyToken`, `createTeam`, `createAccount`,
 `resetAccountPassword`, `changeMyPassword`, `logout`, `addMember`, `setMemberGrant`,
 `createGroupMapping`, `updateGroupMapping`, `setProjectRestriction`, `setProjectAccess`,
-`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTenants`,
-`purgeTicket`, `removeOrphanedObjects`, `unlockAccount`) declare `sessionCookie` alone, the seven public ones declare nothing — and
-`authenticate` decides. What the first twelve make — a token, a tenant, an account, a password only
+`runChatTurn`, `stopChatTurns`, `setMyChat`, `listTeams`,
+`purgeTicket`, `removeOrphanedObjects`, `unlockAccount`) declare `sessionCookie` alone — a twin of one under `/api/v1/tenants` as well, and it is answered as that one —, the seven public ones declare nothing — and
+`authenticate` decides. What the first twelve make — a token, a team, an account, a password only
 its setter knows, a role, a mapping, a way into a restricted project — would outlive the revocation
 of a leaked token, which is why a token cannot call them, and so would the chat's capabilities
 (`setMyChat`), what a purge destroys (`purgeTicket`, [ADR 0024] D7 as amended 2026-10-05), the
 removal of a consistency check's orphaned objects (`removeOrphanedObjects`, ADR 0035 D5 as amended
 2026-10-06), and the unlock of a local account, with which a leaked token could keep its lockout
 from ever holding (`unlockAccount`, ADR 0035 D5 as amended 2026-10-07); a turn of the chat acts with the person's session and its stop ends the session's
-person's turns, and a token's agent has the MCP server; the list of every tenant is a global
-administrator's view of the installation's clients, which a token of theirs does not get
+person's turns, and a token's agent has the MCP server; the list of every team is a global
+administrator's view of the installation's teams, which a token of theirs does not get
 ([ADR 0033] D1, D5, [ADR 0035] D5, [ADR 0034] D2; the rule is
 [tokens.md](../security/tokens.md#what-only-a-session-does)). Three acts of operations that take
 either credential refuse a token `403 session_required` in their handler, in their giving direction
-only: a tenant settings change that widens what the members may see or do (`UpdateTenant` with
+only: a team settings change that widens what the members may see or do (`UpdateTeam` with
 `tenantSettings.gives` and `sessionToGive` in [`tenants.go`](../../backend/internal/api/tenants.go)),
 lifting the confidential flag (`SetConfidential`), and assigning a confidential ticket to anyone but
 the token's own person or the assignee as it was (`mayAssign` in
@@ -341,32 +361,35 @@ itself is [`internal/oidc`](../../backend/internal/oidc/oidc.go), the decision
 
 ## The person-level routes
 
-The routes under `/api/v1/me/` that list what spans tenants — the inbox, "next for me", the tickets
-assigned to the person, the open decisions, the search ([ADR 0023] D2) — name no tenant in their
+The routes under `/api/v1/me/` that list what spans teams — the inbox, "next for me", the tickets
+assigned to the person, the open decisions, the search ([ADR 0023] D2) — name no team in their
 path, so no boundary admits them to one. `personTenants` in [`inbox.go`](../../backend/internal/api/inbox.go) reads the person's
-memberships in an `Installation` transaction, keeps a token restricted to a tenant to that tenant
-(`restricted`), narrows to the `tenant` query parameter — a slug that names none of the person's is
-the boundary's `404 not_found`, whether or not it exists — and sorts them by slug. Each tenant is then
+memberships in an `Installation` transaction, keeps a token restricted to a team to that team
+(`restricted`), narrows to the team the query names — `team`, or `tenant`, its deprecated name,
+taken for one release (`teamQuery`; both given is `400 validation_failed` at `query:tenant`,
+whatever the values, as `horizon` with `urgency` was) — a slug that names none of the person's is
+the boundary's `404 not_found`, whether or not it exists — and sorts them by slug. Each team is then
 read in a transaction of its own (`InTenant`, [ADR 0021] D5), under the visibility predicates as the
-tenant's own routes read it — a project-restricted token's `app.restricted_project_id` makes every
-project of another tenant invisible — and the parts are merged in Go
+team's own routes read it — a project-restricted token's `app.restricted_project_id` makes every
+project of another team invisible — and the parts are merged in Go
 ([`inbox.go`](../../backend/internal/api/inbox.go), [`mylists.go`](../../backend/internal/api/mylists.go),
-[`search.go`](../../backend/internal/api/search.go)).
-"Next for me" (`ListMyNext`) and "assigned to me" (`ListMyAssigned`) share `listMine`: each tenant's
+[`search.go`](../../backend/internal/api/search.go)). Every item names its team as `team`, and as
+`tenant` beside it, the same reference, for the release.
+"Next for me" (`ListMyNext`) and "assigned to me" (`ListMyAssigned`) share `listMine`: each team's
 part is the list builder's `ByScore` page after the cursor, with the assignee filter — the person or
 nobody for "next for me", the person for "assigned to me" — and the places of its tickets in their
 project's rank (`ListRankPlaces`) in the same transaction; the parts are merged in the score's order
-and cut to the page, which answers its weak `ETag` and `304` as the other polled lists do. `GET
-/api/v1/me/next` also takes `project`, a project key within the tenant `tenant` names — without
-`tenant` it is `400 validation_failed` at `query:project`.
-A global administrator without a role in a tenant holds no membership there, and these lists leave it
+and cut to the page, which answers its weak `ETag` and `304` as the other polled lists do.
+`GET /api/v1/me/next` also takes `project`, a project key within the team the query names — without
+`team` or `tenant` it is `400 validation_failed` at `query:project`.
+A global administrator without a role in a team holds no membership there, and these lists leave it
 out. Marking read needs `markRead` — any member, `write` scope, the agent baseline; the reads need no
 authorization beyond the person's membership, as `GET /api/v1/me` does. One notification is found by
-reading each tenant in turn (`FindNotification`); no query reads two tenants.
+reading each team in turn (`FindNotification`); no query reads two teams.
 
 ## The dashboard
 
-`GET /api/v1/tenants/{tenant}/dashboard` ([`dashboard.go`](../../backend/internal/api/dashboard.go))
+`GET /api/v1/teams/{team}/dashboard` ([`dashboard.go`](../../backend/internal/api/dashboard.go))
 answers the nine tiles of [ADR 0018] D6, and beside them the open tickets updated last, in **one
 route**: the page shows the tiles together under one set of filters, one read-only transaction
 (`InTenant`) gives counts that agree with each other, and a reload after an event costs one
@@ -403,42 +426,46 @@ The time entries are not published to the event stream ([events.md](events.md#pu
 the browser's dashboard shows a booking made elsewhere at its next reload
 ([frontend.md](frontend.md#the-dashboard)) — settled so on the recommendation ([ADR 0018] D6).
 
-## The tenant boundary
+## The team boundary
 
-`boundary` in [`tenant.go`](../../backend/internal/api/tenant.go) admits a request to the tenant
-in its path before any handler runs ([ADR 0023] D5). It reads the tenant by slug together with
+`boundary` in [`tenant.go`](../../backend/internal/api/tenant.go) admits a request to the team
+in its path, the path parameter `team`, before any handler runs ([ADR 0023] D5). A request to a
+deprecated twin under `/api/v1/tenants/{tenant}` meets the same boundary: the pipeline read its path
+as the team path before the route was found ([the pipeline](#the-pipeline)), so the twin's slug is
+the `team` the boundary reads, and its operation the team path's. The team is stored as a tenant, and
+the code that reads it keeps the word: the boundary reads the team by slug together with
 the person's highest role there (`GetTenantForPerson`, an `Installation` read). Refused — all
-with the same `404 not_found` "no such tenant", so the answer does not tell whether the tenant
+with the same `404 not_found` "no such team", so the answer does not tell whether the team
 exists ([ADR 0047] D5):
 
 - an unknown slug, or a person without a membership;
-- a token restricted to another tenant;
+- a token restricted to another team;
 - a token restricted to a project, on a path without `{project}` — except `listProjects`,
-  `listTenantTickets`, `searchTenant`, `resolveTicket` and `streamEvents` (`tenantWideForProjectTokens`), which
+  `listTeamTickets`, `searchTeam`, `resolveTicket` and `streamEvents` (`tenantWideForProjectTokens`), which
   the data layer narrows to the token's project through `app.restricted_project_id`.
 
 **A global administrator without a role** ([ADR 0034] D2) is the one exception to the first rule:
 where `GetTenantForPerson` finds no membership, `overseen` admits the request when `oversees` holds —
-a global administrator, a session, no agent mark, and an operation of `oversight`: `getTenant`,
-`listMembers`, `listGroupMappings`, `setMemberGrant` — and reads the tenant by slug
+a global administrator, a session, no agent mark, and an operation of `oversight`: `getTeam`,
+`listMembers`, `listGroupMappings`, `setMemberGrant` — and reads the team by slug
 (`GetTenantBySlug`, which the `tenants` policy shows a global administrator since migration 26). The
 `tenantScope` it hands on has no `Role` and `Oversight` set. The three reads authorize through
 `administrationRead`, which takes the mark for the role; `SetMemberGrant` sends a grant to the
 person themselves to `grantSelf` when `ownGrant` holds — a global administrator in a session no agent
-marks who does not hold `admin`, with a role in the tenant or without — and anybody else's to
+marks who does not hold `admin`, with a role in the team or without — and anybody else's to
 `auth.Authorize`, which a scope without a role fails (`403 forbidden`). Every other operation is refused like an unknown slug, before any handler;
 a token, an agent-marked session and the event stream's heartbeat get no such admission.
 
-Inside the tenant, `visibleProject` and `visibleTicket` read through the visibility predicates
+Inside the team, `visibleProject` and `visibleTicket` read through the visibility predicates
 ([data-access.md](data-access.md#visibility-in-sql)): a restricted project or a confidential
 ticket the caller cannot see is the same `404` as one that does not exist. `projectRole` lowers
-the person's role on a restricted project to the role of their entry on its list; tenant
+the person's role on a restricted project to the role of their entry on its list; team
 administrators keep theirs.
 
 ## Authorization
 
-Every handler under a tenant calls `auth.Authorize(principal, role, need)`
-([`authorize.go`](../../backend/internal/auth/authorize.go)) with the tenant role or the project
+Every handler under a team calls `auth.Authorize(principal, role, need)`
+([`authorize.go`](../../backend/internal/auth/authorize.go)) with the team role or the project
 role it read; the `/me` routes act on the person's own rows and need none, except revoking
 another token and marking notifications read (`write` scope,
 [the person-level routes](#the-person-level-routes)). The checks run in this order; the first failure answers:
@@ -461,11 +488,11 @@ another token and marking notifications read (`write` scope,
 |---|---|---|---|
 | `read` | viewer, `read` | — | [`tenants.go`](../../backend/internal/api/tenants.go) |
 | `administer` | admin, `admin` | hard-off `administration` | `tenants.go` |
-| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets; the tokens that can act in the tenant ([`tenanttokens.go`](../../backend/internal/api/tenanttokens.go)); the tenant's attachment usage ([`attachments.go`](../../backend/internal/api/attachments.go)) and its consistency check ([`consistency.go`](../../backend/internal/api/consistency.go)) |
-| `deletion` | admin, `admin` | hard-off `deleting, restoring or purging` | [`deletion.go`](../../backend/internal/api/deletion.go): deleting a ticket, restoring it, purging it ([ADR 0024] D7) — the tenant role, not a project's; the purge takes a session besides, which the document declares |
+| `adminRead` | admin, `read` | — | [`members.go`](../../backend/internal/api/members.go): the group mappings, a project's access list, and the bin of deleted tickets; the tokens that can act in the team ([`tenanttokens.go`](../../backend/internal/api/tenanttokens.go)); the team's attachment usage ([`attachments.go`](../../backend/internal/api/attachments.go)) and its consistency check ([`consistency.go`](../../backend/internal/api/consistency.go)) |
+| `deletion` | admin, `admin` | hard-off `deleting, restoring or purging` | [`deletion.go`](../../backend/internal/api/deletion.go): deleting a ticket, restoring it, purging it ([ADR 0024] D7) — the team role, not a project's; the purge takes a session besides, which the document declares |
 | `orphanRemoval` | admin, `admin` | hard-off `deleting, restoring or purging` | [`consistency.go`](../../backend/internal/api/consistency.go): removing the orphaned objects of a consistency check ([ADR 0059] D4); the document takes a session besides. Its acceptance of the missing files takes `administer` |
-| `filterNeed` | viewer, `write` | baseline ([ADR 0043] D2) | [`filters.go`](../../backend/internal/api/filters.go): saving, changing, sharing and unsharing the person's own saved filter; another's shared one is `403 forbidden`, but to a tenant administrator, who unshares it with `administer` (`mayChangeFilter`) |
-| `filterDeletion` | viewer, `write` | hard-off `deleting, restoring or purging` ([ADR 0043] D3) | `filters.go`: deleting the person's own saved filter, or — a tenant administrator, with `administer` besides (`mayChangeFilter`) — another person's shared one; an agent is refused before the filter is read |
+| `filterNeed` | viewer, `write` | baseline ([ADR 0043] D2) | [`filters.go`](../../backend/internal/api/filters.go): saving, changing, sharing and unsharing the person's own saved filter; another's shared one is `403 forbidden`, but to a team administrator, who unshares it with `administer` (`mayChangeFilter`) |
+| `filterDeletion` | viewer, `write` | hard-off `deleting, restoring or purging` ([ADR 0043] D3) | `filters.go`: deleting the person's own saved filter, or — a team administrator, with `administer` besides (`mayChangeFilter`) — another person's shared one; an agent is refused before the filter is read |
 | `work` | member, `write` | baseline; a transition adds `decide`, `close` or `drop`, the done act of the stages `close`, a horizon set `set-horizon` and of an agent a reason — on `setHorizon` for `later` too —, a filing into a horizon other than `later` `set-horizon` and with a place `rank`, an agent's answer `record-answer`; a confidential ticket's new assignee other than the agent's person is hard-off (`mayAssign`) | [`tickets.go`](../../backend/internal/api/tickets.go) |
 | `edit` | member, `write` | — | [`projects.go`](../../backend/internal/api/projects.go) |
 | `rankNeed` | member, `write` | `rank` | [`rank.go`](../../backend/internal/api/rank.go): a move; the sort by the score in [`score.go`](../../backend/internal/api/score.go) |
@@ -473,13 +500,13 @@ another token and marking notifications read (`write` scope,
 | `uploadNeed` | member, `write` | `upload` | [`attachments.go`](../../backend/internal/api/attachments.go) |
 | `interestNeed(weight)` | `watch`: viewer, `write`; `need`, `urgent`: member, `write` | `interest` for `need` and `urgent` | [`interest.go`](../../backend/internal/api/interest.go) |
 
-An import's dry run, its execution and the read of its job use `work`, against the tenant's role
+An import's dry run, its execution and the read of its job use `work`, against the team's role
 first and the project's in the transaction (`importWriter` in
 [`imports.go`](../../backend/internal/api/imports.go)), with no capability; the project export reads
-`read` on the project's role, the tenant export `read` on the tenant's
+`read` on the project's role, the team export `read` on the team's
 ([import-and-export.md](import-and-export.md)).
 The handlers also build a few needs inline: `creating` for `createProject`, `bindRepository`
-and `unbindRepository` (admin, or member while the tenant allows it; `write`; `create-project`
+and `unbindRepository` (admin, or member while the team allows it; `write`; `create-project`
 — [`repositories.go`](../../backend/internal/api/repositories.go), judged by the project role for
 a binding), `setConfidential` (admin, `admin`, hard-off), the
 done act's `close` and its prerequisite override (member, `write`; `close`, and hard-off for the
@@ -487,14 +514,14 @@ override — `mayClose`), `listAudit` (admin, `read`),
 withdrawing another person's comment (admin, `admin`), and revoking another token of the person
 (`write`, hard-off). The account routes of [`accounts.go`](../../backend/internal/api/accounts.go),
 the writes of [`members.go`](../../backend/internal/api/members.go) and the revocation of a member's
-token (`RevokeTenantToken`) use `administer`, the member list `read`; a change of a grant or a mapping, or the deactivation of an account
-(`DeactivateAccount`), that would leave the tenant without an administrator who can log in is
+token (`RevokeTeamToken`) use `administer`, the member list `read`; a change of a grant or a mapping, or the deactivation of an account
+(`DeactivateAccount`), that would leave the team without an administrator who can log in is
 `409 last_admin` (`lastAdmin`, checked in the transaction after the change, which took the
-tenant's lock first);
-creating a tenant (`CreateTenant`) and listing every tenant (`ListTenants`) need
+team's lock first);
+creating a team (`CreateTeam`) and listing every team (`ListTeams`) need
 `Principal.GlobalAdmin` and a session, which the pipeline has already settled; a global
 administrator's grant to themselves where they do not hold `admin` (`grantSelf`, `setOwnGrant`) takes
-the tenant's lock and meets no `lastAdmin`, since it takes no administrator away — unless it lowers a
+the team's lock and meets no `lastAdmin`, since it takes no administrator away — unless it lowers a
 grant of `admin` another administrator gave them meanwhile; making a group mapping or changing its role (`CreateGroupMapping`,
 `UpdateGroupMapping`) needs `Principal.GlobalAdmin` after `administer`, else `403 forbidden` before
 an idempotency key is kept or a row is written (`mapsGroups`, [ADR 0030] D7). A session passes every
@@ -523,11 +550,13 @@ A creating `POST` — `createProject`, `bindRepository`, `createTicket`, `askQue
 
 - No `Idempotency-Key`: a person's request goes on unkeyed; an agent's is
   `400 idempotency_key_required` ([ADR 0045] D3). The key of a session, which has no token, is
-  scoped to the person (`token_id` is `NULL`; migration 16); `createMyToken`, `createTenant` and
+  scoped to the person (`token_id` is `NULL`; migration 16); `createMyToken`, `createTeam` and
   `createAccount` take keys too, and `createMyToken` stores its answer **without the plaintext**,
   so a replay answers without `token`.
 - With a key: the fingerprint is an HMAC-SHA-256 under a key derived from the server key
-  (`Server.fingerprint`, `newFingerprintKey`) over the operation, the scope (the path's identities)
+  (`Server.fingerprint`, `newFingerprintKey`) over the operation — `createTeam` under its name before,
+  `createTenant`, so that a retry is replayed across replicas of both releases during a rollout —,
+  the scope (the path's identities)
   and the JSON body — a body can carry a temporary password, and the row must be no plain hash of
   it; a key replayed after the server key changed meets `422 idempotency_mismatch` — for an upload, the file's SHA-256, name and comment instead of its bytes.
   `store.WithIdempotency` puts both into the context; inside `Mutate` the handler builds its
@@ -558,7 +587,7 @@ header and, per field the request tried to change, its current value in `errors[
 and records no act. A `PATCH` whose progress stages close or reopen the ticket raises the version
 once: the state is written with `bump` false after the fields.
 
-`If-Match` is required by `updateTenant`, `updateProject`, `updateTicket`,
+`If-Match` is required by `updateTeam`, `updateProject`, `updateTicket`,
 `replaceTicketBody`, `setHorizon`, `setConfidential`,
 `updateQuestion`, `answerQuestion` (changing an answer given), `editComment`,
 `editTimeEntry`, `updateGroupMapping`, `updateSavedFilter` and `setProjectRestriction` (the project's version). A deletion, a restoration and a purge of a ticket take none: they overwrite no field, and the deletion and the restoration raise the version. A grant
@@ -570,7 +599,7 @@ The two ticket lists, and every list the UI loads again on a poll — `listProje
 `listMembers`, `listGroupMappings`, `listProjectAccess`, `listComments`, `listActivity`,
 `listQuestions`, `listTicketLinks`, `listInterest`, `listAttachments`, `listTicketTime`,
 `listPrerequisites`, `listMyInbox`, `listMyNext`, `listMyAssigned`, `listMyDecisions`,
-`listDeletedTickets`, `listSavedFilters`, `listTenantTokens` — and the dashboard, `getDashboard`, and
+`listDeletedTickets`, `listSavedFilters`, `listTeamTokens` — and the dashboard, `getDashboard`, and
 the attachments' usage, `getAttachmentUsage`, answer a
 weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the page as the caller reads it — and
 `304` without a body for a matching `If-None-Match` (`weakETag`, `notModified` and `listTag` in
@@ -585,7 +614,11 @@ attachment's content answers its quoted hex SHA-256 and `304` likewise.
 `base64url(payload).base64url(HMAC-SHA256)` with a key derived from `COWORK_SESSION_KEY` by HKDF
 under the label `cowork cursor v1`. The payload binds the position to the operation and the scope
 (the path's identities and, where it matters, the order); an altered cursor, or one from another
-list or scope, is `400 invalid_cursor` ([ADR 0048] D5). Rotating the server key invalidates the
+list or scope, is `400 invalid_cursor` ([ADR 0048] D5). An operation the rename of a tenant to a team
+renamed binds its cursors by its name before — `listTenantTickets`, `listTenantTime`,
+`listTenantTokens`, `listTenants`, `searchTenant`, `searchMyTenants` —, so that a cursor pages on
+across replicas of both releases during a rollout or after an image rollback ([ADR 0028] D4;
+[deprecated names](#deprecated-names)). Rotating the server key invalidates the
 cursors clients hold.
 
 A project's list seals its position, because a rank key is computed over tickets the caller
@@ -598,8 +631,8 @@ list answers that `invalid_cursor`.
 
 - `limit` defaults to 50 and is clamped, not refused, at `COWORK_MAX_PAGE_SIZE`; the query
   fetches one row more than the page, which says whether `next_cursor` is set.
-- The tables — `listProjectTickets`, `listTenantTickets`, `listTenantTime`, `listAudit`,
-  `listMembers`, `listMyTokens`, `listTenantTokens` and `listProjects` — also take numbered pages: `page` with
+- The tables — `listProjectTickets`, `listTeamTickets`, `listTeamTime`, `listAudit`,
+  `listMembers`, `listMyTokens`, `listTeamTokens` and `listProjects` — also take numbered pages: `page` with
   `per_page` (25, 50 or 100; 50 when absent, clamped like `limit`), answered with `total`, `page`
   and `per_page` and a `null` `next_cursor`; the query takes `LIMIT`/`OFFSET` and a count query
   beside it gives the total under the same filters and predicates. `page × per_page` above 10 000
@@ -610,25 +643,25 @@ list answers that `invalid_cursor`.
 - The sort is fixed per list ([ADR 0048] D6): a project's tickets by rank, the unranked after
   them by number — the position is `<key>.<number>` (`TicketOrder.Position`), sealed, and
   `ticketListScope` adds `/rank` to the scope, so a cursor of the number order before the rank
-  is `invalid_cursor`; the tenant's tickets and time entries, the audit record and the person's
+  is `invalid_cursor`; the team's tickets and time entries, the audit record and the person's
   tokens newest first; comments and activity oldest first unless `order=desc`; projects by key;
   questions by number; members, interest and a project's access list by person id; the group
-  mappings by group; the installation's tenants by slug; the tenant's tokens newest first; a tenant's bin the last deleted first, its
-  position the deletion's time and the id; a tenant's saved filters by id; the person's inbox newest
-  first, merged across the tenants by the notifications' ids, which order by time; "next for me" and
+  mappings by group; the installation's teams by slug; the team's tokens newest first; a team's bin the last deleted first, its
+  position the deletion's time and the id; a team's saved filters by id; the person's inbox newest
+  first, merged across the teams by the notifications' ids, which order by time; "next for me" and
   the tickets assigned to the person by the score, highest first, then the ticket's id, and the open
   decisions by the score of their ticket — a done or dropped ticket's after the others — then the
   ticket's id and the question's number ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md)
   D5); a search's hits by their rank, then the ticket's id, both descending — a search's position is
   `<rank>/<id>`, bound to a hash of its query as well ([search.md](search.md#the-cursor)); the other
   lists by id.
-- A person-level list's cursor is bound to the person and the `tenant` it was narrowed to — "next
-  for me"'s to its `project` as well. Its position is the notification's id, or for the lists in the
+- A person-level list's cursor is bound to the person and the team it was narrowed to, by either
+  name — "next for me"'s to its `project` as well. Its position is the notification's id, or for the lists in the
   score's order `<score key>/<ticket id>` (`store.ScorePosition`), for the open decisions
   `/<question>` after it (`decisionPosition` in [`mylists.go`](../../backend/internal/api/mylists.go)):
   the stored key, written so that it reads back to the same `float64` (`-Inf` for a ticket without a
-  score), and the id, unique across tenants, so every tenant's part resumes at the same place of one
-  order. A score is shown on the ticket, so the position is not sealed. Every tenant is read for a
+  score), and the id, unique across teams, so every team's part resumes at the same place of one
+  order. A score is shown on the ticket, so the position is not sealed. Every team is read for a
   page after the position, and the parts are merged. The `cursor` parameter takes up to 1024
   characters.
 
@@ -655,7 +688,7 @@ false`, D4). Written, the parameters go through `parseFilters` and every refused
 project or a parent ticket the reader cannot see — or that is gone — is one more for the owner;
 another reader gets the filter `redacted`, its parameters and warnings withheld, as the activity
 withholds an act that names a hidden ticket ([ADR 0065] D5). A filter is the owner's to change, and
-another person's shared one a tenant administrator's to unshare or delete ([ADR 0018] D5 as amended
+another person's shared one a team administrator's to unshare or delete ([ADR 0018] D5 as amended
 2026-10-06; `mayChangeFilter`): `administer` — `admin` scope, hard-off `administration` —, a patch of
 `{"shared": false}` and nothing else, else `403 forbidden`; the unshare is a compare-and-set on the
 version that sets `shared` alone, through `Writer.UnshareAnothersFilter`, and answers the filter the
@@ -706,12 +739,90 @@ client reads as API: the enum `urgency` and its columns (`TicketRow.UrgencyOverr
 `urgency_override`, which the activity, the context and the session start read as setting the
 horizon.
 
-What stays deprecated in `/api/v1` today is a token's `restricted_project_id` beside
-`restricted_project` ([ADR 0035] D2, `projectKeys` in [`me.go`](../../backend/internal/api/me.go)).
+The rename of a tenant to a team is the second ([ADR 0005] D1, [ADR 0023] D1, [ADR 0046] D7, as
+amended 2026-10-10), its expand built 2026-10-10. It renamed a path family, which the horizon did
+not:
+
+- **The paths.** The source names `/api/v1/teams` and `/api/v1/teams/{team}/…` — the path parameter
+  `team`, `components/parameters.yaml#/TeamSlug` — and the resolver `/api/v1/tickets/{team}/{key}`,
+  which renamed its parameter only: the same path on the wire, so it needs no twin. The old family is
+  served as **deprecated twins** nobody writes by hand: `tools/specbundle` copies each team path
+  under `/api/v1/tenants` with `{tenant}` ([above](#the-document)); `exclude-tags: [tenants]` in
+  [`api/oapi-codegen.yaml`](../../backend/api/oapi-codegen.yaml) and `excludeTags` in
+  [`frontend/ng-openapi-gen.json`](../../frontend/ng-openapi-gen.json) keep the twins out of both
+  generated clients. A twin keeps the operationId the release before served its operation under
+  where the rename renamed it — a `cowork-mcp` of that release checks at its start that every
+  operation it calls is in the served document ([ADR 0040] D5), and it calls `listTenantTickets` —,
+  else it is the operation's own with `Deprecated` appended. The server answers a twin by reading its
+  path as the team path before the route is found ([the pipeline](#the-pipeline)): one handler, one
+  boundary, one security requirement, one route label, and an answer exactly the team path's. Every
+  path the server writes names the team family, whichever family the request came by — a
+  `Location`, a problem's `instance`, an archive's attachment paths, a rendered image
+  (`tenantURL`, `projectURL` and the other builders over `teamFamily`).
+- **The names.** Beside each new name its old one, deprecated, behaving as it did: the query
+  parameter `team` beside `tenant` on `listMyInbox`, `markMyInboxRead`, `listMyNext`,
+  `listMyAssigned`, `listMyDecisions` and `searchMyTeams`, both together `400 validation_failed` at
+  `query:tenant` whatever the values ([the person-level routes](#the-person-level-routes)); the
+  properties `team`, `teams` and `restricted_team` beside `tenant`, `tenants` and `restricted_tenant`
+  — on the way out both carry the same value; on the way in `TokenCreate` takes `tenant` as `team`,
+  and both with different slugs are `400 validation_failed` at `/team` (`teamRestriction` in
+  [`me.go`](../../backend/internal/api/me.go)) —; `group_by=team` beside `tenant`, each keying the
+  team's one row — and the CSV's header — by the name it was asked by. The
+  schemas and operations that named the tenant name the team (`Team`, `TeamRef`, `TeamSummary`,
+  `TeamSummaryList`, `TeamCreate`, `TeamPatch`, `ProposalTeam`; `listTeams`, `createTeam`, `getTeam`,
+  `updateTeam`, `exportTeam`, `searchTeam`, `searchMyTeams`, `listTeamTickets`, `listTeamTime`,
+  `listTeamTokens`, `revokeTeamToken`), and the family file is
+  [`teams.yaml`](../../backend/api/teams.yaml). What binds a request to an operation across the two
+  releases keeps the name before, the implementer's choice, open to the owner's objection: a cursor
+  ([paging](#paging)) and an idempotency key ([idempotency](#idempotency)) of a renamed operation are
+  bound to its old operationId, so that a client paging or retrying while the replicas run both
+  releases, or after an image rollback, is answered as it was.
+- **The tests.** [`api/document_test.go`](../../backend/api/document_test.go) holds every team path to
+  its twin and every twin to its team path — the same operations, parameters but the path's, body,
+  answers, security and marks, the operationId as above
+  (`TestTheTenantPathsAreDeprecatedTwinsOfTheTeamPaths`) —, every old name to `deprecated` beside its
+  new one, no `{tenant}` outside the twins and no schema named for the tenant
+  (`TestEveryTenantNameIsDeprecatedBesideItsTeamName`); [`internal/api/twin_test.go`](../../backend/internal/api/twin_test.go)
+  holds the rewrite — the family and every path under it, the query and the client's escaping kept,
+  the request as sent unchanged (`TestATwinIsAnsweredAsItsTeamPath`) — and routes every twin of the
+  document to its team path, never to its own operation (`TestNoTwinIsEverRouted`); the integration
+  tier sends the generated client to the twins and compares their answers with the team paths' to
+  the byte, and takes every pair of names by either name
+  ([`api_team_names_test.go`](../../backend/test/integration/api_team_names_test.go),
+  [testing.md](testing.md)).
+- **Beyond the document**, the same expand: `COWORK_BOOTSTRAP_TEAM_SLUG`, `COWORK_BOOTSTRAP_TEAM_NAME`
+  and `COWORK_ATTACHMENT_TEAM_QUOTA`, the names before still read — set alone, with a warning in the
+  log naming the replacement; set beside the new name to the same value, silently; to a different
+  one, a configuration error naming both (`renamedVariables`, `getRenamed` in
+  [`config.go`](../../backend/internal/config/config.go), `warnDeprecated` in
+  [`main.go`](../../backend/cmd/cowork/main.go)); the chart's `bootstrap.team.*` and
+  `backend.config.attachmentTeamQuota`, the old values read where the new ones are empty, both set and
+  different a failed render, and every variable rendered under both names with the same value, so
+  that an image rolled back to the release before, which reads the old names alone, keeps its
+  configuration ([ADR 0028] D4); the label `team` beside `tenant` on the consistency family, for the
+  operators' own dashboards and rules, while the chart's two alerts and its dashboard stay on
+  `tenant` for the release ([metrics.md](metrics.md#the-consistency-family)); the membership event's
+  `team` beside
+  `tenant` ([events.md](events.md)); the export's manifest with both, and an archive's `tenant` read
+  for good ([import-and-export.md](import-and-export.md)); `.cowork.yaml`'s `team`, and the `team`
+  argument and search scope of the tools ([mcp.md](mcp.md)).
+
+What keeps the old word is what cannot carry the new name beside it in one field, or is stored: the
+problem code `tenant_slug_taken`, whose title says "Team slug taken"; a repository proposal's reason
+`only-tenant`; the audit record's `entity_type` `tenant` and its payload key `tenant`; a local
+account's origin `tenant`; the `tenant` of the `NOTIFY` payload (`store.Notification`); and every
+name of the database. The UI labels each a team where it shows it. Log lines name a team under the key `team`
+now, not `tenant` ([storage.md](storage.md#the-consistency-check)). The contract, a later release, takes the
+twins and every old name, variable, value and label out once no supported client reads them; until
+1.0 no commit carries a breaking mark ([ADR 0003] D9).
+
+What stays deprecated in `/api/v1` today is the team rename's old family and names, above, and a
+token's `restricted_project_id` beside `restricted_project` ([ADR 0035] D2, `projectKeys` in
+[`me.go`](../../backend/internal/api/me.go)).
 
 ## Media types beside JSON
 
-- **CSV.** `listAudit`, `listTenantTime` and `timeReport` answer `text/csv` when `Accept` names
+- **CSV.** `listAudit`, `listTeamTime` and `timeReport` answer `text/csv` when `Accept` names
   it (`wantsCSV` in [`content.go`](../../backend/internal/api/content.go)); a cell starting with
   `=`, `+`, `-`, `@`, a tab or a carriage return is prefixed with `'` (`neutralise`).
 - **Uploads** are `multipart/form-data`, read by the handler, not by the validator
@@ -725,7 +836,7 @@ What stays deprecated in `/api/v1` today is a token's `restricted_project_id` be
   plain-text body decoder registered in `validate.go`.
 - **An import's upload** is `multipart/form-data` as well, read by `importer.ReadUpload` in the
   handler ([import-and-export.md](import-and-export.md#the-dry-run)).
-- **The project and the tenant export** return `exportStream` from
+- **The project and the team export** return `exportStream` from
   [`exports.go`](../../backend/internal/api/exports.go), which implements both generated visit
   methods and writes the archive as it reads it: `application/gzip` and `Content-Disposition:
   attachment` with the archive's file name, no `Content-Length`; a failure after the answer started
@@ -744,6 +855,8 @@ What stays deprecated in `/api/v1` today is a token's `restricted_project_id` be
   after the stream began is its `error` event, a problem body from `problem.BodyOf`
   ([chat.md](chat.md#a-turn)).
 
+[ADR 0003]: ../adr/0003-test-and-ci-policy.md
+[ADR 0005]: ../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md
 [ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md
 [ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
 [ADR 0019]: ../adr/0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md
@@ -759,6 +872,7 @@ What stays deprecated in `/api/v1` today is a token's `restricted_project_id` be
 [ADR 0035]: ../adr/0035-personal-access-tokens.md
 [ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0037]: ../adr/0037-csrf-origin-check-and-a-custom-header-on-unsafe-cookie-requests-no-cors.md
+[ADR 0040]: ../adr/0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md
 [ADR 0043]: ../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md
 [ADR 0045]: ../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md
 [ADR 0046]: ../adr/0046-spec-first-the-openapi-document-is-the-contract.md

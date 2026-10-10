@@ -60,7 +60,7 @@ after both versions.
 | | `make build-mcp` | — | `bin/cowork-mcp`, the MCP server and hooks for Claude Code ([mcp.md](mcp.md)); `GOOS=` and `GOARCH=` cross-compile, `MCP_OUT=` names the file — a `.exe` by default for `GOOS=windows` |
 | | `make build` | npm | `build-backend` + `frontend-build` |
 | | `make run`, `make migrate` | `make postgres-up` | run the backend from source against the development database (below) |
-| | `make dev-seed` | `make postgres-up` | migrates, then creates a person, a tenant, an admin membership and a token, and prints the token once |
+| | `make dev-seed` | `make postgres-up` | migrates, then creates a person, a team, an admin membership and a token, and prints the token once |
 | | `make docker-build` | Docker | `BACKEND_IMG` and `FRONTEND_IMG` (defaults `guidedtraffic/cowork-backend:latest`, `guidedtraffic/cowork-frontend:latest`); `docker-build-backend` / `docker-build-frontend` for one |
 | | `make docker-push` | Docker, a registry login | pushes both images |
 | | `make verify-phase-2` | Docker, `python3`, the two images, `make postgres-up minio-up` | runs both images read-only behind the Ingress stand-in and drives the API through it as a `make dev-seed` agent ([`hack/verify-phase-2.sh`](../../hack/verify-phase-2.sh)) |
@@ -107,7 +107,7 @@ make dev-reset                # empties the development database; the next make 
 use, starts the three containers (`make dev-up`), runs the backend on `127.0.0.1:8080` with the
 local administrator `dev` and Dex as its identity provider — `cowork-users` allowed,
 `cowork-admins` the administrator group, the button *Sign in with Dex* — logs it to
-`.dev/backend.log`, maps the group `team-red` to `member` in the tenant `dev` through a session of
+`.dev/backend.log`, maps the group `team-red` to `member` in the team `dev` through a session of
 the local administrator, and keeps the demo data's token in `.dev/token` and a stable server key in
 `.dev/session-key` (all untracked). The dev server's proxy
 ([`frontend/proxy.conf.mjs`](../../frontend/proxy.conf.mjs)) is the developer's stand-in for the
@@ -131,7 +131,7 @@ works: [frontend.md](frontend.md#the-development-loop).
 
 ```bash
 make postgres-up              # PostgreSQL 18 on :5432: database cowork, roles cowork_owner and cowork_app
-make dev-seed                 # migrates, prints a person, a tenant and a token — once
+make dev-seed                 # migrates, prints a person, a team and a token — once
 make run                      # backend on :8080: migrates as cowork_owner, serves as cowork_app, text logs
 make frontend-serve           # frontend on :4200 in a second terminal, /api and /auth proxied to :8080 (unsigned: the API answers 401)
 curl -s -H "Authorization: Bearer $TOKEN" localhost:8080/api/v1/me   # TOKEN: the one dev-seed printed
@@ -151,11 +151,11 @@ the base URL then `https://localhost:4200`, the redirect URI Dex knows, and the 
 ([README, run it locally](../../README.md#run-it-locally)). `make run` sets none of them; `make dev`
 sets all of them.
 
-`make dev-seed` reuses the person `dev` and the tenant `dev` and mints a fresh token on every
+`make dev-seed` reuses the person `dev` and the team `dev` and mints a fresh token on every
 run. The token is an agent's — write scope, every capability — so its `POST`s need an
 `Idempotency-Key`. A plain admin-scope token instead:
 `cd backend && COWORK_DEV_SEED_DATABASE_URL='postgres://postgres:postgres@localhost:5432/cowork?sslmode=disable' go run ./test/devseed -agent=false`
-(the `# default` administrative URL of `make postgres-up`; `-username` and `-tenant` choose
+(the `# default` administrative URL of `make postgres-up`; `-username` and `-team` choose
 other names).
 
 ## Run the images together

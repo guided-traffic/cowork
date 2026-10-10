@@ -19,7 +19,7 @@ tool on 2026-10-09.
 |---|---|
 | The routes | [`backend/api/imports.yaml`](../../backend/api/imports.yaml); the report, the corrections and the manifests are `Import*` and `Export*` in [`components/schemas.yaml`](../../backend/api/components/schemas.yaml) |
 | The reading and the analysis | [`internal/importer`](../../backend/internal/importer/), a package of its own: pure, no database — what it needs of the project comes in as a `Target` |
-| The handlers | [`api/imports.go`](../../backend/internal/api/imports.go) (the dry run, the read, the execution's checks), [`api/importwrite.go`](../../backend/internal/api/importwrite.go) (the execution's writes), [`api/exports.go`](../../backend/internal/api/exports.go) (the project and the tenant export) |
+| The handlers | [`api/imports.go`](../../backend/internal/api/imports.go) (the dry run, the read, the execution's checks), [`api/importwrite.go`](../../backend/internal/api/importwrite.go) (the execution's writes), [`api/exports.go`](../../backend/internal/api/exports.go) (the project and the team export) |
 | The data | [migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql) (`import_jobs`, `tickets.imported_from_file` and `imported_from_job`, the action `imported`), [migration 45](../../backend/internal/store/migrations/000045_import_jobs_of_their_writer.up.sql) (the policies that admit a job's maker); [`queries/read/imports.sql`](../../backend/internal/store/queries/read/imports.sql), [`queries/write/imports.sql`](../../backend/internal/store/queries/write/imports.sql), the export's reads in [`queries/read/export.sql`](../../backend/internal/store/queries/read/export.sql); the expiry job in [`store/imports.go`](../../backend/internal/store/imports.go) |
 | The command line | `cowork-mcp export` in [`mcpcli/export.go`](../../backend/internal/mcpcli/export.go), `cowork-mcp import` in [`mcpcli/import.go`](../../backend/internal/mcpcli/import.go) |
 | The browser | the import page, [`features/project/project-import.ts`](../../frontend/src/app/features/project/project-import.ts) with [`import-model.ts`](../../frontend/src/app/features/project/import-model.ts); the requests and the archive in [`core/imports.service.ts`](../../frontend/src/app/core/imports.service.ts) and [`core/export-archive.ts`](../../frontend/src/app/core/export-archive.ts) ([frontend.md](frontend.md#the-import-and-the-export)) |
@@ -29,10 +29,10 @@ tool on 2026-10-09.
 `CreateImport` ([`imports.go`](../../backend/internal/api/imports.go)), `POST …/projects/{project}/imports`:
 
 1. **Who.** A writer of the project, as creating a ticket needs ([ADR 0051] D6): `work` — the
-   role `member`, a token's `write` scope, no capability, an agent too — against the tenant's role
+   role `member`, a token's `write` scope, no capability, an agent too — against the team's role
    before the upload is read, and against the project's in the transaction (`importWriter`:
    `visibleProject`, `projectRole`, which a restricted project's list lowers).
-2. **One at a time.** `importSlot` holds the replica to one import, a dry run or an execution:
+2. **One at a time.** `slot` over the server's import slots (`imports`) holds the replica to one import, a dry run or an execution:
    the upload is held in memory, unpacked, and kept once more compressed. A second one waits for
    the slot within its request's deadline.
 3. **The upload.** `limitBody` in [`validate.go`](../../backend/internal/api/validate.go) bounds
@@ -107,7 +107,7 @@ which `lockedDryRun` reads from the job's `report` (`LockImportJob`).
      withdrawn, answered or withdrawn by the importer at the execution's time; each the act `asked`
      naming the job;
    - the parents' derived stages, `refreshProgress` once per parent;
-   - the links: a `blocks` link takes the tenant's blocks lock once and is walked first
+   - the links: a `blocks` link takes the team's blocks lock once and is walked first
      (`BlocksPathExists`); one that would close a cycle through the project's tickets — which the
      analysis does not walk — is omitted and the file's report says so; `relates-to` is stored
      with the smaller id first; `linked` on both tickets, `Quiet` on a ticket the import creates
@@ -130,7 +130,7 @@ answer `404`, the latter before the job deletes it. `importJobView` decodes the 
 the generated types.
 
 **The expiry.** `DB.ExpireImportJobs` ([`store/imports.go`](../../backend/internal/store/imports.go)),
-the job `import-expiry`, lock key `9`, deletes the dry runs past `expires_at` in every tenant with
+the job `import-expiry`, lock key `9`, deletes the dry runs past `expires_at` in every team with
 their files and records one `expired` act on `import_jobs` per run that removed any; `runJobs` in
 [`main.go`](../../backend/cmd/cowork/main.go) runs it hourly with the others. An executed job stays:
 its tickets name it.
@@ -138,11 +138,11 @@ its tickets name it.
 **The policies** of `import_jobs` ([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql),
 [migration 45](../../backend/internal/store/migrations/000045_import_jobs_of_their_writer.up.sql)):
 the canonical `tenant_isolation`; restrictive policies that admit reading to the job's maker
-(`created_by = app_user_id()`), a tenant's administrator (`app_is_tenant_admin()`), the job
+(`created_by = app_user_id()`), a team's administrator (`app_is_tenant_admin()`), the job
 `import-expiry` and the purge (`ticket-purge`), inserting to the maker in their own name and the
 administrator, and changing to the maker, the administrator and the purge — a report holds what
 its upload's files say, an embargoed finding's among them, which no other writer reads; the expiry job's own
-permissive read and delete of the dry runs with no tenant set; and a restrictive delete that admits
+permissive read and delete of the dry runs with no `app.tenant_id` set; and a restrictive delete that admits
 only the expiry job and only a dry run. The runtime role may update `status`, `expires_at`,
 `executed_by`, `executed_at`, `report` and `source`.
 
@@ -196,7 +196,10 @@ number twice, a question without its text, or one above 2000 characters is an er
 in this order:
 
 1. **Classify**: every file of the upload a report entry in its order; a skipped file and a manifest
-   with the reason.
+   with the reason — a manifest's names the projects of its export by their team, which an archive
+   names as `team`, or as `tenant` alone when the release that wrote it called a team so; that
+   archive is read so for good, since an archive outlives a release (`exportManifest.team`,
+   `TestTheManifestNamesItsTeamByEitherName`).
 2. **Numbers**: a number two files bring is an error of both; one the project holds is a conflict
    naming the key; one a purged ticket held is imported, with a warning.
 3. **Columns** of every file not excluded and readable: a record without frontmatter is a done task
@@ -273,12 +276,12 @@ decodes it into the generated types. `Correction` writes back only what a correc
 
 ## The export
 
-`ExportProject` and `ExportTenant` ([`exports.go`](../../backend/internal/api/exports.go)) decide who
+`ExportProject` and `ExportTeam` ([`exports.go`](../../backend/internal/api/exports.go)) decide who
 exports what in a short `InTenant` transaction and answer an `exportStream`, which writes the
 `tar.gz` as it reads it:
 
 - **Who.** The project's: the project through the predicate and `read` on the project's role;
-  the tenant's: `read` on the tenant's role, the projects through `ListProjects` with the archived
+  the team's: `read` on the team's role, the projects through `ListProjects` with the archived
   ones. An agent too. A token restricted to a project gets the project's export only, by the
   boundary's rule.
 - **One at a time, a page at a time.** `exportStream.write` waits for the replica's one export slot
@@ -292,22 +295,24 @@ exports what in a short `InTenant` transaction and answer an `exportStream`, whi
 - **The documents**: every ticket the caller sees, done and dropped ones included, deleted ones
   not — `ListTickets` with `IncludeTerminal`, project by project in key order and by number —,
   each rendered by `exportDocument` exactly as `…/markdown` answers it, at
-  `<tenant>/<PROJECT>-<n>.md`; `CountTickets` with the same filter is each project's count.
+  `<team>/<PROJECT>-<n>.md`; `CountTickets` with the same filter is each project's count.
 - **The manifests**, at the archive's root: `manifest.json` (`apigen.ExportManifest`: the format
-  `cowork export v1`, the tenant, each project with its count of documents and of the confidential
+  `cowork export v1`, the team's slug — as `team`, and as `tenant` beside it for the importers of the
+  release before, which read no other name, for one release —, each project with its count of
+  documents and of the confidential
   tickets left out, the time, the exporter as grammar v1 writes a person, the totals);
-  `links.json` (`ExportLinks`: every link with an end in the project — or, for the tenant, every
+  `links.json` (`ExportLinks`: every link with an end in the project — or, for the team, every
   link — whose two ends the caller sees, once); `attachments.json` (`ExportAttachments`: ticket,
-  name, type, size and the path of the bytes).
+  name, type, size and the path of the bytes, under `/api/v1/teams/…`, `attachmentContentURL`).
 - **The count of what it leaves out** is `ExportHiddenConfidential`, exempt from the predicate by
   name: the confidential tickets of the projects the caller sees that the caller cannot read. The
   predicate answers `NULL`, not `false`, for a ticket without an assignee, so the query asks
   `IS NOT TRUE`; `TestTheExportFollowsItsReader` failed on `NOT` alone.
-- **The act**: `recordExport` writes `exported` on the project or the tenant with the format and the
+- **The act**: `recordExport` writes `exported` on the project or the team with the format and the
   counts, once they are read and before the first byte of the archive is answered; `exported` is
   never published.
 - **The answer**: `application/gzip`, `Content-Disposition: attachment;
-  filename="<tenant>-<PROJECT>-<YYYYMMDD>.tar.gz"` (`<tenant>-<YYYYMMDD>.tar.gz` for the tenant),
+  filename="<team>-<PROJECT>-<YYYYMMDD>.tar.gz"` (`<team>-<YYYYMMDD>.tar.gz` for the team),
   no `Content-Length`; the three manifests first — the browser reads `manifest.json` from the
   archive's start —, then the documents; every entry carries the export's time. A failure before
   the answer starts is a problem as anywhere, a wait for the slot past the deadline `504`; one after
@@ -319,12 +324,12 @@ exports what in a short `InTenant` transaction and answer an `exportStream`, whi
 ## `cowork-mcp export`
 
 `exportProject` in [`mcpcli/export.go`](../../backend/internal/mcpcli/export.go) takes
-`<tenant>/<PROJECT>` and a directory (usage, exit `2`, otherwise); refuses a directory that is not
+`<team>/<PROJECT>` and a directory (usage, exit `2`, otherwise); refuses a directory that is not
 empty, or a file, before it asks (exit `1`); fetches the export through the generated client with
 the configuration of every subcommand; and unpacks it through a root opened at the directory
 (`os.OpenRoot`), which no name or link reaches out of: regular files only, each named as an export
 of that project names it — `exportEntry` takes a valid `/`-separated path that is one of the three
-manifests or `<tenant>/<PROJECT>-<n>.md` of that tenant and project, the number as its key writes
+manifests or `<team>/<PROJECT>-<n>.md` of that team and project, the number as its key writes
 it, and refuses every other —, created with `O_EXCL`; on POSIX systems the directories `0700` and
 the files `0600`, on Windows, where Go sets only the read-only attribute, the directory's access
 list ([docs/security/import-and-export.md](../security/import-and-export.md#h-77) H-77). It prints
@@ -335,7 +340,7 @@ export's act names the binary ([mcp.md](mcp.md)).
 ## `cowork-mcp import`
 
 `importProject` in [`mcpcli/import.go`](../../backend/internal/mcpcli/import.go) takes
-`<tenant>/<PROJECT>`, a path and `--dry-run` anywhere among them ([ADR 0070] D2). `uploadOf` reads
+`<team>/<PROJECT>`, a path and `--dry-run` anywhere among them ([ADR 0070] D2). `uploadOf` reads
 the path before anything is asked: a directory is packed by `packDir`, reading through a root opened
 at it (`os.OpenRoot`), as a `tar.gz` of the regular files the import reads (`importRead`: `.md`, `manifest.json`, `links.json`), named by their path
 under the directory as it was given — `docs/tickets/001-….md` — or under its base name when the path
@@ -358,7 +363,7 @@ runs it against the server, `TestTheBinaryRunsItsSubcommands` as the built binar
 | unit | [`roundtrip_test.go`](../../backend/internal/importer/roundtrip_test.go) | every golden file of `/markdown` in [`internal/markdown/testdata`](../../backend/internal/markdown/testdata/) parses without an error — `questions.md` with the one warning of its body's heading — and renders again to its bytes, and every one of `/context` is skipped; render, parse, render is the same document for values with quotes, colons, fences and every answer form |
 | unit | [`analyze_test.go`](../../backend/internal/importer/analyze_test.go) | a dry run of the fixtures, the conflicts left out with their reasons and a purged number given back, the corrections and their rules, an export read back with its links, a block on a ticket, parents and a loop; every text at the lengths the API takes and one character beyond, a body grown beyond by the keys the import puts in, and one grown beyond because a file it names was left out (`TestTheImportHoldsTheTextsToTheLengthsOfTheAPI`); the assignee the dry run named and an agent's confidential ticket (`TestAnalyzeAssignsWhomTheDryRunNamedAndAnAgentMay`) |
 | unit | [`upload_test.go`](../../backend/internal/importer/upload_test.go) | the three forms of an upload, the bounds, the stored form; a zip of 196,708 empty entries whose end declares 100 refused before it is parsed, its memory a fraction of what a parse takes (`TestReadUploadCountsAZipsEntriesBeforeItParsesThem`); a hand-written frontmatter read line by line |
-| unit | [`mcpcli/export_test.go`](../../backend/internal/mcpcli/export_test.go) | the unpacking stays inside its directory and never overwrites; it writes the names an export holds and no other — backslashes, steps, volumes, other tenants and projects, numbers not written as keys —, and a directory link planted in the target leads nowhere outside it |
+| unit | [`mcpcli/export_test.go`](../../backend/internal/mcpcli/export_test.go) | the unpacking stays inside its directory and never overwrites; it writes the names an export holds and no other — backslashes, steps, volumes, other teams and projects, numbers not written as keys —, and a directory link planted in the target leads nowhere outside it |
 | integration | [`api_imports_test.go`](../../backend/test/integration/api_imports_test.go) | the dry run and its execution end to end, who may — a viewer and a `read` token do not, another writer neither reads nor executes a job —, the acts, one event, the sequence, `409 import_executed`; a conflict and an error left out and the rest imported, also a conflict filed after the dry run, an exclusion naming the project's ticket (`TestImportLeavesOutWhatItCannotImport`); a member's agent token without any capability importing and setting a parent afterwards, a confidential ticket assigned to nobody (`TestAWriterAndTheirAgentImport`); a plain token's import assigning a confidential ticket only to its person, a browser session's as the file says (`TestATokenImportAssignsAConfidentialTicketToItsPersonOnly`); a purged number given back and a `/context` document skipped (`TestImportGivesAPurgedNumberBack`); a member added between a browser session's dry run and its execution not assigned (`TestTheExecutionAssignsWhomTheDryRunNamed`); the bounds and the expiry; the policies of `import_jobs` as the runtime role meets them; the purge of an imported ticket taking its file out of the report, by the job; this repository's whole `docs/tickets/` read without an error, the open tickets after the execution as many as the source's open `state:` lines |
 | integration | [`api_exports_test.go`](../../backend/test/integration/api_exports_test.go) | the round trip of [ADR 0051] D5; the export as each reader sees it; a project of 115 MB of bodies streamed with the heap growing by a fraction of it (`TestTheExportStreamsALargeProjectWithinAMemoryBound`) |
 | unit | [`mcpcli/import_test.go`](../../backend/internal/mcpcli/import_test.go) | the import's arguments and refusals; a directory packed with the files the import reads under the path as given, a link and the rest left out; both reports printed; `--dry-run` executing nothing; a file sent as it is and the installation's refusal |

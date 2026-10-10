@@ -68,6 +68,11 @@ the act on an import job that executes it, beside `created` for its dry run; eve
 and link the execution creates has an act that names the job as `import_job`. D5's exports grow by two: the project and the
 tenant export each record `exported` on the project or the tenant, with the format and the counts.
 
+Amended 2026-10-10 by the owner's rename of a tenant to a team ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1): D5 names the team's
+export by its operation, `exportTeam`, which the rename renamed; its deprecated twin keeps
+`exportTenant` for one release and is answered as it. No rule changes; the audit record keeps the
+entity `tenant`.
+
 ## Context
 
 [ADR 0004](0004-cowork-is-a-team-product.md) D3 requires every change attributable and
@@ -143,7 +148,7 @@ installation's own pages?", over the custom header on every read of a session, w
 inline images of rendered Markdown, and over leaving it named as a gap; built 2026-10-09:)* the
 reads recorded today are five — an attachment's bytes (`downloadAttachment`, `downloaded`), a
 ticket's Markdown (`exportTicket`) and its context (`exportTicketContext`), a project's and the
-tenant's export (`exportProject`, `exportTenant`; each `exported`) — and the API document marks
+tenant's export (`exportProject`, ~~`exportTenant`~~ `exportTeam` *(2026-10-10)*; each `exported`) — and the API document marks
 each `x-cowork-recorded-read`. **A session's request for one of them comes from the installation's
 own pages:** `Sec-Fetch-Site` `same-site` — a page on a sibling host of the same site, which the
 `SameSite=Lax` cookie follows on an image or a link — or `cross-site` is `403 csrf`, before anything

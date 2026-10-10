@@ -2,7 +2,7 @@
 
 How an installation gives its people the assistant at the right edge of the UI: the backend calls a
 model of a provider the operator lists, the person picks one of them in the panel, and the model
-works in the tenant through the API as the person's agent, with the capabilities the person chose
+works in the team through the API as the person's agent, with the capabilities the person chose
 ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)).
 Without a provider there is no chat and nothing changes. The variables are
 [README.md, Configuration](../../README.md#configuration), the chart's values
@@ -10,9 +10,9 @@ Without a provider there is no chat and nothing changes. The variables are
 leaves open is [docs/security/chat.md](../security/chat.md).
 
 ```
-browser ── POST /api/v1/tenants/<slug>/chat (the session, a provider id) ──► the Ingress ──► backend ──► the provider picked
+browser ── POST /api/v1/teams/<slug>/chat (the session, a provider id) ────► the Ingress ──► backend ──► the provider picked
         ◄── text/event-stream: text, tool calls, results ────────────────────────────────┘   │        (COWORK_CHAT_<ID>_URL)
-        ── DELETE /api/v1/tenants/<slug>/chat/turns (Stop) ──────────────────────────────────►│
+        ── DELETE /api/v1/teams/<slug>/chat/turns (Stop) ────────────────────────────────────►│
                                                                                               └─► the tools: the API
                                                                                                   in the same process
 ```
@@ -27,7 +27,7 @@ browser ── POST /api/v1/tenants/<slug>/chat (the session, a provider id) ─
 - **A browser session.** A turn is a person's in a session: a login and `COWORK_BASE_URL`
   ([installation.md](installation.md#the-local-administrator)).
 
-Every member of every tenant has the chat once a provider is configured; no tenant is asked.
+Every member of every team has the chat once a provider is configured; no team is asked.
 
 ## Providers
 
@@ -51,11 +51,11 @@ the person's pick is kept in that browser.
 
 ### Adding a hosted provider
 
-**A provider receives everything the chat reads for its person, in every tenant of the installation,
+**A provider receives everything the chat reads for its person, in every team of the installation,
 confidential tickets included.** That is the owner's decision of 2026-10-04 with its risk accepted
-([H-37](../security/chat.md#h-37)): there is no tenant consent and no inside or outside, and listing a
+([H-37](../security/chat.md#h-37)): there is no team consent and no inside or outside, and listing a
 provider is the only gate. Before adding a hosted provider — OpenAI, Anthropic, any model server
-outside the machines the installation's operators run — make sure every client tenant's data,
+outside the machines the installation's operators run — make sure every team's data,
 confidential security findings among it, may go to that provider under its terms, retention and
 region. A model on the operator's machine or in the cluster sends nothing beyond them.
 
@@ -121,7 +121,7 @@ COWORK_CHAT_OPENAI_API_KEY=…                                # from a Secret; s
 COWORK_CHAT_OPENAI_MODEL=gpt-4.1                            # example
 ```
 
-A hosted provider receives every tenant's text the chat reads ([above](#adding-a-hosted-provider)).
+A hosted provider receives every team's text the chat reads ([above](#adding-a-hosted-provider)).
 The gateway sends `max_tokens: 4096` with every call; OpenAI's reasoning models (the o-series) want
 `max_completion_tokens` instead — a known limit of the adapter: pick a model that takes `max_tokens`.
 **Not verified:** the gateway has been tested against the stub provider of the tests and against LM
@@ -175,7 +175,7 @@ the entry, with an id that is not one or names two providers, a kind that is nei
 `anthropic`, no `url` or `model`, `anthropic` without `existingSecret`, and an `apiKey` in an entry —
 the key has no inline value. A Secret's key name is `apiKey` unless the entry's `keys.apiKey` names
 another. The notes list the providers with where each key comes from, and warn that every provider
-receives what the chat reads in every tenant. `COWORK_CHAT_TURNS_PER_PERSON` has no value of the
+receives what the chat reads in every team. `COWORK_CHAT_TURNS_PER_PERSON` has no value of the
 chart: set it through `backend.extraEnv`, and only together with a provider — without one the backend
 refuses to start on it.
 
@@ -197,8 +197,8 @@ of a turn, or not at all; one that closes a response after a few seconds of sile
 ## Stop
 
 The panel's Stop ends a running turn at once: it aborts the turn's request, whose end cancels the
-model's request and a tool call in flight, and it calls `DELETE /api/v1/tenants/<slug>/chat/turns`,
-which ends every running turn of the person in that tenant on the replica that answers it and answers
+model's request and a tool call in flight, and it calls `DELETE /api/v1/teams/<slug>/chat/turns`,
+which ends every running turn of the person in that team on the replica that answers it and answers
 `204` once they have ended, or after five seconds. The route covers a proxy that keeps the backend's
 request open after the browser aborted it, and the panel's `chat_busy` notice — a turn of the person
 runs in another tab — offers it as its Stop. A stopped turn's stream ends with `done` and the reason
@@ -232,10 +232,10 @@ provider's spending limit is the provider's to set ([H-43](../security/chat.md#h
 | `a turn of the chat failed` | error | anything else failed in a turn; the person saw `internal` with the request id |
 | `reading the chat's capabilities failed` | error | a request the chat's mark carries could not read the person's capabilities; it was answered `internal` |
 
-The request log has a turn as one line, `POST /api/v1/tenants/<slug>/chat`, written when the turn
+The request log has a turn as one line, `POST /api/v1/teams/<slug>/chat`, written when the turn
 ends, with its whole duration; every tool call of it as a line of its own, under a request id of its
 own — the calls run through the whole server —; and a stop as `DELETE …/chat/turns`. No line carries
-a message, an instruction or a tool's answer. The tenant's audit view shows the chat's acts with the
+a message, an instruction or a tool's answer. The team's audit view shows the chat's acts with the
 agent `chat/<model>/<conversation>` and the capabilities the chat held; a person's change of the
 chat's capabilities is an installation-level act of that person.
 
@@ -243,7 +243,7 @@ chat's capabilities is an installation-level act of that person.
 
 | Symptom | Check |
 |---|---|
-| No assistant in the top bar | `GET /api/v1/tenants/<slug>/chat` answers `reason`: `not_configured` — no `COWORK_CHAT_PROVIDERS` reached the backend |
+| No assistant in the top bar | `GET /api/v1/teams/<slug>/chat` answers `reason`: `not_configured` — no `COWORK_CHAT_PROVIDERS` reached the backend |
 | The first message ends with *Chat provider failed* | the log line `the chat's provider failed`: `unreachable` — the URL, DNS, an egress policy; `refused` with `401`/`403` — the key; with `404` — the URL (for `openai` it ends in `/v1`, for `anthropic` it has none) or the model's name; LM Studio's message about the context length — load the model with a larger context, or fewer parallel predictions (`lms ps` shows both, [above](#lm-studio-on-the-operators-machine)) |
 | The text arrives all at once at the end, or turns break off | a proxy in front buffers or cuts the stream ([in the chart](#in-the-chart)) |
 | *Timeout* after minutes | the model is slow or a tool call hangs: `COWORK_CHAT_TURN_TIMEOUT`; Stop ends it sooner |

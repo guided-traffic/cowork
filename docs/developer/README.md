@@ -39,11 +39,11 @@ change.
   ([ADR 0046](../adr/0046-spec-first-the-openapi-document-is-the-contract.md), [api.md](api.md)).
 - **One resolver, two credentials.** A request is a token's when it carries an `Authorization`
   header and a browser session's when it carries only the cookie; everything after the resolver —
-  the tenant boundary, the role, the predicates — is the same code. A session's writes are
+  the team boundary, the role, the predicates — is the same code. A session's writes are
   CSRF-checked, nineteen routes take a session only — what can give access, or outlive a leaked
   token, the purge of a deleted ticket and the removal of a consistency check's orphaned objects among them, the unlock of a local account, the chat's
-  turn, its stop and its capabilities, and a global administrator's list of every tenant —, three
-  acts refuse a token in their giving direction in the handler — widening the tenant's settings,
+  turn, its stop and its capabilities, and a global administrator's list of every team —, three
+  acts refuse a token in their giving direction in the handler — widening the team's settings,
   lifting the confidential flag, assigning a confidential ticket to another person — and a temporary
   password gates everything but its own change;
   `X-Cowork-Agent` makes a token's or a session's request an agent's and only narrows it, and
@@ -56,17 +56,22 @@ change.
   tool call a request through the whole pipeline, never a shortcut to the store ([mcp.md](mcp.md), [chat.md](chat.md)).
 - **Two logins, one kind of session.** The local login checks a password; the identity provider's
   login is the OpenID Connect code flow with PKCE against an issuer discovered at start. Its groups
-  decide who gets in and, through each tenant's mappings, who belongs where; its session reads
+  decide who gets in and, through each team's mappings, who belongs where; its session reads
   them again every fifteen minutes inside the resolver — one request claims the refresh and asks the
   issuer holding no connection, the others are served — and its person's tokens meet the same gate
   ([architecture.md](architecture.md#the-two-logins),
   [identity provider](../security/identity-provider.md)).
-- **The tenant boundary, then the visibility predicate.** A request under
-  `/api/v1/tenants/{tenant}` is admitted to the tenant before any handler runs — a member, or a
-  global administrator without a role to the tenant's administration only; inside, every
-  query runs in a transaction bound to that tenant, and the predicates in SQL hide restricted
+- **A team is stored as a tenant.** Every surface says team — the UI, the API, `cowork-mcp`, the
+  configuration, the chart, the metrics —, and the names before stay readable for one release
+  ([api.md](api.md#deprecated-names)); the database and the code that names what it stores keep
+  the word: `tenants`, `tenant_id`, `app.tenant_id`, `app_tenant_id()`, `tenantFrom`, `tenantScope`,
+  `InTenant` ([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1).
+- **The team boundary, then the visibility predicate.** A request under
+  `/api/v1/teams/{team}` is admitted to the team before any handler runs — a member, or a
+  global administrator without a role to the team's administration only; inside, every
+  query runs in a transaction bound to that team, and the predicates in SQL hide restricted
   projects and confidential tickets. What the caller may not see answers exactly like what does
-  not exist ([api.md](api.md#the-tenant-boundary), [data-access.md](data-access.md#visibility-in-sql)).
+  not exist ([api.md](api.md#the-team-boundary), [data-access.md](data-access.md#visibility-in-sql)).
 - **Every write is `Mutate`, and every act is an audit row.** A request's write commits through
   `store.Mutate` together with one audit row per act it records — no act, no commit — and a
   ticket's act and a membership's are published to the event streams at commit; a job commits
@@ -95,7 +100,7 @@ change.
 | [repository-layout.md](repository-layout.md) | You are new and want the tree |
 | [package-map.md](package-map.md) | You are looking for where something lives and what it is responsible for |
 | [architecture.md](architecture.md) | You want the picture: what runs where, what a request goes through, what happens at start |
-| [api.md](api.md) | You touch the API: the document, generation, the pipeline, authentication, the tenant's dashboard, the tenant boundary, authorization, errors, idempotency, versions, paging, filters, the deprecated names a rename keeps for a release |
+| [api.md](api.md) | You touch the API: the document, generation, the pipeline, authentication, the team's dashboard, the team boundary, authorization, errors, idempotency, versions, paging, filters, the deprecated names a rename keeps for a release |
 | [data-access.md](data-access.md) | You write SQL or a mutation: the two roles, the wrappers, the settings the policies read, the visibility lint, the list builder, locks, jobs, publication |
 | [domain.md](domain.md) | You change a rule of tickets, links, transitions, questions, comments, interest, progress or time |
 | [storage.md](storage.md) | You touch attachments or the object storage, or the consistency check of the bytes against their metadata |
@@ -103,9 +108,9 @@ change.
 | [metrics.md](metrics.md) | You touch the Prometheus metrics: the registry and who records what, the metrics listener, the generated Grafana dashboard, the consistency family read from the database; or you add an instrument |
 | [frontend.md](frontend.md) | You touch the UI: the folders, the theme and the logo, the services, how an event reaches the screen, the pages — the import and the export among them —, the generated client, `make dev` |
 | [markdown-grammar.md](markdown-grammar.md) | You touch the Markdown export or the context document, or need their exact form |
-| [import-and-export.md](import-and-export.md) | You touch the import or the project and tenant export: the dry run and its report, the execution, how a ticket file is read and mapped, the archive, `cowork-mcp export` |
+| [import-and-export.md](import-and-export.md) | You touch the import or the project and team export: the dry run and its report, the execution, how a ticket file is read and mapped, the archive, `cowork-mcp export` |
 | [rendered-markdown.md](rendered-markdown.md) | You touch how a body, a comment, a question's options or its answer becomes HTML: the renderer, the sanitiser's allow-list, the fields and the route that answer it, the component that shows it |
-| [search.md](search.md) | You touch the search: the two routes, the query that ranks and cuts snippets, the union across tenants, the cursor, the search box and its results, and how the lists' `q` filter and the MCP tool `search` relate |
+| [search.md](search.md) | You touch the search: the two routes, the query that ranks and cuts snippets, the union across teams, the cursor, the search box and its results, and how the lists' `q` filter and the MCP tool `search` relate |
 | [mcp.md](mcp.md) | You touch `cowork-mcp`: the tool catalogue, the MCP layer, the hooks and subcommands, the Claude Code plugin; or you add a tool |
 | [chat.md](chat.md) | You touch the chat in the UI: the turn and its stop, the loop, the loopback, the person's capabilities, the providers and the gateway to the model, the stream and the panel, the shell's content-security policy; or you add a tool to the chat |
 | [build-test-lint.md](build-test-lint.md) | You want to build, generate, run or lint anything, locally or the images together |
@@ -119,40 +124,40 @@ change.
 
 | Flow | The fact | Where |
 |---|---|---|
-| Backend start | Configuration is validated completely before anything else runs; the migration runs as the owner role before the pool opens; `serve` refuses a role that could bypass row-level security and a dirty or pending schema; a configured identity provider must be discoverable; then the local administrator and the bootstrap tenant are synchronised under an advisory lock | [architecture.md](architecture.md#backend-startup-sequence-cowork-serve) |
-| Backend request | Request id, the HTTP instruments, log and recovery wrap a mux; `/api/` and `/auth/` run the pipeline: route in the document, authenticate (token or cookie — a provider's session refreshed when due, a provider person's token held to the gate), the session rules (CSRF, an agent-marked session refused what only a session does, temporary password), tenant boundary, limits, validation, then the generated handler — or, for the event stream and a turn of the chat, a handler of their own that streams | [architecture.md](architecture.md#backend-request-path), [api.md](api.md#the-pipeline) |
+| Backend start | Configuration is validated completely before anything else runs; the migration runs as the owner role before the pool opens; `serve` refuses a role that could bypass row-level security and a dirty or pending schema; a configured identity provider must be discoverable; then the local administrator and the bootstrap team are synchronised under an advisory lock | [architecture.md](architecture.md#backend-startup-sequence-cowork-serve) |
+| Backend request | Request id, the HTTP instruments, log and recovery wrap a mux; `/api/` and `/auth/` run the pipeline: a deprecated twin's path read as its team path, route in the document, authenticate (token or cookie — a provider's session refreshed when due, a provider person's token held to the gate), the session rules (CSRF, an agent-marked session refused what only a session does, temporary password), team boundary, limits, validation, then the generated handler — or, for the event stream and a turn of the chat, a handler of their own that streams | [architecture.md](architecture.md#backend-request-path), [api.md](api.md#the-pipeline) |
 | A local login | The password is verified — against the account's hash or a dummy, one computation either way — before the attempt is recorded under the username's advisory lock; every refusal is the same `401`; a success commits a session whose cookie value is never stored | [api.md](api.md#the-login-flows), [local-accounts](../security/local-accounts.md) |
 | A login through the identity provider | The start seals the state, the nonce and the PKCE verifier into a cookie and redirects; the callback checks them, redeems the code, verifies the ID token, and one transaction under the person's advisory lock applies the gate, keeps the person, derives the memberships and makes the session | [architecture.md](architecture.md#the-two-logins), [identity provider](../security/identity-provider.md) |
-| A read | A read-only transaction bound to the tenant and the caller; the predicates in SQL decide what exists for the caller | [data-access.md](data-access.md#the-wrappers) |
+| A read | A read-only transaction bound to the team and the caller; the predicates in SQL decide what exists for the caller | [data-access.md](data-access.md#the-wrappers) |
 | A write | `Mutate` commits the change with one audit row per act, stores a keyed response, and publishes a ticket's acts and the membership acts with `NOTIFY` (not downloads, exports, time entries or an act marked quiet) — or commits nothing | [data-access.md](data-access.md#mutate-acts-idempotency-publication) |
-| A search | One statement per tenant, every text read through its ticket's predicate, one hit per ticket at its best match by `ts_rank`, the snippet cut of the page's rows only; across the person's tenants one read each, merged by rank | [search.md](search.md) |
+| A search | One statement per team, every text read through its ticket's predicate, one hit per ticket at its best match by `ts_rank`, the snippet cut of the page's rows only; across the person's teams one read each, merged by rank | [search.md](search.md) |
 | Rendered text | Rendered on every read: goldmark, the tree rewritten — raw HTML as text, links held to their schemes, images only of the ticket's raster attachments —, then bluemonday's allow-list; shown through Angular's sanitiser | [rendered-markdown.md](rendered-markdown.md) |
 | An event | `NOTIFY` at commit, one listener per replica, a hub that filters per stream; a key and a version — for `membership.changed` the ids of what changed — never content | [events.md](events.md) |
 | An import | A writer's act of the project, an agent's included, the job its maker's: a dry run reads the upload into a report and keeps the files; the execution analyses them again with the person's corrections under the project's rank lock and writes every ticket, question and link of the files it can import in one transaction, leaving out each file with an error or a conflict; one `project.changed` announces it; in the browser, the project's import page and the job's own address; on a person's machine, `cowork-mcp import` | [import-and-export.md](import-and-export.md), [frontend.md](frontend.md#the-import-and-the-export) |
-| A deletion | A tenant administrator's act, never an agent's: the ticket keeps everything and answers like a missing one everywhere but the tenant's bin — every query carries `deleted_at IS NULL` beside the visibility predicate, held to it by a lint —; the bin restores it, and the purge, an explicit act or a job thirty days later, removes it and what belongs only to it under restrictive policies, empties its audit rows through an owner function and removes its files after the commit | [data-access.md](data-access.md#deletion-and-the-purge), [domain.md](domain.md#deletion-the-bin-and-the-purge) |
-| The consistency check | Once a day, in the hour after 03:00 UTC, one replica lists each tenant's objects and reads its attachment rows behind the listing, a thousand objects at a time, and keeps what disagrees for the tenant's administrators — the missing files, the objects no row names —, removing nothing; an administrator accepts a loss or, in a browser session, confirms the removal of the orphans, each asked again first; `cowork check-consistency` runs it at once | [storage.md](storage.md#the-consistency-check), [data-access.md](data-access.md#the-consistency-checks-tables) |
-| A notification | Written by the act's own transaction for each person the act tells — an active member who sees the ticket, never the actor —, referencing the audit row it renders from; read per tenant, counted on the person-level stream as `inbox.changed` | [data-access.md](data-access.md#notifications), [events.md](events.md#the-person-level-stream) |
+| A deletion | A team administrator's act, never an agent's: the ticket keeps everything and answers like a missing one everywhere but the team's bin — every query carries `deleted_at IS NULL` beside the visibility predicate, held to it by a lint —; the bin restores it, and the purge, an explicit act or a job thirty days later, removes it and what belongs only to it under restrictive policies, empties its audit rows through an owner function and removes its files after the commit | [data-access.md](data-access.md#deletion-and-the-purge), [domain.md](domain.md#deletion-the-bin-and-the-purge) |
+| The consistency check | Once a day, in the hour after 03:00 UTC, one replica lists each team's objects and reads its attachment rows behind the listing, a thousand objects at a time, and keeps what disagrees for the team's administrators — the missing files, the objects no row names —, removing nothing; an administrator accepts a loss or, in a browser session, confirms the removal of the orphans, each asked again first; `cowork check-consistency` runs it at once | [storage.md](storage.md#the-consistency-check), [data-access.md](data-access.md#the-consistency-checks-tables) |
+| A notification | Written by the act's own transaction for each person the act tells — an active member who sees the ticket, never the actor —, referencing the audit row it renders from; read per team, counted on the person-level stream as `inbox.changed` | [data-access.md](data-access.md#notifications), [events.md](events.md#the-person-level-stream) |
 | Frontend request | the Ingress sends `/api/` and `/auth/` to the backend and the rest to nginx: `/healthz` itself, hashed bundles immutable, everything else `index.html` with `no-store`, the shell's content-security policy on all of the UI, and a `404` problem for an `/api/` or `/auth/` path that reaches it by mistake | [architecture.md](architecture.md#frontend-container) |
 | A change on screen | An event names a key and a version; the tickets service refetches what it holds and reloads the open lists once per burst; every view reads the one cache | [frontend.md](frontend.md#how-a-change-reaches-the-screen) |
 | Migration | golang-migrate over embedded files as the owner role, granting the runtime role named in `cowork.runtime_role`; advisory lock across replicas; a dirty version refuses to start; in the chart the `migrate` init container runs it, or the migration Job, which runs the bootstrap after it | [data-access.md](data-access.md#two-database-roles), [runtime.md](../operations/runtime.md#the-migration-run) |
 | A Claude Code session | The SessionStart hook runs `cowork-mcp session-context`, which finds the binding by the git remotes and prints the active ticket's context; the tools of `internal/tools` call the API through the generated client with the token and the agent header; the Stop hook reminds of a ticket left standing | [mcp.md](mcp.md) |
 | A scrape | The metrics listener, a second port that shares the API listener's lifecycle, answers `/metrics` from one registry that `main.go` makes and hands to every package that records; the pool, the schema state and the consistency counts are read at the scrape, every label value comes from a closed set, the API document's route patterns or the code | [metrics.md](metrics.md) |
-| A turn of the chat | The browser posts the whole conversation and the provider the person picked; the backend streams the turn: it calls that provider's model through `internal/llm`, runs every tool the model calls at once through the server's own handler as the person's agent — the person's chosen capabilities — in the turn's tenant, and ends with `done`, the messages to append — it keeps nothing; Stop aborts the request and `DELETE …/chat/turns` ends the person's turns on the replica | [chat.md](chat.md) |
+| A turn of the chat | The browser posts the whole conversation and the provider the person picked; the backend streams the turn: it calls that provider's model through `internal/llm`, runs every tool the model calls at once through the server's own handler as the person's agent — the person's chosen capabilities — in the turn's team, and ends with `done`, the messages to append — it keeps nothing; Stop aborts the request and `DELETE …/chat/turns` ends the person's turns on the replica | [chat.md](chat.md) |
 
 ## What has no page here
 
 The deletion of a project and import are not built ([architecture.md](architecture.md#what-is-not-built)); the
 deletion of a ticket has sections in [data-access.md](data-access.md#deletion-and-the-purge),
-[domain.md](domain.md#deletion-the-bin-and-the-purge) and [frontend.md](frontend.md#the-tenants-administration),
-the saved filters in [api.md](api.md#filters) and [frontend.md](frontend.md#the-backlog), the tenant's
+[domain.md](domain.md#deletion-the-bin-and-the-purge) and [frontend.md](frontend.md#the-teams-administration),
+the saved filters in [api.md](api.md#filters) and [frontend.md](frontend.md#the-backlog), the team's
 dashboard in [api.md](api.md#the-dashboard), [data-access.md](data-access.md#the-dashboards-queries)
 and [frontend.md](frontend.md#the-dashboard); the inbox
 and the person-level lists — "next for me" among them — are sections of [data-access.md](data-access.md#notifications),
 [api.md](api.md#the-person-level-routes), [events.md](events.md#the-person-level-stream) and
-[frontend.md](frontend.md#the-person-level-pages); the tenant board is a section of
-[frontend.md](frontend.md#the-tenant-board), over the project board's list and the event stream as
-they are, narrowed by a saved filter as the backlog's lists are, and the tenant's ticket list one of
-[frontend.md](frontend.md#the-tenants-ticket-list),
+[frontend.md](frontend.md#the-person-level-pages); the team board is a section of
+[frontend.md](frontend.md#the-team-board), over the project board's list and the event stream as
+they are, narrowed by a saved filter as the backlog's lists are, and the team's ticket list one of
+[frontend.md](frontend.md#the-teams-ticket-list),
 whose address is its filter and which applies the saved filters as the backlog does; the rank
 itself, its rebalancing and the score are sections of
 [domain.md](domain.md#rank) and [domain.md](domain.md#the-score), the repository bindings one of [domain.md](domain.md#repositories),

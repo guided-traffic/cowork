@@ -19,7 +19,9 @@ logs. The variables named here are explained one by one in
    `COWORK_OIDC_CLIENT_SECRET` — are listed the same way once the rest is valid.
    These messages go to stderr as `cowork: …`, before the log exists. They name the variable
    and quote a rejected setting such as a size, a duration or a port — never the value of a URL,
-   a key, a password or a secret.
+   a key, a password or a secret. A variable set under its name before, from when a team was
+   called a tenant, is read as the one that replaces it, and once the log exists it says so at warn,
+   one line each ([README.md, deprecated variable names](../../README.md#deprecated-variable-names)).
 2. **The migration run**, unless `COWORK_MIGRATE_ON_START=false`; then the log says
    `migrations skipped on start`. The chart always sets `false`: the migration runs before the
    server starts, in an init container of the pod or in the migration Job. See below.
@@ -48,7 +50,7 @@ logs. The variables named here are explained one by one in
    identity provider's gate admits nobody …`, and the login page then offers no button
    ([installation.md](installation.md#the-identity-provider)).
 6. **The bootstrap**: the local administrator the variables name is created or brought in step,
-   and the bootstrap tenant is created while no tenant exists — with the administrator group
+   and the bootstrap team is created while no team exists — with the administrator group
    mapped to its `admin` role when `COWORK_ADMIN_GROUP` is set — as `system:bootstrap`, under an
    advisory lock that makes replicas wait for each other
    ([installation.md](installation.md#the-local-administrator)). With neither variable set it
@@ -89,8 +91,8 @@ limit is refused at its next request whether or not the job has run; the job onl
 table small. A purge is irreversible; an installation that must keep a deleted ticket longer has
 no setting for it yet. Every hour each replica also asks whether the consistency check of the
 attachments is due, `consistency-check`: it is once a day in the hour after 03:00 UTC, and at a start
-that finds the last run before the latest 03:00 UTC; one replica then compares every tenant's
-attachments with the bucket and keeps the result for the tenant's administrators, removing nothing
+that finds the last run before the latest 03:00 UTC; one replica then compares every team's
+attachments with the bucket and keeps the result for the team's administrators, removing nothing
 ([backups.md](backups.md#the-consistency-check)). Without object storage it never runs.
 
 ## The migration run
@@ -195,7 +197,9 @@ One line per request — `method`, `path`, `status`, `duration` and the `request
 response carries in `X-Request-Id` and in every problem body — and the lifecycle events named
 above, at `COWORK_LOG_LEVEL` (default `info`) in the format `COWORK_LOG_FORMAT` (default
 `json`; `text` for a terminal). Request bodies, query strings and headers are not logged; an
-event stream's line is written when the stream ends, with its whole duration. The lines worth
+event stream's line is written when the stream ends, with its whole duration. A request to a
+deprecated twin under `/api/v1/tenants` is logged with the path as it was sent, though it is
+answered as its team path ([README.md, API](../../README.md#api-backend)). The lines worth
 an alert or a look:
 
 | Message | Level | Meaning |
@@ -208,17 +212,18 @@ an alert or a look:
 | `token refused` | info | a presented token was expired, revoked, or — its person one of the identity provider's — outside the provider's gate, of another issuer than the configured one, or judged by groups older than `COWORK_OIDC_GROUPS_MAX_AGE` (`not_allowed`); the line names the token id and the reason |
 | the identity provider's lines | info, warn, error | discovery at start, failed logins, the groups refresh, the token gate ([below](#the-login-through-the-identity-provider)) |
 | `client addresses are read through trusted proxies` | info | at start, when `COWORK_TRUSTED_PROXIES` is set; the line lists the networks as parsed |
-| `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap tenant is created` | info | the start's bootstrap changed something — or the migration Job's in job mode; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
+| `a variable is set under its deprecated name; set the variable that replaces it, since a later release no longer reads the name before` | warn | at the start of `serve`, `migrate` and `check-consistency`: a variable renamed when a tenant became a team is set under its name before alone; the line names it, `variable`, and its replacement, `replaced_by` ([README.md](../../README.md#deprecated-variable-names)) |
+| `the local administrator is created`, `… is in step with the configuration`, `… is deactivated: the configuration no longer names it`, `the bootstrap team is created` | info | the start's bootstrap changed something — or the migration Job's in job mode; the line names the username or the slug, never the password. Nothing is logged when nothing changed |
 | `the bootstrap ran after the migration` | info | in the migration Job's log: `COWORK_MIGRATE_BOOTSTRAP` was `true` and the bootstrap succeeded after the schema step |
 | `a stored password hash cannot be verified` | error | an account's hash is damaged or foreign; the login answers its person like a wrong password, and the line carries the request id |
 | `job removed expired rows`, `job failed` | info, error | the hourly jobs ([above](#the-backend)); `job failed` twice in a row is the alert `CoworkJobFailing` ([metrics.md](metrics.md#coworkjobfailing)) |
 | `metrics listening`, `the metrics listener is off` | info | at start: the metrics listener's address, or `COWORK_METRICS_ADDR` empty ([metrics.md](metrics.md)) |
 | `the schema version could not be read for the metrics` | warn | a scrape's read of the version table failed; the line carries the error, the scrape goes without the schema's two series until the next read |
 | `ticket purged` | info | the purge job removed a ticket deleted thirty days ago; the line names its key and how many attachments it had |
-| `consistency check done` | info | the daily consistency check ran: how many tenants, files whose bytes are missing and objects no file names, in all |
-| `the attachments of a tenant are out of step with the bucket` | warn | the check found files whose bytes are missing or objects no file names in a tenant; the line names the tenant's slug and the counts, never a file name ([backups.md](backups.md#the-consistency-check)) |
+| `consistency check done` | info | the daily consistency check ran: how many teams, files whose bytes are missing and objects no file names, in all |
+| `the attachments of a team are out of step with the bucket` | warn | the check found files whose bytes are missing or objects no file names in a team; the line names the team's slug, under `team`, and the counts, never a file name ([backups.md](backups.md#the-consistency-check)) |
 | `the consistency counts could not be read for the metrics` | warn | a scrape's read of the check's results failed; the line carries the error, the scrape goes without the two series until the next read, a minute later |
-| `an orphaned object could not be removed` | error | a tenant administrator confirmed the removal of a check's orphans and the object store refused one; the line names the tenant and the object key, and the next check lists it again |
+| `an orphaned object could not be removed` | error | a team administrator confirmed the removal of a check's orphans and the object store refused one; the line names the team and the object key, and the next check lists it again |
 | `an attachment object of a purged ticket could not be removed`, `a purged ticket had attachments, and no object storage is configured to remove them from` | error, warn | a purge — the job's or an administrator's — committed and an object stays in the bucket that no row names; the line names the ticket and the object key, which the operator may remove by hand |
 | `the chat's provider failed`, `a turn of the chat failed` | warn, error | a turn of the chat ended on its provider — the kind, the status and a clip of the provider's message without the key — or on anything else ([the chat's stream](#the-chats-stream)) |
 | `no object storage configured; attachments cannot be uploaded` | warn | at start, without `COWORK_S3_*` |
@@ -271,7 +276,7 @@ refresh when the issuer refuses the refresh token or the gate no longer admits t
 
 **Failed logins.** Every refusal is `401 invalid_credentials`, and a username nobody has is
 counted and locked like one somebody has, so the answer does not help a guesser. Five failures
-of a username within fifteen minutes lock it — until the window passes, or until a tenant
+of a username within fifteen minutes lock it — until the window passes, or until a team
 administrator unlocks it with `COWORK_LOGIN_LOCKOUT=admin`; the local administrator is
 recovered by rotating its Secret and restarting
 ([installation.md](installation.md#the-local-administrator)). More than
@@ -307,7 +312,7 @@ of its own; the reason is in the backend's log, never on the page:
 | `oidc_failed` | the login could not complete: the state cookie was missing or older than ten minutes, the issuer answered a login the person started with an error, the code was refused, an answer of the issuer redirected or exceeded 1 MiB, the ID token did not verify, the groups claim had a shape that is no list of names, or the login could not be stored | `a login through the identity provider did not succeed` (info) with the request id, the code, the reason and the error — for the token endpoint its status and OAuth error code, never the answer's body; `a login through the identity provider failed` (error) when storing it failed |
 | `login_required` | no failure: the login page signed a person in again by itself after their session ended (`silent=true`, `prompt=none`), and the issuer could not without them — its session ended, or it asks for consent or an account. The page asks the person to sign in with the button | the same info line, its reason `the issuer answered a silent login with the error …`; an issuer that shows its own form instead of answering lands the person there |
 | `not_allowed` | the person is outside the gate — none of their groups is allowed or the administrator group — or deactivated | the person's groups at the issuer, the claim's name (`COWORK_OIDC_GROUPS_CLAIM`), the installation-level `login_refused` row, whose note says which |
-| `not_initialised` | no tenant exists, and the person is not in the administrator group | the first tenant: a global administrator creates it, or `bootstrap.tenant` with `auth.oidc.adminGroup` |
+| `not_initialised` | no team exists, and the person is not in the administrator group | the first team: a global administrator creates it, or `bootstrap.team` with `auth.oidc.adminGroup` |
 
 Common causes of `oidc_failed`: the browser spent more than ten minutes at the issuer; a second
 login started in the same browser replaced the first one's state cookie; the browser dropped the
@@ -317,7 +322,7 @@ another sealed. A redirect URI the issuer has not registered stops the login at 
 own error page, before cowork sees anything.
 
 **A person who belongs nowhere.** A login that passes the gate makes the person, but gives them a
-membership only where a tenant maps one of their groups; a person in no mapped group logs in to an
+membership only where a team maps one of their groups; a person in no mapped group logs in to an
 empty start page until an administrator adds them by the address the issuer sends
 (`POST …/members`).
 
@@ -362,7 +367,7 @@ no endpoint keeps the person signed in there after a logout of cowork
 
 **The record.** A refused login is an installation-level `login_refused` row of
 `system:identity-provider`; so are the persons it makes and changes and the sessions it ends. The
-memberships it derives are rows of their tenants, in the tenant's audit view; the installation-level
+memberships it derives are rows of their teams, in the team's audit view; the installation-level
 rows are readable in the database only.
 
 ## Limits
@@ -377,7 +382,7 @@ revoking its token. Each limit below is a variable and, in the chart, a `backend
 | `COWORK_MAX_JSON_BODY` | `1MiB` | `413 payload_too_large` — before reading when the declared length is larger, while reading otherwise | no limit |
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` | `413` before anything is stored; the upload's body may be 64 KiB larger, for the multipart framing | no limit: one upload at a time is buffered whole, so a single upload can exhaust the container's memory ([attachments.md H-12](../security/attachments.md#h-12)) |
 | `COWORK_ATTACHMENT_MAX_PER_TICKET` | `100` | `409 attachment_limit` | no limit |
-| `COWORK_ATTACHMENT_TENANT_QUOTA` | `0`: none | the bytes a tenant's attachments hold together: an upload that would go above it is `409 attachment_quota` before anything is stored, the tenant's uploads checked one after the other under its lock; the tenant's administrators read the usage on its settings page | no quota — the default ([below](#the-tenants-attachment-quota)) |
+| `COWORK_ATTACHMENT_TEAM_QUOTA` | `0`: none | the bytes a team's attachments hold together: an upload that would go above it is `409 attachment_quota` before anything is stored, the team's uploads checked one after the other under its lock; the team's administrators read the usage on its settings page | no quota — the default ([below](#the-teams-attachment-quota)) |
 | `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled, `504 timeout`; the event stream is exempt, and a turn of the chat after its body is read | no limit |
 | `COWORK_MAX_PAGE_SIZE` | `200` | a larger `limit` is clamped, not refused (without `limit` a page has 50) | no clamp |
 | `COWORK_MAX_QUERY_LENGTH` | `256` characters | a longer full-text `q` — of a ticket list or of a search — is `400 validation_failed` | no limit of its own; the API document still caps `q` at 4096 characters |
@@ -398,22 +403,23 @@ number of streams, each with a buffer of its own. Nothing warns when a limit is 
 log, not the chart, whose notes then ask the Ingress controller for no body limit and an hour's
 read timeout in step. The chart's own defaults set none.
 
-### The tenant's attachment quota
+### The team's attachment quota
 
-`COWORK_ATTACHMENT_TENANT_QUOTA` is the one limit of the table that is off by default: it is no
-bound on what a request costs but on what a tenant keeps, and no figure suits every installation —
-an installation with one tenant has the bucket's size as its bound, and an upgrade that brought a
+`COWORK_ATTACHMENT_TEAM_QUOTA` is the one limit of the table that is off by default: it is no
+bound on what a request costs but on what a team keeps, and no figure suits every installation —
+an installation with one team has the bucket's size as its bound, and an upgrade that brought a
 quota along would start refusing uploads that worked the day before
 ([ADR 0016](../adr/0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
-D6). An installation of several tenants sets it — a size such as `10GiB`, in the chart
-`backend.config.attachmentTenantQuota` in bytes — because without it one tenant, or an agent with
-`upload` in a loop, can fill the storage every tenant shares ([attachments.md H-10](../security/attachments.md#h-10)).
-Every attachment of the tenant counts, its confidential tickets' and restricted projects' too, and a
+D6). An installation of several teams sets it — a size such as `10GiB`, in the chart
+`backend.config.attachmentTeamQuota` in bytes — because without it one team, or an agent with
+`upload` in a loop, can fill the storage every team shares ([attachments.md H-10](../security/attachments.md#h-10)).
+Every attachment of the team counts, its confidential tickets' and restricted projects' too, and a
 deleted ticket's until the purge — thirty days, or an administrator's purge in the bin — removes it:
-deleting a ticket frees no quota, purging it does. Lowering the quota below what a tenant holds
-deletes nothing: the tenant's next upload is refused.
-Each tenant's administrators read what it holds and the quota on the tenant's settings page
-(`GET /api/v1/tenants/{tenant}/attachment-usage`).
+deleting a ticket frees no quota, purging it does. Lowering the quota below what a team holds
+deletes nothing: the team's next upload is refused.
+Each team's administrators read what it holds and the quota on the team's settings page
+(`GET /api/v1/teams/{team}/attachment-usage`). Its name before, `COWORK_ATTACHMENT_TENANT_QUOTA` —
+`attachmentTenantQuota` in the chart —, is still read for this release.
 
 ## What answers what
 
@@ -438,7 +444,7 @@ and of the `X-Request-Id` header tells a client that the answer did not come fro
 
 ## The event stream
 
-`GET /api/v1/tenants/{tenant}/events` is a server-sent event stream of the tenant's changes
+`GET /api/v1/teams/{team}/events` is a server-sent event stream of the team's changes
 that the caller may see
 ([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)).
 Each event carries a key, a version and the kind of change, never content:
@@ -449,8 +455,9 @@ event: ticket.changed
 data: {"key":"dev/COW-1","version":2,"kind":"transitioned"}
 ```
 
-A change of who belongs to the tenant or who sees a project is `membership.changed`, with the
-tenant's slug and the ids of what changed — `tenant`, `person_id`, `project_id`, `mapping_id` — and
+A change of who belongs to the team or who sees a project is `membership.changed`, with the
+team's slug and the ids of what changed — `team`, `person_id`, `project_id`, `mapping_id`, and
+for this release `tenant` beside `team`, the same slug — and
 reaches every member, the
 administrators only, or the administrators and the person it names, by what it is
 ([tenancy.md](../security/tenancy.md#the-event-stream-carries-what-its-subscriber-could-read)).
@@ -458,12 +465,12 @@ A project's rank sorted by the score is `project.changed`, with the project's ke
 no version, and reaches whoever sees the project.
 
 Opened with `?me=true` — as the browser always opens it — it is the person-level stream: it carries
-the events of every tenant the person belongs to, each as that tenant's own stream would judge it,
-over one connection whatever the number of tenants, and `inbox.changed` with `data: {"unread": n}`,
-the person's unread notifications in every tenant, when it opens and once a burst of changes of the
-inbox is over (a tenth of a second). A reconnect replays the gap of every tenant it follows; the
+the events of every team the person belongs to, each as that team's own stream would judge it,
+over one connection whatever the number of teams, and `inbox.changed` with `data: {"unread": n}`,
+the person's unread notifications in every team, when it opens and once a burst of changes of the
+inbox is over (a tenth of a second). A reconnect replays the gap of every team it follows; the
 count carries no `id:` and is not replayed, and the browser reloads its person-level pages when the
-stream opens. Every tenant it follows costs one database transaction when it opens, at every
+stream opens. Every team it follows costs one database transaction when it opens, at every
 heartbeat and on every act that changes what the person may see there
 ([tenancy.md](../security/tenancy.md#the-person-level-stream)).
 
@@ -476,7 +483,7 @@ How it behaves, as somebody running it sees it:
   a quiet stream and checks the token and the membership again; the stream ends when either
   is gone.
 - **A change of who sees what reaches the open streams at once.** A project created, a membership,
-  a mapping, a restriction or an access entry changed makes every open stream of the tenant read
+  a mapping, a restriction or an access entry changed makes every open stream of the team read
   the person's role and the projects they see again — two small queries per stream, once or twice for a
   burst of such changes — before it passes its next event; the heartbeat repeats it for a change
   made in the database past the API.
@@ -514,7 +521,7 @@ needs its own way to pass `text/event-stream` unbuffered.
 
 ## The chat's stream
 
-`POST /api/v1/tenants/{tenant}/chat` runs one turn of the chat in the UI and answers it as
+`POST /api/v1/teams/{team}/chat` runs one turn of the chat in the UI and answers it as
 server-sent events ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md);
 setting the chat up is [chat.md](chat.md)). What an operator meets:
 

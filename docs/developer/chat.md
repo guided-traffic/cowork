@@ -10,7 +10,7 @@ running it is [docs/operations/chat.md](../operations/chat.md); what it leaves o
 against the tree on 2026-10-05.
 
 ```
-ChatPanel ─ ChatService ─ fetch POST /api/v1/tenants/{tenant}/chat ─► Ingress ─────► httpserver ─► api pipeline
+ChatPanel ─ ChatService ─ fetch POST /api/v1/teams/{team}/chat ─► Ingress ─────────► httpserver ─► api pipeline
    │                                                                                (session, CSRF, boundary,
    │                                                                                 body limit, validation)
    ◄──── text/event-stream: text, tool_call, ui, tool_result, error, done ─────────┐   │
@@ -40,7 +40,7 @@ ChatPanel ─ ChatService ─ fetch POST /api/v1/tenants/{tenant}/chat ─► In
 | [`internal/store/chat.go`](../../backend/internal/store/chat.go), [`queries/*/chat.sql`](../../backend/internal/store/queries/read/chat.sql), [migration 24](../../backend/internal/store/migrations/000024_chat_capabilities.up.sql) | `DB.ChatCapabilities`, read as the person in a transaction of its own; `GetChatCapabilitiesForUpdate`, `SetChatCapabilities`; the table `chat_capabilities` and its policies |
 | [`internal/chat/chat.go`](../../backend/internal/chat/chat.go) | `Run` and the loop (`runner`): `offered`, the tools the chat names; `catalogue`; `split` — the conversation into what the model reads, a call without an answer answered as not run —; `runCall` with the derived keys (`keys`), `answer`, `calls` — the model's calls as the conversation keeps them —, `clipText` |
 | [`internal/chat/check.go`](../../backend/internal/chat/check.go) | `Check`: the conversation a turn may send |
-| [`internal/chat/loopback.go`](../../backend/internal/chat/loopback.go) | `Loopback` — the tool calls to the server's own handler, in the turn's tenant only —, `Editor` (the cookie, the CSRF pair, the mark), `Mark`, `NewSession` (the capabilities the session assumes) |
+| [`internal/chat/loopback.go`](../../backend/internal/chat/loopback.go) | `Loopback` — the tool calls to the server's own handler, in the turn's team only —, `Editor` (the cookie, the CSRF pair, the mark), `Mark`, `NewSession` (the capabilities the session assumes) |
 | [`internal/chat/prompt.go`](../../backend/internal/chat/prompt.go), [`ui.go`](../../backend/internal/chat/ui.go) | the instructions of a turn and `holds`, the capabilities in words; `open_ticket`, `open_backlog`, `open_board` |
 | [`internal/llm/llm.go`](../../backend/internal/llm/llm.go) | `Provider`, the neutral `Request`, `Message`, `ToolCall`, `Tool`, `Response`; `Config`, `New`; `Error` with its kinds |
 | [`internal/llm/client.go`](../../backend/internal/llm/client.go), [`openai.go`](../../backend/internal/llm/openai.go), [`anthropic.go`](../../backend/internal/llm/anthropic.go), [`think.go`](../../backend/internal/llm/think.go) | the HTTP client and the bounds, the two wire formats, the filter of a reasoning model's `<think>` |
@@ -48,7 +48,7 @@ ChatPanel ─ ChatService ─ fetch POST /api/v1/tenants/{tenant}/chat ─► In
 | [`internal/auth/principal.go`](../../backend/internal/auth/principal.go) | `DefaultChatCapabilities` |
 | [`cmd/cowork/main.go`](../../backend/cmd/cowork/main.go) `chatOf` | a gateway per provider, the start's log lines, `api.ChatOptions` with the signal context as `Shutdown` and the root handler, built after the API, as `Loopback` |
 | [`test/stubllm`](../../backend/test/stubllm/stubllm.go) | the provider of the tests; `Cancelled` counts the requests a client ended while the stub held its answer back |
-| [`frontend/src/app/core/chat.service.ts`](../../frontend/src/app/core/chat.service.ts) | `ChatService` — the availability, the providers and the person's pick, the capabilities and the notice after a change of them that offers a new conversation (`noteChange`), the conversation per tenant, one turn at a time, Stop —, `TurnRecord`, `pageContext`, `navigable`, `CHAT_FETCH` |
+| [`frontend/src/app/core/chat.service.ts`](../../frontend/src/app/core/chat.service.ts) | `ChatService` — the availability, the providers and the person's pick, the capabilities and the notice after a change of them that offers a new conversation (`noteChange`), the conversation per team, one turn at a time, Stop —, `TurnRecord`, `pageContext`, `navigable`, `CHAT_FETCH` |
 | [`frontend/src/app/core/chat-stream.ts`](../../frontend/src/app/core/chat-stream.ts) | `EventStreamParser`, `chatEvent`, `chatEvents`: the stream of a `fetch` read as it arrives |
 | [`frontend/src/app/layout/chat-panel.ts`](../../frontend/src/app/layout/chat-panel.ts), `.html`, `.scss` | `ChatPanel`; the toggle and the deferred panel in [`shell.html`](../../frontend/src/app/layout/shell.html) |
 | [`frontend/src/app/shared/capabilities.ts`](../../frontend/src/app/shared/capabilities.ts) | `capabilityMeanings`, `assisted` — shared with the token page |
@@ -58,7 +58,7 @@ ChatPanel ─ ChatService ─ fetch POST /api/v1/tenants/{tenant}/chat ─► In
 
 1. **The pipeline** treats `POST …/chat` as a session-only write: authentication by the cookie (a
    token is `403 session_required`), the session rules — the CSRF check, the agent header refused
-   on what only a session does, a temporary password —, the tenant boundary, the request timeout
+   on what only a session does, a temporary password —, the team boundary, the request timeout
    while the body is read, `COWORK_MAX_JSON_BODY`, validation against `ChatTurn`
    ([api.md](api.md#the-pipeline)). Then `serveOperation` hands the request to `serveChat` with the
    context from before the request timeout.
@@ -68,7 +68,7 @@ ChatPanel ─ ChatService ─ fetch POST /api/v1/tenants/{tenant}/chat ─► In
    `Check` — it begins and ends with the person's message; the model's messages carry text or calls
    with ids of their own; a tool's message answers a call of the model's message before it
    (`400 validation_failed` naming the message) —, reads the person's chat capabilities, builds the
-   turn (`chatTurn`), and registers it (`startTurn`: the turn's tenant and the cancel of its context;
+   turn (`chatTurn`), and registers it (`startTurn`: the turn's team and the cancel of its context;
    `429 chat_busy` beyond `COWORK_CHAT_TURNS_PER_PERSON` on this replica). Everything before this
    point is a problem answer.
 3. **`streamTurn`** answers `200 text/event-stream` with `X-Accel-Buffering: no`, starts the
@@ -102,11 +102,11 @@ to 16,000 characters and the person to 2,000 (`clipText` says how much was left 
 
 The turn's context is the request's (from before the request timeout), so the browser's abort of the
 `fetch` ends it: the model's request is cancelled with it, and so is a tool call in flight, whose
-context the loopback ties to the turn's. `DELETE /api/v1/tenants/{tenant}/chat/turns`
+context the loopback ties to the turn's. `DELETE /api/v1/teams/{team}/chat/turns`
 (`StopChatTurns`) is the second path: `startTurn` registers every turn this replica runs — its
-tenant, the `context.CancelCauseFunc` of its context, and a channel closed when it has ended — in the
+team, the `context.CancelCauseFunc` of its context, and a channel closed when it has ended — in the
 same map `COWORK_CHAT_TURNS_PER_PERSON` counts (`handler.turns`); `stopTurns` cancels the person's
-turns in the tenant with the cause `errStopped`, and the route waits until they have ended, at most
+turns in the team with the cause `errStopped`, and the route waits until they have ended, at most
 `stopWait` (five seconds), so a turn sent right after finds their places free. The route is
 session-only in the document, so a token is `403 session_required` and an agent-marked session `403
 agent_forbidden`; the loopback refuses the chat's own routes besides. The registry is the replica's:
@@ -138,10 +138,14 @@ handler.
   authenticates and admits the call anew (`detached`).
 - **What it refuses** before anything is served (`allowed`): a path that is not clean, the chat's own
   routes (`/chat` and below: a turn never starts or stops another), the event stream (a recorder would
-  buffer it forever), and any path outside `/api/v1/tenants/<the turn's tenant>` and
-  `/api/v1/tickets/<the turn's tenant>/` — the person's other tenants and `/api/v1/me` included.
-  `NewSession` binds the tools to the page's project or to the tenant, confines a search of every
-  tenant to the turn's (`Session.Tenants`), and names the person (`Session.Person`, so
+  buffer it forever), and any path outside the turn's team and `/api/v1/tickets/<the turn's team>/` —
+  the person's other teams and `/api/v1/me` included. The turn's team is two families for one
+  release, `/api/v1/teams/<the turn's team>` and its deprecated twin `/api/v1/tenants/<the turn's
+  team>` (`families`), and the refusals hold under both: the server answers a twin as the team path,
+  so a twin's chat or event stream is the team's ([api.md](api.md#deprecated-names);
+  `TestTheLoopback`, `TestTheChatStaysInItsTeam`).
+  `NewSession` binds the tools to the page's project or to the team, confines a search of every
+  team to the turn's (`Session.Teams`), and names the person (`Session.Person`, so
   `open_question` asks `me` without `/api/v1/me`).
 
 `HandlerDoer` keeps the whole answer in memory before the tool reads it; the bounds are the API's —
@@ -221,19 +225,19 @@ standard's event-stream format — a character split between two pieces waits fo
 are read past — and `chatEvent` holds each event's data to the shape the document gives it, reading
 past one it does not know.
 
-[`ChatService`](../../frontend/src/app/core/chat.service.ts) holds the tenant's availability (a
+[`ChatService`](../../frontend/src/app/core/chat.service.ts) holds the team's availability (a
 `resource` over `GET …/chat`), the providers and the person's pick (`provider`: the stored id while it
 is configured, else the first; `setProvider` keeps it under `cowork.chat.provider.<person id>` in
 `localStorage`, every access in `try`), the capabilities (a `resource` over `GET /api/v1/me/chat`,
-read while the panel is open; `setCapabilities` puts the whole set), one conversation per tenant —
-cleared when another tenant's pages open, never written to storage —, and one turn at a time. `send`
+read while the panel is open; `setCapabilities` puts the whole set), one conversation per team —
+cleared when another team's pages open, never written to storage —, and one turn at a time. `send`
 posts the whole conversation with the page (`pageContext`: the path, the project's key, the ticket's
 short key, each in the shape the document allows), the conversation's id and the picked provider's
 id, with `X-Requested-With: cowork` and the session's cookie. `done` appends its messages; a turn that
 ends without `done` — Stop, a cut connection — is written down by `TurnRecord` from the events it saw,
 so the model learns next time what happened: the calls that reported a result with their summary, a
 call without a result left out. A `ui` event navigates only when `navigable` accepts its path.
-`stop` aborts the `fetch` and calls `DELETE …/chat/turns` for the turn's tenant, once; a refused stop
+`stop` aborts the `fetch` and calls `DELETE …/chat/turns` for the turn's team, once; a refused stop
 is reported as a problem. A `chat_busy` refusal is a notice whose Stop is `stopElsewhere`, the same
 route; a `done` with the reason `stopped` — stopped from elsewhere — shows as stopped. Whether the
 panel is open is `cowork.chat.<person id>` in `localStorage`.
@@ -247,7 +251,7 @@ select, only where more than one provider is configured, off while a turn runs �
 *What the assistant may do*: a section with the nine capabilities as switches, each with its meaning
 from [`shared/capabilities.ts`](../../frontend/src/app/shared/capabilities.ts), and the *Full* and
 *Assisted* shortcuts; a switch or a shortcut sends the whole set, and the switches are off while it is
-on its way. The shell shows the toggle while the tenant's chat is available and loads the panel's
+on its way. The shell shows the toggle while the team's chat is available and loads the panel's
 code with `@defer` once it is. The panel takes 24rem beside the content and lies over it on a window
 narrower than 64rem (`overlayQuery` in [`shell.ts`](../../frontend/src/app/layout/shell.ts)), where
 Escape and the focus moving into the page beneath close it.
@@ -293,10 +297,10 @@ watching the console for a violation; nginx has no unit test
   availability with two providers; the person's pick and the default; a turn that files a ticket and
   ranks it to `now`, its acts the person's with the chat's mark, the default set and a key; the
   person's capabilities — a close refused, chosen in a session only, recorded, then run at once; a
-  token, a CSRF failure and an agent-marked session refused; a turn that stays in its tenant; the
+  token, a CSRF failure and an agent-marked session refused; a turn that stays in its team; the
   turn's time, its keep-alive and a failing provider; the agent header on a session; the turn limit
   and the shutdown; the stop of a slowly streaming turn within a second, the stub seeing its request
-  cancelled, another person's turn and the person's turn in another tenant untouched; a question
+  cancelled, another person's turn and the person's turn in another team untouched; a question
   asked of the person; the policies of `chat_capabilities`.
 - **Frontend** (vitest on jsdom): [`chat-stream.spec.ts`](../../frontend/src/app/core/chat-stream.spec.ts),
   [`chat.service.spec.ts`](../../frontend/src/app/core/chat.service.spec.ts),

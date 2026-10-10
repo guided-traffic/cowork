@@ -1,7 +1,7 @@
 # The assistant in the browser
 
-What the chat in the UI may make cowork do and on whose behalf, what of a tenant reaches a model and
-where, how a turn is kept in its tenant, what the person's choice of capabilities bounds, how a turn
+What the chat in the UI may make cowork do and on whose behalf, what of a team reaches a model and
+where, how a turn is kept in its team, what the person's choice of capabilities bounds, how a turn
 is stopped, how the panel shows what a model writes, and what bounds a turn — as built on 2026-10-07,
 with the owner's answers of 2026-10-04
 ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)).
@@ -15,21 +15,21 @@ the agent rules both meet are [tokens.md](tokens.md); the policy the shell sends
 ```
  browser — the person's session                backend                                providers
 ┌───────────────────────────┐  POST …/chat   ┌──────────────────────────────────┐   ┌───────────────┐
-│ panel: text only          │ ─────────────► │ turn: session, CSRF, tenant,     │   │ the models the│
-│ conversation, per tenant, │  (provider id) │ limits, the provider picked      │   │ operator lists│
+│ panel: text only          │ ─────────────► │ turn: session, CSRF, team,       │   │ the models the│
+│ conversation, per team,   │  (provider id) │ limits, the provider picked      │   │ operator lists│
 │ sent back with each turn  │ ◄───────────── │ loop ─► gateway ───────────────────►│ in the chart  │
 │ Stop: abort + DELETE      │  event stream  │  │  instructions, conversation,   │   │ (one per turn)│
 │ capabilities: PUT /me/chat│ ─────────────► │  │  tools' answers, its key       │◄──│               │
 └───────────────────────────┘                │  └─► tools ─► loopback ─► the API │   └───────────────┘
                                              │      pipeline as the person's    │
                                              │      agent: the person's chosen  │
-                                             │      capabilities, the tenant    │
+                                             │      capabilities, the team      │
                                              └──────────────────────────────────┘
 ```
 
 | Party | Trusted for | Not trusted for |
 |---|---|---|
-| The operator's configuration | which providers exist — their addresses, keys and models (`COWORK_CHAT_PROVIDERS` and `COWORK_CHAT_<ID>_*`, the chart's `chat.providers`) —, taken as given, and with it where every tenant's text may go | — |
+| The operator's configuration | which providers exist — their addresses, keys and models (`COWORK_CHAT_PROVIDERS` and `COWORK_CHAT_<ID>_*`, the chart's `chat.providers`) —, taken as given, and with it where every team's text may go | — |
 | The person | which provider a turn talks to, among those configured; which capabilities the chat holds | the conversation the browser sends back ([H-39](#h-39)) |
 | A provider | keeping what a turn sends it, under its own terms | anything it answers: its text is shown as text, its tool calls are requests the API judges |
 | The model | nothing | its calls run as an agent's with the person's chosen capabilities and the agent rules ([H-38](#h-38)) |
@@ -39,7 +39,7 @@ the agent rules both meet are [tokens.md](tokens.md); the policy the shell sends
 ## What reaches a provider
 
 **What a call of the model carries** ([`chat/prompt.go`](../../backend/internal/chat/prompt.go),
-[`chat/chat.go`](../../backend/internal/chat/chat.go)): the instructions — the tenant's name and slug,
+[`chat/chat.go`](../../backend/internal/chat/chat.go)): the instructions — the team's name and slug,
 the page the person is on (its path, the project's key, the ticket's short key), the date, the rules,
 the capabilities the chat holds; the conversation as the browser sent it, its tools' answers among
 it, each held only to the 100,000 characters of a text; every tool's answer the turn itself makes,
@@ -49,11 +49,11 @@ token name, with which reason or note; the tools' descriptions with the capabili
 and the provider's key in a header. Not the session cookie, no token, no audit row. A provider receives every
 call from the backend's pods, never from the browser.
 
-**Everything the person can read in the turn's tenant may reach the provider the person picked,
+**Everything the person can read in the turn's team may reach the provider the person picked,
 confidential tickets included.** The owner decided so on 2026-10-04 and accepted the risk: there is
-no tenant consent, no statement that a provider runs inside or outside the installation, and no
-confidential ticket is withheld ([H-37](#h-37)). Every member of every tenant has the chat once the
-installation configures a provider. What gates where a tenant's text goes is the list of providers
+no team consent, no statement that a provider runs inside or outside the installation, and no
+confidential ticket is withheld ([H-37](#h-37)). Every member of every team has the chat once the
+installation configures a provider. What gates where a team's text goes is the list of providers
 the operator puts into the chart — nothing in the application asks anyone else.
 
 **Which provider.** A turn names one by its id among those configured, or gets the first
@@ -77,20 +77,22 @@ error names the variable and quotes no URL, no key and no entry of the list that
 provider's refusal reaches the person as a sentence of the gateway's own, and the log gets a clip
 with that provider's key taken out ([H-42](#h-42)).
 
-## A turn works in its tenant
+## A turn works in its team
 
 The tool calls go to the server's own handler, through
 [`chat.Loopback`](../../backend/internal/chat/loopback.go), which sends a request only to
-`/api/v1/tenants/<the turn's tenant>` and below and to the key resolver of that tenant
-(`/api/v1/tickets/<tenant>/…`) — no other tenant, no `/api/v1/me` route, not the chat's own routes
-(the turn and the stop) and not the event stream, and no path that is not clean. A search of "every
-tenant" looks through the turn's tenant alone (`Session.Tenants`), the page tools open nothing of
-another tenant, and the model is told it works in that tenant. `TestTheChatStaysInItsTenant` has the
-model ask for a ticket of the person's other tenant and search everything: neither answer carries the
-ticket, and nothing of it reaches the provider. A turn therefore sends one tenant's text, and no other
-tenant's rides along.
+`/api/v1/teams/<the turn's team>` and below — or to the same paths under `/api/v1/tenants`, their
+deprecated twins for this release, which the server answers as the team paths — and to the key
+resolver of that team (`/api/v1/tickets/<team>/…`): no other team, no `/api/v1/me` route, not the
+chat's own routes (the turn and the stop) and not the event stream, under either family, and no
+path that is not clean (`TestTheLoopback`). A search of "every
+team" looks through the turn's team alone (`Session.Teams`), the page tools open nothing of
+another team, and the model is told it works in that team. `TestTheChatStaysInItsTeam` has the
+model ask for a ticket of the person's other team and search everything: neither answer carries the
+ticket, and nothing of it reaches the provider. A turn therefore sends one team's text, and no other
+team's rides along.
 
-Inside the tenant, the tool calls see what the person sees and nothing more: they are the person's
+Inside the team, the tool calls see what the person sees and nothing more: they are the person's
 requests, held to the boundary, the role, the project restriction and the confidential predicate
 like any ([tenancy.md](tenancy.md)).
 
@@ -125,7 +127,7 @@ the missing capability, which the model reads as the tool's answer
 (`TestTheChatHoldsThePersonsCapabilities`).
 
 - **Chosen in a browser session only.** `PUT /api/v1/me/chat` replaces the set; a token is `403
-  session_required` — the set is what the person's agent may do in every tenant of the person, access
+  session_required` — the set is what the person's agent may do in every team of the person, access
   that would outlive a leaked token's revocation — and a session the header marks is `403
   agent_forbidden`, so the chat never widens its own ([tokens.md](tokens.md#what-only-a-session-does)).
   `GET /api/v1/me/chat` reads it with either credential.
@@ -134,7 +136,7 @@ the missing capability, which the model reads as the tool's answer
   policy, no delete grant, and a `CHECK` that admits the nine capabilities only — the one
   [migration 40](../../backend/internal/store/migrations/000040_capability_checks_set_horizon_only.up.sql)
   put in place of [migration 24](../../backend/internal/store/migrations/000024_chat_capabilities.up.sql)'s
-  (`TestTheChatCapabilitiesArePersonal`): no administrator, of the person's tenant or of the
+  (`TestTheChatCapabilitiesArePersonal`): no administrator, of the person's team or of the
   installation, reads or changes it.
 - **Recorded.** A change is the person's installation-level `updated` act on their person, with the set
   before and after; the same set again records nothing.
@@ -164,8 +166,8 @@ question. Nothing enforces either ([H-38](#h-38)).
 **The panel's Stop ends the running turn at once**
 ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)
 D8). It aborts the turn's request — the turn's context is the request's, so the model's request and a
-tool call in flight are cancelled — and it calls `DELETE /api/v1/tenants/{tenant}/chat/turns`, which
-ends every running turn of the session's person in the tenant on the replica that answers it: each
+tool call in flight are cancelled — and it calls `DELETE /api/v1/teams/{team}/chat/turns`, which
+ends every running turn of the session's person in the team on the replica that answers it: each
 turn is registered with the cancel of its context while it runs, the stop cancels it, the turn's
 stream ends with `done` and the reason `stopped`, and the route answers `204` once those turns have
 ended, or after five seconds ([`api/chat.go`](../../backend/internal/api/chat.go) `StopChatTurns`,
@@ -173,9 +175,9 @@ ended, or after five seconds ([`api/chat.go`](../../backend/internal/api/chat.go
 browser aborted it. The `chat_busy` notice — a turn of the person runs in another tab, say — offers a
 Stop that calls the route. `TestStopEndsThePersonsRunningTurns` has a model that streams its first
 piece and then stalls: the route ends the turn within a second, the stub provider sees its request
-cancelled, and a turn of another person and the person's turn in another tenant run on.
+cancelled, and a turn of another person and the person's turn in another team run on.
 
-- **Only the person's own turns, in the tenant named.** The route takes a session only, any member's;
+- **Only the person's own turns, in the team named.** The route takes a session only, any member's;
   a token is `403 session_required`, a session the header marks `403 agent_forbidden` — the chat stops
   nothing — and the CSRF check holds.
 - **What happened stays.** A tool call that completed before the stop has acted; one in flight is
@@ -190,7 +192,7 @@ text, line breaks kept, never as HTML and never as rendered Markdown
 ([`layout/chat-panel.html`](../../frontend/src/app/layout/chat-panel.html)); a tool's arguments are
 JSON text in a folded block. On 2026-10-04 a model answer carrying `<img src=x onerror=…>`, `<script>`
 and `**bold**` showed as those characters in Chromium and WebKit, with no element made and no script
-run. A `ui` event opens a page only when it is a ticket, a backlog or a board of the turn's tenant
+run. A `ui` event opens a page only when it is a ticket, a backlog or a board of the turn's team
 (`navigable` in [`core/chat.service.ts`](../../frontend/src/app/core/chat.service.ts)); anything else
 is shown on the call's card as not opened. The shell's content-security policy is the second line
 should text ever reach the page as markup
@@ -198,7 +200,7 @@ should text ever reach the page as markup
 panel's provider choice and capability switches in a real browser — their component tests run on
 jsdom.
 
-The conversation is held in the page's memory per tenant and is gone when another tenant's pages
+The conversation is held in the page's memory per team and is gone when another team's pages
 open or the page reloads; nothing of it is written to browser storage. Whether the panel is open
 (`cowork.chat.<person id>`) and which provider the person picked (`cowork.chat.provider.<person id>`)
 are the person's preferences in `localStorage`, every access in `try`. What the calls reported before
@@ -218,7 +220,7 @@ D2 as amended). There is no budget ([H-43](#h-43)).
 
 - **The acts** are audit rows like any agent's (above); a change of the chat's capabilities is the
   person's installation-level `updated` act.
-- **The request log** has the turn as one line — `POST /api/v1/tenants/<slug>/chat`, its status and
+- **The request log** has the turn as one line — `POST /api/v1/teams/<slug>/chat`, its status and
   its whole duration, written when the turn ends —, each tool call as a line of its own under a
   request id of its own (the loopback runs the whole server), and each stop as the line `DELETE
   …/chat/turns`. No body, no header, no query, so no message, no instruction and no tool answer.
@@ -237,13 +239,13 @@ D2 as amended). There is no budget ([H-43](#h-43)).
 
 Accepted by the owner on 2026-10-04
 ([ADR 0076](../adr/0076-the-chat-in-the-ui-runs-its-loop-in-the-backend-as-an-agent-of-the-person.md)
-D3), live in every tenant once a provider is configured. The chat sends the picked provider what its
+D3), live in every team once a provider is configured. The chat sends the picked provider what its
 tools read, and the tools read what the person may read: a confidential ticket's title, body,
 comments and questions included, for a person who sees it — an administrator, the assignee, the
 reporter ([tenancy.md](tenancy.md#the-confidential-flag)). A hosted provider then holds them under
-its own retention and terms, for every tenant of the installation; no tenant's administrators are
+its own retention and terms, for every team of the installation; no team's administrators are
 asked, and nothing checks where a provider runs. Mitigation: the operator's choice of providers — a
-hosted provider belongs in `chat.providers` only where every tenant's data, confidential findings
+hosted provider belongs in `chat.providers` only where every team's data, confidential findings
 included, may go to it ([docs/operations/chat.md](../operations/chat.md#adding-a-hosted-provider)).
 
 <a id="h-38"></a>
@@ -252,8 +254,8 @@ included, may go to it ([docs/operations/chat.md](../operations/chat.md#adding-a
 Live by design. Text in a ticket, a comment, a question or an answer can carry instructions, and a
 model may follow them; the person may not even have read that text
 ([agent-client.md](agent-client.md#h-34) H-34). Nothing waits for the person:
-within the API's rules the chat can, at once, file a ticket in any project of the tenant the person
-may file in, replace a ticket's body, comment, ask a question of anyone in the tenant, link two
+within the API's rules the chat can, at once, file a ticket in any project of the team the person
+may file in, replace a ticket's body, comment, ask a question of anyone in the team, link two
 tickets, watch a ticket, move a ticket forward, into `blocked` or out of it, set a progress stage
 short of closing it, take a ticket backward, reopen it or withdraw a done where the API lets an agent —
 and, with the default capabilities, rank, set a ticket's horizon and create a project; the default
@@ -350,11 +352,11 @@ one replica — the Ingress controller, not the browser, is the backend's client
 client to one replica is the controller's configuration; none was tried.
 
 <a id="h-84"></a>
-### H-84 — The loopback admits every route of the turn's tenant; the tools are the bound
+### H-84 — The loopback admits every route of the turn's team; the tools are the bound
 
 Live by construction. [`chat.Loopback`](../../backend/internal/chat/loopback.go) refuses the chat's own
-routes, the event stream and everything outside the turn's tenant, and admits every other route of
-that tenant — its administration among them. What keeps a turn to the acts this page names is the
+routes, the event stream and everything outside the turn's team, and admits every other route of
+that team — its administration among them. What keeps a turn to the acts this page names is the
 catalogue: the tools it offers call fixed operations through the generated client, and the API holds
 each call to the agent rules and the chosen capabilities ([above](#the-chats-mark-its-capabilities-and-what-only-a-session-does)).
 A tool added later that reaches further, or one whose path a model could shape, would reach as far as
@@ -388,4 +390,4 @@ minutes and eight calls of the model.
 Retention, training on the text, the provider's own access control and its region are the provider's
 and its terms', for a hosted provider and for a model server alike; cowork sends a turn and keeps no
 record of what the provider kept. Listing a provider in the chart is the operator's acceptance of
-those terms for every tenant; it is not a review of them.
+those terms for every team; it is not a review of them.

@@ -9,7 +9,11 @@ The document comes first ([ADR 0046](../adr/0046-spec-first-the-openapi-document
 the mechanics are [api.md](api.md)).
 
 1. **The document.** Add the path to [`backend/api/openapi.yaml`](../../backend/api/openapi.yaml)
-   as a `$ref` into its path family's file, or a new file for a new family. Give the operation an
+   as a `$ref` into its path family's file, or a new file for a new family. A path of a team goes
+   under `/api/v1/teams/{team}` with the `TeamSlug` parameter, and that is all: its deprecated twin
+   under `/api/v1/tenants/{tenant}`, served for the clients of the release before, is written by the
+   bundler at `make generate` — the source holds no twin, and the document test holds the pair
+   ([api.md](api.md#deprecated-names)). Give the operation an
    `operationId`, tags, its parameters from `components/parameters.yaml`, its schemas in
    `components/schemas.yaml` (`additionalProperties: false` on a request body), the `ETag` and
    `Location` headers from `components/headers.yaml`, and `default:
@@ -43,12 +47,12 @@ the mechanics are [api.md](api.md)).
    `s.db.Mutate`, every act recorded with `w.Record`; `keyed` and `w.Respond(stored(…))` for a
    creating `POST`; `ifMatch` and `stale` for an overwriting write; `store.ErrNoChange` for a
    write that changes nothing; errors as `problem.*`, never ad-hoc JSON. A route that names no
-   tenant — the person's own, the login — reads `principal(ctx)` instead of `tenantFrom(ctx)`, and
+   team — the person's own, the login — reads `principal(ctx)` instead of `tenantFrom(ctx)`, and
    a handler never reads the cookie or the `Authorization` header itself: `authenticate` has
-   resolved them ([api.md](api.md)). An act that changes who belongs to a tenant or who sees a
+   resolved them ([api.md](api.md)). An act that changes who belongs to a team or who sees a
    project sets `Event.Membership` with the keys it changes and its audience, so the streams hear
-   it as `membership.changed` ([events.md](events.md#publication)); one that can change a tenant's
-   administrators takes the tenant's lock first (`w.LockTenant`) and checks `lastAdmin` before it
+   it as `membership.changed` ([events.md](events.md#publication)); one that can change a team's
+   administrators takes the team's lock first (`w.LockTenant`) and checks `lastAdmin` before it
    commits ([data-access.md](data-access.md#advisory-locks)). An act of [ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)
    D2 names whom it tells in `Event.Notices` — a reason with the persons it names, the ticket's
    watchers, or the watchers of the tickets it blocks — and the store writes the notifications in the
@@ -57,15 +61,15 @@ the mechanics are [api.md](api.md)).
    the visibility predicate and, for every ticket it reads, `deleted_at IS NULL` — or naming its
    exemption from either ([data-access.md](data-access.md#visibility-in-sql));
    `make generate` again.
-6. A route under `{tenant}` but outside `{project}` is refused to a project-restricted token,
+6. A route under `{team}` but outside `{project}` is refused to a project-restricted token,
    unless its operation is in `tenantWideForProjectTokens` in
    [`tenant.go`](../../backend/internal/api/tenant.go) — and then the data layer must narrow it to
    the token's project.
 7. **Tests** in `backend/test/integration/`, through `newAPI` (responses are validated) and the
-   generated client: both tenants, a restricted project and a confidential ticket (the same
+   generated client: both teams, a restricted project and a confidential ticket (the same
    `404` as a missing one), each role and scope, an agent with and without the capability or on
    the hard-off list, `428`/`412` for an overwriting write, replay and mismatch for a keyed one.
-   A route under `{tenant}` is in the cross-tenant walk without a line of yours; a route a person
+   A route under `{team}` is in the cross-team walk without a line of yours; a route a person
    calls with a cookie is tried with a `browser` too (`withLogin`, `withAccounts`), with a token
    beside it, with the CSRF headers taken away, and — if it takes a secret — searched for in the
    log, the answers and the audit rows ([testing.md](testing.md)).
@@ -76,15 +80,15 @@ the mechanics are [api.md](api.md)).
 
 1. **A migration** (below) that creates it with `tenant_id uuid NOT NULL`; a composite foreign
    key `(tenant_id, …)` to each parent — a plain foreign key ignores row-level security and would
-   let a row reference another tenant's parent; `UNIQUE (tenant_id, id)` when children
+   let a row reference another team's parent; `UNIQUE (tenant_id, id)` when children
    reference it; indexes that lead with `tenant_id`; `version integer NOT NULL DEFAULT 1` when
    the entity is mutable ([ADR 0050](../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md) D1).
 2. `ALTER TABLE … ENABLE ROW LEVEL SECURITY;`, `… FORCE ROW LEVEL SECURITY;` and the
    `tenant_isolation` policy exactly as the existing migrations write it — `policy_test.go`
-   matches the text. A table without a tenant goes on the named list there and in
+   matches the text. A table without a `tenant_id` goes on the named list there and in
    [ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D6, with a
    policy of its own that reads settings only through `app_tenant_id()`, `app_user_id()` or a
-   `NULLIF`. A table whose writes only a tenant's administrators may make gets them in the data
+   `NULLIF`. A table whose writes only a team's administrators may make gets them in the data
    layer as well, through `AS RESTRICTIVE` policies on `app_is_tenant_admin()`, as
    `group_mappings` and `project_access` do ([data-access.md](data-access.md#the-settings-the-policies-read)).
 3. The grants in a `DO` block to `current_setting('cowork.runtime_role')`: `SELECT`, `INSERT`,
@@ -92,7 +96,7 @@ the mechanics are [api.md](api.md)).
 4. Every query that reads it from a ticket or a project joins that ticket and calls
    `app_ticket_visible` beside `deleted_at IS NULL`. The two lints enforce both once the ticket is joined;
    the join itself is the author's to remember ([data-access.md](data-access.md#visibility-in-sql)).
-5. A row of each tenant in `seedEveryTenantTable` in
+5. A row of each team in `seedEveryTenantTable` in
    [`helpers_test.go`](../../backend/test/integration/helpers_test.go), or
    `TestUnfilteredQueryUnderTenantSeesNothingOfAnother` fails for the new table.
 6. A database enum the Go code reads gets its `domain` type in
@@ -107,7 +111,7 @@ the mechanics are [api.md](api.md)).
    release still reads — removal is a later release's migration
    ([ADR 0028](../adr/0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)).
    It runs as the owner role; whatever the runtime role needs is granted in the same file.
-   A migration that rewrites rows of a forced table sees none of them — no tenant is set — so it
+   A migration that rewrites rows of a forced table sees none of them — no `app.tenant_id` is set — so it
    lifts the force for itself and restores it later in the same file, as `000017_ticket_rank`
    and `000019_progress_stages` do ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
    D1); a unit test holds every lift to its restore. A file is one transaction, and PostgreSQL
@@ -162,6 +166,13 @@ the mechanics are [api.md](api.md)).
    [`_helpers.tpl`](../../deploy/helm/cowork/templates/_helpers.tpl)) and the annotations
    [docs/operations/installation.md](../operations/installation.md#expose-it) names.
 5. If it changes runtime behaviour, say so in [docs/operations/runtime.md](../operations/runtime.md).
+6. A variable that **replaces** another keeps the old name readable for one release: the pair in
+   `renamedVariables`, read through `getRenamed` — the old name alone is the value, logged as a
+   warning that names its replacement (`warnDeprecated` in
+   [`main.go`](../../backend/cmd/cowork/main.go)); both set to the same value is the value, without a
+   warning — the chart renders both, so that an image rolled back to the release before, which reads
+   the old name alone, keeps it —; both set and different is an error naming both, never a value — as
+   the team's three did ([api.md](api.md#deprecated-names)).
 
 ## An instrument
 
@@ -172,7 +183,8 @@ The registry and how it records are [metrics.md](metrics.md); the decision is
    in `_seconds`; `TestEveryInstrumentIsNamedByTheRule` holds the subsystems of D4.
 2. **The labels** come from a closed set of typed constants, the API document's route patterns or a
    name in the code — never from a request, and never a person, a ticket, a key, a token, a request
-   id, or a tenant outside the consistency family's two counts, which `tenantLabelled` names (D5).
+   id, or a team outside the consistency family's three gauges, which `teamLabelled` names — by its
+   id, as `team` and, for one release, as `tenant` beside it (D5).
    Not `job` or `instance`, which Prometheus
    gives every target and would rename. A closed set is made at zero (`initialise`).
 3. **Make it** in the subsystem's `…Instruments` method of
@@ -197,8 +209,8 @@ The registry and how it records are [metrics.md](metrics.md); the decision is
 ## A frontend feature
 
 1. A page is a standalone component under `frontend/src/app/features/<family>/`, lazy in
-   [`app.routes.ts`](../../frontend/src/app/app.routes.ts) under the shell (a tenant's page under
-   `t/:tenant`, which sets the session's tenant); state and loads are services in `core/`, or a
+   [`app.routes.ts`](../../frontend/src/app/app.routes.ts) under the shell (a team's page under
+   `t/:tenant`, which sets the session's team); state and loads are services in `core/`, or a
    service the page provides when it lives exactly as long as the page; signals, no NgRx
    ([frontend.md](frontend.md#where-state-lives)).
 2. Data comes through the generated client (`inject(Api).invoke(fn, params)`); a new route is

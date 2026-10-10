@@ -52,7 +52,24 @@ mirrors a project's import, `POST …/projects/{KEY}/imports` and `GET …/impor
 beside it for a release; D2 — `projects` joins the person-level lists; D4 — the sidebar lists every
 team of the person with its projects on every page, a team's configuration is one dialog behind a
 gear, and the top bar loses the tenant switcher and the team's name to the sidebar and to "All
-teams". The rules this replaces are marked in place.
+teams". The rules this replaces are marked in place. *(2026-10-10:)* D1's team family with the old
+family's deprecated twins is built, and D2's `?team=` beside the deprecated `?tenant=` (below); D2's
+`projects` and D4 are not.
+
+**Built** (2026-10-10): D1 — the source names the team family only, `/api/v1/teams/{team}/…` and
+`/api/v1/teams`; [`tools/specbundle`](../../backend/tools/specbundle/main.go) writes for every path of
+it a deprecated twin under `/api/v1/tenants/{tenant}/…`, tagged `tenants`, which neither generated
+client carries, and the server answers a twin by reading its path as the team path before it routes
+it (`asTeamPath` in [`api/api.go`](../../backend/internal/api/api.go)), so a twin meets D5's
+boundary, the security and the handler of its team path and answers as it does, while the request
+log keeps the path as it was sent — the way
+[ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D7 states, made concrete by the
+implementer, open to the owner's objection; D3's resolver is
+`/api/v1/tickets/{team}/{key}`, its parameter renamed and its path the same. D2 — the lists take
+`?team=<slug>`, and `?tenant=` in its place for one release, both together `400 validation_failed`
+at `query:tenant` whatever the values ([`api/inbox.go`](../../backend/internal/api/inbox.go)
+`teamQuery`), and every item names its team as `team` and, beside it, as `tenant`. D4's routes keep
+`/t/{slug}`. Not built: the removal of the twins and of `?tenant=`, a later release's.
 
 ## Context
 
@@ -68,7 +85,8 @@ tenant arrives (ADR 0005 D6).
 ## Decision
 
 **D1 — Every tenant-bound resource lives under `/api/v1/tenants/{slug}/…`** *(amended
-2026-10-10 by the owner, not built: under `/api/v1/teams/{slug}/…`, the tenant being a team, [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md)
+2026-10-10 by the owner, ~~not built~~ built 2026-10-10 with the old family's twins, their removal
+outstanding: under `/api/v1/teams/{slug}/…`, the tenant being a team, [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md)
 D1; the family `/api/v1/tenants/{slug}/…` stays served beside it for one release, deprecated, and
 goes in the next, as `urgency` went beside `horizon`
 ([ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md),
@@ -85,7 +103,8 @@ stay live through its event stream, the others are read again when the tab regai
 person enters a team and when their memberships change)*. These are the only routes whose response
 spans tenants; they are built as
 one iteration per tenant (ADR 0021 D5), and every item names its tenant. An optional
-`?tenant=<slug>` narrows a `/me` list to one tenant.
+~~`?tenant=<slug>`~~ `?team=<slug>` *(2026-10-10; `?tenant=` taken in its place for one release,
+deprecated)* narrows a `/me` list to one tenant.
 
 **D3 — One resolver takes a canonical key in one piece:**
 `GET /api/v1/tickets/{slug}/{KEY}-{number}` answers with the ticket (no redirect, so an
@@ -137,7 +156,8 @@ tenant-bound route; the single-tenant installation uses the same paths as every 
   several tenants is never ambiguous.
 - Paths are long. The owner accepted the same for the key (ADR 0007).
 - The OpenAPI document (its own record) has three top-level path families: `/tenants/{slug}`
-  *(2026-10-10, not built: `/teams/{slug}`, the old family deprecated for a release)*,
+  *(2026-10-10, ~~not built~~ built the same day: `/teams/{slug}`, the old family deprecated for a
+  release)*,
   `/me`, `/tickets/{slug}/{key}`.
 - The frontend's route table is fixed by D4; the catalog's URL-scheme question is answered by
   this record.

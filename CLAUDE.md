@@ -1,6 +1,6 @@
 # cowork
 
-Repo: https://github.com/guided-traffic/cowork — a multi-tenant backlog and kanban board for
+Repo: https://github.com/guided-traffic/cowork — a multi-team backlog and kanban board for
 one person working across many projects with an LLM as co-worker. Two containers: a Go
 backend (`backend/`, the API, PostgreSQL 18 migrated on start) and an nginx frontend
 (`frontend/`, the Angular bundle and nothing else); one Helm chart, whose Ingress routes `/api/`
@@ -10,7 +10,7 @@ person's machine for Claude Code.
 cut-over of his repositories and his reviews in use (the phase 6 ticket), the checks before 1.0
 (the phase 7 ticket). `0.13.0` made the import the agent's tool (`cowork-mcp import`, nothing in an
 import refuses), removed the GitHub webhook, put PGSTY Silo in place of MinIO, gave the database a
-private authority, and kept a session alive on every request again; `0.14.0` watches the age of every tenant's last export; 1.0 waits until every open
+private authority, and kept a session alive on every request again; `0.14.0` watches the age of every team's last export; 1.0 waits until every open
 question is answered, by the owner's rule of 2026-10-06 (ADR 0003 D9)** — the work lists, each open phase a family ticket with its children, are in
 [docs/tickets/](docs/tickets/README.md). Every founding decision is an ADR, and the project plan
 was consumed into the phase tickets (ADR 0074).
@@ -115,10 +115,10 @@ which takes `existingSecret` references only; the session key, the storage key, 
   warning as `database.url`.
 - Login (phase 3): server-side sessions in the `__Host-cowork-session` cookie, the local
   administrator from configuration, local accounts made by administrators, CSRF by origin and
-  `X-Requested-With: cowork`; token creation, password changes, tenant creation, creating,
+  `X-Requested-With: cowork`; token creation, password changes, team creation, creating,
   resetting or unlocking a local account, the acts that give access, a turn of the chat, the purge
   of a ticket and the removal of orphaned objects are session-only — nineteen operations, held by a
-  unit test; a token gets `403`, and so it does, in the handler, on widening the tenant's settings,
+  unit test; a token gets `403`, and so it does, in the handler, on widening the team's settings,
   lifting the confidential flag and assigning a confidential ticket to another person (ADR
   0031–0033, 0035, 0037, 0065). A session's idle clock moves on every request of it but a write the
   CSRF check refuses, and the login page signs a person of the identity provider in again with
@@ -128,7 +128,7 @@ which takes `existingSecret` references only; the session key, the storage key, 
   generated client and nothing else — it imports no store and no API handler, and a unit test
   holds that (ADR 0040). `make build-mcp`; the Claude Code plugin is `claude/cowork/`. How it is
   built: [docs/developer/mcp.md](docs/developer/mcp.md).
-- The chat in the UI (ADR 0076): `POST /api/v1/tenants/{tenant}/chat`, a session only, streams a
+- The chat in the UI (ADR 0076): `POST /api/v1/teams/{team}/chat`, a session only, streams a
   turn through the provider the person picks from the chart's list; the loop (`internal/chat`)
   calls the model through `internal/llm` (OpenAI Chat Completions or Anthropic Messages) and runs
   the same `internal/tools` catalogue in-process through the server's own handler as the person's
