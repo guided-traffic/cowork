@@ -189,21 +189,21 @@ func TestListenAndServeReportsBindError(t *testing.T) {
 func TestEveryRequestIsRecordedByItsRoute(t *testing.T) {
 	m := metrics.New()
 	api := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		metrics.SetRoute(r.Context(), "/api/v1/tenants/{tenant}/projects/{project}")
+		metrics.SetRoute(r.Context(), "/api/v1/teams/{team}/projects/{project}")
 		w.WriteHeader(http.StatusCreated)
 	})
 	h := New(Options{API: api, Metrics: m})
 	do(t, h, http.MethodGet, "/healthz")
 	do(t, h, http.MethodGet, "/readyz")
 	do(t, h, http.MethodDelete, "/healthz")
-	do(t, h, http.MethodPost, "/api/v1/tenants/acme/projects/COW")
+	do(t, h, http.MethodPost, "/api/v1/teams/acme/projects/COW")
 	do(t, h, http.MethodGet, "/t/acme/board/COW-42")
 
 	samples, err := m.Samples()
 	require.NoError(t, err)
 	for _, c := range []struct{ route, method, status string }{
 		{"/healthz", "GET", "200"}, {"/readyz", "GET", "200"}, {"/healthz", "DELETE", "405"},
-		{"/api/v1/tenants/{tenant}/projects/{project}", "POST", "201"}, {metrics.Unmatched, "GET", "404"},
+		{"/api/v1/teams/{team}/projects/{project}", "POST", "201"}, {metrics.Unmatched, "GET", "404"},
 	} {
 		assert.Equal(t, 1.0, metrics.Sum(samples, "cowork_http_requests_total", "route", c.route, "method", c.method, "status", c.status), c)
 	}
