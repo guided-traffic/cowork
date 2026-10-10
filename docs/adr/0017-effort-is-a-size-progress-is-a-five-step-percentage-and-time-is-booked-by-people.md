@@ -50,8 +50,9 @@ its children in its own team included, runs through `refresh_derived`, a crossin
 [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7. It walks the
 ancestors across teams, the deepest first, derives each stage from the children of every team as
 `ticket_derived_stage` derives it within a team, and writes those columns alone, which the trigger
-`tickets_crossing_guard` holds it to; no version moves and no act is recorded. A parent of another
-team whose values changed is told on its team's streams as `ticket.changed` of the kind `derived`
+`tickets_crossing_guard` holds it to; no version moves and no act is recorded. A parent ~~of another
+team~~ *(2026-10-10, migration 51: of any team)* whose values changed is told on its team's streams
+as `ticket.changed` of the kind `derived`
 ([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
 D2), with an id made for the event, since the change is no act. The browser fetches a parent it
 holds again on that kind, whose version it holds already, and the parent's page loads its children

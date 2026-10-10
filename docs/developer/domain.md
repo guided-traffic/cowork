@@ -555,8 +555,8 @@ up; 0 when every child is dropped. `refreshProgress` derives them again up the a
 teams, the deepest first, as far as a value changes, after a child is filed, re-parented, changes
 effort or a stage, moves, is deleted or restored — through the crossing `refresh_derived`
 (migration 47), which derives as `ticket_derived_stage(tenant, id, stage)` of migration 19 does
-within a team; the version stays, and a parent of another team whose values changed is told on its
-team's streams as `ticket.changed` of the kind `derived` ([events.md](events.md)). A change from
+within a team; the version stays, and every parent whose values changed is told on its team's
+streams as `ticket.changed` of the kind `derived` ([events.md](events.md)). A change from
 another team writes a parent's derived columns alone: the seeding below, the mark done by hand and
 the moved `updated_at` are its own team's (migration 48). When the last child leaves, each own value
 starts at the last derived one. A ticket shows its stages as they are — derived while it has

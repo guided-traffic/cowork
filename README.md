@@ -168,7 +168,7 @@ underscores — `claude-work` is `COWORK_CHAT_CLAUDE_WORK_URL` ([the chat](#the-
 | Event channel | the PostgreSQL `NOTIFY` channel `cowork_events` | — |
 | Metric | `cowork_<subsystem>_<name>_<unit>`, a counter's ending in `_total`, a duration's in `_seconds` ([Metrics](#metrics)) | `cowork_http_requests_total` |
 | Alert | `Cowork<what>`, in the chart's `PrometheusRule`, its section in [docs/operations/metrics.md](docs/operations/metrics.md) | `CoworkSchemaDirty` |
-| Event names | `ticket.changed` (uploads included; the kind `derived` for a parent whose derived stages a child of another team moved, with an id made for the event), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`; on a person-level stream (`?me=true`) also `inbox.changed`; the control events `resync` and `unavailable` | — |
+| Event names | `ticket.changed` (uploads included; the kind `derived` for a parent whose derived stages a child of any team moved, with an id made for the event), `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`; on a person-level stream (`?me=true`) also `inbox.changed`; the control events `resync` and `unavailable` | — |
 
 ### Development environment
 

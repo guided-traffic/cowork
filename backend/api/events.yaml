@@ -15,9 +15,10 @@ events:
       arrives (D3).
 
       `ticket.changed` of `kind` `derived` says that a parent's derived stages moved because a
-      child of another team changed (docs/adr/0017 D3 as amended 2026-10-10); it is sent on the
-      parent's team's streams, under the same rules, and the client reloads the ticket. The change
-      is no act, so its `id:` is made for the event and names no act.
+      child changed, of the parent's team or another (docs/adr/0017 D3 as amended 2026-10-10); it is
+      sent on the parent's team's streams, under the same rules, and the client reloads the ticket,
+      whose version the change does not move. The change is no act, so its `id:` is made for the
+      event and names no act.
 
       `project.changed` says that a project's tickets changed as a whole — its rank set by the
       score (docs/adr/0014 D3), `kind` `ranked`, or an import executed into it (docs/adr/0051 D3),

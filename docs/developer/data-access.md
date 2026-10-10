@@ -397,7 +397,7 @@ first; the runtime role gains nothing by setting `app.crossing` itself
 | `head` | `open_prerequisite_heads(ticket)` | `Reader.OpenPrerequisiteHeads` | those prerequisites by their heads: what refuses `done`, and what an override names |
 | `walk` | `parent_chain_reaches(candidate, ticket)` | `Writer.ParentChainReaches` | yes or no: a new parent closes a cycle, across teams; under the parents' graph lock |
 | `walk` | `blocks_reach(from, to)` | `Writer.BlocksReach` | yes or no: a new `blocks` link closes a cycle, across teams; under the blocks' graph lock |
-| `derive` | `refresh_derived(parents)` | `Writer.RefreshDerived`, every refresh of a parent | the derived stages of parents and their ancestors from their children of every team, the deepest first, no version and no act; a parent of the caller's own team also has its own stages seeded when its last child leaves, is marked done by hand when it gains one while done, and has its `updated_at` moved — a parent of another team gets the three derived columns alone (migration 48) and is told on its team's streams as `ticket.changed` of the kind `derived` ([publication](#publication)) |
+| `derive` | `refresh_derived(parents)` | `Writer.RefreshDerived`, every refresh of a parent | the derived stages of parents and their ancestors from their children of every team, the deepest first, no version and no act; a parent of the caller's own team also has its own stages seeded when its last child leaves, is marked done by hand when it gains one while done, and has its `updated_at` moved — a parent of another team gets the three derived columns alone (migration 48); every parent that changed is told on its team's streams as `ticket.changed` of the kind `derived` (migration 51, [publication](#publication)) |
 | `act` | `relations_elsewhere(ticket)` | `Reader.RelationsElsewhere` | every relation of a ticket of the team whose other end is a ticket of another team: that team, ticket and key, and its head as an outsider reads it — where an act is recorded, never shown to the caller |
 | `purge` | `end_relations_elsewhere(ticket)` | `Writer.PurgeTicket` | a purged ticket's children elsewhere made roots and the links another team keeps to it deleted; every far end answered for its act; only inside the purge of a deleted ticket of the team |
 | `purge` | `end_team_relations(team)` | `DB.EndTeamRelations` | every relation between a team and the others ended, both directions; only in a transaction named `team-deletion` with no team set; no route calls it |
@@ -828,7 +828,7 @@ them from `Event.Published` for a purged one; a membership act sends the keys of
 PostgreSQL delivers it at commit and never after a rollback ([ADR 0054] D4). `DB.Listen` holds
 one connection outside the pool on the channel. An act `RecordElsewhere` writes in another team is
 published like any act, on that team's streams. One notification is no act's: `refresh_derived`
-calls `pg_notify` itself for a parent of another team whose derived stages it changed —
+calls `pg_notify` itself for every parent whose derived stages it changed, of any team —
 `ticket.changed` of the kind `derived`, with an id `uuidv7()` makes for it, and the parent's
 project, version, confidential flag, assignee and reporter for the streams' filter — since the
 change records no act ([crossings](#crossings-between-teams)). The rest is [events.md](events.md).

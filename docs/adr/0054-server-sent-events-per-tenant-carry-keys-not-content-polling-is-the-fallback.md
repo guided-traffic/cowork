@@ -24,7 +24,8 @@ later release.
 Amended 2026-10-10 for the relations between teams
 ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3; D2: `ticket.changed`
 of the kind `derived`, made concrete by the implementer, open to the owner's objection), built the
-same day ([migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql), `refresh_derived`).
+same day ([migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql), `refresh_derived`),
+and the same day for every parent, a parent of the writer's own team too ([migration 51](../../backend/internal/store/migrations/000051_derived_event_for_every_parent.up.sql)).
 
 Amended 2026-10-02 (D3: the visible projects are recomputed at every heartbeat; D4: what a
 payload carries and which acts are published; D5: the heartbeat checks the token and the
@@ -181,12 +182,14 @@ execution ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-i
 `imported`: its acts on the tickets, questions and links it creates are recorded and not
 published, so an import of hundreds of tickets is one event, not a burst.
 *(Made concrete 2026-10-10 by the implementer, open to the owner's objection:)* a parent whose
-derived stages a change of a child of another team moved
+derived stages a change of a child ~~of another team~~ *(2026-10-10, migration 51: of any team,
+its own included)* moved
 ([ADR 0017](0017-effort-is-a-size-progress-is-a-five-step-percentage-and-time-is-booked-by-people.md)
 D3) is announced on its own team's streams as `ticket.changed` of the kind `derived`, with its
 version, which the change does not move; the change is no act, so the event's id is made for the
-event and names no act, and D3 filters it like any ticket's event. The browser fetches a ticket it
-holds again on that kind, whatever version the event names (2026-10-10).
+event and names no act, and D3 filters it like any ticket's event. The act of the child that moved
+it names the child alone, so a page that shows the parent refetches it on this event; the browser fetches a ticket it holds again on that kind,
+whatever version the event names (2026-10-10).
 
 **D3 — Visibility is enforced at the stream.** Each event carries the project; a
 subscription knows the person's visible projects (computed at connect, recomputed on

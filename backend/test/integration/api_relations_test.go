@@ -452,7 +452,9 @@ func TestAChildOfAnotherTeamNeverRewritesItsParentsOwnProgress(t *testing.T) {
 
 // The parent's team hears of the derived change on its stream, as the event of
 // the kind derived — a stream that does not see the parent's project hears
-// nothing of it (docs/adr/0017 D3, docs/adr/0054 D2, D3).
+// nothing of it —, for a child of another team and for one of its own, whose
+// act names the child alone (docs/adr/0017 D3, docs/adr/0054 D2 as made
+// concrete 2026-10-10, D3).
 func TestTheDerivedProgressReachesTheParentsTeamStream(t *testing.T) {
 	e := newRelEnv(t)
 	ctx := context.Background()
@@ -486,6 +488,27 @@ func TestTheDerivedProgressReachesTheParentsTeamStream(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("%s/GAMMA-%d", e.SlugA, hiddenNumber), eventKey(t, m))
 	m, ok = memberStream.next(t, time.Second)
 	assert.False(t, ok, "a member the project is restricted from hears nothing: %v", m)
+
+	own := e.fileIn(t, memberA, e.SlugA, "ALPHA", task("A parent with a child of its own team"))
+	ownChild := e.fileIn(t, memberA, e.SlugA, "ALPHA", task("A child of A", func(c *apigen.TicketCreate) { c.Parent = ptr(own.Key) }))
+	for {
+		if _, ok := memberStream.next(t, time.Second); !ok {
+			break
+		}
+	}
+	res = e.patchIn(t, memberA, e.SlugA, ownChild, apigen.TicketPatch{Progress: ptr(60)})
+	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
+	heard := map[string]string{}
+	for {
+		m, ok := memberStream.next(t, 2*time.Second)
+		if !ok {
+			break
+		}
+		heard[eventKey(t, m)] = m.Data
+	}
+	require.Contains(t, heard, own.Key, "the parent of the same team is announced: %v", heard)
+	assert.Contains(t, heard[own.Key], `"kind":"derived"`)
+	assert.Contains(t, heard, ownChild.Key, "the child's act as before")
 }
 
 // A parent cycle and a blocks cycle through two teams are refused
