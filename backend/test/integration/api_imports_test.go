@@ -171,7 +171,7 @@ func TestImportADryRunAndItsExecution(t *testing.T) {
 	created := e.dryRun(t, admin, "ALPHA", archive)
 	require.Equal(t, http.StatusCreated, created.StatusCode(), string(created.Body))
 	job := created.JSON201
-	assert.Equal(t, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/imports/%s", e.SlugA, job.Id), created.HTTPResponse.Header.Get("Location"))
+	assert.Equal(t, fmt.Sprintf("/api/v1/teams/%s/projects/ALPHA/imports/%s", e.SlugA, job.Id), created.HTTPResponse.Header.Get("Location"))
 	assert.Equal(t, apigen.ImportStatusDryRun, job.Status)
 	assert.Equal(t, e.AdminA, job.CreatedBy.Id)
 	expires, err := job.ExpiresAt.Get()
@@ -310,7 +310,7 @@ func assertImportedTickets(t *testing.T, e ticketEnv, f *fixture.DB, job uuid.UU
 func rawImport(t *testing.T, e ticketEnv, c caller, parts ...namedFile) *http.Response {
 	t.Helper()
 	contentType, body := uploadOf(t, parts...)
-	return e.s.do(t, c, http.MethodPost, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/imports", e.SlugA), string(body),
+	return e.s.do(t, c, http.MethodPost, fmt.Sprintf("/api/v1/teams/%s/projects/ALPHA/imports", e.SlugA), string(body),
 		"Content-Type", contentType)
 }
 
@@ -512,12 +512,12 @@ func confidentialFile(n int, username string) namedFile {
 func sessionImport(t *testing.T, e ticketEnv, b *browser, parts ...namedFile) apigen.ImportJob {
 	t.Helper()
 	contentType, body := uploadOf(t, parts...)
-	res := b.request(http.MethodPost, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/imports", e.SlugA), string(body),
+	res := b.request(http.MethodPost, fmt.Sprintf("/api/v1/teams/%s/projects/ALPHA/imports", e.SlugA), string(body),
 		withHeader("Content-Type", contentType))
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	var job apigen.ImportJob
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&job))
-	res = b.request(http.MethodPost, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/imports/%s/execution", e.SlugA, job.Id),
+	res = b.request(http.MethodPost, fmt.Sprintf("/api/v1/teams/%s/projects/ALPHA/imports/%s/execution", e.SlugA, job.Id),
 		map[string]any{})
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&job))
@@ -540,7 +540,7 @@ func TestTheExecutionAssignsWhomTheDryRunNamed(t *testing.T) {
 	require.NoError(t, err)
 
 	contentType, body := uploadOf(t, confidentialFile(7, usernameOf(t, late)))
-	res := b.request(http.MethodPost, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/imports", e.SlugA), string(body),
+	res := b.request(http.MethodPost, fmt.Sprintf("/api/v1/teams/%s/projects/ALPHA/imports", e.SlugA), string(body),
 		withHeader("Content-Type", contentType))
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	var dry apigen.ImportJob
@@ -549,7 +549,7 @@ func TestTheExecutionAssignsWhomTheDryRunNamed(t *testing.T) {
 		"the dry run names nobody: the person is no member")
 	require.NoError(t, f.Member(e.ctx, e.A, late, domain.RoleMember))
 
-	res = b.request(http.MethodPost, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/imports/%s/execution", e.SlugA, dry.Id),
+	res = b.request(http.MethodPost, fmt.Sprintf("/api/v1/teams/%s/projects/ALPHA/imports/%s/execution", e.SlugA, dry.Id),
 		map[string]any{})
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	var done apigen.ImportJob
@@ -613,7 +613,7 @@ func TestImportBoundsAndExpiry(t *testing.T) {
 	admin := caller{Token: e.tk.AdminA}
 	small := newAPI(t, func(o *api.Options) { o.MaxImportBytes = 1024 })
 	contentType, body := uploadOf(t, namedFile{name: "001-a.md", body: bytes.Repeat([]byte("x"), 4096)})
-	res := small.do(t, admin, http.MethodPost, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/imports", e.SlugA), string(body),
+	res := small.do(t, admin, http.MethodPost, fmt.Sprintf("/api/v1/teams/%s/projects/ALPHA/imports", e.SlugA), string(body),
 		"Content-Type", contentType)
 	assertProblem(t, res, http.StatusRequestEntityTooLarge, "payload_too_large")
 	broken := rawImport(t, e, admin, namedFile{name: "t.tgz", body: append([]byte{0x1f, 0x8b}, bytes.Repeat([]byte("x"), 64)...)})

@@ -424,6 +424,7 @@ SELECT CASE $1::text
            WHEN 'ticket' THEN p.key || '-' || t.number::text
            WHEN 'project' THEN p.key
            WHEN 'person' THEN e.person_id::text
+           WHEN 'team' THEN 'team'
            ELSE 'tenant' END::text AS group_key,
        max(CASE $1::text
                WHEN 'ticket' THEN t.title
@@ -461,8 +462,10 @@ type TimeReportRow struct {
 	Minutes  int64
 }
 
-// Minutes summed per ticket, project, person or for the tenant over a
-// period (docs/adr/0017 D10); voided entries never count.
+// Minutes summed per ticket, project, person or for the team over a
+// period (docs/adr/0017 D10); voided entries never count. The team's one row
+// is keyed by the name it was asked by: team, or tenant, its name before
+// (docs/adr/0005 D1, docs/adr/0046 D7).
 func (q *Queries) TimeReport(ctx context.Context, arg TimeReportParams) ([]TimeReportRow, error) {
 	rows, err := q.db.Query(ctx, timeReport,
 		arg.GroupBy,

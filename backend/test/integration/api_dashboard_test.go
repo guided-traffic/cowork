@@ -85,7 +85,7 @@ func (e dashboardEnv) state(t *testing.T, id uuid.UUID, state string) {
 // dashboard reads the dashboard of tenant A as c with a raw query string.
 func (e dashboardEnv) dashboard(t *testing.T, c caller, query string) apigen.Dashboard {
 	t.Helper()
-	res := e.s.do(t, c, http.MethodGet, "/api/v1/tenants/"+e.SlugA+"/dashboard"+query, nil)
+	res := e.s.do(t, c, http.MethodGet, "/api/v1/teams/"+e.SlugA+"/dashboard"+query, nil)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	assert.Regexp(t, `^W/"[0-9a-f]{24}"$`, res.Header.Get("ETag"))
 	return decode[apigen.Dashboard](t, res)
@@ -483,7 +483,7 @@ func TestDashboardRecent(t *testing.T) {
 func TestDashboardRoute(t *testing.T) {
 	e := newDashboardEnv(t)
 	e.ticket(t, e.ProjectA, "open", ago(1))
-	path := "/api/v1/tenants/" + e.SlugA + "/dashboard"
+	path := "/api/v1/teams/" + e.SlugA + "/dashboard"
 
 	d := e.dashboard(t, caller{Token: e.tk.ViewerA}, "")
 	assert.Equal(t, "2026-09-08", d.Period.From.String(), "the thirty days that end today")

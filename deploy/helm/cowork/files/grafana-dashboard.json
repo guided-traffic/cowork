@@ -1074,7 +1074,7 @@
     {
       "id": 27,
       "type": "timeseries",
-      "title": "Dangling attachment metadata by tenant",
+      "title": "Dangling attachment metadata by team",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -1118,7 +1118,7 @@
     {
       "id": 28,
       "type": "timeseries",
-      "title": "Orphaned objects by tenant",
+      "title": "Orphaned objects by team",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -1162,7 +1162,7 @@
     {
       "id": 29,
       "type": "timeseries",
-      "title": "Time since the last export by tenant",
+      "title": "Time since the last export by team",
       "gridPos": {
         "h": 8,
         "w": 12,

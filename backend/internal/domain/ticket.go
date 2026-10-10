@@ -162,7 +162,7 @@ func ShortKey(project string, number int32) string {
 }
 
 // ErrBadKey is a key that does not follow the grammar.
-var ErrBadKey = errors.New("not a ticket key: <tenant>/<PROJECT>-<number> or <PROJECT>-<number>")
+var ErrBadKey = errors.New("not a ticket key: <team>/<PROJECT>-<number> or <PROJECT>-<number>")
 
 // ParseTicketKey reads a full or a short key. Which forms an input may use is
 // the caller's to decide: a short key only where the tenant is fixed by the
@@ -197,7 +197,7 @@ func ParseTicketKey(s string) (TicketKey, error) {
 // tenant, a full one must name it.
 func (k TicketKey) InTenant(slug string) (TicketKey, error) {
 	if k.Tenant != "" && k.Tenant != slug {
-		return k, fmt.Errorf("the key names the tenant %q, not %q", k.Tenant, slug)
+		return k, fmt.Errorf("the key names the team %q, not %q", k.Tenant, slug)
 	}
 	k.Tenant = slug
 	return k, nil

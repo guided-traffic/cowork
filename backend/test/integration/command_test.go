@@ -135,14 +135,14 @@ func TestMigrateInJobModeLeavesTheBootstrapDone(t *testing.T) {
 	connection := merged(asComponents(t, db.RuntimeURL, false), asComponents(t, db.OwnerURL, true),
 		map[string]string{config.EnvLogFormat: "text"})
 	job := merged(connection, map[string]string{
-		config.EnvMigrateBootstrap:    "true",
-		config.EnvLocalAdminUsername:  "job-admin",
-		config.EnvLocalAdminPassword:  testPassword,
-		config.EnvBaseURL:             "https://cowork.example.com",
-		config.EnvBootstrapTenantSlug: "acme",
-		config.EnvBootstrapTenantName: "Acme Corp",
-		config.EnvOIDCIssuer:          "https://login.example.com/realms/acme",
-		config.EnvAdminGroup:          "cowork-admins",
+		config.EnvMigrateBootstrap:   "true",
+		config.EnvLocalAdminUsername: "job-admin",
+		config.EnvLocalAdminPassword: testPassword,
+		config.EnvBaseURL:            "https://cowork.example.com",
+		config.EnvBootstrapTeamSlug:  "acme",
+		config.EnvBootstrapTeamName:  "Acme Corp",
+		config.EnvOIDCIssuer:         "https://login.example.com/realms/acme",
+		config.EnvAdminGroup:         "cowork-admins",
 	})
 
 	code, log := runCowork(t, bin, job, "migrate")
@@ -152,7 +152,7 @@ func TestMigrateInJobModeLeavesTheBootstrapDone(t *testing.T) {
 	assert.Contains(t, log, "database schema is current")
 	assert.Contains(t, log, fmt.Sprintf("applied=%d", embedded), "a fresh database applies every migration")
 	assert.Contains(t, log, "the local administrator is created")
-	assert.Contains(t, log, "the bootstrap tenant is created")
+	assert.Contains(t, log, "the bootstrap team is created")
 	assert.Contains(t, log, "the bootstrap ran after the migration")
 	assert.NotContains(t, log, testPassword, "the password is never logged")
 

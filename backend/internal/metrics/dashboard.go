@@ -18,10 +18,16 @@ const selector = `namespace=~"$namespace"`
 // container: the frontend's nginx exporter, when it is scraped, has them too.
 const backendOnly = `$sel,container="backend"`
 
-// byPod is the legend of a series per pod, byTenant of one per tenant id.
+// byPod is the legend of a series per pod, byTeam of one per team id. A team
+// is aggregated and named by the label tenant for this release, which every
+// image of an image rollback's window emits (docs/adr/0028 D4); team, beside
+// it on the same series, would also collide with the routing labels of an
+// alerting set-up. The contract release moves teamLabelOfDashboard to team
+// (docs/adr/0005 D1, docs/adr/0060 D5).
 const (
-	byPod    = "{{pod}}"
-	byTenant = "{{tenant}}"
+	byPod                = "{{pod}}"
+	teamLabelOfDashboard = tenantLabel
+	byTeam               = "{{" + teamLabelOfDashboard + "}}"
 )
 
 // The units of the panels, as Grafana names them.
@@ -107,12 +113,12 @@ var dashboardRows = []dashboardRow{
 			{`sum by (reason) (rate(cowork_auth_token_refusals_total{$sel}[$__rate_interval]))`, "token {{reason}}"}}},
 	}},
 	{"Consistency and export", []dashboardPanel{
-		{title: "Dangling attachment metadata by tenant", unit: unitCount, queries: []dashboardQuery{
-			{`max by (tenant) (cowork_consistency_dangling_attachments{$sel})`, byTenant}}},
-		{title: "Orphaned objects by tenant", unit: unitCount, queries: []dashboardQuery{
-			{`max by (tenant) (cowork_consistency_orphaned_objects{$sel})`, byTenant}}},
-		{title: "Time since the last export by tenant", unit: unitSeconds, queries: []dashboardQuery{
-			{`max by (tenant) (cowork_consistency_last_export_age_seconds{$sel})`, byTenant}}},
+		{title: "Dangling attachment metadata by team", unit: unitCount, queries: []dashboardQuery{
+			{`max by (` + teamLabelOfDashboard + `) (cowork_consistency_dangling_attachments{$sel})`, byTeam}}},
+		{title: "Orphaned objects by team", unit: unitCount, queries: []dashboardQuery{
+			{`max by (` + teamLabelOfDashboard + `) (cowork_consistency_orphaned_objects{$sel})`, byTeam}}},
+		{title: "Time since the last export by team", unit: unitSeconds, queries: []dashboardQuery{
+			{`max by (` + teamLabelOfDashboard + `) (cowork_consistency_last_export_age_seconds{$sel})`, byTeam}}},
 	}},
 	{"Process", []dashboardPanel{
 		{title: "Goroutines", unit: unitCount, queries: []dashboardQuery{

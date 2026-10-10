@@ -225,7 +225,7 @@ func TestTwoAdministratorsCannotRemoveEachOther(t *testing.T) {
 		}
 		remove := func(i int) func() int {
 			return func() int {
-				res := browsers[i].request(http.MethodDelete, "/api/v1/tenants/"+slug+"/members/"+ids[1-i].String()+"/grant", nil)
+				res := browsers[i].request(http.MethodDelete, "/api/v1/teams/"+slug+"/members/"+ids[1-i].String()+"/grant", nil)
 				return res.StatusCode
 			}
 		}

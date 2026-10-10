@@ -51,15 +51,19 @@ const (
 	EnvS3CA                   = "COWORK_S3_CA"
 	EnvAttachmentMaxBytes     = "COWORK_ATTACHMENT_MAX_BYTES"
 	EnvAttachmentMaxPerTicket = "COWORK_ATTACHMENT_MAX_PER_TICKET"
-	EnvAttachmentTenantQuota  = "COWORK_ATTACHMENT_TENANT_QUOTA"
+	EnvAttachmentTeamQuota    = "COWORK_ATTACHMENT_TEAM_QUOTA"
+	// EnvAttachmentTenantQuota is EnvAttachmentTeamQuota under the name it had
+	// before a tenant was called a team (docs/adr/0005 D1), read with a
+	// warning until a later release removes it (renamedVariables).
+	EnvAttachmentTenantQuota = "COWORK_ATTACHMENT_TENANT_QUOTA"
 
 	EnvSSEReplayWindow        = "COWORK_SSE_REPLAY_WINDOW"
 	EnvSSEMaxStreamsPerPerson = "COWORK_SSE_MAX_STREAMS_PER_PERSON"
 
 	EnvLocalAdminUsername   = "COWORK_LOCAL_ADMIN_USERNAME"
 	EnvLocalAdminPassword   = "COWORK_LOCAL_ADMIN_PASSWORD" // #nosec G101 -- the variable's name, not a credential
-	EnvBootstrapTenantSlug  = "COWORK_BOOTSTRAP_TENANT_SLUG"
-	EnvBootstrapTenantName  = "COWORK_BOOTSTRAP_TENANT_NAME"
+	EnvBootstrapTeamSlug    = "COWORK_BOOTSTRAP_TEAM_SLUG"
+	EnvBootstrapTeamName    = "COWORK_BOOTSTRAP_TEAM_NAME"
 	EnvPasswordMinLength    = "COWORK_PASSWORD_MIN_LENGTH"
 	EnvLoginLockout         = "COWORK_LOGIN_LOCKOUT"
 	EnvLoginMaxFailures     = "COWORK_LOGIN_MAX_FAILURES"
@@ -81,7 +85,33 @@ const (
 	EnvOIDCGroupsMaxAge  = "COWORK_OIDC_GROUPS_MAX_AGE"
 	EnvOIDCEmailTrusted  = "COWORK_OIDC_EMAIL_TRUSTED"
 	EnvOIDCDisplayName   = "COWORK_OIDC_DISPLAY_NAME"
+
+	// EnvBootstrapTenantSlug and EnvBootstrapTenantName are
+	// EnvBootstrapTeamSlug and EnvBootstrapTeamName under the names they had
+	// before a tenant was called a team (docs/adr/0005 D1), read with a
+	// warning until a later release removes them (renamedVariables).
+	EnvBootstrapTenantSlug = "COWORK_BOOTSTRAP_TENANT_SLUG"
+	EnvBootstrapTenantName = "COWORK_BOOTSTRAP_TENANT_NAME"
 )
+
+// Renamed is a variable under the name it had before a tenant was called a
+// team (docs/adr/0005 D1): Load still reads it, for one release, as the
+// variable that replaces it (docs/adr/0046 D7).
+type Renamed struct {
+	// Variable is the name before; Replacement the name that replaces it.
+	Variable, Replacement string
+}
+
+// renamedVariables are the variables a tenant's rename to a team renamed.
+var renamedVariables = []Renamed{
+	{EnvBootstrapTenantSlug, EnvBootstrapTeamSlug},
+	{EnvBootstrapTenantName, EnvBootstrapTeamName},
+	{EnvAttachmentTenantQuota, EnvAttachmentTeamQuota},
+}
+
+// quotaNotASize is the error of a quota's value that is no size, naming the
+// variable that holds it.
+const quotaNotASize = "%s: %q is not a size such as 10GiB or 0"
 
 // Defaults and the accepted log formats.
 const (
@@ -204,10 +234,10 @@ type Config struct {
 	// AttachmentMaxPerTicket is the number of attachments a ticket takes; 0
 	// disables the limit.
 	AttachmentMaxPerTicket int
-	// AttachmentTenantQuota is the bytes a tenant's attachments may hold
+	// AttachmentTeamQuota is the bytes a team's attachments may hold
 	// together; 0, the default, sets no quota (docs/adr/0016 D6 as amended
 	// 2026-10-05).
-	AttachmentTenantQuota int64
+	AttachmentTeamQuota int64
 	// SSEReplayWindow is how long a replica keeps events for a reconnect's
 	// replay; SSEMaxStreamsPerPerson how many streams a person holds per
 	// replica, 0 for no limit (docs/adr/0054 D5, D8).
@@ -223,10 +253,10 @@ type Config struct {
 	// password is a secret, never echoed.
 	LocalAdminUsername string
 	LocalAdminPassword string
-	// BootstrapTenantSlug and BootstrapTenantName name the tenant a start
-	// creates while none exists (docs/adr/0032 D6); both or neither.
-	BootstrapTenantSlug string
-	BootstrapTenantName string
+	// BootstrapTeamSlug and BootstrapTeamName name the team a start creates
+	// while none exists (docs/adr/0032 D6); both or neither.
+	BootstrapTeamSlug string
+	BootstrapTeamName string
 	// PasswordMinLength is the shortest password a local account may have
 	// (docs/adr/0033 D3).
 	PasswordMinLength int
@@ -256,9 +286,16 @@ type Config struct {
 	// page then offers none.
 	OIDC *OIDC
 	// Chat is the chat in the UI and the providers it talks to
-	// (docs/adr/0076); nil when COWORK_CHAT_PROVIDERS is unset, and no tenant
+	// (docs/adr/0076); nil when COWORK_CHAT_PROVIDERS is unset, and no team
 	// has a chat.
 	Chat *Chat
+	// Deprecated are the variables Load read under the names they had before
+	// a tenant was called a team, set without the variable that replaces
+	// them; the start logs each as a warning naming its replacement
+	// (docs/adr/0005 D1). A name before set beside its replacement to the
+	// same value is no warning (getRenamed); the release that drops a name
+	// drops it here.
+	Deprecated []Renamed
 }
 
 // OIDC is the identity provider: the issuer cowork is a relying party of, and
@@ -365,13 +402,16 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	l.login(&cfg)
 	l.trustedProxies(&cfg)
 	l.chat(&cfg)
+	cfg.Deprecated = l.deprecated
 	return cfg, errors.Join(l.errs...)
 }
 
-// loader reads variables and collects every problem it finds.
+// loader reads variables and collects every problem it finds, and every
+// variable it read under its deprecated name.
 type loader struct {
-	lookup func(string) (string, bool)
-	errs   []error
+	lookup     func(string) (string, bool)
+	errs       []error
+	deprecated []Renamed
 }
 
 func (l *loader) fail(format string, args ...any) {
@@ -380,6 +420,76 @@ func (l *loader) fail(format string, args ...any) {
 
 func (l *loader) get(key string) (string, bool) {
 	return nonEmpty(l.lookup, key)
+}
+
+// getRenamed reads a variable that a tenant's rename to a team renamed, by its
+// name or by the name it had before (renamedVariables). The name before set
+// alone is read as the variable and noted as deprecated, so that the start
+// warns of it. Both set is the new name's value, held to the one before
+// (sameValue): the chart sets both for one release, so that an image of the
+// release before, rolled back to under it, keeps the value (docs/adr/0028 D4).
+func (l *loader) getRenamed(key string) (string, bool) {
+	v, set := l.get(key)
+	for _, r := range renamedVariables {
+		if r.Replacement != key {
+			continue
+		}
+		before, setBefore := l.get(r.Variable)
+		switch {
+		case !setBefore:
+		case !set:
+			l.deprecated = append(l.deprecated, r)
+			return before, true
+		default:
+			l.sameValue(r, before, v)
+		}
+		return v, set
+	}
+	return v, set
+}
+
+// sameValue holds a variable set under both names to one value, and says
+// nothing of a value that is the same: a size by the bytes it names, however
+// written — 1GiB and 1073741824 are one quota —, anything else as written.
+// Two different values are an error naming both, never a value. A size that
+// does not parse is that variable's error alone, no conflict: the name
+// before's is checked here, the new name's where its value is read.
+func (l *loader) sameValue(r Renamed, before, v string) {
+	if r.Replacement != EnvAttachmentTeamQuota {
+		if before != v {
+			l.conflict(r)
+		}
+		return
+	}
+	old, errOld := parseSize(before)
+	now, errNow := parseSize(v)
+	switch {
+	case errOld != nil:
+		l.fail(quotaNotASize, r.Variable, before)
+	case errNow == nil && old != now:
+		l.conflict(r)
+	}
+}
+
+// conflict says that a variable is set under both names to different values.
+func (l *loader) conflict(r Renamed) {
+	l.fail("%s and %s are both set, to different values: %s replaces %s (docs/adr/0005 D1); set it alone, or both to the same value",
+		r.Replacement, r.Variable, r.Replacement, r.Variable)
+}
+
+// named is the variable a value of key came from: key, or the name it had
+// before where only that is set — what an error about the value names, since
+// it is the variable the operator set.
+func (l *loader) named(key string) string {
+	if _, set := l.get(key); set {
+		return key
+	}
+	for _, r := range renamedVariables {
+		if _, set := l.get(r.Variable); r.Replacement == key && set {
+			return r.Variable
+		}
+	}
+	return key
 }
 
 func (l *loader) server(cfg *Config) {
@@ -541,7 +651,7 @@ func (l *loader) limits(cfg *Config) {
 }
 
 // attachmentLimits reads the limits of the attachments: the per-file maximum,
-// the per-ticket count and the tenant's quota (docs/adr/0016 D6), each 0 for
+// the per-ticket count and the team's quota (docs/adr/0016 D6), each 0 for
 // none.
 func (l *loader) attachmentLimits(cfg *Config) {
 	if v, ok := l.get(EnvAttachmentMaxBytes); ok {
@@ -560,12 +670,12 @@ func (l *loader) attachmentLimits(cfg *Config) {
 			cfg.AttachmentMaxPerTicket = n
 		}
 	}
-	if v, ok := l.get(EnvAttachmentTenantQuota); ok {
+	if v, ok := l.getRenamed(EnvAttachmentTeamQuota); ok {
 		n, err := parseSize(v)
 		if err != nil {
-			l.fail("%s: %q is not a size such as 10GiB or 0", EnvAttachmentTenantQuota, v)
+			l.fail(quotaNotASize, l.named(EnvAttachmentTeamQuota), v)
 		} else {
-			cfg.AttachmentTenantQuota = n
+			cfg.AttachmentTeamQuota = n
 		}
 	}
 }
@@ -642,12 +752,12 @@ func nonEmpty(lookup func(string) (string, bool), key string) (string, bool) {
 	return v, ok && v != ""
 }
 
-// slugPattern is the tenant slug rule of docs/adr/0005 D4.
+// slugPattern is the team slug rule of docs/adr/0005 D4.
 var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,62}$`)
 
 // login reads everything the browser login needs: the public URL, the
 // sessions, the passwords, the lockout, the local administrator, the
-// bootstrap tenant and the lifetime of a new token (docs/adr/0031–0033,
+// bootstrap team and the lifetime of a new token (docs/adr/0031–0033,
 // docs/adr/0035 D4, docs/adr/0037 D6). Where a value is a secret the error
 // names the variable and never the value.
 func (l *loader) login(cfg *Config) {
@@ -675,7 +785,7 @@ func (l *loader) login(cfg *Config) {
 	}
 	l.localAdmin(cfg)
 	l.oidc(cfg)
-	l.bootstrapTenant(cfg)
+	l.bootstrapTeam(cfg)
 	l.baseURL(cfg)
 }
 
@@ -785,38 +895,39 @@ func (l *loader) localAdmin(cfg *Config) {
 	cfg.LocalAdminUsername, cfg.LocalAdminPassword = username, password
 }
 
-// bootstrapTenant reads the tenant a start creates while none exists
+// bootstrapTeam reads the team a start creates while none exists
 // (docs/adr/0032 D6): both variables or neither, and only with somebody to
 // administer it — the local administrator, who gets a marked grant, or the
-// administrator group, whose mapping the start seeds. A tenant without an
+// administrator group, whose mapping the start seeds. A team without an
 // administrator cannot come to exist (D7).
-func (l *loader) bootstrapTenant(cfg *Config) {
-	slug, haveSlug := l.get(EnvBootstrapTenantSlug)
-	name, haveName := l.get(EnvBootstrapTenantName)
+func (l *loader) bootstrapTeam(cfg *Config) {
+	slug, haveSlug := l.getRenamed(EnvBootstrapTeamSlug)
+	name, haveName := l.getRenamed(EnvBootstrapTeamName)
+	slugVar, nameVar := l.named(EnvBootstrapTeamSlug), l.named(EnvBootstrapTeamName)
 	switch {
 	case haveSlug && !haveName:
-		l.fail("%s is required while %s is set", EnvBootstrapTenantName, EnvBootstrapTenantSlug)
+		l.fail("%s is required while %s is set", EnvBootstrapTeamName, slugVar)
 		return
 	case haveName && !haveSlug:
-		l.fail("%s is required while %s is set", EnvBootstrapTenantSlug, EnvBootstrapTenantName)
+		l.fail("%s is required while %s is set", EnvBootstrapTeamSlug, nameVar)
 		return
 	case !haveSlug:
 		return
 	}
 	if !slugPattern.MatchString(slug) {
-		l.fail("%s must be 2 to 63 characters of a-z, 0-9 and '-', not starting with '-' (docs/adr/0005 D4)", EnvBootstrapTenantSlug)
+		l.fail("%s must be 2 to 63 characters of a-z, 0-9 and '-', not starting with '-' (docs/adr/0005 D4)", slugVar)
 		return
 	}
 	if n := utf8.RuneCountInString(name); n > 200 {
-		l.fail("%s must be at most 200 characters", EnvBootstrapTenantName)
+		l.fail("%s must be at most 200 characters", nameVar)
 		return
 	}
 	if cfg.LocalAdminUsername == "" && (cfg.OIDC == nil || cfg.OIDC.AdminGroup == "") {
-		l.fail("%s needs %s and %s, or %s: the local administrator or the administrator group becomes the first administrator of the tenant (docs/adr/0032 D6, D7)",
-			EnvBootstrapTenantSlug, EnvLocalAdminUsername, EnvLocalAdminPassword, EnvAdminGroup)
+		l.fail("%s needs %s and %s, or %s: the local administrator or the administrator group becomes the first administrator of the team (docs/adr/0032 D6, D7)",
+			slugVar, EnvLocalAdminUsername, EnvLocalAdminPassword, EnvAdminGroup)
 		return
 	}
-	cfg.BootstrapTenantSlug, cfg.BootstrapTenantName = slug, name
+	cfg.BootstrapTeamSlug, cfg.BootstrapTeamName = slug, name
 }
 
 // baseURL checks the public URL and derives the origin the CSRF check

@@ -260,7 +260,7 @@ func (a *analysis) assignee(e *entry) {
 	default:
 		person, found := a.t.Persons[id.String()]
 		if !found {
-			f.warn(keyAssignee, line, "the assignee %s is no member of the tenant who can see the project: nobody is assigned", id)
+			f.warn(keyAssignee, line, "the assignee %s is no member of the team who can see the project: nobody is assigned", id)
 			return
 		}
 		if named, ok := a.t.Named[f.Path]; a.t.Named != nil && (!ok || named != person.ID) {

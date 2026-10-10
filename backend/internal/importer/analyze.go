@@ -32,13 +32,26 @@ type manifestLink struct {
 	path   string
 }
 
-// exportManifest is what the import reads of an export's manifest.json.
+// exportManifest is what the import reads of an export's manifest.json. It
+// names its team by team; an archive written before a tenant was called a
+// team names it by tenant alone, and is read so for good, since an archive
+// outlives a release (docs/adr/0051 D4, docs/adr/0005 D1).
 type exportManifest struct {
 	Format   string `json:"format"`
+	Team     string `json:"team"`
 	Tenant   string `json:"tenant"`
 	Projects []struct {
 		Key string `json:"key"`
 	} `json:"projects"`
+}
+
+// team is the slug of the team the archive was exported from: team, or
+// tenant where the archive names no team.
+func (m exportManifest) team() string {
+	if m.Team != "" {
+		return m.Team
+	}
+	return m.Tenant
 }
 
 // ExportFormat is the format an export's manifest names (docs/adr/0051 D4).
@@ -71,7 +84,7 @@ func readManifest(content []byte) string {
 	}
 	keys := make([]string, 0, len(m.Projects))
 	for _, p := range m.Projects {
-		keys = append(keys, m.Tenant+"/"+p.Key)
+		keys = append(keys, m.team()+"/"+p.Key)
 	}
 	return "the manifest of an export of " + strings.Join(keys, ", ") + " (docs/adr/0051 D4)"
 }

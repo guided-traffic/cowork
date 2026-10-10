@@ -45,8 +45,10 @@ func (s *Server) GetMe(ctx context.Context, _ apigen.GetMeRequestObject) (apigen
 			if restricted(p) && m.TenantID != p.RestrictedTenantID {
 				continue
 			}
+			team := apigen.TeamRef{Slug: m.Slug, Name: m.Name}
 			out.Memberships = append(out.Memberships, apigen.Membership{
-				Tenant:  apigen.TenantRef{Slug: m.Slug, Name: m.Name},
+				Team:    team,
+				Tenant:  team, //nolint:staticcheck // SA1019: deprecated in the document, answered beside team until a later release removes it
 				Role:    apigen.Role(m.Role),
 				Origins: originsOf(m.Sources, m.Roles),
 			})
@@ -174,7 +176,8 @@ func tokenView(t readq.ListTokensOfUserRow, now time.Time, keys map[uuid.UUID]st
 		ExpiresAt:    t.ExpiresAt,
 		State:        state,
 	}
-	v.RestrictedTenant = nullableOf(t.RestrictedTenantSlug)
+	v.RestrictedTeam = nullableOf(t.RestrictedTenantSlug)
+	v.RestrictedTenant = nullableOf(t.RestrictedTenantSlug) //nolint:staticcheck // SA1019: deprecated in the document, answered beside restricted_team until a later release removes it
 	v.RestrictedProject = nullableOf[string](nil)
 	if t.RestrictedProjectID != nil {
 		id := *t.RestrictedProjectID
@@ -307,66 +310,94 @@ type tokenSpec struct {
 func (t tokenSpec) view(id uuid.UUID, createdAt time.Time) apigen.TokenCreated {
 	v := apigen.TokenCreated{Id: id, Name: t.name, Scope: apigen.Scope(t.scope), Agent: t.agent, Capabilities: capabilitiesView(t.capabilities),
 		CreatedAt: createdAt, ExpiresAt: t.expiresAt, State: apigen.TokenStateActive}
-	v.RestrictedTenant = nullableOf(t.tenantSlug)
+	v.RestrictedTeam = nullableOf(t.tenantSlug)
+	v.RestrictedTenant = nullableOf(t.tenantSlug) //nolint:staticcheck // SA1019: deprecated in the document, answered beside restricted_team until a later release removes it
 	v.RestrictedProject = nullableOf(t.projectKey)
 	v.RestrictedProjectId = nullableOf(t.projectID) //nolint:staticcheck // SA1019: deprecated in the document, kept in /api/v1 for the clients that read it
 	v.RevokedAt = nullableOf[time.Time](nil)
 	return v
 }
 
+// teamRestriction is the team a token is to be restricted to, by the pointer
+// of the property that named it: team, or tenant, the name it had before
+// (docs/adr/0005 D1), taken until a later release removes it
+// (docs/adr/0046 D7). The two are one restriction, so a request that names two
+// different slugs is refused at /team rather than one of them picked.
+func teamRestriction(body apigen.CreateMyTokenJSONRequestBody) (*string, string, *problem.Error) {
+	old := body.Tenant //nolint:staticcheck // SA1019: deprecated in the document, taken as team until a later release removes it
+	switch {
+	case body.Team != nil && old != nil && *body.Team != *old:
+		return nil, "", problem.Field("/team", "tenant is the deprecated name of team: send team alone, or the same slug in both")
+	case body.Team != nil:
+		return body.Team, "/team", nil
+	case old != nil:
+		return old, "/tenant", nil
+	}
+	return nil, "", nil
+}
+
+// tokenCapabilities are the capabilities a creation request names, each once,
+// and those the token carries (docs/adr/0043 D4): none for a plain token; for
+// an agent token the list it names — an empty one too: the nine switches all
+// off leave the baseline —, and every capability where it names no list.
+func tokenCapabilities(agent bool, requested *[]apigen.Capability) (named, carried []string) {
+	named = []string{}
+	if requested != nil {
+		for _, c := range *requested {
+			named = append(named, string(c))
+		}
+		named = auth.Canonical(named)
+	}
+	switch {
+	case !agent:
+		return named, []string{}
+	case requested != nil:
+		return named, named
+	}
+	return named, slices.Clone(auth.AllCapabilities)
+}
+
 // tokenSpec validates a creation request against the token rules and the
 // person's own reach (docs/adr/0035 D3, D4, docs/adr/0036 D5, docs/adr/0043 D4):
 // an agent token has at most write scope and carries the capabilities, all of
 // them unless the request names some; a plain token carries none; the lifetime
-// is the default, shortened to the maximum; and a restriction names a tenant the
-// person belongs to and a project of it the person sees — a tenant or a project
+// is the default, shortened to the maximum; and a restriction names a team the
+// person belongs to and a project of it the person sees — a team or a project
 // the person cannot reach is "no such", whichever it is.
 func (s *Server) tokenSpec(ctx context.Context, p auth.Principal, body apigen.CreateMyTokenJSONRequestBody) (tokenSpec, *problem.Error) {
 	spec := tokenSpec{name: strings.TrimSpace(body.Name), scope: domain.Scope(body.Scope), agent: body.Agent != nil && *body.Agent}
 	if spec.name == "" {
 		return spec, problem.Field("/name", "must not be blank")
 	}
-	named := []string{}
-	if body.Capabilities != nil {
-		for _, c := range *body.Capabilities {
-			named = append(named, string(c))
-		}
-		named = auth.Canonical(named)
+	team, pointer, perr := teamRestriction(body)
+	if perr != nil {
+		return spec, perr
 	}
+	named, carried := tokenCapabilities(spec.agent, body.Capabilities)
 	switch {
 	case spec.agent && spec.scope == domain.ScopeAdmin:
 		return spec, problem.Field("/scope", "an agent token has at most write scope (docs/adr/0036 D5)")
 	case !spec.agent && len(named) > 0:
 		return spec, problem.Field("/capabilities", "only an agent token carries capabilities")
-	case body.Project != nil && body.Tenant == nil:
-		return spec, problem.Field("/project", "a project restriction needs the tenant restriction")
+	case body.Project != nil && team == nil:
+		return spec, problem.Field("/project", "a project restriction needs the team restriction")
 	}
-	switch {
-	case !spec.agent:
-		spec.capabilities = []string{}
-	case body.Capabilities != nil:
-		// A list is the capabilities, also an empty one: the nine switches all
-		// off leave the baseline (docs/adr/0043 D4). Only a list left out is
-		// every capability.
-		spec.capabilities = named
-	default:
-		spec.capabilities = slices.Clone(auth.AllCapabilities)
-	}
+	spec.capabilities = carried
 	lifetime := s.h.opts.TokenDefaultLifetime
 	if body.LifetimeDays != nil {
 		lifetime = time.Duration(*body.LifetimeDays) * 24 * time.Hour
 	}
 	spec.expiresAt = s.h.opts.Now().UTC().Add(min(lifetime, s.h.opts.TokenMaxLifetime))
-	if body.Tenant == nil {
+	if team == nil {
 		return spec, nil
 	}
-	return spec, s.restrictTo(ctx, p, &spec, *body.Tenant, body.Project)
+	return spec, s.restrictTo(ctx, p, &spec, *team, pointer, body.Project)
 }
 
-// restrictTo resolves the tenant and project of a restriction through the
+// restrictTo resolves the team and project of a restriction through the
 // person's own reach: their membership, and the project predicate of the
-// tenant (docs/adr/0034 D3).
-func (s *Server) restrictTo(ctx context.Context, p auth.Principal, spec *tokenSpec, slug string, project *string) *problem.Error {
+// team (docs/adr/0034 D3). pointer is the property that named the team.
+func (s *Server) restrictTo(ctx context.Context, p auth.Principal, spec *tokenSpec, slug, pointer string, project *string) *problem.Error {
 	var tenant readq.GetTenantForPersonRow
 	err := s.db.Installation(ctx, func(r *store.Reader) error {
 		var err error
@@ -374,7 +405,7 @@ func (s *Server) restrictTo(ctx context.Context, p auth.Principal, spec *tokenSp
 		return err
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return problem.Field("/tenant", "no such tenant")
+		return problem.Field(pointer, "no such team")
 	}
 	if err != nil {
 		return problem.New(problem.Internal, "internal error")

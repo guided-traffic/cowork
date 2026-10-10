@@ -295,7 +295,7 @@ func TestEveryActThroughATokenIsMarkedWithIt(t *testing.T) {
 	// The tenant's audit view names the token beside its id, as JSON and as CSV
 	// (docs/adr/0026 D6).
 	admin := e.asToken(t, caller{Token: e.tk.AdminA})
-	audit := "/api/v1/tenants/" + e.SlugA + "/audit?token=" + plainID.String()
+	audit := "/api/v1/teams/" + e.SlugA + "/audit?token=" + plainID.String()
 	res := admin(http.MethodGet, audit, nil)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	acts := decode[apigen.AuditList](t, res)

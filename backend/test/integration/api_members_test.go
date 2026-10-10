@@ -51,7 +51,7 @@ func newAdminWorld(t *testing.T) adminWorld {
 	return a
 }
 
-func (a adminWorld) path(rest string) string { return "/api/v1/tenants/" + a.SlugA + rest }
+func (a adminWorld) path(rest string) string { return "/api/v1/teams/" + a.SlugA + rest }
 
 // globalAdmin makes the tenant's administrator a global administrator as well,
 // who alone makes a group mapping or changes its role (docs/adr/0030 D7).
@@ -204,7 +204,7 @@ func TestGrantsAndTheLastAdministrator(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, a.s.do(t, caller{Token: a.token}, http.MethodDelete, remove, nil).StatusCode,
 		"removing a grant only takes access away: a token may")
 	assert.Equal(t, http.StatusNoContent, a.s.do(t, caller{Token: a.token}, http.MethodDelete, remove, nil).StatusCode, "idempotent")
-	assertProblem(t, a.admin.get("/api/v1/tenants/"+a.SlugA+"/members/"+a.MemberA.String()+"/grant"), http.StatusMethodNotAllowed, "method_not_allowed")
+	assertProblem(t, a.admin.get("/api/v1/teams/"+a.SlugA+"/members/"+a.MemberA.String()+"/grant"), http.StatusMethodNotAllowed, "method_not_allowed")
 
 	assertProblem(t, grant(a.admin, a.AdminA, "member"), http.StatusConflict, "last_admin")
 	assertProblem(t, a.admin.request(http.MethodDelete, a.path("/members/"+a.AdminA.String()+"/grant"), nil), http.StatusConflict, "last_admin")
@@ -301,7 +301,7 @@ func TestOnlyAGlobalAdministratorMapsAGroup(t *testing.T) {
 
 	before := records()
 	refused := assertProblem(t, create(a.admin), http.StatusForbidden, "forbidden")
-	assert.Equal(t, "mapping a group needs a global administrator who administers the tenant", refused["detail"])
+	assert.Equal(t, "mapping a group needs a global administrator who administers the team", refused["detail"])
 	assert.Zero(t, mappings(), "no mapping")
 	assert.Equal(t, before, records(), "no record")
 	assert.NotContains(t, members(t, a.admin, a.path("/members")), person, "nobody joined")
@@ -325,7 +325,7 @@ func TestOnlyAGlobalAdministratorMapsAGroup(t *testing.T) {
 	before = records()
 	refused = assertProblem(t, a.admin.request(http.MethodPatch, patch, map[string]string{"role": "viewer"}, withHeader("If-Match", `"1"`)),
 		http.StatusForbidden, "forbidden")
-	assert.Equal(t, "changing a group mapping needs a global administrator who administers the tenant", refused["detail"])
+	assert.Equal(t, "changing a group mapping needs a global administrator who administers the team", refused["detail"])
 	assert.Equal(t, "admin", scalar[string](t, `SELECT role::text FROM group_mappings WHERE id = $1`, mapping.Id), "the role stays")
 	assert.EqualValues(t, 1, scalar[int32](t, `SELECT version FROM group_mappings WHERE id = $1`, mapping.Id))
 	assert.Equal(t, before, records(), "no record")
@@ -490,7 +490,7 @@ func TestBootstrapSeedsTheAdministratorGroupsMapping(t *testing.T) {
 	ctx := context.Background()
 	iso := newIsolated(t)
 	logger := (&recordingLogger{}).logger()
-	p := bootstrap.Params{TenantSlug: "boot", TenantName: "Boot", AdminGroup: "cowork-admins"}
+	p := bootstrap.Params{TeamSlug: "boot", TeamName: "Boot", AdminGroup: "cowork-admins"}
 	require.NoError(t, bootstrap.Sync(ctx, iso.DB, p, logger))
 	require.NoError(t, bootstrap.Sync(ctx, iso.DB, p, logger), "a second start changes nothing")
 	tenant := scalar2[uuid.UUID](t, iso, `SELECT id FROM tenants WHERE slug = 'boot'`)
@@ -507,6 +507,6 @@ func TestBootstrapSeedsTheAdministratorGroupsMapping(t *testing.T) {
 	me := decode[apigen.Me](t, ada.get("/api/v1/me"))
 	require.Len(t, me.Memberships, 1)
 	assert.Equal(t, apigen.RoleAdmin, me.Memberships[0].Role, "the administrator group administers the bootstrap tenant")
-	assert.Equal(t, "boot", me.Memberships[0].Tenant.Slug)
+	assert.Equal(t, "boot", me.Memberships[0].Team.Slug)
 	assert.Equal(t, []apigen.MembershipOrigin{{Source: apigen.MembershipSourceMapping, Role: apigen.RoleAdmin}}, me.Memberships[0].Origins)
 }

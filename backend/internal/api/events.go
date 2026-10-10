@@ -21,8 +21,12 @@ import (
 )
 
 // opStreamEvents is the event stream's operation, served outside the
-// generated server.
-const opStreamEvents = "streamEvents"
+// generated server; eventsRoute is its path as the document writes it, which
+// the boundary reads again while a stream is open.
+const (
+	opStreamEvents = "streamEvents"
+	eventsRoute    = teamFamily + "/{team}/events"
+)
 
 // defaultHeartbeat keeps proxies from closing an idle stream
 // (docs/adr/0054 D5).
@@ -241,7 +245,7 @@ func (h *handler) refilter(ctx context.Context, stream *events.Stream, st *pumpS
 	var f events.Filter
 	var err error
 	if tenant == sr.t.ID {
-		now, perr := h.boundary(ctx, sr.t.Slug, "/api/v1/tenants/{tenant}/events", opStreamEvents)
+		now, perr := h.boundary(ctx, sr.t.Slug, eventsRoute, opStreamEvents)
 		if perr != nil {
 			return false
 		}
@@ -379,7 +383,7 @@ func (h *handler) stillAdmitted(ctx context.Context, t tenantScope, p auth.Princ
 	if err != nil || !usable || !h.streamStillAdmitted(ctx, p) {
 		return tenantScope{}, false
 	}
-	now, perr := h.boundary(ctx, t.Slug, "/api/v1/tenants/{tenant}/events", opStreamEvents)
+	now, perr := h.boundary(ctx, t.Slug, eventsRoute, opStreamEvents)
 	return now, perr == nil
 }
 
@@ -392,10 +396,13 @@ type eventData struct {
 	Kind    string `json:"kind"`
 }
 
-// membershipData is what membership.changed tells: the tenant it happened in
-// — a person-level stream carries every tenant of its person — and the keys of
+// membershipData is what membership.changed tells: the team it happened in
+// — a person-level stream carries every team of its person — and the keys of
 // what changed, each where it applies (the API document, the event stream).
+// Tenant repeats Team under the name before, for one release
+// (docs/adr/0005 D1, docs/adr/0046 D7).
 type membershipData struct {
+	Team      string     `json:"team"`
 	Tenant    string     `json:"tenant"`
 	PersonID  *uuid.UUID `json:"person_id,omitempty"`
 	ProjectID *uuid.UUID `json:"project_id,omitempty"`
@@ -410,7 +417,7 @@ func writeEvent(w http.ResponseWriter, e events.Event, slug string) {
 
 func dataOf(e events.Event, slug string) []byte {
 	if e.Entity == store.EntityMembership {
-		m := membershipData{Tenant: slug, PersonID: e.Person, MappingID: e.Mapping}
+		m := membershipData{Team: slug, Tenant: slug, PersonID: e.Person, MappingID: e.Mapping}
 		if e.Project != uuid.Nil {
 			m.ProjectID = &e.Project
 		}

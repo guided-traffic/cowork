@@ -23,7 +23,7 @@ import (
 )
 
 func accountsPath(slug string, rest ...string) string {
-	return "/api/v1/tenants/" + slug + "/accounts" + strings.Join(rest, "")
+	return "/api/v1/teams/" + slug + "/accounts" + strings.Join(rest, "")
 }
 
 // docs/adr/0033 D1, D4: an administrator creates an account with a temporary
@@ -74,7 +74,7 @@ func TestATemporaryPasswordIsChangedBeforeAnythingElse(t *testing.T) {
 	me := person.get("/api/v1/me")
 	require.Equal(t, http.StatusOK, me.StatusCode, "reading who they are stays possible")
 	assert.True(t, decode[apigen.Me](t, me).PasswordChangeRequired)
-	for _, path := range []string{"/api/v1/tenants/" + w.SlugA, "/api/v1/me/tokens", "/api/v1/tenants/" + w.SlugA + "/projects"} {
+	for _, path := range []string{"/api/v1/teams/" + w.SlugA, "/api/v1/me/tokens", "/api/v1/teams/" + w.SlugA + "/projects"} {
 		assertProblem(t, person.get(path), http.StatusForbidden, "password_change_required")
 	}
 	assertProblem(t, person.request(http.MethodPost, "/api/v1/me/tokens", map[string]string{"name": "x", "scope": "read"}), http.StatusForbidden, "password_change_required")
@@ -94,7 +94,7 @@ func TestATemporaryPasswordIsChangedBeforeAnythingElse(t *testing.T) {
 
 	require.Equal(t, http.StatusNoContent, change(temporary, "a brand new password").StatusCode)
 	assert.False(t, decode[apigen.Me](t, person.get("/api/v1/me")).PasswordChangeRequired)
-	assert.Equal(t, http.StatusOK, person.get("/api/v1/tenants/"+w.SlugA).StatusCode)
+	assert.Equal(t, http.StatusOK, person.get("/api/v1/teams/"+w.SlugA).StatusCode)
 	assertProblem(t, second.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
 	assertProblem(t, s.browser(t).login(username, temporary), http.StatusUnauthorized, "invalid_credentials")
 	assert.Equal(t, http.StatusOK, s.browser(t).login(username, "a brand new password").StatusCode)
@@ -550,7 +550,7 @@ func TestASessionsIdempotencyKeyIsScopedToThePerson(t *testing.T) {
 	other := s.browser(t)
 	other.mustLogin(names["adminA"], testPassword)
 	key := uuid.Must(uuid.NewV7()).String()
-	path := "/api/v1/tenants/" + w.SlugA + "/projects"
+	path := "/api/v1/teams/" + w.SlugA + "/projects"
 	post := func(who *browser, keyValue, projectKey string) *http.Response {
 		return who.request(http.MethodPost, path, map[string]string{"key": projectKey, "name": "Keyed"}, withHeader("Idempotency-Key", keyValue))
 	}

@@ -24,7 +24,7 @@ func TestThePolledListsAnswerNotModified(t *testing.T) {
 	admin := caller{Token: tok.AdminA}
 	_, number, err := fixtures(t).Ticket(context.Background(), w.A, w.ProjectA, w.AdminA, "polled")
 	require.NoError(t, err)
-	tenant := "/api/v1/tenants/" + w.SlugA
+	tenant := "/api/v1/teams/" + w.SlugA
 	ticket := tenant + "/projects/ALPHA/tickets/" + strconv.Itoa(number)
 
 	lists := map[string]string{

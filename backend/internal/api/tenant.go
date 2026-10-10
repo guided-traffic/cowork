@@ -16,7 +16,7 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 )
 
-// tenantScope is the tenant a request under /tenants/{tenant} acts in, with
+// tenantScope is the tenant a request under /teams/{team} acts in, with
 // the person's role there. Oversight marks a global administrator who holds no
 // role in the tenant (docs/adr/0034 D2): Role is empty, so every need of
 // auth.Authorize refuses them, and the boundary admitted them to the
@@ -36,7 +36,7 @@ func withTenant(ctx context.Context, t tenantScope) context.Context {
 }
 
 // tenantFrom returns the tenant the boundary admitted the request to; every
-// handler under /tenants/{tenant} has one.
+// handler under /teams/{team} has one.
 func tenantFrom(ctx context.Context) tenantScope {
 	t, _ := ctx.Value(tenantKey{}).(tenantScope)
 	return t
@@ -47,11 +47,11 @@ func tenantFrom(ctx context.Context) tenantScope {
 // project. Every other tenant-level route is outside the project, where the
 // token is invalid (docs/adr/0035 D3).
 var tenantWideForProjectTokens = map[string]bool{
-	"listProjects":      true,
-	"listTenantTickets": true,
-	"searchTenant":      true,
-	"resolveTicket":     true,
-	opStreamEvents:      true,
+	"listProjects":    true,
+	"listTeamTickets": true,
+	"searchTeam":      true,
+	"resolveTicket":   true,
+	opStreamEvents:    true,
 }
 
 // oversight are the operations under a tenant that a global administrator
@@ -61,7 +61,7 @@ var tenantWideForProjectTokens = map[string]bool{
 // of the tenant's work: no project, ticket, time entry, attachment, event or
 // audit row, and no other act.
 var oversight = map[string]bool{
-	"getTenant":         true,
+	"getTeam":           true,
 	"listMembers":       true,
 	"listGroupMappings": true,
 	"setMemberGrant":    true,
@@ -82,7 +82,7 @@ func oversees(p auth.Principal, operationID string) bool {
 // the tenant (oversees). Every refusal is the same 404 as an unknown slug, so
 // the answer does not tell whether the tenant exists (docs/adr/0047 D5).
 func (h *handler) boundary(ctx context.Context, slug, path, operationID string) (tenantScope, *problem.Error) {
-	refused := problem.New(problem.NotFound, "no such tenant")
+	refused := problem.New(problem.NotFound, "no such team")
 	p, ok := auth.PrincipalFrom(ctx)
 	if !ok {
 		return tenantScope{}, refused
@@ -103,7 +103,7 @@ func (h *handler) boundary(ctx context.Context, slug, path, operationID string) 
 		return nil
 	})
 	if err != nil {
-		h.logger.Error("tenant boundary failed", "request_id", requestid.From(ctx), "error", err)
+		h.logger.Error("team boundary failed", "request_id", requestid.From(ctx), "error", err)
 		return tenantScope{}, problem.New(problem.Internal, "internal error")
 	}
 	if !found {
@@ -123,7 +123,7 @@ func (h *handler) boundary(ctx context.Context, slug, path, operationID string) 
 // unknown slug. The tenants policy shows a global administrator every tenant
 // (migration 26).
 func (h *handler) overseen(ctx context.Context, p auth.Principal, slug, operationID string) (tenantScope, *problem.Error) {
-	refused := problem.New(problem.NotFound, "no such tenant")
+	refused := problem.New(problem.NotFound, "no such team")
 	if !oversees(p, operationID) {
 		return tenantScope{}, refused
 	}
@@ -141,7 +141,7 @@ func (h *handler) overseen(ctx context.Context, p auth.Principal, slug, operatio
 		return err
 	})
 	if err != nil {
-		h.logger.Error("tenant boundary failed", "request_id", requestid.From(ctx), "error", err)
+		h.logger.Error("team boundary failed", "request_id", requestid.From(ctx), "error", err)
 		return tenantScope{}, problem.New(problem.Internal, "internal error")
 	}
 	if !found {

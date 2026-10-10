@@ -404,9 +404,9 @@ func parseTimeFilter(p auth.Principal, from, to *openapi_types.Date, project, ti
 	return f, nil
 }
 
-// ListTenantTime lists the tenant's visible entries, newest first: cursor
+// ListTeamTime lists the team's visible entries, newest first: cursor
 // pages, or numbered pages with a total (docs/adr/0048 D2); CSV on request.
-func (s *Server) ListTenantTime(ctx context.Context, req apigen.ListTenantTimeRequestObject) (apigen.ListTenantTimeResponseObject, error) {
+func (s *Server) ListTeamTime(ctx context.Context, req apigen.ListTeamTimeRequestObject) (apigen.ListTeamTimeResponseObject, error) {
 	t := tenantFrom(ctx)
 	p := principal(ctx)
 	if perr := auth.Authorize(p, t.Role, read); perr != nil {
@@ -417,6 +417,8 @@ func (s *Server) ListTenantTime(ctx context.Context, req apigen.ListTenantTimeRe
 	if perr != nil {
 		return nil, perr
 	}
+	// The operation's name before the rename binds the cursor, so that a cursor
+	// pages on across replicas of both releases during a rollout (docs/adr/0028 D4).
 	const op = "listTenantTime"
 	scope := t.ID.String()
 	params := readq.ListTenantTimeParams{TenantID: t.ID, FromDay: f.from, ToDay: f.to, ProjectKey: f.project, TicketNumber: f.number,
@@ -460,13 +462,13 @@ func (s *Server) ListTenantTime(ctx context.Context, req apigen.ListTenantTimeRe
 	}
 	if wantsCSV(ctx) {
 		body := timeCSV(out.Items)
-		return apigen.ListTenantTime200TextcsvResponse{Body: bytes.NewReader(body), ContentLength: int64(len(body))}, nil
+		return apigen.ListTeamTime200TextcsvResponse{Body: bytes.NewReader(body), ContentLength: int64(len(body))}, nil
 	}
-	return apigen.ListTenantTime200JSONResponse(out), nil
+	return apigen.ListTeamTime200JSONResponse(out), nil
 }
 
 // timePaging sets the page of the tenant's time list.
-func (s *Server) timePaging(q apigen.ListTenantTimeParams, params *readq.ListTenantTimeParams) (numbered bool, perPage, size int, perr *problem.Error) {
+func (s *Server) timePaging(q apigen.ListTeamTimeParams, params *readq.ListTenantTimeParams) (numbered bool, perPage, size int, perr *problem.Error) {
 	l, perr := s.h.tablePage(q.Cursor, q.Limit, q.Page, (*int)(q.PerPage))
 	if perr != nil {
 		return false, 0, 0, perr
@@ -513,7 +515,10 @@ func timeCSV(items []apigen.TimeEntry) []byte {
 }
 
 // TimeReport sums the visible, not voided minutes per ticket, project,
-// person or for the tenant over a period (docs/adr/0017 D10).
+// person or for the team over a period (docs/adr/0017 D10): group_by=team
+// sums the team in one row keyed team, and group_by=tenant, its name before,
+// does as it did, keyed tenant, until a later release removes it
+// (docs/adr/0005 D1, docs/adr/0046 D7).
 func (s *Server) TimeReport(ctx context.Context, req apigen.TimeReportRequestObject) (apigen.TimeReportResponseObject, error) {
 	t := tenantFrom(ctx)
 	p := principal(ctx)

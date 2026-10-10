@@ -28,7 +28,7 @@ func short(tk apigen.Ticket) string { return tk.Project + "-" + strconv.Itoa(tk.
 
 // binPath is a tenant's bin, or a ticket in it.
 func binPath(slug string, key ...string) string {
-	p := "/api/v1/tenants/" + slug + "/deleted-tickets"
+	p := "/api/v1/teams/" + slug + "/deleted-tickets"
 	if len(key) > 0 {
 		p += "/" + key[0]
 	}
@@ -140,7 +140,7 @@ func (e ticketEnv) treeKeys(t *testing.T, c caller, tk apigen.Ticket, query stri
 
 func (e ticketEnv) reportMinutes(t *testing.T, c caller) int {
 	t.Helper()
-	res := e.s.do(t, c, http.MethodGet, "/api/v1/tenants/"+e.SlugA+"/time-report?from=2026-09-01&to=2026-10-31", nil)
+	res := e.s.do(t, c, http.MethodGet, "/api/v1/teams/"+e.SlugA+"/time-report?from=2026-09-01&to=2026-10-31", nil)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	return decode[apigen.TimeReport](t, res).TotalMinutes
 }

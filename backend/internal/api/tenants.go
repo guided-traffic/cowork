@@ -29,9 +29,9 @@ var read = auth.Need{Role: domain.RoleViewer, Scope: domain.ScopeRead}
 // agent (docs/adr/0034 D1, docs/adr/0035 D3, docs/adr/0043 D3).
 var administer = auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeAdmin, HardOff: auth.HardOffAdministration}
 
-// GetTenant answers the tenant and its settings, to its members and to a
+// GetTeam answers the team and its settings, to its members and to a
 // global administrator who oversees it (docs/adr/0034 D2).
-func (s *Server) GetTenant(ctx context.Context, _ apigen.GetTenantRequestObject) (apigen.GetTenantResponseObject, error) {
+func (s *Server) GetTeam(ctx context.Context, _ apigen.GetTeamRequestObject) (apigen.GetTeamResponseObject, error) {
 	t := tenantFrom(ctx)
 	if perr := administrationRead(principal(ctx), t, read); perr != nil {
 		return nil, perr
@@ -45,11 +45,11 @@ func (s *Server) GetTenant(ctx context.Context, _ apigen.GetTenantRequestObject)
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetTenant200JSONResponse{Body: tenantView(row), Headers: apigen.GetTenant200ResponseHeaders{ETag: etag(row.Version)}}, nil
+	return apigen.GetTeam200JSONResponse{Body: tenantView(row), Headers: apigen.GetTeam200ResponseHeaders{ETag: etag(row.Version)}}, nil
 }
 
-func tenantView(t readq.GetTenantRow) apigen.Tenant {
-	v := apigen.Tenant{
+func tenantView(t readq.GetTenantRow) apigen.Team {
+	v := apigen.Team{
 		Slug:                  t.Slug,
 		Name:                  t.Name,
 		Version:               int(t.Version),
@@ -93,7 +93,7 @@ func (s tenantSettings) values() map[string]any {
 
 // apply returns the settings with the patch applied and the names of the
 // fields the patch sends.
-func (s tenantSettings) apply(p apigen.TenantPatch) (tenantSettings, []string) {
+func (s tenantSettings) apply(p apigen.TeamPatch) (tenantSettings, []string) {
 	var sent []string
 	if p.Name != nil {
 		s.Name, sent = *p.Name, append(sent, fieldName)
@@ -146,11 +146,11 @@ func sessionToGive(p auth.Principal, widened []string) *problem.Error {
 		" takes a browser session; a token may only narrow what the members may see or do")
 }
 
-// UpdateTenant changes the tenant's name or settings: an administration act
+// UpdateTeam changes the team's name or settings: an administration act
 // with If-Match (docs/adr/0050 D3). A change that widens what the members may
 // see or do takes a browser session (sessionToGive). Moving the time lock is
 // recorded as locked (docs/adr/0026 D1), everything else as updated.
-func (s *Server) UpdateTenant(ctx context.Context, req apigen.UpdateTenantRequestObject) (apigen.UpdateTenantResponseObject, error) {
+func (s *Server) UpdateTeam(ctx context.Context, req apigen.UpdateTeamRequestObject) (apigen.UpdateTeamResponseObject, error) {
 	t, p := tenantFrom(ctx), principal(ctx)
 	if perr := auth.Authorize(p, t.Role, administer); perr != nil {
 		return nil, perr
@@ -195,7 +195,7 @@ func (s *Server) UpdateTenant(ctx context.Context, req apigen.UpdateTenantReques
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.UpdateTenant200JSONResponse{Body: tenantView(out), Headers: apigen.UpdateTenant200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.UpdateTeam200JSONResponse{Body: tenantView(out), Headers: apigen.UpdateTeam200ResponseHeaders{ETag: etag(out.Version)}}, nil
 }
 
 func recordSettingsChange(w *store.Writer, tenantID uuid.UUID, before, after map[string]any) {
@@ -451,23 +451,25 @@ func uuidString(id *uuid.UUID) string {
 	return id.String()
 }
 
-// CreateTenant creates a tenant and makes the global administrator who asks its
+// CreateTeam creates a team and makes the global administrator who asks its
 // first administrator, by a marked grant, in the same transaction and recorded
-// with it (docs/adr/0005 D5, docs/adr/0032 D7): a tenant without an
+// with it (docs/adr/0005 D5, docs/adr/0032 D7): a team without an
 // administrator cannot come to exist. The pipeline has refused a token; the
 // person must be a global administrator, who has no other role anywhere
 // (docs/adr/0034 D2). Both acts are installation-level rows, as ADR 0026 D1
 // says of a tenant's creation.
-func (s *Server) CreateTenant(ctx context.Context, req apigen.CreateTenantRequestObject) (apigen.CreateTenantResponseObject, error) {
+func (s *Server) CreateTeam(ctx context.Context, req apigen.CreateTeamRequestObject) (apigen.CreateTeamResponseObject, error) {
 	p := principal(ctx)
 	if !p.GlobalAdmin {
-		return nil, problem.New(problem.Forbidden, "creating a tenant needs a global administrator")
+		return nil, problem.New(problem.Forbidden, "creating a team needs a global administrator")
 	}
 	body := *req.Body
 	name := strings.TrimSpace(body.Name)
 	if name == "" {
 		return nil, problem.Field("/name", "must not be blank")
 	}
+	// The operation's name before the rename binds the key, so that a retry is
+	// replayed across replicas of both releases during a rollout (docs/adr/0028 D4).
 	ctx, perr := s.keyed(ctx, req.Params.IdempotencyKey, "createTenant", p.PersonID.String(), body)
 	if perr != nil {
 		return nil, perr
@@ -484,7 +486,7 @@ func (s *Server) CreateTenant(ctx context.Context, req apigen.CreateTenantReques
 	replay, err := s.db.Mutate(ctx, uuid.Nil, func(w *store.Writer) error {
 		if err := w.InsertTenant(ctx, writeq.InsertTenantParams{ID: id, Slug: body.Slug, Name: name}); err != nil {
 			if isUnique(err, "tenants_slug_key") {
-				return &problem.Error{Code: problem.TenantSlugTaken, Detail: "the installation has a tenant with this slug",
+				return &problem.Error{Code: problem.TenantSlugTaken, Detail: "the installation has a team with this slug",
 					Errors: []problem.FieldError{{Pointer: "/slug", Message: messageTaken}}}
 			}
 			return err
@@ -511,30 +513,32 @@ func (s *Server) CreateTenant(ctx context.Context, req apigen.CreateTenantReques
 		return nil, err
 	}
 	if replay != nil {
-		replayedView, err := replayed[apigen.Tenant](replay)
+		replayedView, err := replayed[apigen.Team](replay)
 		if err != nil {
 			return nil, err
 		}
-		return apigen.CreateTenant201JSONResponse{Body: replayedView, Headers: apigen.CreateTenant201ResponseHeaders{
+		return apigen.CreateTeam201JSONResponse{Body: replayedView, Headers: apigen.CreateTeam201ResponseHeaders{
 			ETag: header(replay, headerETag), Location: header(replay, headerLocation)}}, nil
 	}
 	location := tenantURL(created.Slug)
-	return apigen.CreateTenant201JSONResponse{Body: tenantView(created), Headers: apigen.CreateTenant201ResponseHeaders{
+	return apigen.CreateTeam201JSONResponse{Body: tenantView(created), Headers: apigen.CreateTeam201ResponseHeaders{
 		ETag: etag(created.Version), Location: &location}}, nil
 }
 
-func tenantURL(slug string) string { return "/api/v1/tenants/" + slug }
+func tenantURL(slug string) string { return teamFamily + "/" + slug }
 
-// ListTenants lists every tenant of the installation for a global
+// ListTeams lists every team of the installation for a global
 // administrator, by slug, with the role they hold in each — none where they
-// hold none (docs/adr/0034 D2): how they find a tenant to look after. The
+// hold none (docs/adr/0034 D2): how they find a team to look after. The
 // document takes a browser session only; anybody who is not a global
-// administrator finds their tenants in GET /api/v1/me.
-func (s *Server) ListTenants(ctx context.Context, req apigen.ListTenantsRequestObject) (apigen.ListTenantsResponseObject, error) {
+// administrator finds their teams in GET /api/v1/me.
+func (s *Server) ListTeams(ctx context.Context, req apigen.ListTeamsRequestObject) (apigen.ListTeamsResponseObject, error) {
 	p := principal(ctx)
 	if !p.GlobalAdmin {
-		return nil, problem.New(problem.Forbidden, "listing the tenants needs a global administrator")
+		return nil, problem.New(problem.Forbidden, "listing the teams needs a global administrator")
 	}
+	// The operation's name before the rename binds the cursor, so that a cursor
+	// pages on across replicas of both releases during a rollout (docs/adr/0028 D4).
 	const op = "listTenants"
 	scope := p.PersonID.String()
 	size := s.h.pageSize(req.Params.Limit)
@@ -556,14 +560,14 @@ func (s *Server) ListTenants(ctx context.Context, req apigen.ListTenantsRequestO
 		return nil, err
 	}
 	rows, next := page(s.h, rows, size, op, scope, func(t readq.ListTenantsRow) string { return t.Slug })
-	out := apigen.ListTenants200JSONResponse{Items: []apigen.TenantSummary{}, NextCursor: nullableString(next)}
+	out := apigen.ListTeams200JSONResponse{Items: []apigen.TeamSummary{}, NextCursor: nullableString(next)}
 	for _, t := range rows {
 		role := nullableOf[apigen.Role](nil)
 		if t.Role != "" {
 			r := apigen.Role(t.Role)
 			role = nullableOf(&r)
 		}
-		out.Items = append(out.Items, apigen.TenantSummary{Slug: t.Slug, Name: t.Name, Role: role})
+		out.Items = append(out.Items, apigen.TeamSummary{Slug: t.Slug, Name: t.Name, Role: role})
 	}
 	return out, nil
 }

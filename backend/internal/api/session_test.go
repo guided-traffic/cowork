@@ -305,8 +305,11 @@ func TestARecordedReadComesFromTheInstallationsOwnPages(t *testing.T) {
 			}
 		}
 	}
-	assert.ElementsMatch(t, []string{"downloadAttachment", "exportTicket", "exportTicketContext", "exportProject", "exportTenant"}, recorded,
-		"the five reads that record an act")
+	assert.ElementsMatch(t, []string{"downloadAttachment", "exportTicket", "exportTicketContext", "exportProject", "exportTeam",
+		// The twins under the family before, which answer as their team paths
+		// do (docs/adr/0023 D1).
+		"downloadAttachmentDeprecated", "exportTicketDeprecated", "exportTicketContextDeprecated", "exportProjectDeprecated",
+		"exportTenant"}, recorded, "the five reads that record an act, and their twins")
 
 	marked := &openapi3.Operation{OperationID: "downloadAttachment", Extensions: map[string]any{"x-cowork-recorded-read": true}}
 	for name, c := range map[string]struct {

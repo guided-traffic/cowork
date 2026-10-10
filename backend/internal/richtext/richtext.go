@@ -53,9 +53,12 @@ const LinkRel = "noopener noreferrer nofollow"
 var linkSchemes = map[string]bool{"http": true, "https": true, "mailto": true}
 
 // attachmentContent is the path of an attachment's bytes, the only source an
-// image may have; the id is what names the attachment.
+// image may have; the id is what names the attachment, which then shows from
+// the path Images gives it. The path is under the team family, or under the
+// family before a tenant was called a team, which the texts written before
+// name for good (docs/adr/0005 D1, docs/adr/0016 D7).
 var attachmentContent = regexp.MustCompile(
-	`^/api/v1/tenants/[^/]+/projects/[^/]+/tickets/[0-9]+/attachments/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/content$`)
+	`^/api/v1/(?:teams|tenants)/[^/]+/projects/[^/]+/tickets/[0-9]+/attachments/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/content$`)
 
 var (
 	markdown = goldmark.New(

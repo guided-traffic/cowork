@@ -19,7 +19,7 @@ import (
 )
 
 func filtersPath(slug string, id ...uuid.UUID) string {
-	p := "/api/v1/tenants/" + slug + "/filters"
+	p := "/api/v1/teams/" + slug + "/filters"
 	if len(id) > 0 {
 		p += "/" + id[0].String()
 	}

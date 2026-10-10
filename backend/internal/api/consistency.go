@@ -146,7 +146,7 @@ func staleCheck(detail string) *problem.Error {
 func lockedCheck(ctx context.Context, w *store.Writer, t tenantScope, id uuid.UUID) (writeq.GetConsistencyCheckForUpdateRow, error) {
 	check, err := w.GetConsistencyCheckForUpdate(ctx, writeq.GetConsistencyCheckForUpdateParams{TenantID: t.ID, ID: id})
 	if errors.Is(err, pgx.ErrNoRows) {
-		return check, staleCheck("the check is not the tenant's latest: a newer one replaced its lists; read them again")
+		return check, staleCheck("the check is not the team's latest: a newer one replaced its lists; read them again")
 	}
 	return check, err
 }
@@ -266,7 +266,7 @@ func (s *Server) removeObjects(ctx context.Context, t tenantScope, keys []string
 	for _, key := range keys {
 		if err := s.storage.Delete(ctx, key); err != nil {
 			out.Failed++
-			s.h.logger.Error("an orphaned object could not be removed", "tenant", t.Slug, "object", key, "error", err)
+			s.h.logger.Error("an orphaned object could not be removed", "team", t.Slug, "object", key, "error", err)
 			continue
 		}
 		out.Removed++

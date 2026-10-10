@@ -14,13 +14,15 @@ import (
 	"golang.org/x/net/html"
 )
 
-// The ticket of the tests and its attachments: a PNG the text may show, and
-// what another ticket's path would name.
+// The ticket of the tests and its attachments: a PNG the text may show, at
+// its path under the team family and under the family before, which the texts
+// written before name; and what another ticket's path would name.
 var (
-	png     = uuid.MustParse("0199a3c2-1d2e-7f00-8000-0000000000a1")
-	other   = uuid.MustParse("0199a3c2-1d2e-7f00-8000-0000000000b2")
-	pngPath = "/api/v1/tenants/acme/projects/COW/tickets/12/attachments/" + png.String() + "/content"
-	images  = Images{png: pngPath}
+	png          = uuid.MustParse("0199a3c2-1d2e-7f00-8000-0000000000a1")
+	other        = uuid.MustParse("0199a3c2-1d2e-7f00-8000-0000000000b2")
+	pngPath      = "/api/v1/teams/acme/projects/COW/tickets/12/attachments/" + png.String() + "/content"
+	pngPathAsWas = "/api/v1/tenants/acme/projects/COW/tickets/12/attachments/" + png.String() + "/content"
+	images       = Images{png: pngPath}
 )
 
 // allowList is the sanitiser's allow-list as a fixture (docs/adr/0011 D6): the
@@ -51,7 +53,11 @@ func TestMarkdownRenders(t *testing.T) {
 		"an e-mail address":                    {"<ada@example.com>", `<p><a href="mailto:ada@example.com" rel="noopener noreferrer nofollow" target="_blank">ada@example.com</a></p>`},
 		"an attachment image":                  {"![shot](" + pngPath + ")", `<p><img src="` + pngPath + `" alt="shot"></p>`},
 		"an attachment by its URL on any host": {"![shot](https://cowork.example" + pngPath + ")", `<p><img src="` + pngPath + `" alt="shot"></p>`},
-		"angle brackets in prose are text":     {"returns Vec<String> or Option<T>", "<p>returns Vec&lt;String&gt; or Option&lt;T&gt;</p>"},
+		// docs/adr/0005 D1: a text written before a tenant was called a team
+		// names the image under the family before; it shows from its path now.
+		"an attachment image under the family before":     {"![shot](" + pngPathAsWas + ")", `<p><img src="` + pngPath + `" alt="shot"></p>`},
+		"an attachment under the family before, any host": {"![shot](https://cowork.example" + pngPathAsWas + ")", `<p><img src="` + pngPath + `" alt="shot"></p>`},
+		"angle brackets in prose are text":                {"returns Vec<String> or Option<T>", "<p>returns Vec&lt;String&gt; or Option&lt;T&gt;</p>"},
 		// docs/adr/0015 D5: a mention is plain @Name text beside the comment's list
 		// of ids; the rendering reads no mention, links nobody and keeps the text.
 		"a mention is text":               {"@Sam Rivera, please look", "<p>@Sam Rivera, please look</p>"},
@@ -92,8 +98,16 @@ func TestHostileInputIsDefused(t *testing.T) {
 		"a remote image":                    {in: "![logo](https://tracker.example/pixel.png)", want: `<p><a href="https://tracker.example/pixel.png" rel="noopener noreferrer nofollow" target="_blank">logo</a></p>`},
 		"a protocol-relative image":         {in: "![logo](//tracker.example/pixel.png)", want: `<p><a href="//tracker.example/pixel.png" rel="noopener noreferrer nofollow" target="_blank">logo</a></p>`},
 		"another ticket's attachment": {
+			in:   "![x](/api/v1/teams/acme/projects/COW/tickets/13/attachments/" + other.String() + "/content)",
+			want: `<p><a href="/api/v1/teams/acme/projects/COW/tickets/13/attachments/` + other.String() + `/content" rel="noopener noreferrer nofollow" target="_blank">x</a></p>`,
+		},
+		"another ticket's attachment under the family before": {
 			in:   "![x](/api/v1/tenants/acme/projects/COW/tickets/13/attachments/" + other.String() + "/content)",
 			want: `<p><a href="/api/v1/tenants/acme/projects/COW/tickets/13/attachments/` + other.String() + `/content" rel="noopener noreferrer nofollow" target="_blank">x</a></p>`,
+		},
+		"the attachment under a family that only begins like one": {
+			in:   "![x](/api/v1/teamsx/acme/projects/COW/tickets/12/attachments/" + png.String() + "/content)",
+			want: `<p><a href="/api/v1/teamsx/acme/projects/COW/tickets/12/attachments/` + png.String() + `/content" rel="noopener noreferrer nofollow" target="_blank">x</a></p>`,
 		},
 		"an image that names a query": {
 			in:   "![x](" + pngPath + "?a=1)",

@@ -68,7 +68,7 @@ func TestTicketContext(t *testing.T) {
 		"> First thoughts.\n>\n> ## Links\n> not a section\n",
 		" via " + agentHeader + ", ",
 		"> Recorded by the agent.\n",
-		"## Attachments\n\n- notes.txt — text/plain; charset=utf-8, 12 B — /api/v1/tenants/" + e.SlugA + "/projects/ALPHA/tickets/",
+		"## Attachments\n\n- notes.txt — text/plain; charset=utf-8, 12 B — /api/v1/teams/" + e.SlugA + "/projects/ALPHA/tickets/",
 		"## Recent activity\n\n",
 		"commented",
 	} {

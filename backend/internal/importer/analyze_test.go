@@ -294,7 +294,8 @@ func TestCheckRefusesWhatACorrectionCannotSay(t *testing.T) {
 func exportUpload(t *testing.T, tickets []markdown.Ticket, links []manifestLink) []Source {
 	t.Helper()
 	out := make([]Source, 0, len(tickets)+2)
-	manifest, err := json.Marshal(map[string]any{"format": ExportFormat, "tenant": "acme", "projects": []map[string]any{{"key": "VKO"}}})
+	manifest, err := json.Marshal(map[string]any{"format": ExportFormat, "team": "acme", "tenant": "acme",
+		"projects": []map[string]any{{"key": "VKO"}}})
 	require.NoError(t, err)
 	out = append(out, Source{Path: ManifestFile, Content: manifest})
 	raw, err := json.Marshal(links)
@@ -304,6 +305,28 @@ func exportUpload(t *testing.T, tickets []markdown.Ticket, links []manifestLink)
 		out = append(out, Source{Path: tk.Key + ".md", Content: markdown.Render(tk)})
 	}
 	return out
+}
+
+// docs/adr/0051 D4, docs/adr/0005 D1: a manifest names its team by team,
+// and an archive written before a tenant was called a team names it by tenant
+// alone — read so for good; where both are there, team is the one read.
+func TestTheManifestNamesItsTeamByEitherName(t *testing.T) {
+	for name, c := range map[string]struct{ manifest, want string }{
+		"team and tenant, as this release writes it": {
+			`{"format": "cowork export v1", "team": "acme", "tenant": "acme", "projects": [{"key": "VKO"}]}`,
+			"the manifest of an export of acme/VKO (docs/adr/0051 D4)"},
+		"tenant alone, as every archive before": {
+			`{"format": "cowork export v1", "tenant": "acme", "projects": [{"key": "VKO"}, {"key": "WEB"}]}`,
+			"the manifest of an export of acme/VKO, acme/WEB (docs/adr/0051 D4)"},
+		"team alone, as the release after writes it": {
+			`{"format": "cowork export v1", "team": "acme", "projects": [{"key": "VKO"}]}`,
+			"the manifest of an export of acme/VKO (docs/adr/0051 D4)"},
+		"team before tenant": {
+			`{"format": "cowork export v1", "team": "acme", "tenant": "other", "projects": [{"key": "VKO"}]}`,
+			"the manifest of an export of acme/VKO (docs/adr/0051 D4)"},
+	} {
+		assert.Equal(t, c.want, readManifest([]byte(c.manifest)), name)
+	}
 }
 
 func vko(n int, title string, change func(*markdown.Ticket)) markdown.Ticket {

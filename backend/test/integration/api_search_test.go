@@ -22,7 +22,7 @@ func (e ticketEnv) search(t *testing.T, c caller, slug, q, extra string) apigen.
 	t.Helper()
 	path := "/api/v1/me/search"
 	if slug != "" {
-		path = "/api/v1/tenants/" + slug + "/search"
+		path = "/api/v1/teams/" + slug + "/search"
 	}
 	res := e.s.do(t, c, http.MethodGet, path+"?q="+url.QueryEscape(q)+extra, nil)
 	require.Equal(t, http.StatusOK, res.StatusCode, "%s %s: %v", slug, q, res.Status)
@@ -86,7 +86,7 @@ func TestSearchFindsAndRanksWithSnippets(t *testing.T) {
 	byKey := map[string]apigen.SearchHit{}
 	for _, h := range hits.Items {
 		byKey[h.Key] = h
-		assert.Equal(t, apigen.TenantRef{Slug: e.SlugA, Name: "Tenant A"}, h.Tenant)
+		assert.Equal(t, apigen.TeamRef{Slug: e.SlugA, Name: "Team A"}, h.Team)
 	}
 	assert.Equal(t, apigen.SearchFoundInTicket, byKey[inTitle.Key].FoundIn)
 	assert.Equal(t, "Quokka migration plan", byKey[inTitle.Key].Title)
@@ -133,18 +133,18 @@ func TestSearchFindsAndRanksWithSnippets(t *testing.T) {
 	assert.Equal(t, keys, walked)
 	first := e.search(t, member, e.SlugA, "quokka", "&limit=1")
 	cursor := url.QueryEscape(first.NextCursor.MustGet())
-	assertProblem(t, e.s.do(t, member, http.MethodGet, "/api/v1/tenants/"+e.SlugA+"/search?q=desk&cursor="+cursor, nil),
+	assertProblem(t, e.s.do(t, member, http.MethodGet, "/api/v1/teams/"+e.SlugA+"/search?q=desk&cursor="+cursor, nil),
 		http.StatusBadRequest, "invalid_cursor")
 	assertProblem(t, e.s.do(t, member, http.MethodGet, "/api/v1/me/search?q=quokka&cursor="+cursor, nil),
 		http.StatusBadRequest, "invalid_cursor")
 
 	// Nothing to find, or too much of it.
-	body := assertProblem(t, e.s.do(t, member, http.MethodGet, "/api/v1/tenants/"+e.SlugA+"/search?q=%20%20", nil),
+	body := assertProblem(t, e.s.do(t, member, http.MethodGet, "/api/v1/teams/"+e.SlugA+"/search?q=%20%20", nil),
 		http.StatusBadRequest, "validation_failed")
 	assert.Equal(t, "query:q", body["errors"].([]any)[0].(map[string]any)["pointer"])
-	assertProblem(t, e.s.do(t, member, http.MethodGet, "/api/v1/tenants/"+e.SlugA+"/search?q="+strings.Repeat("a", 300), nil),
+	assertProblem(t, e.s.do(t, member, http.MethodGet, "/api/v1/teams/"+e.SlugA+"/search?q="+strings.Repeat("a", 300), nil),
 		http.StatusBadRequest, "validation_failed")
-	assertProblem(t, e.s.do(t, member, http.MethodGet, "/api/v1/tenants/"+e.SlugA+"/search", nil),
+	assertProblem(t, e.s.do(t, member, http.MethodGet, "/api/v1/teams/"+e.SlugA+"/search", nil),
 		http.StatusBadRequest, "validation_failed")
 	assert.Empty(t, e.search(t, member, e.SlugA, "!!!", "").Items, "a query of no word finds nothing and fails nothing")
 }
@@ -195,7 +195,7 @@ func TestSearchNeverShowsWhatTheCallerCannotSee(t *testing.T) {
 		got := hitKeys(e.search(t, c.caller, e.SlugA, "zebracorn", ""))
 		assert.ElementsMatch(t, c.want, got, c.name)
 		for _, h := range e.search(t, c.caller, e.SlugA, "zebracorn", "").Items {
-			assert.Equal(t, e.SlugA, h.Tenant.Slug, "a tenant's search finds only the tenant's")
+			assert.Equal(t, e.SlugA, h.Team.Slug, "a tenant's search finds only the tenant's")
 			if h.Key == open.Key {
 				assert.Contains(t, snippetText(h), "Seen once, never again", "a snippet is its own ticket's text")
 			}
@@ -216,13 +216,13 @@ func TestSearchNeverShowsWhatTheCallerCannotSee(t *testing.T) {
 	assert.Empty(t, e.search(t, member, e.SlugA, "Hidde", "").Items, "nor by trigram")
 
 	// Another tenant is the boundary's 404, and the person-level search is a union of the person's.
-	assertProblem(t, e.s.do(t, memberB, http.MethodGet, "/api/v1/tenants/"+e.SlugA+"/search?q=zebracorn", nil),
+	assertProblem(t, e.s.do(t, memberB, http.MethodGet, "/api/v1/teams/"+e.SlugA+"/search?q=zebracorn", nil),
 		http.StatusNotFound, "not_found")
 	assert.Equal(t, []string{inB.Key}, hitKeys(e.search(t, memberB, "", "zebracorn", "")))
 	union := e.search(t, both, "", "zebracorn", "")
 	assert.ElementsMatch(t, []string{open.Key, restricted.Key, inB.Key}, hitKeys(union))
 	for _, h := range union.Items {
-		assert.True(t, strings.HasPrefix(h.Key, h.Tenant.Slug+"/"), "each hit names its own tenant")
+		assert.True(t, strings.HasPrefix(h.Key, h.Team.Slug+"/"), "each hit names its own tenant")
 	}
 	assert.Equal(t, []string{inB.Key}, hitKeys(e.search(t, both, "", "zebracorn", "&tenant="+e.SlugB)))
 	assertProblem(t, e.s.do(t, memberB, http.MethodGet, "/api/v1/me/search?q=zebracorn&tenant="+e.SlugA, nil),

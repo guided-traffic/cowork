@@ -93,6 +93,7 @@ func runMigrate(ctx context.Context, lookup func(string) (string, bool), stderr 
 		return 1
 	}
 	logger := newLogger(cfg, stderr)
+	warnDeprecated(cfg, logger)
 	if err := migrateDatabase(ctx, cfg, logger); err != nil {
 		logger.Error("migration failed", "error", err)
 		return 1
@@ -124,12 +125,12 @@ func bootstrapAfterMigration(ctx context.Context, cfg config.Config, logger *slo
 }
 
 // bootstrapParams is what the configuration says the installation starts with
-// (docs/adr/0032): the local administrator, the bootstrap tenant and the
+// (docs/adr/0032): the local administrator, the bootstrap team and the
 // identity provider's administrator group.
 func bootstrapParams(cfg config.Config) bootstrap.Params {
 	params := bootstrap.Params{
 		Username: cfg.LocalAdminUsername, Password: cfg.LocalAdminPassword,
-		TenantSlug: cfg.BootstrapTenantSlug, TenantName: cfg.BootstrapTenantName,
+		TeamSlug: cfg.BootstrapTeamSlug, TeamName: cfg.BootstrapTeamName,
 	}
 	if cfg.OIDC != nil {
 		params.AdminGroup = cfg.OIDC.AdminGroup
@@ -147,6 +148,7 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		return 1
 	}
 	logger := newLogger(cfg, stderr)
+	warnDeprecated(cfg, logger)
 
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -224,7 +226,7 @@ func runServe(ctx context.Context, lookup func(string) (string, bool), stderr io
 		Storage:                objects,
 		AttachmentMaxBytes:     cfg.AttachmentMaxBytes,
 		AttachmentMaxPerTicket: cfg.AttachmentMaxPerTicket,
-		AttachmentTenantQuota:  cfg.AttachmentTenantQuota,
+		AttachmentTeamQuota:    cfg.AttachmentTeamQuota,
 		MaxImportBytes:         cfg.MaxImportBytes,
 		Events:                 hub,
 
@@ -389,7 +391,7 @@ func requireForServe(cfg config.Config) error {
 
 // runCheckConsistency runs the consistency check of the attachments once, now,
 // whatever its schedule says — the step of a restore (docs/adr/0059 D5) —
-// and prints what it found in every tenant. It needs the runtime role's URL
+// and prints what it found in every team. It needs the runtime role's URL
 // and the object storage, as the server has them; in the chart it runs in a
 // backend container (`kubectl exec … -- /app/cowork check-consistency`).
 func runCheckConsistency(ctx context.Context, lookup func(string) (string, bool), stdout, stderr io.Writer) int {
@@ -402,6 +404,7 @@ func runCheckConsistency(ctx context.Context, lookup func(string) (string, bool)
 		return 1
 	}
 	logger := newLogger(cfg, stderr)
+	warnDeprecated(cfg, logger)
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	db, err := store.Open(ctx, cfg.DatabaseURL, store.Options{Logger: logger})
@@ -433,17 +436,17 @@ func runCheckConsistency(ctx context.Context, lookup func(string) (string, bool)
 }
 
 // printConsistency writes what a run found: the run in all, then every
-// tenant by its slug and id with its counts — never a file name.
+// team by its slug and id with its counts — never a file name.
 func printConsistency(w io.Writer, run store.ConsistencyRun) {
 	var dangling, accepted, orphans int
 	var bytes int64
 	for _, t := range run.Tenants {
 		dangling, accepted, orphans, bytes = dangling+t.Dangling, accepted+t.Accepted, orphans+t.Orphans, bytes+t.OrphanBytes
 	}
-	fmt.Fprintf(w, "consistency check at %s: %d tenants, %d dangling, %d accepted as lost, %d orphaned objects (%d bytes)\n",
+	fmt.Fprintf(w, "consistency check at %s: %d teams, %d dangling, %d accepted as lost, %d orphaned objects (%d bytes)\n",
 		run.At.Format(time.RFC3339), len(run.Tenants), dangling, accepted, orphans, bytes)
 	for _, t := range run.Tenants {
-		fmt.Fprintf(w, "tenant %s (%s): %d dangling, %d accepted as lost, %d orphaned objects (%d bytes)\n",
+		fmt.Fprintf(w, "team %s (%s): %d dangling, %d accepted as lost, %d orphaned objects (%d bytes)\n",
 			t.Slug, t.TenantID, t.Dangling, t.Accepted, t.Orphans, t.OrphanBytes)
 	}
 }
@@ -472,11 +475,11 @@ func checkConsistencyWhenDue(ctx context.Context, db *store.DB, objects *storage
 	for _, t := range run.Tenants {
 		dangling, orphans = dangling+t.Dangling, orphans+t.Orphans
 		if t.Dangling > 0 || t.Orphans > 0 {
-			logger.Warn("the attachments of a tenant are out of step with the bucket", "job", store.JobConsistencyCheck,
-				"tenant", t.Slug, "dangling", t.Dangling, "accepted", t.Accepted, "orphans", t.Orphans, "orphan_bytes", t.OrphanBytes)
+			logger.Warn("the attachments of a team are out of step with the bucket", "job", store.JobConsistencyCheck,
+				"team", t.Slug, "dangling", t.Dangling, "accepted", t.Accepted, "orphans", t.Orphans, "orphan_bytes", t.OrphanBytes)
 		}
 	}
-	logger.Info("consistency check done", "job", store.JobConsistencyCheck, "tenants", len(run.Tenants),
+	logger.Info("consistency check done", "job", store.JobConsistencyCheck, "teams", len(run.Tenants),
 		"dangling", dangling, "orphans", orphans)
 	return nil
 }
@@ -578,6 +581,17 @@ func migrateDatabase(ctx context.Context, cfg config.Config, logger *slog.Logger
 	}
 	logger.Info("database schema is current", "version", res.Version, "applied", res.Applied)
 	return nil
+}
+
+// warnDeprecated says once at the start of every command which variables are
+// set under the names they had before a tenant was called a team, each with
+// the variable that replaces it (docs/adr/0005 D1): they are read for one
+// release, and the release after reads only the new names.
+func warnDeprecated(cfg config.Config, logger *slog.Logger) {
+	for _, r := range cfg.Deprecated {
+		logger.Warn("a variable is set under its deprecated name; set the variable that replaces it, since a later release no longer reads the name before",
+			"variable", r.Variable, "replaced_by", r.Replacement)
+	}
 }
 
 func newLogger(cfg config.Config, w io.Writer) *slog.Logger {

@@ -38,7 +38,7 @@ func (s *stream) Close() { s.cancel() }
 // openStream subscribes c to the tenant's events.
 func (e ticketEnv) openStream(t *testing.T, srv apiServer, c caller, slug, lastEventID string) *stream {
 	t.Helper()
-	return e.openStreamAt(t, srv, c, "/api/v1/tenants/"+slug+"/events", lastEventID)
+	return e.openStreamAt(t, srv, c, "/api/v1/teams/"+slug+"/events", lastEventID)
 }
 
 // openStreamAt subscribes c to the stream at path, with its query.
@@ -233,7 +233,7 @@ func TestTheStreamAdmitsWhatAnActOpensAtOnce(t *testing.T) {
 	admin.mustLogin(names["adminA"], testPassword)
 	adminToken := caller{Token: e.tk.AdminA}
 	s := e.openStream(t, srv, caller{Token: e.tk.MemberA}, e.SlugA, "")
-	tenant := "/api/v1/tenants/" + e.SlugA
+	tenant := "/api/v1/teams/" + e.SlugA
 
 	// A project created after the stream opened: its creation is no event a client hears.
 	res := srv.do(t, adminToken, http.MethodPost, tenant+"/projects", map[string]any{"key": "LATE", "name": "Late"})

@@ -79,9 +79,9 @@ func (s *Server) ListProjectTickets(ctx context.Context, req apigen.ListProjectT
 	return apigen.ListProjectTickets200JSONResponse{Body: list, Headers: apigen.ListProjectTickets200ResponseHeaders{ETag: &tag}}, nil
 }
 
-// ListTenantTickets lists the tenant's tickets across the projects the caller
+// ListTeamTickets lists the team's tickets across the projects the caller
 // can see, newest first.
-func (s *Server) ListTenantTickets(ctx context.Context, req apigen.ListTenantTicketsRequestObject) (apigen.ListTenantTicketsResponseObject, error) {
+func (s *Server) ListTeamTickets(ctx context.Context, req apigen.ListTeamTicketsRequestObject) (apigen.ListTeamTicketsResponseObject, error) {
 	p := req.Params
 	q := ticketQuery{
 		project: p.Project, state: p.State, typ: p.Type, severity: p.Severity, security: p.Security, horizon: p.Horizon,
@@ -91,14 +91,16 @@ func (s *Server) ListTenantTickets(ctx context.Context, req apigen.ListTenantTic
 		hasOpenQuestions: p.HasOpenQuestions, cursor: p.Cursor,
 		limit: p.Limit, page: p.Page, perPage: (*int)(p.PerPage),
 	}
+	// The operation's name before the rename binds the cursor, so that a cursor
+	// pages on across replicas of both releases during a rollout (docs/adr/0028 D4).
 	list, tag, err := s.listTickets(ctx, "listTenantTickets", "", q, store.NewestFirst)
 	if err != nil {
 		return nil, err
 	}
 	if notModified(p.IfNoneMatch, tag) {
-		return apigen.ListTenantTickets304Response{Headers: apigen.ListTenantTickets304ResponseHeaders{ETag: &tag}}, nil
+		return apigen.ListTeamTickets304Response{Headers: apigen.ListTeamTickets304ResponseHeaders{ETag: &tag}}, nil
 	}
-	return apigen.ListTenantTickets200JSONResponse{Body: list, Headers: apigen.ListTenantTickets200ResponseHeaders{ETag: &tag}}, nil
+	return apigen.ListTeamTickets200JSONResponse{Body: list, Headers: apigen.ListTeamTickets200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // listTickets answers a page of tickets and its weak ETag. projectKey is

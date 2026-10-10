@@ -31,7 +31,7 @@ func documentHandler(t *testing.T) *handler {
 // validateTurn holds a turn's body to the document as the pipeline does.
 func validateTurn(t *testing.T, h *handler, body string) *problem.Error {
 	t.Helper()
-	r := httptest.NewRequest(http.MethodPost, "/api/v1/tenants/acme/chat", strings.NewReader(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/teams/acme/chat", strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
 	route, params, err := h.router.FindRoute(r)
 	require.NoError(t, err)

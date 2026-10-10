@@ -36,7 +36,7 @@ var filterNeed = auth.Need{Role: domain.RoleViewer, Scope: domain.ScopeWrite}
 var filterDeletion = auth.Need{Role: domain.RoleViewer, Scope: domain.ScopeWrite, HardOff: auth.HardOffDeletion}
 
 func filterURL(t tenantScope, id uuid.UUID) string {
-	return "/api/v1/tenants/" + t.Slug + "/filters/" + id.String()
+	return teamFamily + "/" + t.Slug + "/filters/" + id.String()
 }
 
 // ListSavedFilters answers the caller's filters and the tenant's shared ones,
@@ -327,7 +327,7 @@ func mayChangeFilter(p auth.Principal, role domain.Role, owner uuid.UUID, patch 
 		return false, nil
 	}
 	if role != domain.RoleAdmin {
-		return false, problem.New(problem.Forbidden, "only its owner changes a saved filter; a tenant administrator unshares or deletes a shared one")
+		return false, problem.New(problem.Forbidden, "only its owner changes a saved filter; a team administrator unshares or deletes a shared one")
 	}
 	if perr := auth.Authorize(p, role, administer); perr != nil {
 		return false, perr

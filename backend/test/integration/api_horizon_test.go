@@ -380,7 +380,7 @@ func TestTheCapabilityIsSetHorizonOnly(t *testing.T) {
 	assert.Equal(t, []apigen.Capability{"rank", "set-horizon"}, listed.Items[idx].Capabilities)
 	admin, _, err := f.Token(ctx, fixture.TokenSpec{UserID: w.AdminA, Scope: domain.ScopeAdmin})
 	require.NoError(t, err)
-	tenant := decode[apigen.MemberTokenList](t, s.do(t, caller{Token: admin}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/tokens", nil))
+	tenant := decode[apigen.MemberTokenList](t, s.do(t, caller{Token: admin}, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/tokens", nil))
 	idx = slices.IndexFunc(tenant.Items, func(tok apigen.MemberToken) bool { return tok.Id == agentID })
 	require.GreaterOrEqual(t, idx, 0)
 	assert.Equal(t, []apigen.Capability{"rank", "set-horizon"}, tenant.Items[idx].Capabilities)
@@ -409,7 +409,7 @@ func TestTheCapabilityIsSetHorizonOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, stored, "the chat stores its set in the catalogue's order, and nothing beside it")
 
-	filed := b.request(http.MethodPost, "/api/v1/tenants/"+w.SlugA+"/projects/ALPHA/tickets", task("for the chat"))
+	filed := b.request(http.MethodPost, "/api/v1/teams/"+w.SlugA+"/projects/ALPHA/tickets", task("for the chat"))
 	require.Equal(t, http.StatusCreated, filed.StatusCode)
 	tk := decode[apigen.Ticket](t, filed)
 	marked := b.request(http.MethodPut, ticketPath(w.SlugA, "ALPHA", tk.Number)+"/horizon",

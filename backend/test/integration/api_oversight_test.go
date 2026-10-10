@@ -57,7 +57,7 @@ func globalAdministrator(t *testing.T, prefix string) uuid.UUID {
 	return id
 }
 
-func tenantPath(slug, rest string) string { return "/api/v1/tenants/" + slug + rest }
+func tenantPath(slug, rest string) string { return "/api/v1/teams/" + slug + rest }
 
 // selfGrant is the grant of a role to the browser's own person.
 func selfGrant(b *browser, slug string, person uuid.UUID, role string, opts ...reqOpt) *http.Response {
@@ -77,7 +77,7 @@ func TestAGlobalAdministratorWithoutARoleSeesTheAdministrationOnly(t *testing.T)
 
 	res := b.get(tenantPath(o.SlugA, ""))
 	require.Equal(t, http.StatusOK, res.StatusCode, "the tenant and its settings")
-	assert.Equal(t, "Tenant A", decode[apigen.Tenant](t, res).Name)
+	assert.Equal(t, "Team A", decode[apigen.Team](t, res).Name)
 	list := members(t, b, tenantPath(o.SlugA, "/members"))
 	require.Contains(t, list, o.AdminA)
 	assert.Equal(t, apigen.RoleAdmin, list[o.AdminA].Role)
@@ -98,17 +98,17 @@ func TestAGlobalAdministratorWithoutARoleSeesTheAdministrationOnly(t *testing.T)
 		return body
 	}
 	reached := map[string]bool{}
-	for _, r := range tenantRoutes(t) {
+	for _, r := range teamRoutes(t) {
 		var body any
 		if r.method != http.MethodGet && r.method != http.MethodDelete {
 			body = map[string]any{}
 		}
-		overseen := b.request(r.method, strings.ReplaceAll(r.path, "{tenant}", o.SlugA), body)
+		overseen := b.request(r.method, r.at(o.SlugA), body)
 		if overseen.StatusCode != http.StatusNotFound {
-			reached[r.method+" "+strings.TrimPrefix(r.path, "/api/v1/tenants/{tenant}")] = true
+			reached[r.method+" "+r.rest()] = true
 			continue
 		}
-		unknown := b.request(r.method, strings.ReplaceAll(r.path, "{tenant}", "no-such-tenant-9"), body)
+		unknown := b.request(r.method, r.at("no-such-tenant-9"), body)
 		require.Equal(t, http.StatusNotFound, unknown.StatusCode, "%s %s", r.method, r.path)
 		assert.Equal(t, strip(unknown), strip(overseen), "%s %s answers the overseer like no tenant", r.method, r.path)
 	}
@@ -289,17 +289,17 @@ func TestAGlobalAdministratorWithALowerRoleRaisesTheirOwnGrant(t *testing.T) {
 // time; nobody else does, and no token, and no agent.
 func TestOnlyAGlobalAdministratorListsEveryTenant(t *testing.T) {
 	o := newOverseer(t)
-	all := func(b *browser) map[string]apigen.TenantSummary {
-		out := map[string]apigen.TenantSummary{}
+	all := func(b *browser) map[string]apigen.TeamSummary {
+		out := map[string]apigen.TeamSummary{}
 		next := ""
 		for {
-			path := "/api/v1/tenants?limit=200"
+			path := "/api/v1/teams?limit=200"
 			if next != "" {
 				path += "&cursor=" + url.QueryEscape(next)
 			}
 			res := b.get(path)
 			require.Equal(t, http.StatusOK, res.StatusCode)
-			page := decode[apigen.TenantSummaryList](t, res)
+			page := decode[apigen.TeamSummaryList](t, res)
 			for _, item := range page.Items {
 				out[item.Slug] = item
 			}
@@ -312,29 +312,29 @@ func TestOnlyAGlobalAdministratorListsEveryTenant(t *testing.T) {
 	tenants := all(o.browser)
 	require.Contains(t, tenants, o.SlugA)
 	require.Contains(t, tenants, o.SlugB)
-	assert.Equal(t, "Tenant A", tenants[o.SlugA].Name)
+	assert.Equal(t, "Team A", tenants[o.SlugA].Name)
 	assert.True(t, tenants[o.SlugA].Role.IsNull(), "no role in A")
 	require.Equal(t, http.StatusOK, selfGrant(o.browser, o.SlugA, o.id, "member").StatusCode)
 	tenants = all(o.browser)
 	assert.Equal(t, apigen.RoleMember, tenants[o.SlugA].Role.MustGet())
 	assert.True(t, tenants[o.SlugB].Role.IsNull())
 
-	first := o.browser.get("/api/v1/tenants?limit=1")
+	first := o.browser.get("/api/v1/teams?limit=1")
 	require.Equal(t, http.StatusOK, first.StatusCode)
-	page := decode[apigen.TenantSummaryList](t, first)
+	page := decode[apigen.TeamSummaryList](t, first)
 	require.Len(t, page.Items, 1)
 	require.False(t, page.NextCursor.IsNull(), "more than one tenant: a next page")
-	second := decode[apigen.TenantSummaryList](t, o.browser.get("/api/v1/tenants?limit=1&cursor="+url.QueryEscape(page.NextCursor.MustGet())))
+	second := decode[apigen.TeamSummaryList](t, o.browser.get("/api/v1/teams?limit=1&cursor="+url.QueryEscape(page.NextCursor.MustGet())))
 	require.Len(t, second.Items, 1)
 	assert.Less(t, page.Items[0].Slug, second.Items[0].Slug, "by slug")
 
 	member := o.s.browser(t)
 	member.mustLogin(o.names["adminA"], testPassword)
-	assertProblem(t, member.get("/api/v1/tenants"), http.StatusForbidden, "forbidden")
-	assertProblem(t, o.s.do(t, caller{Token: o.token}, http.MethodGet, "/api/v1/tenants", nil), http.StatusForbidden, "session_required")
-	assertProblem(t, o.browser.get("/api/v1/tenants", withHeader("X-Cowork-Agent", "chat/model/conversation")),
+	assertProblem(t, member.get("/api/v1/teams"), http.StatusForbidden, "forbidden")
+	assertProblem(t, o.s.do(t, caller{Token: o.token}, http.MethodGet, "/api/v1/teams", nil), http.StatusForbidden, "session_required")
+	assertProblem(t, o.browser.get("/api/v1/teams", withHeader("X-Cowork-Agent", "chat/model/conversation")),
 		http.StatusForbidden, "agent_forbidden")
-	assertProblem(t, o.s.do(t, caller{}, http.MethodGet, "/api/v1/tenants", nil), http.StatusUnauthorized, "unauthenticated")
+	assertProblem(t, o.s.do(t, caller{}, http.MethodGet, "/api/v1/teams", nil), http.StatusUnauthorized, "unauthenticated")
 }
 
 // docs/adr/0034 D2, docs/adr/0021 D6 (migration 26): row-level security shows a

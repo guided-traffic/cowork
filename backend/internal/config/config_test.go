@@ -2,6 +2,7 @@ package config
 
 import (
 	"log/slog"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -255,18 +256,18 @@ func TestStorageIsAllOrNone(t *testing.T) {
 	require.NoError(t, err, "0 disables the limit (docs/adr/0039 D2)")
 	assert.Zero(t, cfg.AttachmentMaxBytes)
 
-	// docs/adr/0016 D6 as amended 2026-10-05: no tenant quota unless one is set.
-	assert.Zero(t, cfg.AttachmentTenantQuota, "no quota by default")
-	cfg, err = with(map[string]string{EnvAttachmentTenantQuota: "2GiB"})
+	// docs/adr/0016 D6 as amended 2026-10-05: no team quota unless one is set.
+	assert.Zero(t, cfg.AttachmentTeamQuota, "no quota by default")
+	cfg, err = with(map[string]string{EnvAttachmentTeamQuota: "2GiB"})
 	require.NoError(t, err)
-	assert.EqualValues(t, 2<<30, cfg.AttachmentTenantQuota)
-	cfg, err = with(map[string]string{EnvAttachmentTenantQuota: "0"})
+	assert.EqualValues(t, 2<<30, cfg.AttachmentTeamQuota)
+	cfg, err = with(map[string]string{EnvAttachmentTeamQuota: "0"})
 	require.NoError(t, err)
-	assert.Zero(t, cfg.AttachmentTenantQuota)
-	_, err = with(map[string]string{EnvAttachmentTenantQuota: "a lot"})
-	assert.ErrorContains(t, err, EnvAttachmentTenantQuota)
-	_, err = with(map[string]string{EnvAttachmentTenantQuota: "-1"})
-	assert.ErrorContains(t, err, EnvAttachmentTenantQuota)
+	assert.Zero(t, cfg.AttachmentTeamQuota)
+	_, err = with(map[string]string{EnvAttachmentTeamQuota: "a lot"})
+	assert.ErrorContains(t, err, EnvAttachmentTeamQuota)
+	_, err = with(map[string]string{EnvAttachmentTeamQuota: "-1"})
+	assert.ErrorContains(t, err, EnvAttachmentTeamQuota)
 
 	_, err = with(map[string]string{EnvS3Endpoint: "minio:9000", EnvS3Bucket: "b", EnvS3AccessKeyID: "i", EnvS3SecretAccessKey: "s"})
 	assert.ErrorContains(t, err, "not an http:// or https:// URL")
@@ -303,15 +304,16 @@ func TestLoadLoginDefaults(t *testing.T) {
 	assert.Equal(t, 90*24*time.Hour, cfg.TokenDefaultLifetime)
 	assert.Equal(t, 365*24*time.Hour, cfg.TokenMaxLifetime)
 	assert.Empty(t, cfg.LocalAdminUsername, "no local administrator unless configured")
-	assert.Empty(t, cfg.BootstrapTenantSlug)
+	assert.Empty(t, cfg.BootstrapTeamSlug)
 	assert.Empty(t, cfg.BaseOrigin)
+	assert.Empty(t, cfg.Deprecated, "nothing deprecated is set")
 }
 
 func TestLoadLoginOverrides(t *testing.T) {
 	cfg, err := Load(loginEnv(map[string]string{
 		EnvSessionLifetime: "8h", EnvSessionIdle: "30m", EnvPasswordMinLength: "16", EnvLoginLockout: "Admin",
 		EnvLoginMaxFailures: "3", EnvLoginAddressLimit: "0", EnvTokenDefaultLifetime: "720h", EnvTokenMaxLifetime: "2160h",
-		EnvBootstrapTenantSlug: "acme", EnvBootstrapTenantName: "Acme Corp", EnvBaseURL: "HTTPS://Cowork.Example.com:443/",
+		EnvBootstrapTeamSlug: "acme", EnvBootstrapTeamName: "Acme Corp", EnvBaseURL: "HTTPS://Cowork.Example.com:443/",
 		EnvLocalAdminPassword: "sixteen characters+",
 	}))
 	require.NoError(t, err)
@@ -324,8 +326,8 @@ func TestLoadLoginOverrides(t *testing.T) {
 	assert.Equal(t, 720*time.Hour, cfg.TokenDefaultLifetime)
 	assert.Equal(t, "ada", cfg.LocalAdminUsername)
 	assert.Equal(t, "sixteen characters+", cfg.LocalAdminPassword)
-	assert.Equal(t, "acme", cfg.BootstrapTenantSlug)
-	assert.Equal(t, "Acme Corp", cfg.BootstrapTenantName)
+	assert.Equal(t, "acme", cfg.BootstrapTeamSlug)
+	assert.Equal(t, "Acme Corp", cfg.BootstrapTeamName)
 	assert.Equal(t, "https://cowork.example.com", cfg.BaseOrigin, "the origin as a browser writes it")
 
 	// A password shorter than the configured minimum refuses the start.
@@ -441,29 +443,121 @@ func TestLoadBaseURL(t *testing.T) {
 	}
 }
 
-// docs/adr/0032 D6, D7: the bootstrap tenant needs both variables and the
+// docs/adr/0032 D6, D7: the bootstrap team needs both variables and the
 // administrator who becomes its first administrator.
-func TestLoadBootstrapTenant(t *testing.T) {
-	cfg, err := Load(loginEnv(map[string]string{EnvBootstrapTenantSlug: "acme", EnvBootstrapTenantName: "Acme"}))
+func TestLoadBootstrapTeam(t *testing.T) {
+	cfg, err := Load(loginEnv(map[string]string{EnvBootstrapTeamSlug: "acme", EnvBootstrapTeamName: "Acme"}))
 	require.NoError(t, err)
-	assert.Equal(t, "acme", cfg.BootstrapTenantSlug)
+	assert.Equal(t, "acme", cfg.BootstrapTeamSlug)
 
-	_, err = Load(loginEnv(map[string]string{EnvBootstrapTenantSlug: "acme"}))
+	_, err = Load(loginEnv(map[string]string{EnvBootstrapTeamSlug: "acme"}))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), EnvBootstrapTenantName+" is required while "+EnvBootstrapTenantSlug+" is set")
-	_, err = Load(loginEnv(map[string]string{EnvBootstrapTenantName: "Acme"}))
+	assert.Contains(t, err.Error(), EnvBootstrapTeamName+" is required while "+EnvBootstrapTeamSlug+" is set")
+	_, err = Load(loginEnv(map[string]string{EnvBootstrapTeamName: "Acme"}))
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), EnvBootstrapTenantSlug+" is required while "+EnvBootstrapTenantName+" is set")
+	assert.Contains(t, err.Error(), EnvBootstrapTeamSlug+" is required while "+EnvBootstrapTeamName+" is set")
 
 	for _, slug := range []string{"A", "Acme", "-acme", "acme corp", "a"} {
-		_, err = Load(loginEnv(map[string]string{EnvBootstrapTenantSlug: slug, EnvBootstrapTenantName: "Acme"}))
+		_, err = Load(loginEnv(map[string]string{EnvBootstrapTeamSlug: slug, EnvBootstrapTeamName: "Acme"}))
 		require.Error(t, err, slug)
-		assert.Contains(t, err.Error(), EnvBootstrapTenantSlug, slug)
+		assert.Contains(t, err.Error(), EnvBootstrapTeamSlug, slug)
 	}
 
-	_, err = Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvBootstrapTenantSlug: "acme", EnvBootstrapTenantName: "Acme"}))
-	require.Error(t, err, "a tenant without an administrator cannot come to exist")
+	_, err = Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvBootstrapTeamSlug: "acme", EnvBootstrapTeamName: "Acme"}))
+	require.Error(t, err, "a team without an administrator cannot come to exist")
 	assert.Contains(t, err.Error(), EnvLocalAdminUsername)
+}
+
+// docs/adr/0005 D1, docs/adr/0046 D7: the variables a tenant's rename to a
+// team renamed are read under their new names; a name before set alone is read
+// for one release, noted for the start's warning that names its replacement;
+// both set to the same value — as the chart sets them, so that an image
+// rolled back keeps the value (docs/adr/0028 D4) — is the value without a
+// warning; both set to different values is refused naming both and never a
+// value.
+func TestTheVariablesOfATeamAreReadUnderTheNamesBeforeWithAWarning(t *testing.T) {
+	for _, c := range []struct {
+		renamed      Renamed
+		value, other string
+		read         func(Config) string
+	}{
+		{Renamed{EnvBootstrapTenantSlug, EnvBootstrapTeamSlug}, "acme", "globex", func(c Config) string { return c.BootstrapTeamSlug }},
+		{Renamed{EnvBootstrapTenantName, EnvBootstrapTeamName}, "Acme Corp", "Globex Corp", func(c Config) string { return c.BootstrapTeamName }},
+		{Renamed{EnvAttachmentTenantQuota, EnvAttachmentTeamQuota}, "2GiB", "3GiB", func(c Config) string { return strconv.FormatInt(c.AttachmentTeamQuota, 10) }},
+	} {
+		t.Run(c.renamed.Replacement, func(t *testing.T) {
+			// The bootstrap team takes both of its variables: the other one is
+			// set under its new name.
+			env := func(set map[string]string) func(string) (string, bool) {
+				base := map[string]string{EnvBootstrapTeamSlug: "base", EnvBootstrapTeamName: "Base"}
+				delete(base, c.renamed.Replacement)
+				for k, v := range set {
+					base[k] = v
+				}
+				return loginEnv(base)
+			}
+			cfg, err := Load(env(map[string]string{c.renamed.Replacement: c.value}))
+			require.NoError(t, err, "the new name")
+			want := c.read(cfg)
+			assert.NotEmpty(t, want)
+			assert.Empty(t, cfg.Deprecated, "the new name alone warns of nothing")
+
+			cfg, err = Load(env(map[string]string{c.renamed.Variable: c.value}))
+			require.NoError(t, err, "the name before")
+			assert.Equal(t, want, c.read(cfg), "the name before is read as the new one")
+			assert.Equal(t, []Renamed{c.renamed}, cfg.Deprecated, "the start warns of the name before")
+
+			cfg, err = Load(env(map[string]string{c.renamed.Replacement: c.value, c.renamed.Variable: c.value}))
+			require.NoError(t, err, "both, to the same value")
+			assert.Equal(t, want, c.read(cfg))
+			assert.Empty(t, cfg.Deprecated, "both set to the same value, as the chart sets them, warns of nothing")
+
+			_, err = Load(env(map[string]string{c.renamed.Replacement: c.value, c.renamed.Variable: c.other}))
+			require.Error(t, err, "both, to different values")
+			assert.Contains(t, err.Error(), c.renamed.Replacement+" and "+c.renamed.Variable+" are both set, to different values")
+			assert.NotContains(t, err.Error(), c.value, "the error never echoes a value")
+			assert.NotContains(t, err.Error(), c.other, "the error never echoes a value")
+		})
+	}
+
+	// A quota is the same by the bytes it names, however written.
+	for _, other := range []string{"1073741824", "1024MiB"} {
+		cfg, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvAttachmentTeamQuota: "1GiB", EnvAttachmentTenantQuota: other}))
+		require.NoError(t, err, other)
+		assert.EqualValues(t, 1<<30, cfg.AttachmentTeamQuota, other)
+		assert.Empty(t, cfg.Deprecated, other)
+	}
+	_, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvAttachmentTeamQuota: "1GiB", EnvAttachmentTenantQuota: "1000MiB"}))
+	require.Error(t, err, "1000MiB is another size than 1GiB")
+	assert.Contains(t, err.Error(), "are both set, to different values")
+
+	// Both names set and one of them, or both, no size: that variable's
+	// error alone, under its own name, and no conflict.
+	for name, c := range map[string]struct {
+		team, tenant string
+		errs         []string
+	}{
+		"the new name's":    {"a lot", "1GiB", []string{EnvAttachmentTeamQuota + `: "a lot" is not a size`}},
+		"the name before's": {"1GiB", "a lot", []string{EnvAttachmentTenantQuota + `: "a lot" is not a size`}},
+		"both": {"a lot", "lots", []string{EnvAttachmentTeamQuota + `: "a lot" is not a size`,
+			EnvAttachmentTenantQuota + `: "lots" is not a size`}},
+	} {
+		_, err := Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvAttachmentTeamQuota: c.team, EnvAttachmentTenantQuota: c.tenant}))
+		require.Error(t, err, name)
+		for _, want := range c.errs {
+			assert.Contains(t, err.Error(), want, name)
+		}
+		assert.NotContains(t, err.Error(), "both set", name)
+		assert.Len(t, strings.Split(err.Error(), "\n"), len(c.errs), "%s: no other error", name)
+	}
+
+	// An error about a value names the variable the operator set.
+	_, err = Load(envOf(map[string]string{EnvDatabaseURL: dbURL, EnvAttachmentTenantQuota: "a lot"}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvAttachmentTenantQuota+": ")
+	_, err = Load(loginEnv(map[string]string{EnvBootstrapTenantSlug: "acme"}))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), EnvBootstrapTeamName+" is required while "+EnvBootstrapTenantSlug+" is set")
 }
 
 // docs/adr/0035 D2: COWORK_TRUSTED_PROXIES is a list of CIDRs, IPv4 and IPv6,

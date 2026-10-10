@@ -227,7 +227,7 @@ func (db *DB) PurgeDeletedTickets(ctx context.Context, now time.Time) ([]Purged,
 			if err := w.inTenant(ctx, tenantID, func() error {
 				tenant, err := w.GetTenant(ctx, tenantID)
 				if err != nil {
-					return fmt.Errorf("read the tenant of a ticket due for the purge: %w", err)
+					return fmt.Errorf("read the team of a ticket due for the purge: %w", err)
 				}
 				for _, d := range due[start:end] {
 					p, err := w.PurgeTicket(ctx, tenant.Slug, d.ID)

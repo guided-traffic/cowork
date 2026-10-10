@@ -227,7 +227,7 @@ func bind(ctx context.Context, w *store.Writer, t tenantScope, p project, b boun
 // tells no more than that the binding exists, as a taken project key does.
 // pointer is where the request holds the remote.
 func boundElsewhere(ctx context.Context, r *store.Reader, t tenantScope, projectID uuid.UUID, pointer string) error {
-	e := &problem.Error{Code: problem.RepositoryBound, Detail: "another project of the tenant binds this repository",
+	e := &problem.Error{Code: problem.RepositoryBound, Detail: "another project of the team binds this repository",
 		Errors: []problem.FieldError{{Pointer: pointer, Message: "bound to another project"}}}
 	other, err := r.GetVisibleProjectByID(ctx, readq.GetVisibleProjectByIDParams{TenantID: t.ID, ID: projectID})
 	switch {
@@ -352,8 +352,10 @@ func (s *Server) LookupRepository(ctx context.Context, req apigen.LookupReposito
 			out.Status = apigen.RepositoryLookupStatusAmbiguous
 		}
 		for _, b := range chosen {
+			team := apigen.TeamRef{Slug: b.tenant.slug, Name: b.tenant.name}
 			out.Bindings = append(out.Bindings, apigen.RepositoryBindingRef{
-				Tenant:   apigen.TenantRef{Slug: b.tenant.slug, Name: b.tenant.name},
+				Team:     team,
+				Tenant:   team, //nolint:staticcheck // SA1019: deprecated in the document, answered beside team until a later release removes it
 				Project:  apigen.ProjectRef{Key: b.row.ProjectKey, Name: b.row.ProjectName},
 				Identity: b.row.Identity, Path: b.row.Path, Remote: b.row.Remote, Archived: b.row.ArchivedAt != nil,
 			})
@@ -452,13 +454,13 @@ func (s *Server) propose(ctx context.Context, tenants []lookupTenant, identity, 
 		return nil, "", err
 	}
 	proposal := &apigen.RepositoryProposal{Identity: identity, Remote: remote, Name: domain.RepositoryName(identity),
-		Tenant: nullableString(nil), Tenants: []apigen.ProposalTenant{}}
+		Team: nullableString(nil), Teams: []apigen.ProposalTeam{}}
 	offered := creatable
 	switch {
 	case len(creatable) == 0 && refusal != "":
-		return nil, "you may create a project in none of your tenants: " + refusal, nil
+		return nil, "you may create a project in none of your teams: " + refusal, nil
 	case len(creatable) == 0:
-		return nil, "you belong to no tenant this request reaches", nil
+		return nil, "you belong to no team this request reaches", nil
 	case len(creatable) == 1:
 		proposal.Reason = apigen.RepositoryProposalReasonOnlyTenant
 	case len(underOwner) == 1:
@@ -474,11 +476,12 @@ func (s *Server) propose(ctx context.Context, tenants []lookupTenant, identity, 
 		if err != nil {
 			return nil, "", err
 		}
-		proposal.Tenants = append(proposal.Tenants, apigen.ProposalTenant{Slug: t.slug, Name: t.name, Key: key})
+		proposal.Teams = append(proposal.Teams, apigen.ProposalTeam{Slug: t.slug, Name: t.name, Key: key})
 	}
 	if len(offered) == 1 {
-		proposal.Tenant = nullableOf(&offered[0].slug)
+		proposal.Team = nullableOf(&offered[0].slug)
 	}
+	proposal.Tenant, proposal.Tenants = proposal.Team, proposal.Teams //nolint:staticcheck // SA1019: deprecated in the document, answered beside team and teams until a later release removes them
 	return proposal, "", nil
 }
 

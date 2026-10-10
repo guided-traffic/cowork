@@ -118,7 +118,7 @@ func TestTheScoreFollowsItsInputs(t *testing.T) {
 // sortRank sorts the project's rank by the score as c.
 func (e ticketEnv) sortRank(t *testing.T, c caller, project string) *http.Response {
 	t.Helper()
-	return e.s.do(t, c, http.MethodPut, "/api/v1/tenants/"+e.SlugA+"/projects/"+project+"/rank", map[string]any{"by": "score"})
+	return e.s.do(t, c, http.MethodPut, "/api/v1/teams/"+e.SlugA+"/projects/"+project+"/rank", map[string]any{"by": "score"})
 }
 
 // docs/adr/0014 D3: "sort by score" reorders a project's open tickets to their
@@ -195,7 +195,7 @@ func TestSortByScore(t *testing.T) {
 
 	assertProblem(t, e.sortRank(t, caller{Token: e.tk.ViewerA}, "ALPHA"), http.StatusForbidden, "forbidden")
 	assertProblem(t, e.sortRank(t, caller{Token: e.tk.AssistedAgentA}, "ALPHA"), http.StatusForbidden, "agent_forbidden")
-	assertProblem(t, e.s.do(t, member, http.MethodPut, "/api/v1/tenants/"+e.SlugA+"/projects/ALPHA/rank", map[string]any{"by": "rank"}),
+	assertProblem(t, e.s.do(t, member, http.MethodPut, "/api/v1/teams/"+e.SlugA+"/projects/ALPHA/rank", map[string]any{"by": "rank"}),
 		http.StatusBadRequest, "validation_failed")
 	assertProblem(t, e.sortRank(t, caller{Token: e.tk.MemberB}, "ALPHA"), http.StatusNotFound, "not_found")
 	restricted, err := f.Project(e.ctx, e.A, "HIDDEN", "Hidden")
@@ -299,8 +299,8 @@ func TestNextForMeAcrossTenants(t *testing.T) {
 	want := []string{inB.Key, inGamma.Key, unassigned.Key, mine.Key, secretMine.Key}
 	keys, list := e.next(t, both, "")
 	assert.Equal(t, want, keys, "by score: 11, 9, 6, 4, 2")
-	assert.Equal(t, apigen.TenantRef{Slug: e.SlugB, Name: "Tenant B"}, list.Items[0].Tenant)
-	assert.Equal(t, apigen.TenantRef{Slug: e.SlugA, Name: "Tenant A"}, list.Items[1].Tenant)
+	assert.Equal(t, apigen.TeamRef{Slug: e.SlugB, Name: "Team B"}, list.Items[0].Team)
+	assert.Equal(t, apigen.TeamRef{Slug: e.SlugA, Name: "Team A"}, list.Items[1].Team)
 	assert.Equal(t, 11.0, scoreOf(t, list.Items[0].Ticket))
 	places := map[string]int{}
 	for _, it := range list.Items {

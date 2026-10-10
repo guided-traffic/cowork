@@ -59,8 +59,8 @@ type exportStream struct {
 // VisitExportProjectResponse writes the project's archive.
 func (x exportStream) VisitExportProjectResponse(w http.ResponseWriter) error { return x.write(w) }
 
-// VisitExportTenantResponse writes the tenant's archive.
-func (x exportStream) VisitExportTenantResponse(w http.ResponseWriter) error { return x.write(w) }
+// VisitExportTeamResponse writes the team's archive.
+func (x exportStream) VisitExportTeamResponse(w http.ResponseWriter) error { return x.write(w) }
 
 // write waits for the replica's export slot, reads one snapshot, records the
 // export and streams the archive: application/gzip, a download named by what
@@ -124,10 +124,10 @@ func (s *Server) ExportProject(ctx context.Context, req apigen.ExportProjectRequ
 		filename: fmt.Sprintf("%s-%s-%s.tar.gz", t.Slug, p.Key, now.Format("20060102"))}, nil
 }
 
-// ExportTenant answers every project of the tenant the caller sees, archived
+// ExportTeam answers every project of the team the caller sees, archived
 // ones included, as one archive — the union of the project exports, each link
 // once (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2).
-func (s *Server) ExportTenant(ctx context.Context, _ apigen.ExportTenantRequestObject) (apigen.ExportTenantResponseObject, error) {
+func (s *Server) ExportTeam(ctx context.Context, _ apigen.ExportTeamRequestObject) (apigen.ExportTeamResponseObject, error) {
 	t := tenantFrom(ctx)
 	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
 		return nil, perr
@@ -182,7 +182,8 @@ func (a *exportArchive) gather(ctx context.Context, r *store.Reader, t tenantSco
 	if err != nil {
 		return err
 	}
-	a.manifest = apigen.ExportManifest{Format: apigen.ExportManifestFormat(importer.ExportFormat), Tenant: t.Slug,
+	a.manifest = apigen.ExportManifest{Format: apigen.ExportManifestFormat(importer.ExportFormat), Team: t.Slug,
+		Tenant:     t.Slug, //nolint:staticcheck // SA1019: deprecated in the document, written beside team for the importers of the release before
 		ExportedAt: now, ExportedBy: exporter, Projects: []apigen.ExportManifestProject{}}
 	hidden, err := r.ExportHiddenConfidential(ctx, readq.ExportHiddenConfidentialParams{TenantID: t.ID, ProjectID: projectID})
 	if err != nil {

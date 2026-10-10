@@ -221,7 +221,7 @@ func (db *DB) CheckConsistency(ctx context.Context, objects ObjectStore, now tim
 	ran, err := db.RunJob(ctx, JobConsistencyCheck, consistencyLockKey, func(w *Writer) error {
 		tenants, err := w.ListTenantsToCheck(ctx)
 		if err != nil {
-			return fmt.Errorf("list the tenants to check: %w", err)
+			return fmt.Errorf("list the teams to check: %w", err)
 		}
 		for _, t := range tenants {
 			var result TenantConsistency
@@ -276,15 +276,15 @@ func (w *Writer) checkTenant(ctx context.Context, objects ObjectStore, tenantID 
 		return w.ListTenantAttachmentIDs(ctx, writeq.ListTenantAttachmentIDsParams{TenantID: tenantID, After: after, Upto: upto})
 	}
 	if err := c.run(ctx, objects.List(ctx, tenantID.String()+"/"), rows); err != nil {
-		return result, fmt.Errorf("compare the objects and the attachments of the tenant %s: %w", slug, err)
+		return result, fmt.Errorf("compare the objects and the attachments of the team %s: %w", slug, err)
 	}
 	missing, err := confirmMissing(ctx, objects, tenantID, c.unlisted)
 	if err != nil {
-		return result, fmt.Errorf("ask for the objects of the tenant %s: %w", slug, err)
+		return result, fmt.Errorf("ask for the objects of the team %s: %w", slug, err)
 	}
 	acceptedIDs, err := w.ListAcceptedAttachments(ctx, tenantID)
 	if err != nil {
-		return result, fmt.Errorf("read the accepted losses of the tenant %s: %w", slug, err)
+		return result, fmt.Errorf("read the accepted losses of the team %s: %w", slug, err)
 	}
 	if _, err := w.ForgetWholeAcceptances(ctx, writeq.ForgetWholeAcceptancesParams{TenantID: tenantID, Missing: missing}); err != nil {
 		return result, fmt.Errorf("forget the acceptances of whole attachments: %w", err)
@@ -506,7 +506,7 @@ func (w *Writer) danglingItems(ctx context.Context, tenantID uuid.UUID, slug str
 	}
 	rows, err := w.ListCheckedAttachments(ctx, writeq.ListCheckedAttachmentsParams{TenantID: tenantID, Ids: shown})
 	if err != nil {
-		return nil, fmt.Errorf("read the missing files of the tenant %s: %w", slug, err)
+		return nil, fmt.Errorf("read the missing files of the team %s: %w", slug, err)
 	}
 	byID := make(map[uuid.UUID]writeq.ListCheckedAttachmentsRow, len(rows))
 	for _, r := range rows {
@@ -554,7 +554,7 @@ func (w *Writer) saveCheck(ctx context.Context, r TenantConsistency, now time.Ti
 		Dangling: CountColumn(r.Dangling), Accepted: CountColumn(r.Accepted), Orphans: CountColumn(r.Orphans),
 		OrphanBytes: r.OrphanBytes, DanglingItems: danglingJSON, OrphanItems: orphanJSON})
 	if err != nil {
-		return fmt.Errorf("save the result of the tenant %s: %w", r.Slug, err)
+		return fmt.Errorf("save the result of the team %s: %w", r.Slug, err)
 	}
 	return nil
 }
