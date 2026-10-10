@@ -60,7 +60,7 @@ func TestServingTheCatalogue(t *testing.T) {
 	mux := http.NewServeMux()
 	var mu sync.Mutex
 	var agents []string
-	mux.HandleFunc("PUT /api/v1/tenants/acme/projects/COW/tickets/12/interest", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("PUT /api/v1/teams/acme/projects/COW/tickets/12/interest", func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		agents = append(agents, r.Header.Get("X-Cowork-Agent"))
 		mu.Unlock()
@@ -68,7 +68,7 @@ func TestServingTheCatalogue(t *testing.T) {
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{}`))
 	})
-	mux.HandleFunc("PUT /api/v1/tenants/acme/projects/COW/tickets/13/interest", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("PUT /api/v1/teams/acme/projects/COW/tickets/13/interest", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"type":"t","title":"Not found","status":404,"code":"not_found","detail":"no such ticket"}`))
@@ -100,6 +100,8 @@ func TestServingTheCatalogue(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(schema), `"verification_note"`)
 	assert.Contains(t, cs.InitializeResult().Instructions, "one at a time")
+	assert.Contains(t, cs.InitializeResult().Instructions, "A ticket's key is team/PROJECT-n", "the model reads team (docs/adr/0005 D1)")
+	assert.NotContains(t, strings.ToLower(cs.InitializeResult().Instructions), "tenant")
 
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "watch", Arguments: map[string]any{"key": "COW-12"}})
 	require.NoError(t, err)

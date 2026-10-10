@@ -20,7 +20,7 @@ type ticketQuery struct {
 }
 
 // listTickets reads a project's tickets in the order of its rank.
-func listTickets(ctx context.Context, s *Session, tenant, project string, q ticketQuery) ([]apigen.Ticket, error) {
+func listTickets(ctx context.Context, s *Session, team, project string, q ticketQuery) ([]apigen.Ticket, error) {
 	params := &apigen.ListProjectTicketsParams{Blocked: q.blocked}
 	if len(q.states) > 0 {
 		params.State = &q.states
@@ -44,17 +44,17 @@ func listTickets(ctx context.Context, s *Session, tenant, project string, q tick
 	if q.limit > 0 {
 		params.Limit = &q.limit
 	}
-	res, err := s.API.ListProjectTicketsWithResponse(ctx, tenant, project, params)
+	res, err := s.API.ListProjectTicketsWithResponse(ctx, team, project, params)
 	if err := check(res, err, http.StatusOK); err != nil {
 		return nil, err
 	}
 	return res.JSON200.Items, nil
 }
 
-// searchTenant reads a tenant's tickets, newest first, by full text and the
+// searchTeam reads a team's tickets, newest first, by full text and the
 // filters of a search.
-func searchTenant(ctx context.Context, s *Session, tenant string, q ticketQuery) ([]apigen.Ticket, error) {
-	params := &apigen.ListTenantTicketsParams{}
+func searchTeam(ctx context.Context, s *Session, team string, q ticketQuery) ([]apigen.Ticket, error) {
+	params := &apigen.ListTeamTicketsParams{}
 	if len(q.states) > 0 {
 		params.State = &q.states
 	}
@@ -73,20 +73,20 @@ func searchTenant(ctx context.Context, s *Session, tenant string, q ticketQuery)
 	if q.limit > 0 {
 		params.Limit = &q.limit
 	}
-	res, err := s.API.ListTenantTicketsWithResponse(ctx, tenant, params)
+	res, err := s.API.ListTeamTicketsWithResponse(ctx, team, params)
 	if err := check(res, err, http.StatusOK); err != nil {
 		return nil, err
 	}
 	return res.JSON200.Items, nil
 }
 
-// listTenantTickets reads a project's tickets changed after a time, newest
+// listTeamTickets reads a project's tickets changed after a time, newest
 // first, done and dropped ones included.
-func listTenantTickets(ctx context.Context, s *Session, tenant, project string, after time.Time, limit int) ([]apigen.Ticket, error) {
+func listTeamTickets(ctx context.Context, s *Session, team, project string, after time.Time, limit int) ([]apigen.Ticket, error) {
 	terminal := true
-	params := &apigen.ListTenantTicketsParams{Project: &[]string{project}, UpdatedAfter: &after,
+	params := &apigen.ListTeamTicketsParams{Project: &[]string{project}, UpdatedAfter: &after,
 		IncludeTerminal: &terminal, Limit: &limit}
-	res, err := s.API.ListTenantTicketsWithResponse(ctx, tenant, params)
+	res, err := s.API.ListTeamTicketsWithResponse(ctx, team, params)
 	if err := check(res, err, http.StatusOK); err != nil {
 		return nil, err
 	}

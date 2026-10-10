@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -40,9 +41,9 @@ type Session struct {
 	// Person is the person the requests act for, where the host knows it —
 	// the chat in the backend does —; nil reads it from GET /api/v1/me.
 	Person *Person
-	// Tenants are the tenants a search of every tenant looks through; empty
-	// is every tenant of the person. A host confined to one tenant names it.
-	Tenants []string
+	// Teams are the teams a search of every team looks through; empty is
+	// every team of the person. A host confined to one team names it.
+	Teams []string
 
 	mu      sync.Mutex
 	binding *Binding
@@ -76,10 +77,10 @@ func (s *Session) Me(ctx context.Context) (Person, error) {
 	return Person{ID: me.JSON200.Id, Name: me.JSON200.DisplayName}, nil
 }
 
-// Binding is the tenant and the project a session works in, and how it was
+// Binding is the team and the project a session works in, and how it was
 // found (docs/adr/0066).
 type Binding struct {
-	Tenant, Project, ProjectName string
+	Team, Project, ProjectName string
 	// Source is "remote" when the server's binding of a remote decided, and
 	// "file" when .cowork.yaml did (docs/adr/0066 D4), "host" when the host
 	// set it.
@@ -99,15 +100,27 @@ const (
 	sourceHost   = "host"
 )
 
-// Key is the binding as tenant/KEY.
-func (b Binding) Key() string { return b.Tenant + "/" + b.Project }
+// Key is the binding as team/KEY.
+func (b Binding) Key() string { return b.Team + "/" + b.Project }
+
+// MarshalJSON writes the binding under the names of its fields, as lookup
+// --json has printed it, and Tenant beside Team with the same slug: the key
+// before the rename, kept for one release so that a script reading it goes
+// on working (docs/adr/0005 D1).
+func (b Binding) MarshalJSON() ([]byte, error) {
+	type fields Binding
+	return json.Marshal(struct {
+		fields
+		Tenant string
+	}{fields(b), b.Team})
+}
 
 // Bind sets the binding a host already knows — a page that shows a project,
 // say — so short keys resolve without session_start.
-func (s *Session) Bind(tenant, project string) {
+func (s *Session) Bind(team, project string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.binding = &Binding{Tenant: tenant, Project: project, Source: sourceHost}
+	s.binding = &Binding{Team: team, Project: project, Source: sourceHost}
 }
 
 // bindOnce resolves the binding of a session that runs in a working directory
@@ -130,13 +143,13 @@ func (s *Session) bindOnce(ctx context.Context) {
 	_, _ = Resolve(ctx, s)
 }
 
-// BindTenant binds the session to a tenant and no project — the chat on a
-// page that shows none: short keys resolve in the tenant, a search looks
-// through it, and a tool that needs a project asks for one.
-func (s *Session) BindTenant(tenant string) {
+// BindTeam binds the session to a team and no project — the chat on a page
+// that shows none: short keys resolve in the team, a search looks through it,
+// and a tool that needs a project asks for one.
+func (s *Session) BindTeam(team string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.binding = &Binding{Tenant: tenant, Source: sourceHost}
+	s.binding = &Binding{Team: team, Source: sourceHost}
 }
 
 func (s *Session) setBinding(b *Binding) {
@@ -170,9 +183,10 @@ type Token struct {
 	Flagged bool
 	// Capabilities are what an agent's requests may do beyond the baseline.
 	Capabilities []string
-	// Tenant and Project are the token's restriction, slug and key.
-	Tenant, Project string
-	ExpiresAt       time.Time
+	// Team and Project are the token's restriction, the team's slug and the
+	// project's key.
+	Team, Project string
+	ExpiresAt     time.Time
 }
 
 // Can reports whether the token's requests may do what a capability grants;
@@ -191,7 +205,7 @@ func (s *Session) ReadToken(ctx context.Context) (Token, error) {
 	ct := res.JSON200
 	tok := Token{Known: true, Name: ct.Name, Scope: string(ct.Scope), Agent: ct.Request.Agent, Flagged: ct.Agent, ExpiresAt: ct.ExpiresAt}
 	tok.Mark, _ = ct.Request.AgentMark.Get()
-	tok.Tenant, _ = ct.RestrictedTenant.Get()
+	tok.Team, _ = ct.RestrictedTeam.Get()
 	tok.Project, _ = ct.RestrictedProject.Get()
 	for _, c := range ct.Request.Capabilities {
 		tok.Capabilities = append(tok.Capabilities, string(c))
@@ -227,9 +241,10 @@ func (s *Session) Token() Token {
 // tokens, named by every message about a token (docs/adr/0041 D5).
 func (s *Session) TokenPage() string { return s.Installation + "/me/tokens" }
 
-// TicketPage is a ticket's page in the installation's UI.
-func (s *Session) TicketPage(tenant, shortKey string) string {
-	return s.Installation + "/t/" + tenant + "/tickets/" + shortKey
+// TicketPage is a ticket's page in the installation's UI, whose route keeps
+// its prefix /t/ for a team.
+func (s *Session) TicketPage(team, shortKey string) string {
+	return s.Installation + "/t/" + team + "/tickets/" + shortKey
 }
 
 // key returns a new Idempotency-Key.

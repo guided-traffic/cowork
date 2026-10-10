@@ -77,9 +77,9 @@ Commands:
   model-switch      Record the model of Claude Code's PostModelSwitch hook for the agent mark.
   token check       Report whether COWORK_TOKEN works against COWORK_URL, and what it may do.
   lookup            Print the binding of the working directory's repository, or the proposal.
-  export <tenant>/<PROJECT> <dir>
+  export <team>/<PROJECT> <dir>
                     Unpack the project's export into an empty or a new directory.
-  import <tenant>/<PROJECT> <path> [--dry-run]
+  import <team>/<PROJECT> <path> [--dry-run]
                     Import a directory of ticket files, an archive or a Markdown file into the
                     project: the dry run's report, then its execution's; --dry-run stops after
                     the report.

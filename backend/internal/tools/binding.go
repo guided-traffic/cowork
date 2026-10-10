@@ -86,7 +86,7 @@ func remoteBinding(sit *Situation) {
 		return
 	}
 	b := sit.Lookup.Bindings[0]
-	sit.Binding = &Binding{Tenant: b.Tenant.Slug, Project: b.Project.Key, ProjectName: b.Project.Name, Source: sourceRemote,
+	sit.Binding = &Binding{Team: b.Team.Slug, Project: b.Project.Key, ProjectName: b.Project.Name, Source: sourceRemote,
 		Remote: remoteOf(*sit, b.Identity), Identity: b.Identity, Path: b.Path}
 	if b.Archived {
 		sit.Notes = append(sit.Notes, "The project "+sit.Binding.Key()+" is archived: it keeps its tickets and refuses new ones.")
@@ -115,24 +115,24 @@ func lookup(ctx context.Context, s *Session, remotes []Remote, path string) (*ap
 // fileBinding binds the session to the file's project once the project is
 // found, and reports where the server says otherwise.
 func fileBinding(ctx context.Context, s *Session, sit *Situation, file *BindingFile) error {
-	res, err := s.API.GetProjectWithResponse(ctx, file.Tenant, file.Project)
+	res, err := s.API.GetProjectWithResponse(ctx, file.Team, file.Project)
 	if err == nil && res.StatusCode() == http.StatusNotFound {
 		sit.Notes = append(sit.Notes, fmt.Sprintf("%s binds %s/%s, a project that does not exist or that you cannot see; the session runs unbound.",
-			file.File, file.Tenant, file.Project))
+			file.File, file.Team, file.Project))
 		return nil
 	}
 	if err := check(res, err, http.StatusOK); err != nil {
 		return err
 	}
-	b := &Binding{Tenant: file.Tenant, Project: file.Project, ProjectName: res.JSON200.Name, Source: sourceFile, Path: file.Path}
+	b := &Binding{Team: file.Team, Project: file.Project, ProjectName: res.JSON200.Name, Source: sourceFile, Path: file.Path}
 	if res.JSON200.ArchivedAt.IsSpecified() && !res.JSON200.ArchivedAt.IsNull() {
 		sit.Notes = append(sit.Notes, "The project "+b.Key()+" is archived: it keeps its tickets and refuses new ones.")
 	}
 	if l := sit.Lookup; l != nil && len(l.Bindings) > 0 {
 		var others []string
 		for _, sb := range l.Bindings {
-			if sb.Tenant.Slug != b.Tenant || sb.Project.Key != b.Project {
-				others = append(others, sb.Tenant.Slug+"/"+sb.Project.Key)
+			if sb.Team.Slug != b.Team || sb.Project.Key != b.Project {
+				others = append(others, sb.Team.Slug+"/"+sb.Project.Key)
 			}
 		}
 		if len(others) > 0 {

@@ -70,6 +70,36 @@ func documentOperationsOf(t *testing.T, ops []string) []string {
 	return out
 }
 
+// What an agent reads of the tools says team, the word a person reads
+// (docs/adr/0005 D1): no description names a tenant, and a schema only where
+// it still takes a name before for one release — create_project's argument
+// tenant and search's scope tenant, both deprecated.
+func TestTheToolsSayTeam(t *testing.T) {
+	for _, tool := range Catalogue() {
+		assert.NotContains(t, strings.ToLower(tool.Describe(nil)), "tenant", tool.Name)
+		assert.NotContains(t, strings.ToLower(tool.Describe(&Token{Known: true, Agent: true})), "tenant", tool.Name)
+		var schema struct {
+			Properties map[string]struct {
+				Description string `json:"description"`
+				Deprecated  bool   `json:"deprecated"`
+				Enum        []any  `json:"enum"`
+			} `json:"properties"`
+		}
+		require.NoError(t, json.Unmarshal(tool.Schema(), &schema), tool.Name)
+		for name, p := range schema.Properties {
+			switch {
+			case tool.Name == "create_project" && name == "tenant":
+				assert.True(t, p.Deprecated, "create_project's tenant is deprecated")
+			case tool.Name == "search" && name == "scope":
+				assert.Equal(t, []any{"project", "team", "tenant", "all"}, p.Enum)
+				assert.Contains(t, p.Description, "tenant is the deprecated name of team")
+			default:
+				assert.NotContains(t, strings.ToLower(name+" "+p.Description), "tenant", "%s.%s", tool.Name, name)
+			}
+		}
+	}
+}
+
 // docs/adr/0042 D3, docs/adr/0043 D6: a description names the limits, and
 // with the token read, which of them this token holds.
 func TestDescriptionsNameTheLimits(t *testing.T) {

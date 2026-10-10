@@ -20,17 +20,17 @@ import (
 )
 
 // exportUsage is the export subcommand's usage line.
-const exportUsage = "Usage: cowork-mcp export <tenant>/<PROJECT> <dir>\n"
+const exportUsage = "Usage: cowork-mcp export <team>/<PROJECT> <dir>\n"
 
 // exportProject fetches a project's export through the generated client and
 // unpacks it into an empty or a new directory, never overwriting a file
-// (docs/adr/0070 D2, D5): the documents named by key, `<tenant>/<PROJECT>-<n>.md`,
+// (docs/adr/0070 D2, D5): the documents named by key, `<team>/<PROJECT>-<n>.md`,
 // and the three manifests (docs/adr/0051 D4). The export is recorded on the
 // installation as every export is (docs/adr/0059 D3).
 func exportProject(ctx context.Context, e Env, args []string, _ bool) int {
-	tenant, project, ok := strings.Cut(args[0], "/")
-	if !ok || !domain.ValidTenantSlug(tenant) || !domain.ValidProjectKey(project) {
-		fmt.Fprintf(e.Stderr, "cowork-mcp: %q names no project, <tenant>/<PROJECT> such as acme/VKO\n\n%s", args[0], exportUsage)
+	team, project, ok := strings.Cut(args[0], "/")
+	if !ok || !domain.ValidTenantSlug(team) || !domain.ValidProjectKey(project) {
+		fmt.Fprintf(e.Stderr, "cowork-mcp: %q names no project, <team>/<PROJECT> such as acme/VKO\n\n%s", args[0], exportUsage)
 		return exitUsage
 	}
 	dir := args[1]
@@ -46,7 +46,7 @@ func exportProject(ctx context.Context, e Env, args []string, _ bool) int {
 	ctx, cancel := context.WithTimeout(ctx, requestBudget)
 	defer cancel()
 	c := connect(e, cfg, "cowork-mcp", "", "export")
-	res, err := c.session.API.ExportProjectWithResponse(ctx, tenant, project)
+	res, err := c.session.API.ExportProjectWithResponse(ctx, team, project)
 	switch {
 	case err != nil:
 		fmt.Fprintf(e.Stderr, "cowork-mcp: %s cannot be reached: %v\n", cfg.url, err)
@@ -56,7 +56,7 @@ func exportProject(ctx context.Context, e Env, args []string, _ bool) int {
 		fmt.Fprintf(e.Stderr, "cowork-mcp: the export of %s failed: %v\n", args[0], api)
 		return exitError
 	}
-	manifest, err := unpack(res.Body, dir, tenant, project)
+	manifest, err := unpack(res.Body, dir, team, project)
 	if err != nil {
 		fmt.Fprintf(e.Stderr, "cowork-mcp: %v\n", err)
 		return exitError
@@ -97,14 +97,14 @@ const exportManifest = "manifest.json"
 
 var exportManifests = map[string]bool{exportManifest: true, "links.json": true, "attachments.json": true}
 
-// unpack writes the files of the export of tenant/project under dir, through
+// unpack writes the files of the export of team/project under dir, through
 // a root opened at dir, which no name or link reaches out of: only the names
 // such an export holds, regular files only, each created anew — a file that
 // exists is an error, never overwritten. On POSIX systems the directories
 // are the person's alone, 0700, and the files 0600, since an export may hold
 // confidential tickets; Windows applies no such mode, and the files take the
 // access list of the directory they are written to.
-func unpack(archive []byte, dir, tenant, project string) (apigen.ExportManifest, error) {
+func unpack(archive []byte, dir, team, project string) (apigen.ExportManifest, error) {
 	var manifest apigen.ExportManifest
 	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
@@ -127,7 +127,7 @@ func unpack(archive []byte, dir, tenant, project string) (apigen.ExportManifest,
 		if err != nil {
 			return manifest, fmt.Errorf("read the export: %w", err)
 		}
-		if err := exportEntry(h, tenant, project); err != nil {
+		if err := exportEntry(h, team, project); err != nil {
 			return manifest, err
 		}
 		body, err := writeNew(root, h.Name, tr)
@@ -143,29 +143,29 @@ func unpack(archive []byte, dir, tenant, project string) (apigen.ExportManifest,
 }
 
 // exportEntry accepts an entry of the archive that the export of
-// tenant/project holds (docs/adr/0051 D4): a regular file, named as a valid
+// team/project holds (docs/adr/0051 D4): a regular file, named as a valid
 // fs path, that is one of the three manifests or a ticket's document
-// <tenant>/<PROJECT>-<n>.md of the project. Every other entry is refused,
+// <team>/<PROJECT>-<n>.md of the project. Every other entry is refused,
 // whatever separators, steps or volume its name holds.
-func exportEntry(h *tar.Header, tenant, project string) error {
+func exportEntry(h *tar.Header, team, project string) error {
 	switch {
 	case h.Typeflag != tar.TypeReg:
 		return fmt.Errorf("the export holds %q, which is no regular file", h.Name)
-	case !fs.ValidPath(h.Name) || !exportName(h.Name, tenant, project):
-		return fmt.Errorf("the export holds %q, a name no export of %s/%s holds", h.Name, tenant, project)
+	case !fs.ValidPath(h.Name) || !exportName(h.Name, team, project):
+		return fmt.Errorf("the export holds %q, a name no export of %s/%s holds", h.Name, team, project)
 	}
 	return nil
 }
 
 // exportName reports whether name is one of the manifests, or the document of
-// a ticket of tenant/project, its number written as the key writes it.
-func exportName(name, tenant, project string) bool {
+// a ticket of team/project, its number written as the key writes it.
+func exportName(name, team, project string) bool {
 	if exportManifests[name] {
 		return true
 	}
 	dir, file, ok := strings.Cut(name, "/")
 	stem, document := strings.CutSuffix(file, ".md")
-	if !ok || !document || dir != tenant {
+	if !ok || !document || dir != team {
 		return false
 	}
 	key, err := domain.ParseTicketKey(stem)

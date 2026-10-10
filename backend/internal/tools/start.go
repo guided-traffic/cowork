@@ -49,7 +49,7 @@ func Start(ctx context.Context, s *Session, opts StartOptions) (block string, si
 		return text, text == "", nil
 	}
 	b := *sit.Binding
-	key := MemoryKey{Installation: s.Installation, Tenant: b.Tenant, Project: b.Project}
+	key := MemoryKey{Installation: s.Installation, Team: b.Team, Project: b.Project}
 	var last time.Time
 	hadLast := false
 	if s.Memory != nil {
@@ -91,7 +91,7 @@ func unboundBlock(sit Situation) string {
 	case l.Status == apigen.RepositoryLookupStatusAmbiguous:
 		var keys []string
 		for _, x := range l.Bindings {
-			keys = append(keys, x.Tenant.Slug+"/"+x.Project.Key)
+			keys = append(keys, x.Team.Slug+"/"+x.Project.Key)
 		}
 		fmt.Fprintf(&b, "# cowork: several projects bind this repository\n\n%s is bound to %s: a repository belongs to one "+
 			"project, so this is a data error the person resolves in the UI by unbinding all but one (docs/adr/0066 D6). "+
@@ -113,15 +113,15 @@ func unboundBlock(sit Situation) string {
 // yes (docs/adr/0066 D3).
 func proposal(b *strings.Builder, p apigen.RepositoryProposal) {
 	fmt.Fprintf(b, "No project binds `%s`. Ask the person, and act only on their yes:\n\n", p.Identity)
-	if t, err := p.Tenant.Get(); err == nil && len(p.Tenants) == 1 {
-		fmt.Fprintf(b, "> Create the project `%s/%s` (\"%s\") for `%s`?\n\n", t, p.Tenants[0].Key, p.Name, p.Identity)
-		fmt.Fprintf(b, "On yes: `create_project(tenant: %q, key: %q, name: %q, remote: %q)`. ", t, p.Tenants[0].Key, p.Name, p.Remote)
+	if t, err := p.Team.Get(); err == nil && len(p.Teams) == 1 {
+		fmt.Fprintf(b, "> Create the project `%s/%s` (\"%s\") for `%s`?\n\n", t, p.Teams[0].Key, p.Name, p.Identity)
+		fmt.Fprintf(b, "On yes: `create_project(team: %q, key: %q, name: %q, remote: %q)`. ", t, p.Teams[0].Key, p.Name, p.Remote)
 	} else {
-		fmt.Fprintf(b, "> Create a project \"%s\" for `%s` — in which tenant?\n\n", p.Name, p.Identity)
-		for _, t := range p.Tenants {
+		fmt.Fprintf(b, "> Create a project \"%s\" for `%s` — in which team?\n\n", p.Name, p.Identity)
+		for _, t := range p.Teams {
 			fmt.Fprintf(b, "- `%s` (%s), key `%s`\n", t.Slug, t.Name, t.Key)
 		}
-		fmt.Fprintf(b, "\nOn the person's choice: `create_project(tenant, key, name: %q, remote: %q)`. ", p.Name, p.Remote)
+		fmt.Fprintf(b, "\nOn the person's choice: `create_project(team, key, name: %q, remote: %q)`. ", p.Name, p.Remote)
 	}
 	b.WriteString("On no, the session runs unbound. The person may change the key or the name. A .cowork.yaml is not " +
 		"needed afterwards: the remote binds the repository (docs/adr/0066 D4).\n")
@@ -142,7 +142,7 @@ func boundBlock(ctx context.Context, s *Session, sit Situation, last time.Time, 
 	for _, n := range sit.Notes {
 		head.WriteString("\n- " + n)
 	}
-	mine, err := listTickets(ctx, s, b.Tenant, b.Project, ticketQuery{states: []string{stateInProgress}, assignee: "me", limit: startOtherActive + 1})
+	mine, err := listTickets(ctx, s, b.Team, b.Project, ticketQuery{states: []string{stateInProgress}, assignee: "me", limit: startOtherActive + 1})
 	if err != nil {
 		return "", err
 	}
@@ -242,7 +242,7 @@ func fit(doc string, n int) string {
 // place in the project's rank, the decision of the backlog beside the score.
 func candidatesSection(ctx context.Context, s *Session, b Binding) (string, error) {
 	limit := startCandidateScan
-	res, err := s.API.ListMyNextWithResponse(ctx, &apigen.ListMyNextParams{Tenant: &b.Tenant, Project: &b.Project, Limit: &limit})
+	res, err := s.API.ListMyNextWithResponse(ctx, &apigen.ListMyNextParams{Team: &b.Team, Project: &b.Project, Limit: &limit})
 	if err := check(res, err, http.StatusOK); err != nil {
 		return "", err
 	}
@@ -311,7 +311,7 @@ func sinceSection(ctx context.Context, s *Session, b Binding, mine []apigen.Tick
 			}
 		}
 	}
-	changed, err := listTenantTickets(ctx, s, b.Tenant, b.Project, last, startSinceLines)
+	changed, err := listTeamTickets(ctx, s, b.Team, b.Project, last, startSinceLines)
 	if err != nil {
 		return "", err
 	}

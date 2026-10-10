@@ -28,7 +28,7 @@ func TestOpenQuestion(t *testing.T) {
 	f := newFake(t)
 	f.on("POST "+ticketPath+"/questions", http.StatusCreated, question(2, "open"))
 	f.on("GET "+ticketPath+"/questions", http.StatusOK, list(question(1, "open"), question(2, "open")))
-	f.on("GET /api/v1/tenants/acme/members", http.StatusOK, list(
+	f.on("GET /api/v1/teams/acme/members", http.StatusOK, list(
 		map[string]any{"person": map[string]any{"id": adaID, "username": "ada", "display_name": "Ada"}, "role": "admin"},
 		map[string]any{"person": map[string]any{"id": samID, "username": "sam", "display_name": "Sam Doe"}, "role": "member"}))
 	f.on("GET /api/v1/me", http.StatusOK, map[string]any{"id": adaID, "display_name": "Ada", "memberships": []any{}})
@@ -49,10 +49,10 @@ func TestOpenQuestion(t *testing.T) {
 	assert.Equal(t, adaID, decodeBody(t, f.calls(http.MethodPost, ticketPath+"/questions")[1])["asked_of"])
 	res = call(t, s, "open_question", `{"key": "COW-12", "question": "q", "options": "", "recommendation": ""}`)
 	require.False(t, res.IsError, res.Text)
-	assert.Contains(t, res.Text, "open to the tenant")
+	assert.Contains(t, res.Text, "open to the team")
 	res = call(t, s, "open_question", `{"key": "COW-12", "question": "q", "options": "", "recommendation": "", "asked_of": "nobody"}`)
 	assert.True(t, res.IsError)
-	assert.Contains(t, res.Text, "no member of the tenant acme")
+	assert.Contains(t, res.Text, "no member of the team acme")
 }
 
 // record_answer writes the person's answer down, with If-Match once the
@@ -87,16 +87,16 @@ func TestRecordAnswer(t *testing.T) {
 }
 
 // A host that knows the person answers "me" itself, and a host confined to a
-// tenant searches that tenant for "every tenant": neither asks
-// GET /api/v1/me, which the chat in the backend may not call.
+// team searches that team for "every team": neither asks GET /api/v1/me,
+// which the chat in the backend may not call.
 func TestAHostThatKnowsThePerson(t *testing.T) {
 	f := newFake(t)
 	f.on("POST "+ticketPath+"/questions", http.StatusCreated, map[string]any{"number": 1, "question": "Retry?"})
 	f.on("GET "+ticketPath+"/questions", http.StatusOK, list())
-	f.on("GET /api/v1/tenants/acme/tickets", http.StatusOK, list(ticket("acme/COW-12", "decided")))
+	f.on("GET /api/v1/teams/acme/tickets", http.StatusOK, list(ticket("acme/COW-12", "decided")))
 	s := f.session(true)
 	s.Person = &Person{ID: uuid.MustParse(samID), Name: "Sam Doe"}
-	s.Tenants = []string{"acme"}
+	s.Teams = []string{"acme"}
 
 	res := call(t, s, "open_question", `{"key": "COW-12", "question": "Retry?", "options": "-", "recommendation": "retry", "asked_of": "me"}`)
 	require.False(t, res.IsError, res.Text)
@@ -105,7 +105,7 @@ func TestAHostThatKnowsThePerson(t *testing.T) {
 
 	res = call(t, s, "search", `{"query": "gate", "scope": "all"}`)
 	require.False(t, res.IsError, res.Text)
-	assert.Contains(t, res.Text, "Tickets in the tenants this session works in, acme matching")
-	assert.Len(t, f.calls(http.MethodGet, "/api/v1/tenants/acme/tickets"), 1)
-	assert.Empty(t, f.calls(http.MethodGet, "/api/v1/me"), "the person and the tenants came from the host")
+	assert.Contains(t, res.Text, "Tickets in the teams this session works in, acme matching")
+	assert.Len(t, f.calls(http.MethodGet, "/api/v1/teams/acme/tickets"), 1)
+	assert.Empty(t, f.calls(http.MethodGet, "/api/v1/me"), "the person and the teams came from the host")
 }

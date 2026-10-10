@@ -23,8 +23,11 @@ const (
 	opGetMe         = "getMe"
 	opListMembers   = "listMembers"
 	// scopeProject is the search scope of one project, the one a search
-	// without words lists.
+	// without words lists; scopeTeam the bound team's, which scopeTenant
+	// names under its name before, taken for one release (docs/adr/0005 D1).
 	scopeProject = "project"
+	scopeTeam    = "team"
+	scopeTenant  = "tenant"
 )
 
 // The vocabularies the tools' schemas offer (docs/adr/0008, 0009, 0010, 0012,
@@ -39,7 +42,7 @@ var (
 )
 
 type getTicketInput struct {
-	Key      string `json:"key" jsonschema:"the ticket, tenant/PROJECT-n, or PROJECT-n in a bound session"`
+	Key      string `json:"key" jsonschema:"the ticket, team/PROJECT-n, or PROJECT-n in a bound session"`
 	Comments *int   `json:"comments,omitempty" jsonschema:"how many of the last comments to show, 10 when left out"`
 	Activity *int   `json:"activity,omitempty" jsonschema:"how many of the last acts to show, 10 when left out"`
 }
@@ -82,8 +85,8 @@ func getTicketTool() Tool {
 
 type searchInput struct {
 	Query           string   `json:"query,omitempty" jsonschema:"words to find in the titles and bodies; left out in a project, its tickets in rank order"`
-	Scope           string   `json:"scope,omitempty" jsonschema:"project (the bound project, the default when bound), tenant (the bound tenant), or all (every tenant of the person, the default when unbound)"`
-	Project         string   `json:"project,omitempty" jsonschema:"another project to search, tenant/KEY, instead of the bound one"`
+	Scope           string   `json:"scope,omitempty" jsonschema:"project (the bound project, the default when bound), team (the bound team), or all (every team of the person, the default when unbound); tenant is the deprecated name of team, taken for one release"`
+	Project         string   `json:"project,omitempty" jsonschema:"another project to search, team/KEY, instead of the bound one"`
 	State           []string `json:"state,omitempty" jsonschema:"only these states"`
 	Type            []string `json:"type,omitempty" jsonschema:"only these types"`
 	AssignedToMe    bool     `json:"assigned_to_me,omitempty" jsonschema:"only tickets assigned to the person"`
@@ -96,14 +99,14 @@ const maxSearchHits = 20
 func searchTool() Tool {
 	return define(Tool{
 		Name: "search",
-		Description: "Find tickets by full text over their titles and bodies — in the bound project, its tenant, or every tenant " +
-			"of the person — newest first in a tenant, in rank order in a project. Lists keys, titles, states and assignees; " +
+		Description: "Find tickets by full text over their titles and bodies — in the bound project, its team, or every team " +
+			"of the person — newest first in a team, in rank order in a project. Lists keys, titles, states and assignees; " +
 			"get_ticket reads one. Without a query, lists a project's tickets in rank order. Done and dropped tickets only with " +
 			"include_terminal.",
 		ReadOnly:   true,
-		Operations: []string{"listProjectTickets", "listTenantTickets", opGetMe},
+		Operations: []string{"listProjectTickets", "listTeamTickets", opGetMe},
 	}, func(s *jsonschema.Schema) {
-		enum(s, "scope", scopeProject, "tenant", "all")
+		enum(s, "scope", scopeProject, scopeTeam, scopeTenant, "all")
 		enum(s, "state", ticketStates...)
 		enum(s, "type", ticketTypes...)
 	}, runSearch)
@@ -123,30 +126,30 @@ func runSearch(ctx context.Context, s *Session, in searchInput) (string, error) 
 	var where string
 	switch scope {
 	case scopeProject:
-		tenant, project, err := s.resolveProject(in.Project)
+		team, project, err := s.resolveProject(in.Project)
 		if err != nil {
 			return "", err
 		}
-		where = tenant + "/" + project
-		if hits, err = listTickets(ctx, s, tenant, project, q); err != nil {
+		where = team + "/" + project
+		if hits, err = listTickets(ctx, s, team, project, q); err != nil {
 			return "", err
 		}
-	case "tenant":
+	case scopeTeam, scopeTenant:
 		if b == nil {
-			return "", usage("this session is bound to no tenant: search with scope all")
+			return "", usage("this session is bound to no team: search with scope all")
 		}
-		where = "the tenant " + b.Tenant
+		where = "the team " + b.Team
 		var err error
-		if hits, err = searchTenant(ctx, s, b.Tenant, q); err != nil {
+		if hits, err = searchTeam(ctx, s, b.Team, q); err != nil {
 			return "", err
 		}
 	default:
-		where = "every tenant of the person"
-		if len(s.Tenants) > 0 {
-			where = "the tenants this session works in, " + strings.Join(s.Tenants, ", ")
+		where = "every team of the person"
+		if len(s.Teams) > 0 {
+			where = "the teams this session works in, " + strings.Join(s.Teams, ", ")
 		}
 		var err error
-		if hits, err = searchEveryTenant(ctx, s, q); err != nil {
+		if hits, err = searchEveryTeam(ctx, s, q); err != nil {
 			return "", err
 		}
 	}
@@ -176,8 +179,8 @@ func hitList(hits []apigen.Ticket, heading, none, narrow string) string {
 }
 
 // searchScope is the scope a search names, or the narrowest the session
-// knows: the project it names or is bound to, the tenant it is bound to, or
-// every tenant of the person.
+// knows: the project it names or is bound to, the team it is bound to, or
+// every team of the person.
 func searchScope(in searchInput, b *Binding) string {
 	switch {
 	case in.Scope != "":
@@ -185,27 +188,27 @@ func searchScope(in searchInput, b *Binding) string {
 	case in.Project != "" || (b != nil && b.Project != ""):
 		return scopeProject
 	case b != nil:
-		return "tenant"
+		return scopeTeam
 	}
 	return "all"
 }
 
-// searchEveryTenant searches each tenant of the person, one at a time
-// (docs/adr/0023 D2), or the tenants the session is confined to.
-func searchEveryTenant(ctx context.Context, s *Session, q ticketQuery) ([]apigen.Ticket, error) {
-	tenants := s.Tenants
-	if len(tenants) == 0 {
+// searchEveryTeam searches each team of the person, one at a time
+// (docs/adr/0023 D2), or the teams the session is confined to.
+func searchEveryTeam(ctx context.Context, s *Session, q ticketQuery) ([]apigen.Ticket, error) {
+	teams := s.Teams
+	if len(teams) == 0 {
 		me, err := s.API.GetMeWithResponse(ctx)
 		if err := check(me, err, http.StatusOK); err != nil {
 			return nil, err
 		}
 		for _, m := range me.JSON200.Memberships {
-			tenants = append(tenants, m.Tenant.Slug)
+			teams = append(teams, m.Team.Slug)
 		}
 	}
 	var hits []apigen.Ticket
-	for _, tenant := range tenants {
-		found, err := searchTenant(ctx, s, tenant, q)
+	for _, team := range teams {
+		found, err := searchTeam(ctx, s, team, q)
 		if err != nil {
 			return nil, err
 		}
@@ -219,12 +222,12 @@ func searchEveryTenant(ctx context.Context, s *Session, q ticketQuery) ([]apigen
 
 type linkSpec struct {
 	Type      string `json:"type" jsonschema:"blocks, relates-to, duplicates or found-in"`
-	Key       string `json:"key" jsonschema:"the other ticket, in the same tenant"`
+	Key       string `json:"key" jsonschema:"the other ticket, in the same team"`
 	Direction string `json:"direction,omitempty" jsonschema:"outgoing (the default): the new ticket <type> key; incoming: key <type> the new ticket, so a prerequisite is {type: blocks, key, direction: incoming}"`
 }
 
 type fileTicketInput struct {
-	Project  string     `json:"project,omitempty" jsonschema:"the project, tenant/KEY; the bound project when left out"`
+	Project  string     `json:"project,omitempty" jsonschema:"the project, team/KEY; the bound project when left out"`
 	Type     string     `json:"type"`
 	Title    string     `json:"title"`
 	Body     string     `json:"body,omitempty" jsonschema:"Markdown: the analysis, the current state"`
@@ -246,7 +249,7 @@ func fileTicketTool() Tool {
 			"its canonical key. Filing, the body, links, comments, questions, progress and watching are what every agent " +
 			"token may do (docs/adr/0043 D2). " + horizonMeaning + " Without a horizon the ticket is later; without a " +
 			"place it lands at the end of its horizon. A live or boundary security finding becomes confidential: only the " +
-			"tenant's administrators, its assignee and its reporter see it.",
+			"team's administrators, its assignee and its reporter see it.",
 		Operations: []string{"createTicket", "linkTickets"},
 		limits: limitsOf("An agent needs set-horizon to file into a horizon other than later, and rank to name a place. "+
 			refusalNote, capSetHorizon, capRank),
@@ -265,7 +268,7 @@ func fileTicketTool() Tool {
 }
 
 func runFileTicket(ctx context.Context, s *Session, in fileTicketInput) (string, error) {
-	tenant, project, err := s.resolveProject(in.Project)
+	team, project, err := s.resolveProject(in.Project)
 	if err != nil {
 		return "", err
 	}
@@ -284,10 +287,10 @@ func runFileTicket(ctx context.Context, s *Session, in fileTicketInput) (string,
 		horizon := apigen.Horizon(in.Horizon)
 		body.Horizon = &horizon
 	}
-	if body.After, body.Before, err = placeIn(s, tenant, project, in.After, in.Before); err != nil {
+	if body.After, body.Before, err = placeIn(s, team, project, in.After, in.Before); err != nil {
 		return "", err
 	}
-	res, err := s.API.CreateTicketWithResponse(ctx, tenant, project, &apigen.CreateTicketParams{IdempotencyKey: s.key()}, body)
+	res, err := s.API.CreateTicketWithResponse(ctx, team, project, &apigen.CreateTicketParams{IdempotencyKey: s.key()}, body)
 	if err := check(res, err, http.StatusCreated); err != nil {
 		return "", err
 	}
@@ -325,7 +328,7 @@ func runFileTicket(ctx context.Context, s *Session, in fileTicketInput) (string,
 // putLink makes a link, idempotent by its address (docs/adr/0045 D1).
 func putLink(ctx context.Context, s *Session, source ticketRef, typ string, target ticketRef) error {
 	if source.Tenant != target.Tenant {
-		return usage("a link stays inside one tenant: %s and %s are in two", source.Full(), target.Full())
+		return usage("a link stays inside one team: %s and %s are in two", source.Full(), target.Full())
 	}
 	res, err := s.API.LinkTicketsWithResponse(ctx, source.Tenant, source.Project, int(source.Number), apigen.LinkType(typ), target.Short())
 	return check(res, err, http.StatusOK, http.StatusCreated)
@@ -370,7 +373,7 @@ func recordStateTool() Tool {
 type commentInput struct {
 	Key      string   `json:"key"`
 	Text     string   `json:"text" jsonschema:"Markdown"`
-	Mentions []string `json:"mentions,omitempty" jsonschema:"the persons the comment mentions, each told in their inbox and a watcher of the ticket: me, a username, a display name of a member of the tenant, or a person id; name them in the text as well"`
+	Mentions []string `json:"mentions,omitempty" jsonschema:"the persons the comment mentions, each told in their inbox and a watcher of the ticket: me, a username, a display name of a member of the team, or a person id; name them in the text as well"`
 }
 
 func commentTool() Tool {
@@ -430,13 +433,13 @@ func runComment(ctx context.Context, s *Session, in commentInput) (string, error
 type linkInput struct {
 	Key      string `json:"key" jsonschema:"the source"`
 	Type     string `json:"type" jsonschema:"blocks: the source must be done before the other can close; relates-to; duplicates; found-in"`
-	OtherKey string `json:"other_key" jsonschema:"the target, in the same tenant"`
+	OtherKey string `json:"other_key" jsonschema:"the target, in the same team"`
 }
 
 func linkTool() Tool {
 	return define(Tool{
 		Name:        "link",
-		Description: "Link two tickets of a tenant: key <type> other_key. An existing link is success. A blocks link that would close a cycle is refused (409 link_cycle).",
+		Description: "Link two tickets of a team: key <type> other_key. An existing link is success. A blocks link that would close a cycle is refused (409 link_cycle).",
 		Operations:  []string{"linkTickets"},
 		limits:      limitsOf(refusalNote),
 	}, func(s *jsonschema.Schema) {
@@ -494,7 +497,7 @@ const horizonMeaning = "A horizon is a planning category, not a state — a tick
 
 // placeIn reads a place in a project's backlog — at most one neighbour, a
 // ticket of that project — as the numbers the API takes.
-func placeIn(s *Session, tenant, project, after, before string) (*int, *int, error) {
+func placeIn(s *Session, team, project, after, before string) (*int, *int, error) {
 	if after != "" && before != "" {
 		return nil, nil, usage("pass after or before, not both")
 	}
@@ -506,8 +509,8 @@ func placeIn(s *Session, tenant, project, after, before string) (*int, *int, err
 	if err != nil {
 		return nil, nil, err
 	}
-	if ref.Tenant != tenant || ref.Project != project {
-		return nil, nil, usage("a place is next to a ticket of the same project: %s is not in %s/%s", ref.Full(), tenant, project)
+	if ref.Tenant != team || ref.Project != project {
+		return nil, nil, usage("a place is next to a ticket of the same project: %s is not in %s/%s", ref.Full(), team, project)
 	}
 	n := int(ref.Number)
 	if after != "" {

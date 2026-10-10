@@ -11,7 +11,7 @@ import (
 )
 
 type openTicketInput struct {
-	Key string `json:"key" jsonschema:"the ticket, PROJECT-n or tenant/PROJECT-n"`
+	Key string `json:"key" jsonschema:"the ticket, PROJECT-n or team/PROJECT-n"`
 }
 
 type openProjectInput struct {
@@ -20,7 +20,8 @@ type openProjectInput struct {
 
 // uiTools are the chat's own tools: each shows the person a page of this UI —
 // a ticket, a project's backlog, its board — once the API has said the person
-// may see it, and only in the turn's tenant.
+// may see it, and only in the turn's team. The UI's routes keep their prefix
+// /t/ for a team (docs/adr/0023 D1).
 func uiTools(t Turn, ev Events) []tools.Tool {
 	board := func(view string) func(ctx context.Context, s *tools.Session, in openProjectInput) (string, error) {
 		return func(ctx context.Context, s *tools.Session, in openProjectInput) (string, error) {
@@ -48,7 +49,7 @@ func uiTools(t Turn, ev Events) []tools.Tool {
 	return []tools.Tool{
 		tools.Define(tools.Tool{
 			Name:        "open_ticket",
-			Description: "Show the person a ticket's page in cowork, in this tenant. Answers whether it was opened.",
+			Description: "Show the person a ticket's page in cowork, in this team. Answers whether it was opened.",
 			ReadOnly:    true,
 			Operations:  []string{"getTicket"},
 		}, nil, func(ctx context.Context, s *tools.Session, in openTicketInput) (string, error) {
@@ -57,7 +58,7 @@ func uiTools(t Turn, ev Events) []tools.Tool {
 			case err != nil:
 				return "", tools.Usage("%q is not a ticket key: write PROJECT-n", in.Key)
 			case k.Tenant != "" && k.Tenant != t.Tenant:
-				return "", tools.Usage("the chat shows the pages of the tenant %s only", t.Tenant)
+				return "", tools.Usage("the chat shows the pages of the team %s only", t.Tenant)
 			}
 			res, err := s.API.GetTicketWithResponse(ctx, t.Tenant, k.Project, int(k.Number))
 			if err != nil {
@@ -71,13 +72,13 @@ func uiTools(t Turn, ev Events) []tools.Tool {
 		}),
 		tools.Define(tools.Tool{
 			Name:        "open_backlog",
-			Description: "Show the person a project's backlog in cowork, in this tenant: the project of the page when none is named.",
+			Description: "Show the person a project's backlog in cowork, in this team: the project of the page when none is named.",
 			ReadOnly:    true,
 			Operations:  []string{"getProject"},
 		}, nil, board("backlog")),
 		tools.Define(tools.Tool{
 			Name:        "open_board",
-			Description: "Show the person a project's board in cowork, in this tenant: the project of the page when none is named.",
+			Description: "Show the person a project's board in cowork, in this team: the project of the page when none is named.",
 			ReadOnly:    true,
 			Operations:  []string{"getProject"},
 		}, nil, board("board")),

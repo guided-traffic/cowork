@@ -42,10 +42,14 @@ type Remote struct {
 	Name, URL string
 }
 
-// BindingFile is a .cowork.yaml (docs/adr/0066 D4): tenant and project, the
+// BindingFile is a .cowork.yaml (docs/adr/0066 D4): team and project, the
 // sub-directory of a monorepo it binds — by default the directory it is in —
 // and the installation it belongs to.
 type BindingFile struct {
+	Team string `yaml:"team"`
+	// Tenant is team under its name before, read for one release beside it
+	// (docs/adr/0005 D1); a file read holds the team's slug in both, so that
+	// lookup --json names it under both keys.
 	Tenant  string `yaml:"tenant"`
 	Project string `yaml:"project"`
 	Path    string `yaml:"path"`
@@ -195,8 +199,15 @@ func readBindingFile(path string) (*BindingFile, error) {
 	}
 	f.File = path
 	switch {
-	case !domain.ValidTenantSlug(f.Tenant):
-		return nil, fmt.Errorf("%s: tenant must be a tenant's slug", path)
+	case f.Team != "" && f.Tenant != "" && f.Team != f.Tenant:
+		return nil, fmt.Errorf("%s: team and tenant differ: tenant is the name before of team, read for one release; keep team alone", path)
+	case f.Team == "":
+		f.Team = f.Tenant
+	}
+	f.Tenant = f.Team
+	switch {
+	case !domain.ValidTenantSlug(f.Team):
+		return nil, fmt.Errorf("%s: team must be a team's slug", path)
 	case !domain.ValidProjectKey(f.Project):
 		return nil, fmt.Errorf("%s: project must be a project key, upper case", path)
 	}

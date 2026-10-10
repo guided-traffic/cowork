@@ -17,7 +17,7 @@ type openQuestionInput struct {
 	Question       string `json:"question" jsonschema:"one question, answerable on its own"`
 	Options        string `json:"options" jsonschema:"Markdown: the context and the sensible options, researched"`
 	Recommendation string `json:"recommendation" jsonschema:"the recommended option and why"`
-	AskedOf        string `json:"asked_of,omitempty" jsonschema:"me for the person this session works for, a username, or a person id; left out, the question is open to the tenant"`
+	AskedOf        string `json:"asked_of,omitempty" jsonschema:"me for the person this session works for, a username, or a person id; left out, the question is open to the team"`
 }
 
 func openQuestionTool() Tool {
@@ -40,7 +40,7 @@ func runOpenQuestion(ctx context.Context, s *Session, in openQuestionInput) (str
 		return "", err
 	}
 	body := apigen.QuestionCreate{Question: in.Question, Options: &in.Options, Recommendation: &in.Recommendation}
-	asked := "open to the tenant"
+	asked := "open to the team"
 	if strings.TrimSpace(in.AskedOf) != "" {
 		id, name, err := person(ctx, s, ref.Tenant, in.AskedOf)
 		if err != nil {
@@ -72,8 +72,8 @@ func runOpenQuestion(ctx context.Context, s *Session, in openQuestionInput) (str
 }
 
 // person resolves who a question is asked of: me, a username or a display
-// name of a member of the tenant, or a person id.
-func person(ctx context.Context, s *Session, tenant, who string) (openapi_types.UUID, string, error) {
+// name of a member of the team, or a person id.
+func person(ctx context.Context, s *Session, team, who string) (openapi_types.UUID, string, error) {
 	who = strings.TrimSpace(who)
 	if id, ok := uuidOf(who); ok {
 		return id, who, nil
@@ -87,7 +87,7 @@ func person(ctx context.Context, s *Session, tenant, who string) (openapi_types.
 	}
 	var cursor *string
 	for range 20 {
-		res, err := s.API.ListMembersWithResponse(ctx, tenant, &apigen.ListMembersParams{Cursor: cursor})
+		res, err := s.API.ListMembersWithResponse(ctx, team, &apigen.ListMembersParams{Cursor: cursor})
 		if err := check(res, err, http.StatusOK); err != nil {
 			return openapi_types.UUID{}, "", err
 		}
@@ -103,7 +103,7 @@ func person(ctx context.Context, s *Session, tenant, who string) (openapi_types.
 		}
 		cursor = &next
 	}
-	return openapi_types.UUID{}, "", usage("%q is no member of the tenant %s: name a username, a display name, me, or a person id", who, tenant)
+	return openapi_types.UUID{}, "", usage("%q is no member of the team %s: name a username, a display name, me, or a person id", who, team)
 }
 
 type recordAnswerInput struct {

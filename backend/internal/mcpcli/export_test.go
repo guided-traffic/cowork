@@ -88,7 +88,7 @@ func TestUnpackStaysInsideAndNeverOverwrites(t *testing.T) {
 
 // docs/adr/0051 D4, docs/adr/0070 D5: the unpacking writes the names an
 // export of the project holds — the three manifests and its tickets'
-// documents <tenant>/<PROJECT>-<n>.md — and no other, whatever separator,
+// documents <team>/<PROJECT>-<n>.md — and no other, whatever separator,
 // step, volume or form of a number a name holds; and it writes through a root
 // at its target, so a directory link planted in the target leads nowhere
 // outside it.

@@ -112,7 +112,7 @@ func lastEvent(t *testing.T, events []sseEvent, name string) sseEvent {
 }
 
 // chatEnv is a world with its accounts and tokens, a stub provider, and the
-// browser of the member of tenant A.
+// browser of the member of team A.
 type chatEnv struct {
 	world
 	tk    tokens
@@ -138,7 +138,7 @@ func (e chatEnv) turn(t *testing.T, b *browser, conversation uuid.UUID, msgs []a
 	t.Helper()
 	body := apigen.ChatTurn{Conversation: conversation, Messages: msgs,
 		Context: &apigen.ChatPageContext{Path: ptr("/t/" + e.SlugA + "/p/ALPHA/board"), Project: ptr("ALPHA")}}
-	res := b.request(http.MethodPost, "/api/v1/tenants/"+e.SlugA+"/chat", body)
+	res := b.request(http.MethodPost, "/api/v1/teams/"+e.SlugA+"/chat", body)
 	if res.StatusCode != http.StatusOK {
 		return res, nil
 	}
@@ -150,18 +150,23 @@ func said(text string) apigen.ChatMessage {
 }
 
 // docs/adr/0076, the owner's answer of 2026-10-04: the chat is available in
-// every tenant once the installation configures a provider — no tenant is
-// asked — and the availability lists the providers in their order for every
-// member, never an address or a key.
+// every team once the installation configures a provider — no team is asked —
+// and the availability lists the providers in their order for every member,
+// never an address or a key. The chat's routes answer under the deprecated
+// twin of the team's path alike (docs/adr/0005 D1).
 func TestChatAvailability(t *testing.T) {
 	w := newWorld(t)
 	tk := issueTokens(t, w)
 	accounts := withAccounts(t, w)
 	none := newAPI(t, withLogin)
-	got := decode[map[string]any](t, none.do(t, caller{Token: tk.MemberA}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/chat", nil))
+	got := decode[map[string]any](t, none.do(t, caller{Token: tk.MemberA}, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/chat", nil))
 	assert.Equal(t, map[string]any{"available": false, "providers": []any{}, "reason": "not_configured"}, got)
 	b := none.browser(t)
 	b.mustLogin(accounts["memberA"], testPassword)
+	assertProblem(t, b.request(http.MethodPost, "/api/v1/teams/"+w.SlugA+"/chat", apigen.ChatTurn{Conversation: uuid.New(),
+		Messages: []apigen.ChatMessage{said("Hello")}}), http.StatusConflict, "chat_unavailable")
+	twin := decode[map[string]any](t, none.do(t, caller{Token: tk.MemberA}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/chat", nil))
+	assert.Equal(t, got, twin, "the twin answers as the team's path")
 	assertProblem(t, b.request(http.MethodPost, "/api/v1/tenants/"+w.SlugA+"/chat", apigen.ChatTurn{Conversation: uuid.New(),
 		Messages: []apigen.ChatMessage{said("Hello")}}), http.StatusConflict, "chat_unavailable")
 
@@ -174,13 +179,13 @@ func TestChatAvailability(t *testing.T) {
 		if token == tk.MemberB {
 			slug = w.SlugB
 		}
-		res := two.do(t, caller{Token: token}, http.MethodGet, "/api/v1/tenants/"+slug+"/chat", nil)
+		res := two.do(t, caller{Token: token}, http.MethodGet, "/api/v1/teams/"+slug+"/chat", nil)
 		require.Equal(t, http.StatusOK, res.StatusCode)
 		raw := decode[map[string]any](t, res)
 		assert.Equal(t, map[string]any{"available": true, "reason": nil, "providers": []any{
 			map[string]any{"id": "stub", "name": "The stub (openai)", "kind": "openai", "model": "stub/model"},
 			map[string]any{"id": "hosted", "name": "The stub (anthropic)", "kind": "anthropic", "model": "stub/hosted"},
-		}}, raw, "every tenant, every member, no address")
+		}}, raw, "every team, every member, no address")
 	}
 }
 
@@ -192,7 +197,7 @@ func TestTheProviderIsThePersonsPick(t *testing.T) {
 	e := newChatEnv(t, llm.OpenAI, func(c *api.ChatOptions) {
 		c.Providers = append(c.Providers, stubProvider(hosted, "hosted", llm.Anthropic, "stub/hosted"))
 	})
-	path := "/api/v1/tenants/" + e.SlugA + "/chat"
+	path := "/api/v1/teams/" + e.SlugA + "/chat"
 	turn := func(provider *string) {
 		conversation := uuid.Must(uuid.NewV7())
 		res := e.b.request(http.MethodPost, path, apigen.ChatTurn{Conversation: conversation, Provider: provider,
@@ -281,7 +286,7 @@ func TestAChatTurnFilesARankedTicket(t *testing.T) {
 	got := e.stub.Requests()
 	require.Len(t, got, 3)
 	first := got[0]
-	assert.Contains(t, first.System, fmt.Sprintf(`the tenant "Tenant A" (%s)`, e.SlugA))
+	assert.Regexp(t, fmt.Sprintf(`in the team "[^"]+" \(%s\)`, regexp.QuoteMeta(e.SlugA)), first.System)
 	assert.Contains(t, first.System, "/t/"+e.SlugA+"/p/ALPHA/board")
 	assert.NotContains(t, first.Tools, "api")
 	assert.Contains(t, first.Tools, "place_ticket")
@@ -377,7 +382,7 @@ func TestTheChatHoldsThePersonsCapabilities(t *testing.T) {
 // header marks as an agent's, and a conversation the model could not read.
 func TestTheChatIsAPersonsInASession(t *testing.T) {
 	e := newChatEnv(t, llm.OpenAI)
-	path := "/api/v1/tenants/" + e.SlugA + "/chat"
+	path := "/api/v1/teams/" + e.SlugA + "/chat"
 	body := apigen.ChatTurn{Conversation: uuid.New(), Messages: []apigen.ChatMessage{said("Hello")}}
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberA}, http.MethodPost, path, body), http.StatusForbidden, "session_required")
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.AgentA}, http.MethodPost, path, body), http.StatusForbidden, "session_required")
@@ -394,36 +399,36 @@ func TestTheChatIsAPersonsInASession(t *testing.T) {
 	assert.Zero(t, len(e.stub.Requests()), "no refused turn reached the model")
 }
 
-// docs/adr/0076: the chat works in its tenant only, whatever the model asks —
-// a ticket of the person's other tenant is never read for an outside
-// provider; and a page tool moves the person's page.
-func TestTheChatStaysInItsTenant(t *testing.T) {
+// docs/adr/0076: the chat works in its team only, whatever the model asks —
+// a ticket of the person's other team is never read for an outside provider;
+// and a page tool moves the person's page.
+func TestTheChatStaysInItsTeam(t *testing.T) {
 	e := newChatEnv(t, llm.OpenAI)
 	both := e.s.browser(t)
 	both.mustLogin(e.names["both"], testPassword)
 	other, err := e.s.client(t, caller{Token: e.tk.MemberB}).CreateTicketWithResponse(e.ctx, e.SlugB, "BETA", &apigen.CreateTicketParams{},
-		task("A secret of tenant B"))
+		task("A secret of team B"))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, other.StatusCode())
 	e.stub.Reply(stubllm.Reply{Calls: []stubllm.Call{
 		{ID: "c1", Name: "get_ticket", Arguments: fmt.Sprintf(`{"key": %q}`, other.JSON201.Key)},
 		{ID: "c2", Name: "search", Arguments: `{"query": "secret", "scope": "all"}`},
 		{ID: "c3", Name: "open_board", Arguments: `{}`},
-	}}, stubllm.Reply{Text: "I can only work in this tenant."})
+	}}, stubllm.Reply{Text: "I can only work in this team."})
 
-	res, events := e.turn(t, both, uuid.New(), []apigen.ChatMessage{said("What is the secret of tenant B?")})
+	res, events := e.turn(t, both, uuid.New(), []apigen.ChatMessage{said("What is the secret of team B?")})
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	assert.Equal(t, []string{"tool_call", "tool_result", "tool_call", "tool_result", "tool_call", "ui", "tool_result", "done"}, names(events))
 	ui := eventData[apigen.ChatUiEvent](t, lastEvent(t, events, "ui"))
 	assert.Equal(t, apigen.ChatUiEvent{Action: apigen.ChatUiActionNavigate, Path: "/t/" + e.SlugA + "/p/ALPHA/board"}, ui)
 	for _, req := range e.stub.Requests()[1:] {
 		for _, m := range req.Messages {
-			assert.NotContains(t, m.Text, "A secret of tenant B", "nothing of tenant B reaches the provider")
+			assert.NotContains(t, m.Text, "A secret of team B", "nothing of team B reaches the provider")
 		}
 	}
 	done := eventData[apigen.ChatDoneEvent](t, lastEvent(t, events, "done"))
-	assert.Contains(t, *done.Messages[1].Text, "the chat works in the tenant "+e.SlugA)
-	assert.Contains(t, *done.Messages[2].Text, "No ticket in the tenants this session works in, "+e.SlugA)
+	assert.Contains(t, *done.Messages[1].Text, "the chat works in the team "+e.SlugA)
+	assert.Contains(t, *done.Messages[2].Text, "No ticket in the teams this session works in, "+e.SlugA)
 }
 
 // docs/adr/0076, docs/adr/0039 D2: a turn is bounded by its own limit, not the
@@ -459,7 +464,7 @@ func TestATurnsLimitsAndFailures(t *testing.T) {
 // key on its POSTs, the mark on its acts — and a malformed one is refused.
 func TestTheAgentHeaderOnASession(t *testing.T) {
 	e := newChatEnv(t, llm.OpenAI)
-	path := "/api/v1/tenants/" + e.SlugA + "/projects/ALPHA/tickets"
+	path := "/api/v1/teams/" + e.SlugA + "/projects/ALPHA/tickets"
 	mark := withHeader("X-Cowork-Agent", "claude-code/opus/s1")
 	assertProblem(t, e.b.request(http.MethodPost, path, task("Keyless"), mark), http.StatusBadRequest, "idempotency_key_required")
 	res := e.b.request(http.MethodPost, path, task("Keyed"), mark, withHeader("Idempotency-Key", uuid.NewString()))
@@ -477,7 +482,7 @@ func TestTheAgentHeaderOnASession(t *testing.T) {
 		http.StatusForbidden, "agent_forbidden")
 	admin := e.s.browser(t)
 	admin.mustLogin(e.names["adminA"], testPassword)
-	assertProblem(t, admin.request(http.MethodPatch, "/api/v1/tenants/"+e.SlugA, map[string]any{"name": "Renamed"}, mark,
+	assertProblem(t, admin.request(http.MethodPatch, "/api/v1/teams/"+e.SlugA, map[string]any{"name": "Renamed"}, mark,
 		withHeader("If-Match", `"1"`)), http.StatusForbidden, "agent_forbidden")
 	assertProblem(t, e.b.request(http.MethodGet, "/api/v1/me", nil, withHeader("X-Cowork-Agent", "no-slashes")),
 		http.StatusBadRequest, "validation_failed")
@@ -489,14 +494,14 @@ func postTurn(e chatEnv, body apigen.ChatTurn) (*http.Response, error) {
 	return postTurnAs(e, e.b, e.SlugA, body)
 }
 
-// postTurnAs posts a turn of a browser in a tenant outside the test's
+// postTurnAs posts a turn of a browser in a team outside the test's
 // goroutine.
 func postTurnAs(e chatEnv, b *browser, slug string, body apigen.ChatTurn) (*http.Response, error) {
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(http.MethodPost, e.s.URL+"/api/v1/tenants/"+slug+"/chat", strings.NewReader(string(raw)))
+	req, err := http.NewRequest(http.MethodPost, e.s.URL+"/api/v1/teams/"+slug+"/chat", strings.NewReader(string(raw)))
 	if err != nil {
 		return nil, err
 	}
@@ -588,9 +593,9 @@ func TestTheChatAsksOfThePerson(t *testing.T) {
 
 // docs/adr/0076, the owner's answer of 2026-10-04 — "a running agent must be
 // stoppable at once": DELETE …/chat/turns ends every running turn of the
-// session's person in the tenant within a second, the provider's request
+// session's person in the team within a second, the provider's request
 // cancelled and the stream ended with done, stopped; a turn of another person
-// and the person's turn in another tenant run on; a token and the chat itself
+// and the person's turn in another team run on; a token and the chat itself
 // cannot stop one.
 func TestStopEndsThePersonsRunningTurns(t *testing.T) {
 	e := newChatEnv(t, llm.OpenAI)
@@ -622,7 +627,7 @@ func TestStopEndsThePersonsRunningTurns(t *testing.T) {
 	mine, theirs, elsewhere := run(both, e.SlugA), run(admin, e.SlugA), run(both, e.SlugB)
 	require.Eventually(t, func() bool { return len(e.stub.Requests()) == 3 }, 5*time.Second, 10*time.Millisecond, "the three turns ask the model")
 
-	stopPath := "/api/v1/tenants/" + e.SlugA + "/chat/turns"
+	stopPath := "/api/v1/teams/" + e.SlugA + "/chat/turns"
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.Both}, http.MethodDelete, stopPath, nil), http.StatusForbidden, "session_required")
 	assertProblem(t, both.request(http.MethodDelete, stopPath, nil, withHeader("X-Cowork-Agent", "chat/stub:model/x")),
 		http.StatusForbidden, "agent_forbidden")
@@ -647,13 +652,13 @@ func TestStopEndsThePersonsRunningTurns(t *testing.T) {
 	case <-theirs:
 		t.Fatal("another person's turn ended with the stop")
 	case <-elsewhere:
-		t.Fatal("the person's turn in another tenant ended with the stop")
+		t.Fatal("the person's turn in another team ended with the stop")
 	case <-time.After(300 * time.Millisecond):
 	}
 	assert.Equal(t, 1, e.stub.Cancelled(), "the other turns' requests run on")
 
 	require.Equal(t, http.StatusNoContent, admin.request(http.MethodDelete, stopPath, nil).StatusCode)
-	require.Equal(t, http.StatusNoContent, both.request(http.MethodDelete, "/api/v1/tenants/"+e.SlugB+"/chat/turns", nil).StatusCode)
+	require.Equal(t, http.StatusNoContent, both.request(http.MethodDelete, "/api/v1/teams/"+e.SlugB+"/chat/turns", nil).StatusCode)
 	for _, c := range []chan result{theirs, elsewhere} {
 		select {
 		case r := <-c:
@@ -669,7 +674,7 @@ func TestStopEndsThePersonsRunningTurns(t *testing.T) {
 // docs/adr/0043 D5, docs/adr/0021 D6, migration 24: a person's chat
 // capabilities are the person's alone — read, written the first time and
 // changed by the person, by nobody else, an administrator of the person's
-// tenant included; never deleted; and only the nine capabilities.
+// team included; never deleted; and only the nine capabilities.
 func TestTheChatCapabilitiesArePersonal(t *testing.T) {
 	ctx := context.Background()
 	w := newWorld(t)

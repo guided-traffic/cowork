@@ -22,7 +22,7 @@ import (
 )
 
 // importUsage is the import subcommand's usage line.
-const importUsage = "Usage: cowork-mcp import <tenant>/<PROJECT> <path> [--dry-run]\n"
+const importUsage = "Usage: cowork-mcp import <team>/<PROJECT> <path> [--dry-run]\n"
 
 // flagDryRun stops the import after its dry run's report.
 const flagDryRun = "--dry-run"
@@ -34,9 +34,9 @@ const flagDryRun = "--dry-run"
 // its report printed — every file's outcome, key, warnings, errors and why a
 // file was left out, as plain text an agent reads (docs/adr/0051 D2, D6).
 func importProject(ctx context.Context, e Env, args []string, dryRun bool) int {
-	tenant, project, ok := strings.Cut(args[0], "/")
-	if !ok || !domain.ValidTenantSlug(tenant) || !domain.ValidProjectKey(project) {
-		fmt.Fprintf(e.Stderr, "cowork-mcp: %q names no project, <tenant>/<PROJECT> such as acme/VKO\n\n%s", args[0], importUsage)
+	team, project, ok := strings.Cut(args[0], "/")
+	if !ok || !domain.ValidTenantSlug(team) || !domain.ValidProjectKey(project) {
+		fmt.Fprintf(e.Stderr, "cowork-mcp: %q names no project, <team>/<PROJECT> such as acme/VKO\n\n%s", args[0], importUsage)
 		return exitUsage
 	}
 	name, body, err := uploadOf(args[1])
@@ -50,20 +50,20 @@ func importProject(ctx context.Context, e Env, args []string, dryRun bool) int {
 		return exitError
 	}
 	c := connect(e, cfg, "cowork-mcp", "", "import")
-	job, err := createImport(ctx, c, tenant, project, name, body)
+	job, err := createImport(ctx, c, team, project, name, body)
 	if err != nil {
 		fmt.Fprintf(e.Stderr, "cowork-mcp: the dry run into %s failed: %v\n", args[0], err)
 		return exitError
 	}
-	writeImport(e.Stdout, tenant, job)
+	writeImport(e.Stdout, team, job)
 	if dryRun {
-		fmt.Fprintf(e.Stdout, "\nNothing is imported yet: run the command again without %s, or execute this dry run with POST /api/v1/tenants/%s/projects/%s/imports/%s/execution, within its day.\n",
-			flagDryRun, tenant, project, job.Id)
+		fmt.Fprintf(e.Stdout, "\nNothing is imported yet: run the command again without %s, or execute this dry run with POST /api/v1/teams/%s/projects/%s/imports/%s/execution, within its day.\n",
+			flagDryRun, team, project, job.Id)
 		return exitOK
 	}
 	rctx, cancel := context.WithTimeout(ctx, requestBudget)
 	defer cancel()
-	res, err := c.session.API.ExecuteImportWithResponse(rctx, tenant, project, job.Id, apigen.ImportExecution{})
+	res, err := c.session.API.ExecuteImportWithResponse(rctx, team, project, job.Id, apigen.ImportExecution{})
 	switch {
 	case err != nil:
 		fmt.Fprintf(e.Stderr, "cowork-mcp: %s cannot be reached: %v\n", cfg.url, err)
@@ -74,14 +74,14 @@ func importProject(ctx context.Context, e Env, args []string, dryRun bool) int {
 		return exitError
 	}
 	fmt.Fprintln(e.Stdout)
-	writeImport(e.Stdout, tenant, res.JSON200)
-	fmt.Fprintf(e.Stdout, "\nThe importer sets no parent a file does not name: make a family's children its children with PATCH /api/v1/tenants/%s/projects/%s/tickets/<n> and {\"parent\": \"<key>\"}, where they belong together.\n",
-		tenant, project)
+	writeImport(e.Stdout, team, res.JSON200)
+	fmt.Fprintf(e.Stdout, "\nThe importer sets no parent a file does not name: make a family's children its children with PATCH /api/v1/teams/%s/projects/%s/tickets/<n> and {\"parent\": \"<key>\"}, where they belong together.\n",
+		team, project)
 	return exitOK
 }
 
 // createImport sends the upload as the dry run's one part named file.
-func createImport(ctx context.Context, c *client, tenant, project, name string, body []byte) (*apigen.ImportJob, error) {
+func createImport(ctx context.Context, c *client, team, project, name string, body []byte) (*apigen.ImportJob, error) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	part, err := mw.CreateFormFile("file", name)
@@ -96,7 +96,7 @@ func createImport(ctx context.Context, c *client, tenant, project, name string, 
 	}
 	ctx, cancel := context.WithTimeout(ctx, requestBudget)
 	defer cancel()
-	res, err := c.session.API.CreateImportWithBodyWithResponse(ctx, tenant, project, mw.FormDataContentType(), &buf)
+	res, err := c.session.API.CreateImportWithBodyWithResponse(ctx, team, project, mw.FormDataContentType(), &buf)
 	switch {
 	case err != nil:
 		return nil, fmt.Errorf("%s cannot be reached: %w", c.session.Installation, err)
@@ -203,11 +203,11 @@ func packFile(tw *tar.Writer, root *os.Root, rel, name string) error {
 // writeImport prints a job's report: the summary, then every file of the
 // upload with its outcome, key, title, why it was skipped, excluded or left
 // out, and its warnings and errors with their fields and lines.
-func writeImport(w io.Writer, tenant string, job *apigen.ImportJob) {
+func writeImport(w io.Writer, team string, job *apigen.ImportJob) {
 	bw := bufio.NewWriter(w)
 	defer func() { _ = bw.Flush() }()
 	s := job.Summary
-	key := tenant + "/" + job.Project
+	key := team + "/" + job.Project
 	if job.Status == apigen.ImportStatusExecuted {
 		fmt.Fprintf(bw, "Imported into %s (job %s): %d tickets created (%d open, %d confidential); %d conflicts and %d files with errors left out; %d skipped, %d excluded",
 			key, job.Id, s.Created, s.Open, s.Confidential, s.Conflict, s.Error, s.Skip, s.Exclude)

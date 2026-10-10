@@ -21,14 +21,14 @@ func Remind(ctx context.Context, s *Session) (string, error) {
 		return "", err
 	}
 	b := *sit.Binding
-	started, ok, err := s.Memory.LastStart(MemoryKey{Installation: s.Installation, Tenant: b.Tenant, Project: b.Project})
+	started, ok, err := s.Memory.LastStart(MemoryKey{Installation: s.Installation, Team: b.Team, Project: b.Project})
 	if err != nil || !ok {
 		return "", err
 	}
 	if worked, err := s.Workspace.WorkedSince(ctx, started); err == nil && !worked {
 		return "", nil
 	}
-	mine, err := listTickets(ctx, s, b.Tenant, b.Project, ticketQuery{states: []string{stateInProgress}, assignee: "me", limit: startOtherActive})
+	mine, err := listTickets(ctx, s, b.Team, b.Project, ticketQuery{states: []string{stateInProgress}, assignee: "me", limit: startOtherActive})
 	if err != nil || len(mine) == 0 {
 		return "", err
 	}

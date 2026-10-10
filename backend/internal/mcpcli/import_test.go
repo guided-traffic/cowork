@@ -154,7 +154,7 @@ func TestTheImportPacksADirectoryAndPrintsTheReports(t *testing.T) {
 	var name string
 	executions := 0
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/v1/tenants/acme/projects/COW/imports", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/teams/acme/projects/COW/imports", func(w http.ResponseWriter, r *http.Request) {
 		assert.Contains(t, r.Header.Get("X-Cowork-Agent"), "cowork-mcp/unknown/", "the binary's requests are an agent's")
 		mr, err := r.MultipartReader()
 		require.NoError(t, err)
@@ -166,11 +166,11 @@ func TestTheImportPacksADirectoryAndPrintsTheReports(t *testing.T) {
 		_, err = mr.NextPart()
 		assert.ErrorIs(t, err, io.EOF, "one part")
 		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Location", "/api/v1/tenants/acme/projects/COW/imports/"+dry.Id.String())
+		w.Header().Set("Location", "/api/v1/teams/acme/projects/COW/imports/"+dry.Id.String())
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(dry)
 	})
-	mux.HandleFunc("POST /api/v1/tenants/acme/projects/COW/imports/{import}/execution", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/teams/acme/projects/COW/imports/{import}/execution", func(w http.ResponseWriter, r *http.Request) {
 		executions++
 		assert.Equal(t, dry.Id.String(), r.PathValue("import"))
 		w.Header().Set("Content-Type", "application/json")
@@ -188,7 +188,8 @@ func TestTheImportPacksADirectoryAndPrintsTheReports(t *testing.T) {
 	assert.Contains(t, stdout, "docs/tickets/001-a.md: create acme/COW-1 \"a ticket\" (task, filed)\n  warning (opened): the file names no opened date\n")
 	assert.Contains(t, stdout, "docs/tickets/archive/002-b.md: conflict acme/COW-2\n  why: left out of the import: the project holds its number as acme/COW-2")
 	assert.Contains(t, stdout, "docs/tickets/link.md: skip\n  why: not a regular file\n  error (line 3): an example error\n")
-	assert.Contains(t, stdout, "Nothing is imported yet: run the command again without --dry-run")
+	assert.Contains(t, stdout, "Nothing is imported yet: run the command again without --dry-run, or execute this dry run with "+
+		"POST /api/v1/teams/acme/projects/COW/imports/0199a3c2-1d2e-7f00-8000-0000000000aa/execution, within its day.")
 
 	code, stdout, stderr = run(t, env, "import", "acme/COW", filepath.Join(root, "docs", "tickets"))
 	require.Equal(t, 0, code, stderr)
@@ -196,7 +197,8 @@ func TestTheImportPacksADirectoryAndPrintsTheReports(t *testing.T) {
 	assert.Equal(t, 1, executions)
 	assert.Contains(t, stdout, "Imported into acme/COW (job 0199a3c2-1d2e-7f00-8000-0000000000aa): 1 tickets created (1 open, 0 confidential); 1 conflicts and 0 files with errors left out; 1 skipped, 0 excluded")
 	assert.Contains(t, stdout, "docs/tickets/001-a.md: created acme/COW-1")
-	assert.Contains(t, stdout, "The importer sets no parent a file does not name")
+	assert.Contains(t, stdout, "The importer sets no parent a file does not name: make a family's children its children with "+
+		"PATCH /api/v1/teams/acme/projects/COW/tickets/<n>")
 }
 
 // An archive and a Markdown file go as they are; the installation's refusal
@@ -206,7 +208,7 @@ func TestTheImportSendsAFileAsItIsAndReportsARefusal(t *testing.T) {
 	require.NoError(t, os.WriteFile(path, []byte("---\nid: T1\n---\n"), 0o600))
 	var got []byte
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/v1/tenants/acme/projects/COW/imports", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/teams/acme/projects/COW/imports", func(w http.ResponseWriter, r *http.Request) {
 		mr, err := r.MultipartReader()
 		require.NoError(t, err)
 		part, err := mr.NextPart()
