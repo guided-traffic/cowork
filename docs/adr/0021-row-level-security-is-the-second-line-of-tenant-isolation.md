@@ -343,7 +343,10 @@ every crossing restores it before each return, no `SET` clause names it, no othe
 `set_config('app.crossing'`, every crossing policy names the owner alone, every crossing that
 returns tickets decides their sight and leaves the deleted out
 ([`policy_test.go`](../../backend/internal/store/policy_test.go),
-[`crossing_test.go`](../../backend/internal/store/crossing_test.go)) —, and `cowork serve` refuses
+[`crossing_test.go`](../../backend/internal/store/crossing_test.go)) —, the integration tier reads
+the same rules off the functions the catalog holds after the migrations *(added 2026-10-10 after
+the security review: `TestEverySecurityDefinerInTheCatalogPinsTheCrossing`, which a function quoted,
+named or made `SECURITY DEFINER` otherwise than the file lint reads cannot pass)*, and `cowork serve` refuses
 a database whose crossing policies or functions are not the owner's (`DB.CheckCrossing`): a change of
 ownership past the migrations would leave policies that admit no function, the heads absent and
 the cycle walks blind to other teams.

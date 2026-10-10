@@ -444,7 +444,15 @@ refuses `app.crossing` in any Go or query file of the backend, and a binding of 
 outside `setContext`, `inTenant`, `flushIn` and `RecordElsewhere`; `TestEveryCrossingFunctionDecidesSight`
 requires every head function to call `ticket_sight(`, to leave the deleted out and to ask
 `app_is_member()`, every walk to answer yes or no, and every other crossing to be listed with what
-it returns. `cowork serve` calls `DB.CheckCrossing` after `CheckRuntimeRole`
+it returns. These read the migration files, and miss what they do not recognise — another quoting,
+lowercase, a schema-qualified name, a function an `ALTER FUNCTION` makes `SECURITY DEFINER` —, so
+the integration tier reads the functions the catalog holds after the migrations as well
+(`TestEverySecurityDefinerInTheCatalogPinsTheCrossing`,
+[`catalog_crossing_test.go`](../../backend/test/integration/catalog_crossing_test.go)): every
+`SECURITY DEFINER` function in `pg_proc` is plpgsql with `search_path=<schema>, pg_temp`, declares
+nothing that runs a query before its first statement, sets `app.crossing` first, and — a crossing —
+restores it right before every `RETURN` and at its end; no function's `proconfig` names
+`app.crossing`. `cowork serve` calls `DB.CheckCrossing` after `CheckRuntimeRole`
 ([`roles.go`](../../backend/internal/store/roles.go)): every crossing policy must name the owner of
 `tickets` and nobody else, and every crossing function must be that owner's and run with its
 rights — a change of ownership past the migrations would leave policies that no function meets, the
