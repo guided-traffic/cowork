@@ -392,9 +392,10 @@ func (w *Writer) BlocksReach(ctx context.Context, from, to uuid.UUID) (bool, err
 // change of their children, and of their ancestors, across teams
 // (docs/adr/0017 D3 as amended 2026-10-10): the one path every refresh takes,
 // a same-team change included, since a parent counts its children of every
-// team. No version moves and no act is recorded (docs/adr/0050 D1); a parent of
-// another team that changed is told on its team's streams. Nil ids are passed
-// over.
+// team. No version moves and no act is recorded (docs/adr/0050 D1). A parent
+// of another team gets its three derived columns and nothing else — its own
+// stages, done by hand and updated_at are its own team's — and is told on its
+// team's streams when they changed. Nil ids are passed over.
 func (w *Writer) RefreshDerived(ctx context.Context, parents ...*uuid.UUID) error {
 	ids := make([]uuid.UUID, 0, len(parents))
 	for _, p := range parents {

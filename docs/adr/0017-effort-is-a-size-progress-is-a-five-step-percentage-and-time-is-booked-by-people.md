@@ -55,7 +55,16 @@ team whose values changed is told on its team's streams as `ticket.changed` of t
 ([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
 D2), with an id made for the event, since the change is no act. The browser fetches a parent it
 holds again on that kind, whose version it holds already, and the parent's page loads its children
-again (2026-10-10).
+again (2026-10-10). *(Made concrete 2026-10-10 by the
+implementer after the security review, open to the owner's objection,
+[migration 48](../../backend/internal/store/migrations/000048_derived_progress_of_another_teams_parent.up.sql):)* on a parent of another team than the writer's the write is the
+three derived columns and nothing else. The seeding of a parent's own stages from the last derived
+values when its last child leaves, the mark done by hand of a done parent that gains a child, and
+the move of its `updated_at` happen only where the parent is of the writer's own team: a parent of
+another team keeps its own values until its own team changes them, and the guard refuses anything
+more on its row (`TestAChildOfAnotherTeamNeverRewritesItsParentsOwnProgress`). Migration 47 had
+seeded them across teams too, so a writer of team B could rewrite a stage a member of team A had
+set, with no act and no version.
 
 ## Context
 

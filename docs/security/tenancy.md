@@ -414,9 +414,11 @@ another.
   time only inside `SECURITY DEFINER` functions, and every one of them — `purge_ticket_audit` too —
   sets its own value first. The runtime role that sets `app.crossing` itself gains nothing
   (`TestTheCrossingIsTheOwnersAlone`).
-- **What a crossing writes** is held to its columns by a trigger, `tickets_crossing_guard`: the
-  derived progress, the stages it seeds, done by hand and `updated_at`; at a purge the parent
-  alone (`TestACrossingWritesOnlyItsColumns`).
+- **What a crossing writes** is held to its columns by a trigger, `tickets_crossing_guard`: on a
+  ticket of another team than the writer's the three derived columns alone — never its own stages,
+  done by hand or `updated_at`, which its own team keeps —; on one of the writer's own team besides
+  the stages the derivation seeds, done by hand and `updated_at`; at a purge the parent alone
+  (`TestACrossingWritesOnlyItsColumns`, `TestAChildOfAnotherTeamNeverRewritesItsParentsOwnProgress`).
 - **An act in another team** — a link's act on its other end, the end of a relation at a purge, a
   settled prerequisite — is written by the runtime role with the transaction bound to that team for
   those statements alone (`Writer.RecordElsewhere`), under that team's own policies, at a far end

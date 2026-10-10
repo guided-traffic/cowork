@@ -397,7 +397,7 @@ first; the runtime role gains nothing by setting `app.crossing` itself
 | `head` | `open_prerequisite_heads(ticket)` | `Reader.OpenPrerequisiteHeads` | those prerequisites by their heads: what refuses `done`, and what an override names |
 | `walk` | `parent_chain_reaches(candidate, ticket)` | `Writer.ParentChainReaches` | yes or no: a new parent closes a cycle, across teams; under the parents' graph lock |
 | `walk` | `blocks_reach(from, to)` | `Writer.BlocksReach` | yes or no: a new `blocks` link closes a cycle, across teams; under the blocks' graph lock |
-| `derive` | `refresh_derived(parents)` | `Writer.RefreshDerived`, every refresh of a parent | the derived stages of parents and their ancestors from their children of every team, the deepest first, no version and no act; a parent of another team that changed is told on its team's streams as `ticket.changed` of the kind `derived` ([publication](#publication)) |
+| `derive` | `refresh_derived(parents)` | `Writer.RefreshDerived`, every refresh of a parent | the derived stages of parents and their ancestors from their children of every team, the deepest first, no version and no act; a parent of the caller's own team also has its own stages seeded when its last child leaves, is marked done by hand when it gains one while done, and has its `updated_at` moved — a parent of another team gets the three derived columns alone (migration 48) and is told on its team's streams as `ticket.changed` of the kind `derived` ([publication](#publication)) |
 | `act` | `relations_elsewhere(ticket)` | `Reader.RelationsElsewhere` | every relation of a ticket of the team whose other end is a ticket of another team: that team, ticket and key, and its head as an outsider reads it — where an act is recorded, never shown to the caller |
 | `purge` | `end_relations_elsewhere(ticket)` | `Writer.PurgeTicket` | a purged ticket's children elsewhere made roots and the links another team keeps to it deleted; every far end answered for its act; only inside the purge of a deleted ticket of the team |
 | `purge` | `end_team_relations(team)` | `DB.EndTeamRelations` | every relation between a team and the others ended, both directions; only in a transaction named `team-deletion` with no team set; no route calls it |
@@ -418,8 +418,9 @@ that returns tickets leaves it out. Every head function asks besides `app_is_mem
 holds a role in the transaction's team —, behind the boundary that admits nobody else.
 
 **What a crossing writes.** The trigger `tickets_crossing_guard` refuses (SQLSTATE `42501`) an update
-of a ticket inside a crossing that changes more than its kind may: `derive` the derived and the
-seeded stages, `done_by_hand` and `updated_at`; `purge` the `parent_id`. An act on a ticket of
+of a ticket inside a crossing that changes more than its kind may: `derive` the three derived
+columns, and on a ticket of the transaction's own team the seeded stages, `done_by_hand` and
+`updated_at` besides; `purge` the `parent_id`. An act on a ticket of
 another team is no crossing's: `Writer.RecordElsewhere(ctx, far, events...)` binds the transaction to
 the far team — `set_config('app.tenant_id', …)` —, writes the audit rows, their notifications and
 their publication there as the caller's acts, under that team's own policies, and binds it back; a

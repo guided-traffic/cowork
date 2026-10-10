@@ -334,8 +334,10 @@ those statements alone and to its own again after them (`Writer.RecordElsewhere`
 team's own policies; the far end it is written at comes only from a crossing. Every head function
 asks besides whether the caller holds a role in the transaction's team (`app_is_member()`), behind
 the request layer that admits nobody else. A rule on columns stays a trigger (D6):
-`tickets_crossing_guard` holds what a writing crossing changes of a ticket to the derived progress,
-the stages it seeds, done by hand and `updated_at`, and the purge's to the parent. Unit tests read
+`tickets_crossing_guard` holds what a writing crossing changes of a ticket to the derived progress —
+on a ticket of the writer's own team besides the stages it seeds, done by hand and `updated_at`
+(*2026-10-10, migration 48:* on another team's, the derived columns alone) —, and the purge's to the
+parent. Unit tests read
 the functions from the migrations — every `SECURITY DEFINER` function sets `app.crossing` first,
 every crossing restores it before each return, no `SET` clause names it, no other file calls
 `set_config('app.crossing'`, every crossing policy names the owner alone, every crossing that

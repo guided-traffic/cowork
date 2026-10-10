@@ -416,6 +416,40 @@ func TestDerivedProgressCountsAChildInAnotherTeam(t *testing.T) {
 	assert.Equal(t, 50, e.readIn(t, memberA, e.SlugA, parent).Progress, "moved away, it counts no more")
 }
 
+// A writer of team B moves the derived progress of a parent of team A and
+// nothing else of it: when B's child moves away, the parent shows its own
+// stages as its own team left them — never the last derived value seeded into
+// them —, its version and its updated_at unmoved (docs/adr/0017 D3 as made
+// concrete 2026-10-10).
+func TestAChildOfAnotherTeamNeverRewritesItsParentsOwnProgress(t *testing.T) {
+	e := newRelEnv(t)
+	memberA, memberB, both := caller{Token: e.tk.MemberA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
+	parent := e.fileIn(t, memberA, e.SlugA, "ALPHA", task("The parent of A"))
+	res := e.patchIn(t, memberA, e.SlugA, parent, apigen.TicketPatch{ProgressRefinement: ptr(20)})
+	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
+	own := *res.JSON200
+	require.Equal(t, 20, own.ProgressRefinement)
+
+	child := e.fileIn(t, both, e.SlugB, "BETA", task("A child of B", func(c *apigen.TicketCreate) { c.Parent = ptr(parent.Key) }))
+	res = e.patchIn(t, memberB, e.SlugB, child, apigen.TicketPatch{ProgressRefinement: ptr(95)})
+	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
+	child = *res.JSON200
+	derived := e.readIn(t, memberA, e.SlugA, parent)
+	assert.True(t, derived.ProgressDerived)
+	assert.Equal(t, 95, derived.ProgressRefinement, "the child of B counts")
+
+	res = e.patchIn(t, memberB, e.SlugB, child, apigen.TicketPatch{Parent: nullable.NewNullNullable[string]()})
+	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
+	after := e.readIn(t, memberA, e.SlugA, parent)
+	assert.False(t, after.ProgressDerived)
+	assert.Equal(t, 20, after.ProgressRefinement, "the stage a member of A set, not the value B's child left")
+	assert.Equal(t, own.Version, after.Version, "no version moved")
+	assert.Equal(t, own.UpdatedAt, after.UpdatedAt, "the write of team B leaves the parent's updated_at")
+	stored, err := e.f.QueryCount(e.ctx, `SELECT progress_refinement FROM tickets WHERE id = $1`, parent.Id)
+	require.NoError(t, err)
+	assert.EqualValues(t, 20, stored, "the parent's own column is untouched")
+}
+
 // The parent's team hears of the derived change on its stream, as the event of
 // the kind derived — a stream that does not see the parent's project hears
 // nothing of it (docs/adr/0017 D3, docs/adr/0054 D2, D3).

@@ -205,12 +205,18 @@ func TestACrossingWritesOnlyItsColumns(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = conn.Close(ctx) }()
 
-	try := func(kind, set string) (int64, error) {
+	// try updates the ticket of team B as the owner inside a crossing of the
+	// kind, the transaction bound to team, none for uuid.Nil.
+	try := func(kind string, team uuid.UUID, set string) (int64, error) {
 		tx, err := conn.Begin(ctx)
 		require.NoError(t, err)
 		defer func() { _ = tx.Rollback(ctx) }()
 		_, err = tx.Exec(ctx, "SELECT set_config('app.crossing', $1, true)", kind)
 		require.NoError(t, err)
+		if team != uuid.Nil {
+			_, err = tx.Exec(ctx, "SELECT set_config('app.tenant_id', $1, true)", team.String())
+			require.NoError(t, err)
+		}
 		var n int64
 		err = tx.QueryRow(ctx, "WITH u AS (UPDATE tickets SET "+set+" WHERE id = $1 RETURNING 1) SELECT count(*) FROM u", c.CB).Scan(&n)
 		return n, err
@@ -220,19 +226,29 @@ func TestACrossingWritesOnlyItsColumns(t *testing.T) {
 		return errors.As(err, &pgErr) && pgErr.Code == "42501"
 	}
 
-	n, err := try("derive", "progress_derived = 50, updated_at = now()")
+	for _, team := range []uuid.UUID{uuid.Nil, c.A} {
+		n, err := try("derive", team, "progress_derived = 50, progress_refinement_derived = 40, progress_review_derived = 30")
+		require.NoError(t, err)
+		assert.EqualValues(t, 1, n, "the derived write reaches a ticket of any team")
+		for _, own := range []string{"progress_refinement = 95", "progress = 95", "progress_review = 95", "done_by_hand = true",
+			"updated_at = now()"} {
+			_, err = try("derive", team, "progress_derived = 50, "+own)
+			assert.True(t, refused(err), "a derived write from outside the ticket's team leaves %s: %v", own, err)
+		}
+	}
+	n, err := try("derive", c.B, "progress_derived = 50, progress_refinement = 95, done_by_hand = true, updated_at = now()")
 	require.NoError(t, err)
-	assert.EqualValues(t, 1, n, "the derived write reaches a ticket of any team")
-	_, err = try("derive", "title = 'taken over'")
+	assert.EqualValues(t, 1, n, "inside the ticket's own team the derived write seeds its stages")
+	_, err = try("derive", c.B, "title = 'taken over'")
 	assert.True(t, refused(err), "the derived write changes no title: %v", err)
-	_, err = try("derive", "version = version + 1")
+	_, err = try("derive", c.B, "version = version + 1")
 	assert.True(t, refused(err), "nor a version: %v", err)
-	n, err = try("purge", "parent_id = NULL")
+	n, err = try("purge", uuid.Nil, "parent_id = NULL")
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, n, "the end of a relation clears a parent")
-	_, err = try("purge", "parent_id = NULL, progress_derived = 50")
+	_, err = try("purge", uuid.Nil, "parent_id = NULL, progress_derived = 50")
 	assert.True(t, refused(err), "and nothing more: %v", err)
-	n, err = try("head", "title = title")
+	n, err = try("head", uuid.Nil, "title = title")
 	require.NoError(t, err)
 	assert.Zero(t, n, "a reading crossing writes nothing")
 }
