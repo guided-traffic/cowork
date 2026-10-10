@@ -6,8 +6,10 @@ import type {
   Comment,
   Effort,
   Horizon,
+  LinkType,
   Project,
   Question,
+  RelationList,
   SecurityClass,
   Severity,
   Ticket,
@@ -331,6 +333,37 @@ export class Seed {
       await this.context.patch(this.path(project, `/tickets/${number}`), {
         data: { parent },
         headers: { 'If-Match': etag },
+      }),
+    );
+  }
+
+  /**
+   * Links the ticket, as the source, to another by its canonical key, of any team the token's
+   * person reads (docs/adr/0012 D2).
+   */
+  async link(project: string, number: number, type: LinkType, other: string): Promise<void> {
+    const slash = other.indexOf('/');
+    await ok(
+      `link ${project}-${number} to ${other}`,
+      await this.context.put(
+        this.path(
+          project,
+          `/tickets/${number}/links/${type}/${other.slice(0, slash)}/${other.slice(slash + 1)}`,
+        ),
+      ),
+    );
+  }
+
+  /** The ticket's relations of one kind, each other end as the token's person sees it. */
+  async relations(
+    project: string,
+    number: number,
+    kind: 'parent' | 'child' | 'link',
+  ): Promise<RelationList> {
+    return ok(
+      `read the relations of ${project}-${number}`,
+      await this.context.get(this.path(project, `/tickets/${number}/relations`), {
+        params: { kind },
       }),
     );
   }

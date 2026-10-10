@@ -137,3 +137,71 @@ test(
     }
   },
 );
+
+/**
+ * A relation another team keeps onto a ticket is removed from the ticket's own side
+ * (docs/adr/0008 D2, docs/adr/0012 D2 as amended again 2026-10-10): a member of the fixture team who
+ * holds no role in the second team opens a ticket of the fixture team that a ticket of the second
+ * team names as its parent and that another ticket of the second team blocks; the page shows both
+ * by their heads, unlinked, and the member removes the child and the incoming link, which leave the
+ * page at once and the API.
+ */
+test(
+  'a member of one team removes a child and an incoming blocks link that another team keeps onto its ticket',
+  { tag: '@smoke' },
+  async ({ browser, seed, project }) => {
+    const parent = await seed.file(project, { title: 'Coordinate the launch' });
+    const parentKey = `${tenant}/${project}-${parent.number}`;
+    const other = await Seed.create(baseURL, seedToken(), otherTenant);
+    const otherProject = uniqueKey();
+    let child: { number: number };
+    let blocker: { number: number };
+    try {
+      await other.project(otherProject);
+      child = await other.file(otherProject, { title: 'Translate the launch notes' });
+      blocker = await other.file(otherProject, { title: 'Clear the launch with legal' });
+      await other.setParent(otherProject, child.number, parentKey);
+      await other.link(otherProject, blocker.number, 'blocks', parentKey);
+    } finally {
+      await other.dispose();
+    }
+
+    const member: Person = await newAccount(browser, 'member', tenant);
+    try {
+      const page = member.page;
+      await page.goto(`/t/${tenant}/tickets/${project}-${parent.number}`);
+      await expectScheme(page);
+      await expect(page.getByTestId('ticket-title')).toHaveText('Coordinate the launch');
+
+      // The child of the other team, by its head: the member holds no role there.
+      const children = page.getByTestId('children');
+      const kept = children.getByTestId('child-0');
+      await expect(kept).toContainText('Other end');
+      await expect(kept).toContainText(`${otherProject}-${child.number}`);
+      await expect(kept).toContainText('Translate the launch notes');
+      await expect(kept.locator('a')).toHaveCount(0);
+      await kept.getByRole('button', { name: 'Remove this child' }).click();
+      await expect(children).toContainText('No children.');
+
+      // The link the other team keeps onto the ticket, blocked by its ticket.
+      const blockedBy = page.getByTestId(/^link-/).filter({ hasText: 'blocked by' });
+      await expect(blockedBy).toContainText(`${otherProject}-${blocker.number}`);
+      await expect(blockedBy).toContainText('Clear the launch with legal');
+      await blockedBy.getByRole('button', { name: 'Remove this link' }).click();
+      await expect(page.getByText('No links.')).toBeVisible();
+      await expectNoTenantShown(page);
+    } finally {
+      await member.page.context().close();
+    }
+
+    // Both are gone in the API as well.
+    const reread = await Seed.create(baseURL, seedToken(), otherTenant);
+    try {
+      expect((await reread.ticket(otherProject, child.number)).parent).toBeNull();
+    } finally {
+      await reread.dispose();
+    }
+    expect((await seed.relations(project, parent.number, 'child')).items).toEqual([]);
+    expect((await seed.relations(project, parent.number, 'link')).items).toEqual([]);
+  },
+);
