@@ -16,7 +16,7 @@ import { ConfirmationService } from 'primeng/api';
 import { ButtonDirective } from 'primeng/button';
 import { Skeleton } from 'primeng/skeleton';
 import { Tooltip } from 'primeng/tooltip';
-import { Activity, Attachment, Interest, Link } from '../../api/models';
+import { Activity, Attachment, Interest, Relation } from '../../api/models';
 import { Conversation } from '../../core/conversation.service';
 import { ProblemService, ProblemView } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
@@ -25,6 +25,7 @@ import { AgentMark } from '../../shared/agent-mark';
 import { SecurityBadge, SeverityBadge, StateBadge, TypeIcon } from '../../shared/badges';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { RenderedText } from '../../shared/rendered-text';
+import { HeadKey, settledPrerequisite } from '../../shared/ticket-head';
 import { ago, Clock, dateTime } from '../../shared/time';
 import { CommentItem } from './comment-item';
 import {
@@ -49,12 +50,19 @@ import { TicketTitle } from './ticket-title';
  * project's rank by the score is the project's act, which the activity of every ticket it moved
  * shows (docs/adr/0014 D3, docs/adr/0015 D1). An act on the horizon is recorded as `overridden`,
  * its name before (docs/adr/0010 D1), and reads as what it did: a horizon set, or the ticket
- * returned to `later`.
+ * returned to `later`. A prerequisite of another team that settled names it by its head.
  */
 export function describe(activity: Activity): string {
   const who = activity.actor?.display_name ?? activity.actor_system ?? 'cowork';
   if (activity.entity_type === 'project' && activity.action === 'ranked') {
     return `${who} sorted the backlog by score`;
+  }
+  if (activity.action === 'prerequisite_settled') {
+    // docs/adr/0012 D5: a ticket of another team that blocks this one reached done or dropped.
+    const settled = settledPrerequisite(activity.after);
+    return settled
+      ? `${who} closed ${settled.name}, which blocks it${settled.state ? `, as ${settled.state}` : ''}`
+      : `${who} closed a ticket of another team that blocks it`;
   }
   if (activity.action === 'overridden') {
     const horizon = (activity.after as Record<string, unknown> | null)?.['urgency_override'];
@@ -83,7 +91,9 @@ const notFound: ProblemView = {
 
 /**
  * One ticket (docs/adr/0018 D2): its title and body to edit, its fields, its moves, its
- * prerequisite tree, its questions with the answer form, links, interest, comments and activity.
+ * prerequisite tree, its questions with the answer form, children, links, interest, comments and
+ * activity; a parent, a child or a link end of another project or team by its head
+ * (docs/adr/0005 D3).
  * Everything on it follows the event stream. The page is reused when the path names another
  * ticket: a question the page asks goes then, and so does every editor and dialog of its parts,
  * each of which belongs to the ticket it was opened on.
@@ -101,6 +111,7 @@ const notFound: ProblemView = {
     CommentItem,
     ConfirmDialog,
     EditQuestion,
+    HeadKey,
     InterestControl,
     LinkAdder,
     PrerequisiteTree,
@@ -246,16 +257,26 @@ export class TicketDetail {
     return `Could not load this: ${problem.detail || problem.title}`;
   }
 
-  /** Removes a link from its source's side, whichever side this ticket is. */
-  protected unlink(link: Link): void {
-    const key = this.fullKey();
-    if (!key) {
-      return;
+  /**
+   * The source of a link, which removes it (docs/adr/0012 D2): this ticket for an outgoing link,
+   * whatever the person reads of the other end — a placeholder's link included, by its id
+   * (docs/adr/0065 D5) —, and the other ticket for an incoming one where the person reads it. An
+   * incoming link from a ticket they may not open, or may not see, is its team's to remove: null.
+   */
+  protected sourceOf(relation: Relation): string | null {
+    if (relation.link?.direction === 'outgoing') {
+      return this.fullKey() ?? null;
     }
-    const [source, target] =
-      link.direction === 'outgoing' ? [key, link.ticket.key] : [link.ticket.key, key];
-    this.conversation
-      .unlink(source, link.type, target)
-      .catch((error: unknown) => this.problems.report(error));
+    return relation.head.readable && relation.head.key !== null ? relation.head.key : null;
+  }
+
+  /** One more page of the children (docs/adr/0048 D3). */
+  protected moreChildren(): void {
+    this.relations.childPages.update((pages) => pages + 1);
+  }
+
+  /** Removes a link by its id from its source. */
+  protected unlink(source: string, link: string): void {
+    this.conversation.unlink(source, link).catch((error: unknown) => this.problems.report(error));
   }
 }

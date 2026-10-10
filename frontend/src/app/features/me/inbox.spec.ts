@@ -114,6 +114,47 @@ describe('happening', () => {
       },
       'closed COW-2, which blocks it, as done',
     ],
+    // docs/adr/0012 D5 as made concrete 2026-10-10: a prerequisite of another team, by its head.
+    [
+      {
+        reason: 'blocker_closed',
+        act: act({
+          action: 'prerequisite_settled',
+          after: {
+            prerequisite: {
+              team: { slug: 'globex', name: 'Globex' },
+              key: 'globex/API-7',
+              title: 'Send the SameSite attribute',
+              type: 'task',
+              state: 'dropped',
+              placeholder: false,
+            },
+          },
+        }),
+        blocker: { key: 'globex/API-7', title: 'Send the SameSite attribute', state: 'dropped' },
+      },
+      'closed Globex · API-7, which blocks it, as dropped',
+    ],
+    [
+      {
+        reason: 'blocker_closed',
+        act: act({
+          action: 'prerequisite_settled',
+          after: {
+            prerequisite: {
+              team: { slug: 'globex', name: 'Globex' },
+              key: null,
+              title: null,
+              type: null,
+              state: null,
+              placeholder: true,
+            },
+          },
+        }),
+        blocker: null,
+      },
+      'closed Globex [Confidential], which blocks it',
+    ],
   ])('says what happened for %j', (overrides, said) => {
     expect(happening(entry('n1', 'acme/COW-1', overrides))).toBe(said);
   });

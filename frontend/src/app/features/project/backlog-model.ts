@@ -1,4 +1,4 @@
-import { Horizon, Ticket } from '../../api/models';
+import { Horizon, Ticket, TicketHead } from '../../api/models';
 
 /** The groups of the backlog, in the order of docs/adr/0010 D1 (docs/adr/0018 D1). */
 export const horizons: readonly Horizon[] = ['now', 'release', 'next', 'later', 'icebox'];
@@ -16,8 +16,12 @@ export interface Row {
   depth: number;
   /** The key of the parent that is in the group, where the row is indented under it. */
   under: string | null;
-  /** The key of the parent that is not in the group, which the row names; null without one. */
-  elsewhere: string | null;
+  /**
+   * The parent that is not in the group — in another group, another project or another team, or
+   * one the reader may not see —, which the row names by its head (docs/adr/0005 D3); null without
+   * one.
+   */
+  elsewhere: TicketHead | null;
 }
 
 export interface Group {
@@ -83,7 +87,7 @@ function tree(tickets: readonly Ticket[]): Row[] {
   const seen = new Set<string>();
   const walk = (ticket: Ticket, depth: number, under: string | null): void => {
     seen.add(ticket.key);
-    rows.push({ ticket, depth, under, elsewhere: under === null ? ticket.parent : null });
+    rows.push({ ticket, depth, under, elsewhere: under === null ? ticket.parent_head : null });
     for (const child of children.get(ticket.key) ?? []) {
       if (!seen.has(child.key)) {
         walk(child, depth + 1, ticket.key);

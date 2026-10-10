@@ -1,33 +1,38 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { SelectButton } from 'primeng/selectbutton';
 import { Skeleton } from 'primeng/skeleton';
 import { Tooltip } from 'primeng/tooltip';
-import { PrerequisiteNode } from '../../api/models';
+import { PrerequisiteHeadNode } from '../../api/models';
 import { ProblemService } from '../../core/problem.service';
-import { splitKey } from '../../core/tickets.service';
+import { SessionService } from '../../core/session.service';
 import { StateBadge } from '../../shared/badges';
 import { StageBar } from '../../shared/stage-bar';
 import { Stage, stageOfState } from '../../shared/stages';
+import { HeadKey } from '../../shared/ticket-head';
 import { TicketRelations, TreeDirection } from './ticket-relations';
 
-/** The stage a node works on, as the board's card shows it; none for one that waits or is closed. */
-export function nodeStage(node: PrerequisiteNode): Stage | null {
-  return stageOfState(
-    node.state === 'blocked' && node.blocked_from ? node.blocked_from : node.state,
-  );
+/**
+ * The stage a node works on, as the board's card shows it; none for one that waits or is closed,
+ * and none for a node the reader reads by its head only, whose stages are not theirs to see.
+ */
+export function nodeStage(node: PrerequisiteHeadNode): Stage | null {
+  const state = node.head.state;
+  if (node.progress === null || state === null) {
+    return null;
+  }
+  return stageOfState(state === 'blocked' && node.blocked_from ? node.blocked_from : state);
 }
 
-/** A node's value of a stage, as the ticket shows it. */
-export function nodeValue(node: PrerequisiteNode, stage: Stage): number {
+/** A node's value of a stage, as the ticket shows it; 0 where the stages are not shown. */
+export function nodeValue(node: PrerequisiteHeadNode, stage: Stage): number {
   switch (stage) {
     case 'refinement':
-      return node.progress_refinement;
+      return node.progress?.refinement ?? 0;
     case 'implementation':
-      return node.progress;
+      return node.progress?.implementation ?? 0;
     case 'review':
-      return node.progress_review;
+      return node.progress?.review ?? 0;
   }
 }
 
@@ -39,16 +44,20 @@ const directions: { label: string; value: TreeDirection }[] = [
 /**
  * The prerequisite tree on the detail page (docs/adr/0012 D6, docs/adr/0018 D2): what has to be
  * done before the ticket can be finished — the tickets that block it, what blocks those, and so on
- * — or read upward, what waits for it. Each node with its key, title, state, assignee and the bar of
- * the stage it works on; the settled ones — done or dropped — marked, a ticket the tree holds under
- * two others marked the second time; the count of the open ones over the whole tree. What the
- * person cannot see is not in it (docs/adr/0065 D5). The tree loads again when a link of the ticket
- * or a ticket of the tree changes ({@link TicketRelations}).
+ * — or read upward, what waits for it, across teams. Each node by its key, title and state, and a
+ * node of the reader's own team they read with its assignee and the bar of the stage it works on; a
+ * node of another team, or of a project closed to the reader, by its head — its team, key, title
+ * and state, unlinked where the reader may not open it —, and a node the reader may not see as the
+ * placeholder `<team> [Confidential]`, nothing behind it (docs/adr/0005 D3, docs/adr/0065 D5). The
+ * settled ones — done or dropped — marked, a ticket the tree holds under two others marked the
+ * second time; the count of the open ones whose state the reader reads, over the whole tree. The
+ * tree loads again when a link of the ticket or a ticket of the tree changes
+ * ({@link TicketRelations}).
  */
 @Component({
   selector: 'app-prerequisite-tree',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, SelectButton, Skeleton, StageBar, StateBadge, Tooltip],
+  imports: [FormsModule, HeadKey, SelectButton, Skeleton, StageBar, StateBadge, Tooltip],
   template: `
     <div class="head">
       <h2>
@@ -80,7 +89,7 @@ const directions: { label: string; value: TreeDirection }[] = [
             [class.repeated]="node.repeated"
             [style.padding-left.rem]="(node.depth - 1) * 1.25"
             [attr.data-testid]="'tree-node-' + $index"
-            [attr.data-key]="node.key"
+            [attr.data-key]="node.head.key"
           >
             <span class="line">
               @if (node.settled) {
@@ -90,23 +99,25 @@ const directions: { label: string; value: TreeDirection }[] = [
                   aria-label="settled"
                 ></i>
               }
-              <a
-                class="key tabular"
-                [routerLink]="['/t', tenantOf(node), 'tickets', shortKey(node)]"
-                >{{ shortKey(node) }}</a
-              >
-              <span class="title">{{ node.title }}</span>
+              <app-head-key class="key" [head]="node.head" [here]="here()" />
+              @if (node.head.title !== null) {
+                <span class="title">{{ node.head.title }}</span>
+              }
             </span>
             <span class="facts">
-              <app-state [value]="node.state" />
-              <span class="muted small">{{ node.assignee?.display_name ?? 'unassigned' }}</span>
-              @if (stageOf(node); as stage) {
-                <app-stage-bar
-                  class="bar"
-                  [stage]="stage"
-                  [value]="valueOf(node, stage)"
-                  [derived]="node.progress_derived"
-                />
+              @if (node.head.state; as state) {
+                <app-state [value]="state" />
+              }
+              @if (node.progress; as progress) {
+                <span class="muted small">{{ node.assignee?.display_name ?? 'unassigned' }}</span>
+                @if (stageOf(node); as stage) {
+                  <app-stage-bar
+                    class="bar"
+                    [stage]="stage"
+                    [value]="valueOf(node, stage)"
+                    [derived]="progress.derived"
+                  />
+                }
               }
               @if (node.repeated) {
                 <span
@@ -174,6 +185,9 @@ const directions: { label: string; value: TreeDirection }[] = [
         opacity: 0.75;
       }
     }
+    .key {
+      flex: none;
+    }
     .line {
       display: flex;
       align-items: baseline;
@@ -203,10 +217,12 @@ const directions: { label: string; value: TreeDirection }[] = [
 export class PrerequisiteTree {
   protected readonly relations = inject(TicketRelations);
   private readonly problems = inject(ProblemService);
+  /** The team the page shows: a node of another team names its team. */
+  protected readonly here = inject(SessionService).tenant;
 
   protected readonly directions = directions;
   protected readonly down = computed(() => this.relations.direction() === 'down');
-  protected readonly nodes = computed<PrerequisiteNode[]>(() =>
+  protected readonly nodes = computed<PrerequisiteHeadNode[]>(() =>
     this.relations.tree.hasValue() ? this.relations.tree.value().items : [],
   );
   protected readonly open = computed(() =>
@@ -216,19 +232,11 @@ export class PrerequisiteTree {
     () => this.relations.tree.hasValue() && this.relations.tree.value().next_cursor !== null,
   );
 
-  protected tenantOf(node: PrerequisiteNode): string {
-    return splitKey(node.key).team;
-  }
-
-  protected shortKey(node: PrerequisiteNode): string {
-    return splitKey(node.key).key;
-  }
-
-  protected stageOf(node: PrerequisiteNode): Stage | null {
+  protected stageOf(node: PrerequisiteHeadNode): Stage | null {
     return nodeStage(node);
   }
 
-  protected valueOf(node: PrerequisiteNode, stage: Stage): number {
+  protected valueOf(node: PrerequisiteHeadNode, stage: Stage): number {
     return nodeValue(node, stage);
   }
 

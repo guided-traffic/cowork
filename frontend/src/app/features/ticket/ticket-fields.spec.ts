@@ -1380,6 +1380,25 @@ describe('TicketFields', () => {
       expect(picker(fixture).exclude()).toBe('acme/COW-12');
     });
 
+    // docs/adr/0005 D3: the parent as the reader sees it — of another team by its head.
+    it('hands the picker the parent as the reader sees it, its head', async () => {
+      const head = {
+        team: { slug: 'globex', name: 'Globex' },
+        key: 'globex/API-7',
+        title: 'Send the SameSite attribute',
+        type: 'task' as const,
+        state: 'review' as const,
+        placeholder: false,
+        readable: false,
+      };
+      const fixture = await render(ticket({ parent: 'globex/API-7', parent_head: head }));
+
+      expect(picker(fixture).value()).toBe('globex/API-7');
+      expect(picker(fixture).head()).toEqual(head);
+      expect(label(fixture, 'parent-picker')).toContain('API-7');
+      expect(label(fixture, 'parent-picker')).toContain('Send the SameSite attribute');
+    });
+
     it('writes the parent chosen, and none when the choice is cleared', async () => {
       const fixture = await render();
 

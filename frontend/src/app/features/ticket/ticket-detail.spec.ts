@@ -18,14 +18,16 @@ import {
   CommentList,
   Interest,
   InterestList,
-  Link,
-  LinkList,
   Me,
+  PrerequisiteHeadTree,
   Problem,
   Question,
-  PrerequisiteTree,
   QuestionList,
+  Relation,
+  RelationLink,
+  RelationList,
   Ticket,
+  TicketHead,
   TicketBody as RenderedBody,
   TimeEntryList,
 } from '../../api/models';
@@ -169,17 +171,56 @@ function activity(overrides: Partial<Activity> = {}): Activity {
   };
 }
 
-function link(overrides: Partial<Link> = {}): Link {
+/** The head of a ticket at the other end of a relation, which the reader reads (docs/adr/0005 D3). */
+function head(key = 'acme/COW-3', overrides: Partial<TicketHead> = {}): TicketHead {
   return {
-    id: 'l-1',
-    type: 'blocks',
-    direction: 'outgoing',
-    name: 'blocks',
-    ticket: { key: 'acme/COW-3', state: 'filed', title: 'Rework the board' },
-    created_by: ada,
-    created_at: '2026-10-02T09:00:00Z',
+    team: {
+      slug: key.slice(0, key.indexOf('/')),
+      name: key.startsWith('acme/') ? 'Acme' : 'Globex',
+    },
+    key,
+    title: 'Rework the board',
+    type: 'feature',
+    state: 'filed',
+    placeholder: false,
+    readable: true,
     ...overrides,
   };
+}
+
+/** A ticket the reader may not see: the placeholder, its team alone (docs/adr/0065 D5). */
+function placeholder(slug = 'globex', name = 'Globex'): TicketHead {
+  return {
+    team: { slug, name },
+    key: null,
+    title: null,
+    type: null,
+    state: null,
+    placeholder: true,
+    readable: false,
+  };
+}
+
+/** A link of the ticket, read from it, and the ticket at its other end. */
+function link(overrides: Partial<RelationLink> = {}, other: TicketHead = head()): Relation {
+  return {
+    kind: 'link',
+    link: {
+      id: 'l-1',
+      type: 'blocks',
+      direction: 'outgoing',
+      name: 'blocks',
+      created_by: ada,
+      created_at: '2026-10-02T09:00:00Z',
+      ...overrides,
+    },
+    head: other,
+  };
+}
+
+/** A child of the ticket, as the reader sees it. */
+function child(other: TicketHead): Relation {
+  return { kind: 'child', link: null, head: other };
 }
 
 function interest(person: Interest['person'], weight: Interest['weight'], note = ''): Interest {
@@ -210,7 +251,7 @@ function list<T>(...items: T[]) {
   return { items, next_cursor: null };
 }
 
-const noTree: PrerequisiteTree = { items: [], next_cursor: null, open: 0 };
+const noTree: PrerequisiteHeadTree = { items: [], next_cursor: null, open: 0 };
 
 describe('describe', () => {
   it('names the person who acted', () => {
@@ -261,6 +302,47 @@ describe('describe', () => {
     );
   });
 
+  // docs/adr/0012 D5 as made concrete 2026-10-10: a prerequisite of another team settled.
+  it('says that a prerequisite of another team settled, by its team and key, and its state', () => {
+    expect(
+      describeActivity(
+        activity({
+          action: 'prerequisite_settled',
+          after: {
+            prerequisite: {
+              team: { slug: 'globex', name: 'Globex' },
+              key: 'globex/API-7',
+              title: 'Send the SameSite attribute',
+              type: 'task',
+              state: 'done',
+              placeholder: false,
+            },
+          },
+        }),
+      ),
+    ).toBe('Ada Lovelace closed Globex · API-7, which blocks it, as done');
+    expect(
+      describeActivity(
+        activity({
+          action: 'prerequisite_settled',
+          after: {
+            prerequisite: {
+              team: { slug: 'globex', name: 'Globex' },
+              key: null,
+              title: null,
+              type: null,
+              state: null,
+              placeholder: true,
+            },
+          },
+        }),
+      ),
+    ).toBe('Ada Lovelace closed Globex [Confidential], which blocks it');
+    expect(describeActivity(activity({ action: 'prerequisite_settled', after: null }))).toBe(
+      'Ada Lovelace closed a ticket of another team that blocks it',
+    );
+  });
+
   // docs/adr/0010 D1: the act on the horizon is recorded as overridden, its name before.
   it('says what an act on the horizon did, never overridden', () => {
     expect(
@@ -290,21 +372,23 @@ describe('TicketDetail', () => {
     comments: `${base}/comments?limit=200`,
     activity: `${base}/activity?order=desc&limit=100`,
     questions: `${base}/questions?limit=200`,
-    links: `${base}/links?limit=200`,
+    links: `${base}/relations?kind=link&limit=200`,
+    children: `${base}/relations?kind=child&limit=50`,
     interest: `${base}/interest?limit=200`,
     attachments: `${base}/attachments?limit=200`,
     time: `${base}/time-entries?limit=200`,
-    tree: `${base}/prerequisites?direction=down&limit=200`,
+    tree: `${base}/prerequisite-tree?direction=down&limit=200`,
     body: `${base}/body`,
   };
 
   /** What the API answers for the parts around a ticket; a part left out stays unanswered. */
   interface Answers {
-    tree?: PrerequisiteTree;
+    tree?: PrerequisiteHeadTree;
     comments?: CommentList;
     activity?: ActivityList;
     questions?: QuestionList;
-    links?: LinkList;
+    links?: RelationList;
+    children?: RelationList;
     interest?: InterestList;
     attachments?: AttachmentList;
     time?: TimeEntryList;
@@ -440,11 +524,12 @@ describe('TicketDetail', () => {
         '/api/v1/teams/acme/projects/OPS/tickets/3/comments',
         '/api/v1/teams/acme/projects/OPS/tickets/3/activity',
         '/api/v1/teams/acme/projects/OPS/tickets/3/questions',
-        '/api/v1/teams/acme/projects/OPS/tickets/3/links',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/relations',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/relations',
         '/api/v1/teams/acme/projects/OPS/tickets/3/interest',
         '/api/v1/teams/acme/projects/OPS/tickets/3/attachments',
         '/api/v1/teams/acme/projects/OPS/tickets/3/time-entries',
-        '/api/v1/teams/acme/projects/OPS/tickets/3/prerequisites',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/prerequisite-tree',
       ]);
     });
 
@@ -939,7 +1024,7 @@ describe('TicketDetail', () => {
 
     it('shows a skeleton until the comments are loaded', async () => {
       show();
-      const { fixture, page } = await render('COW-12', { tree: noTree });
+      const { fixture, page } = await render('COW-12', { tree: noTree, children: list() });
       expect(page.querySelectorAll('p-skeleton')).toHaveLength(2);
       expect(page.textContent).not.toContain('No comments yet.');
 
@@ -1028,7 +1113,7 @@ describe('TicketDetail', () => {
 
     it('shows a skeleton until the activity is loaded', async () => {
       show();
-      const { fixture, page } = await render('COW-12', { tree: noTree });
+      const { fixture, page } = await render('COW-12', { tree: noTree, children: list() });
       expect(page.querySelectorAll('p-skeleton')).toHaveLength(2);
       expect(page.querySelector('.activity')).toBeNull();
 
@@ -1046,27 +1131,70 @@ describe('TicketDetail', () => {
       const { page } = await render('COW-12', {
         links: list(
           link({ id: 'l-1', name: 'blocks' }),
-          link({
-            id: 'l-2',
-            name: 'duplicated by',
-            ticket: { key: 'acme/COW-9', state: 'done', title: 'Flicker on the second board' },
-          }),
+          link(
+            { id: 'l-2', name: 'duplicated by', direction: 'incoming', type: 'duplicates' },
+            head('acme/COW-9', { state: 'done', title: 'Flicker on the second board' }),
+          ),
         ),
       });
 
-      const [first, second] = [...page.querySelectorAll('.link')] as HTMLElement[];
+      const [first, second] = [...page.querySelectorAll('[data-testid^="link-"]')] as HTMLElement[];
       expect(text(first, '.muted')).toBe('blocks');
-      expect(text(first, '.link-target .tabular')).toBe('acme/COW-3');
+      expect(text(first, '[data-testid="head-key"]')).toBe('COW-3');
+      expect(first.querySelector('[data-testid="head-key"]')?.getAttribute('href')).toBe(
+        '/t/acme/tickets/COW-3',
+      );
       expect(
         first.querySelector('.link-target app-state [data-state]')?.getAttribute('data-state'),
       ).toBe('filed');
       expect(text(first, '.small:last-child')).toBe('Rework the board');
       expect(text(second, '.muted')).toBe('duplicated by');
-      expect(text(second, '.link-target .tabular')).toBe('acme/COW-9');
+      expect(text(second, '[data-testid="head-key"]')).toBe('COW-9');
       expect(
         second.querySelector('.link-target app-state [data-state]')?.getAttribute('data-state'),
       ).toBe('done');
     });
+
+    // docs/adr/0012 D2, docs/adr/0005 D3 as amended 2026-10-10.
+    it('shows a link end of another team by its team and head, unlinked where the person may not open it', async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        links: list(
+          link(
+            { id: 'l-3', name: 'blocked by', direction: 'incoming' },
+            head('globex/API-7', { title: 'Send the SameSite attribute', readable: false }),
+          ),
+        ),
+      });
+
+      const shown = page.querySelector('[data-testid="link-l-3"]') as HTMLElement;
+      expect(text(shown, '[data-testid="head-team"]')).toBe('Globex');
+      expect(shown.querySelector('[data-testid="head-key"]')?.tagName).toBe('SPAN');
+      expect(shown.querySelector('a')).toBeNull();
+      expect(text(shown, ':scope > span.small')).toBe('Send the SameSite attribute');
+    });
+
+    // docs/adr/0065 D5 as amended 2026-10-10: in another team or in the reader's own.
+    it.each([
+      ['another team', 'globex', 'Globex'],
+      ['the reader’s own team', 'acme', 'Acme'],
+    ])(
+      'shows a link end the person may not see in %s as `<team> [Confidential]`',
+      async (_, slug, name) => {
+        show();
+
+        const { page } = await render('COW-12', {
+          links: list(link({ id: 'l-4', name: 'relates to' }, placeholder(slug, name))),
+        });
+
+        const shown = page.querySelector('[data-testid="link-l-4"]') as HTMLElement;
+        expect(text(shown, '[data-testid="head-placeholder"]')).toBe(`${name} [Confidential]`);
+        expect(shown.querySelector('[data-testid="head-key"]')).toBeNull();
+        expect(shown.querySelector('app-state')).toBeNull();
+        expect(text(shown, '.link-target')).toBe(`${name} [Confidential]`);
+      },
+    );
 
     it('says so when the ticket has no links', async () => {
       show();
@@ -1082,66 +1210,76 @@ describe('TicketDetail', () => {
       const { page } = await render();
 
       expect(page.textContent).not.toContain('No links.');
-      expect(page.querySelector('.link')).toBeNull();
+      expect(page.querySelector('[data-testid^="link-l"]')).toBeNull();
     });
 
-    describe('removing a link', () => {
+    describe('removing a link (docs/adr/0012 D2)', () => {
       const unlink = (page: HTMLElement, id: string) =>
         page.querySelector<HTMLButtonElement>(`[data-testid="unlink-${id}"]`);
 
-      it('offers to remove each link', async () => {
+      it('offers to remove each link the person can reach the source of', async () => {
         show();
 
         const { page } = await render('COW-12', {
-          links: list(link({ id: 'l-1' }), link({ id: 'l-2' })),
+          links: list(link({ id: 'l-1' }), link({ id: 'l-2', direction: 'incoming' })),
         });
 
         expect(unlink(page, 'l-1')?.getAttribute('aria-label')).toBe('Remove this link');
         expect(unlink(page, 'l-2')).not.toBeNull();
       });
 
-      it('removes an outgoing link from this ticket, as its source', async () => {
+      it('removes an outgoing link by its id from this ticket, its source', async () => {
         show();
         const { page } = await render('COW-12', {
-          links: list(
-            link({
-              id: 'l-1',
-              type: 'blocks',
-              direction: 'outgoing',
-              ticket: { key: 'acme/COW-3', state: 'filed', title: 'Rework the board' },
-            }),
-          ),
+          links: list(link({ id: 'l-1', direction: 'outgoing' })),
         });
 
         unlink(page, 'l-1')?.click();
 
-        expect(conversation.unlink).toHaveBeenCalledExactlyOnceWith(
-          'acme/COW-12',
-          'blocks',
-          'acme/COW-3',
-        );
+        expect(conversation.unlink).toHaveBeenCalledExactlyOnceWith('acme/COW-12', 'l-1');
       });
 
-      it('removes an incoming link from the other ticket, which is its source', async () => {
+      it('removes an incoming link by its id from the other ticket, its source, of another team as well', async () => {
         show();
         const { page } = await render('COW-12', {
           links: list(
-            link({
-              id: 'l-1',
-              type: 'duplicates',
-              direction: 'incoming',
-              ticket: { key: 'acme/COW-9', state: 'done', title: 'Flicker on the second board' },
-            }),
+            link({ id: 'l-1', type: 'duplicates', direction: 'incoming' }, head('acme/COW-9')),
+            link({ id: 'l-2', direction: 'incoming' }, head('globex/API-7')),
           ),
         });
 
         unlink(page, 'l-1')?.click();
+        unlink(page, 'l-2')?.click();
 
-        expect(conversation.unlink).toHaveBeenCalledExactlyOnceWith(
-          'acme/COW-9',
-          'duplicates',
-          'acme/COW-12',
-        );
+        expect(conversation.unlink.mock.calls).toEqual([
+          ['acme/COW-9', 'l-1'],
+          ['globex/API-7', 'l-2'],
+        ]);
+      });
+
+      // docs/adr/0065 D5: a placeholder shows no key; its link goes by its id.
+      it('removes an outgoing link whose other end is a placeholder by its id', async () => {
+        show();
+        const { page } = await render('COW-12', {
+          links: list(link({ id: 'l-5', direction: 'outgoing' }, placeholder())),
+        });
+
+        unlink(page, 'l-5')?.click();
+
+        expect(conversation.unlink).toHaveBeenCalledExactlyOnceWith('acme/COW-12', 'l-5');
+      });
+
+      it('offers no removal of an incoming link from a ticket the person may not open or not see: its source is not theirs to write', async () => {
+        show();
+        const { page } = await render('COW-12', {
+          links: list(
+            link({ id: 'l-6', direction: 'incoming' }, head('globex/API-7', { readable: false })),
+            link({ id: 'l-7', direction: 'incoming' }, placeholder()),
+          ),
+        });
+
+        expect(unlink(page, 'l-6')).toBeNull();
+        expect(unlink(page, 'l-7')).toBeNull();
       });
 
       it('toasts the problem when the link cannot be removed', async () => {
@@ -1162,6 +1300,84 @@ describe('TicketDetail', () => {
           }),
         );
       });
+    });
+  });
+
+  // docs/adr/0008 D2, docs/adr/0005 D3, docs/adr/0065 D5 as amended 2026-10-10.
+  describe('the children', () => {
+    const section = (page: HTMLElement) =>
+      page.querySelector('[data-testid="children"]') as HTMLElement;
+
+    it('shows each child by its key, state and title, of another team by its team and head', async () => {
+      show();
+
+      const { page } = await render('COW-12', {
+        children: list(
+          child(head('acme/COW-20', { title: 'Fix the first board', state: 'review' })),
+          child(head('globex/API-8', { title: 'Fix the API', readable: false })),
+        ),
+      });
+
+      const [own, other] = [...section(page).querySelectorAll('[data-testid^="child-"]')];
+      expect(own.querySelector('[data-testid="head-key"]')?.getAttribute('href')).toBe(
+        '/t/acme/tickets/COW-20',
+      );
+      expect(own.querySelector('[data-state]')?.getAttribute('data-state')).toBe('review');
+      expect(text(own as HTMLElement, '.small')).toBe('Fix the first board');
+      expect(text(other as HTMLElement, '[data-testid="head-team"]')).toBe('Globex');
+      expect(other.querySelector('[data-testid="head-key"]')?.tagName).toBe('SPAN');
+      expect(other.querySelector('a')).toBeNull();
+      expect(text(other as HTMLElement, '.small')).toBe('Fix the API');
+    });
+
+    it.each([
+      ['another team', 'globex', 'Globex'],
+      ['the reader’s own team', 'acme', 'Acme'],
+    ])(
+      'shows a child the person may not see in %s as `<team> [Confidential]` and nothing else',
+      async (_, slug, name) => {
+        show();
+
+        const { page } = await render('COW-12', { children: list(child(placeholder(slug, name))) });
+
+        const shown = section(page).querySelector('[data-testid="child-0"]') as HTMLElement;
+        expect(text(shown, '[data-testid="head-placeholder"]')).toBe(`${name} [Confidential]`);
+        expect(shown.textContent?.replace(/\s+/g, ' ').trim()).toBe(`${name} [Confidential]`);
+      },
+    );
+
+    it('says so when the ticket has no children, and shows a skeleton until they are loaded', async () => {
+      show();
+      const { fixture, page } = await render();
+      expect(section(page).querySelector('p-skeleton')).not.toBeNull();
+
+      await answer(fixture, { children: list() });
+
+      expect(section(page).textContent).toContain('No children.');
+      expect(section(page).querySelector('p-skeleton')).toBeNull();
+    });
+
+    it('loads one more page of children on request, while there are more', async () => {
+      show();
+      const { fixture, page } = await render('COW-12', {
+        children: { items: [child(head('acme/COW-20'))], next_cursor: 'p2' },
+      });
+
+      const more = page.querySelector<HTMLButtonElement>('[data-testid="children-more"]');
+      expect(more?.textContent?.trim()).toBe('Load more');
+      more?.click();
+      fixture.detectChanges();
+      await answer(fixture, {
+        children: { items: [child(head('acme/COW-20'))], next_cursor: 'p2' },
+      });
+      for (const request of http.match(`${base}/relations?kind=child&cursor=p2&limit=50`)) {
+        request.flush(list(child(head('acme/COW-21'))));
+      }
+      await new Promise((resolve) => setTimeout(resolve));
+      fixture.detectChanges();
+
+      expect(section(page).querySelectorAll('[data-testid^="child-"]')).toHaveLength(2);
+      expect(page.querySelector('[data-testid="children-more"]')).toBeNull();
     });
   });
 
@@ -1246,7 +1462,7 @@ describe('TicketDetail', () => {
       expect(part(fixture, InterestControl).me()).toBeUndefined();
     });
 
-    it('shows the interest control and the cards for the files and the time beside the links', async () => {
+    it('shows the interest control, the children and the cards for the files and the time beside the links', async () => {
       show();
 
       const { page } = await render();
@@ -1254,7 +1470,7 @@ describe('TicketDetail', () => {
       const headings = [...page.querySelectorAll('aside.side h2')].map((heading) =>
         heading.textContent?.replace(/\s+/g, ' ').trim(),
       );
-      expect(headings).toEqual(['Interest', 'Links', 'Attachments', 'Time']);
+      expect(headings).toEqual(['Interest', 'Children', 'Links', 'Attachments', 'Time']);
     });
   });
 
@@ -1265,6 +1481,7 @@ describe('TicketDetail', () => {
       'activity',
       'interest',
       'links',
+      'children',
       'attachments',
       'time',
     ] as const;
@@ -1324,6 +1541,7 @@ describe('TicketDetail', () => {
         activity: list(),
         interest: list(),
         links: list(),
+        children: list(),
         attachments: list(),
         time: { items: [], next_cursor: null, total_minutes: 0 },
       });
@@ -1379,7 +1597,7 @@ describe('TicketDetail', () => {
 
     it('shows neither the skeleton nor the list of a failed part', async () => {
       show();
-      const { fixture, page } = await render('COW-12', { tree: noTree });
+      const { fixture, page } = await render('COW-12', { tree: noTree, children: list() });
 
       await fail(fixture, 'comments', unready);
       await fail(fixture, 'activity', unready);

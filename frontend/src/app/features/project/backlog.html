@@ -326,15 +326,28 @@
         >
       }
       @if (row.elsewhere; as parent) {
-        <a
-          class="chip"
-          [routerLink]="['/t', session.tenant(), 'tickets', shortKey(parent)]"
-          (click)="$event.stopPropagation()"
-          [attr.aria-label]="'Parent ' + shortKey(parent)"
-          pTooltip="Its parent is in another group"
-          [showDelay]="400"
-          ><i class="pi pi-sitemap"></i>{{ shortKey(parent) }}</a
-        >
+        @let chip = parentChip(parent);
+        @if (chip.route; as route) {
+          <a
+            class="chip"
+            [routerLink]="route"
+            (click)="$event.stopPropagation()"
+            [attr.aria-label]="chip.label"
+            [pTooltip]="chip.tip"
+            [showDelay]="400"
+            [attr.data-testid]="'parent-' + row.ticket.key"
+            ><i class="pi pi-sitemap" aria-hidden="true"></i>{{ chip.text }}</a
+          >
+        } @else {
+          <span
+            class="chip"
+            [pTooltip]="chip.tip"
+            [showDelay]="400"
+            [attr.data-testid]="'parent-' + row.ticket.key"
+            ><i class="pi pi-sitemap" aria-hidden="true"></i><span class="sr-only">Parent </span
+            >{{ chip.text }}</span
+          >
+        }
       }
     </div>
     @if (asking(); as asked) {

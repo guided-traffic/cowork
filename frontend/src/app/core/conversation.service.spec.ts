@@ -187,41 +187,65 @@ describe('Conversation', () => {
   });
 
   describe('link', () => {
-    it('puts the link at an address of its own, from this ticket as the source to the other by its short key', async () => {
-      const done = conversation.link(key, 'blocks', 'VKO-7');
+    it('puts the link at an address of its own, from this ticket as the source to the other by its canonical key', async () => {
+      const done = conversation.link(key, 'blocks', 'acme/VKO-7');
 
-      const sent = http.expectOne(`${base}/links/blocks/VKO-7`);
+      const sent = http.expectOne(`${base}/links/blocks/acme/VKO-7`);
       expect(sent.request.method).toBe('PUT');
-      sent.flush({ type: 'blocks' });
+      sent.flush({ kind: 'link' });
+      await done;
+    });
+
+    // docs/adr/0012 D2 as amended 2026-10-10: the other end may be a ticket of another team.
+    it('names the team of the other end in the address, a team other than the source’s included', async () => {
+      const done = conversation.link(key, 'relates-to', 'globex/API-7');
+
+      http.expectOne(`${base}/links/relates-to/globex/API-7`).flush({ kind: 'link' });
       await done;
     });
 
     it.each(['blocks', 'relates-to', 'duplicates', 'found-in'] as const)(
       'names the type %s in the address',
       async (type) => {
-        const done = conversation.link(key, type, 'COW-1');
+        const done = conversation.link(key, type, 'acme/COW-1');
 
-        http.expectOne(`${base}/links/${type}/COW-1`).flush({ type });
+        http.expectOne(`${base}/links/${type}/acme/COW-1`).flush({ kind: 'link' });
         await done;
       },
     );
+
+    it('rejects with the problem of a key the person cannot read, the miss of one that does not exist', async () => {
+      const outcome = conversation.link(key, 'blocks', 'globex/API-9').then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+      http
+        .expectOne(`${base}/links/blocks/globex/API-9`)
+        .flush(
+          { type: 'about:blank', title: 'Not found', status: 404, code: 'not_found' },
+          { status: 404, statusText: 'Not Found' },
+        );
+
+      expect(((await outcome) as HttpErrorResponse).status).toBe(404);
+    });
   });
 
   describe('unlink', () => {
-    it('deletes the link from the side of its source, naming the target by its short key', async () => {
-      const done = conversation.unlink(key, 'blocks', 'acme/VKO-7');
+    it('deletes the link by its id from its source', async () => {
+      const done = conversation.unlink(key, '0199aaaa-0000-7000-8000-0000000000l1');
 
-      const sent = http.expectOne(`${base}/links/blocks/VKO-7`);
+      const sent = http.expectOne(`${base}/links/0199aaaa-0000-7000-8000-0000000000l1`);
       expect(sent.request.method).toBe('DELETE');
       sent.flush('', { status: 204, statusText: 'No Content' });
       await done;
     });
 
-    it('cuts the tenant off the key of the target at the first slash', async () => {
-      const done = conversation.unlink('acme/VKO-12', 'relates-to', 'acme/COW-3');
+    it('deletes it at the address of the source, a ticket of another team included', async () => {
+      const done = conversation.unlink('globex/API-7', 'l-2');
 
       http
-        .expectOne(`${base}/links/relates-to/COW-3`)
+        .expectOne('/api/v1/teams/globex/projects/API/tickets/7/links/l-2')
         .flush('', { status: 204, statusText: 'No Content' });
       await done;
     });

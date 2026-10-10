@@ -3,7 +3,7 @@ import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
 import { createTicket } from '../api/fn/tickets/create-ticket';
 import { deleteTicket } from '../api/fn/tickets/delete-ticket';
-import { listPrerequisites } from '../api/fn/tickets/list-prerequisites';
+import { listPrerequisiteTree } from '../api/fn/tickets/list-prerequisite-tree';
 import { moveTicketRank } from '../api/fn/tickets/move-ticket-rank';
 import { replaceTicketBody } from '../api/fn/tickets/replace-ticket-body';
 import { setConfidential } from '../api/fn/tickets/set-confidential';
@@ -17,6 +17,7 @@ import {
   HorizonUpdate,
   Ticket,
   TicketCreate,
+  TicketHead,
   TicketPatch,
   Transition,
 } from '../api/models';
@@ -256,18 +257,19 @@ export class TicketActions {
 
   /**
    * The open tickets that wait on the ticket — its dependents a step up the prerequisite tree,
-   * those it blocks directly (docs/adr/0012 D6) — which a deletion names before it asks
-   * (docs/adr/0024 D7). The first page of the tree is enough to name them: the tree lists the
+   * those it blocks directly, of any team, each by its head (docs/adr/0012 D6) — which a deletion
+   * names before it asks (docs/adr/0024 D7). A ticket the person may not see is left out: its state
+   * is not theirs to read. The first page of the tree is enough to name them: the tree lists the
    * nearest ones first.
    */
-  async dependents(key: string): Promise<string[]> {
-    const tree = await this.api.invoke(listPrerequisites, {
+  async dependents(key: string): Promise<TicketHead[]> {
+    const tree = await this.api.invoke(listPrerequisiteTree, {
       ...routeOf(key),
       direction: 'up',
       limit: 50,
     });
     return tree.items
-      .filter((node) => node.depth === 1 && node.state !== 'done' && node.state !== 'dropped')
-      .map((node) => splitKey(node.key).key);
+      .filter((node) => node.depth === 1 && node.settled === false)
+      .map((node) => node.head);
   }
 }

@@ -3,6 +3,7 @@ import {
   inject,
   Injectable,
   Injector,
+  linkedSignal,
   resource,
   ResourceRef,
   signal,
@@ -15,12 +16,18 @@ import { listComments } from '../../api/fn/comments/list-comments';
 import { listQuestions } from '../../api/fn/questions/list-questions';
 import { getTicketBody } from '../../api/fn/tickets/get-ticket-body';
 import { listInterest } from '../../api/fn/tickets/list-interest';
-import { listPrerequisites } from '../../api/fn/tickets/list-prerequisites';
-import { listTicketLinks } from '../../api/fn/tickets/list-ticket-links';
+import { listPrerequisiteTree } from '../../api/fn/tickets/list-prerequisite-tree';
+import { listTicketRelations } from '../../api/fn/tickets/list-ticket-relations';
 import { listTicketTime } from '../../api/fn/time/list-ticket-time';
-import { PrerequisiteTree, TicketBody as RenderedBody } from '../../api/models';
+import {
+  PrerequisiteHeadTree,
+  Relation,
+  RelationList,
+  TicketBody as RenderedBody,
+} from '../../api/models';
 import { ConditionalPages, PageFetcher } from '../../core/conditional';
-import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
+import { EventStreamService, StreamEvent, TicketEvent } from '../../core/event-stream.service';
+import { followPages, PersonPages } from '../../core/inbox.service';
 import { keepShown, refresh } from '../../core/refresh';
 
 /** Where a ticket lives: the team, the project's key and the number, as the API names them. */
@@ -41,16 +48,43 @@ export function address(tenant: string | null, key: string): TicketAddress | und
 /** Which way the prerequisite tree is read: what blocks the ticket, or what it blocks. */
 export type TreeDirection = 'down' | 'up';
 
+/** The page size of a ticket's children (docs/adr/0048 D3); *Load more* adds a page. */
+export const childPageSize = 50;
+
+/**
+ * The acts on another ticket that may make it a child of the ticket shown, or end that: its
+ * filing, a change of its fields — its parent among them — and its restoration (docs/adr/0008 D2).
+ */
+const parentingKinds: ReadonlySet<string> = new Set(['created', 'updated', 'restored']);
+
+/** Whether two loads of the children hold the same items, each the same answer, and cursor. */
+function samePages(held: PersonPages<Relation>, loaded: PersonPages<Relation>): boolean {
+  return (
+    held.nextCursor === loaded.nextCursor &&
+    held.items.length === loaded.items.length &&
+    held.items.every((item, index) => item === loaded.items[index])
+  );
+}
+
+/** Whether a list of relations shows the ticket `key` at its other end. */
+function shows(part: ResourceRef<{ items: Relation[] } | undefined>, key: string): boolean {
+  return part.hasValue() && (part.value()?.items.some((each) => each.head.key === key) ?? false);
+}
+
 /**
  * What surrounds a ticket on its detail page — the rendered body, comments, activity, questions,
- * links, interest, attachments, time, the prerequisite tree — loaded through the API and reloaded
- * when the event stream names the ticket (docs/adr/0054 D2): an event says which part changed, and
- * only that part and the activity are fetched again; an upload is a `ticket.changed`. Time entries
- * are not published (D4): the page that books reloads them, and `resync` and `poll` do. The tree
- * loads again on a link of the ticket and on any change of a ticket it shows. The rendered body
- * loads again when the ticket's version moves ({@link version}, which the page sets from the
- * cache), and on a `ticket.changed` that moves no version, an upload — whose image the body may
- * show (docs/adr/0016 D7). A part that is loading when its event arrives loads once more afterwards
+ * links, children, interest, attachments, time, the prerequisite tree — loaded through the API and
+ * reloaded when the event stream names the ticket (docs/adr/0054 D2): an event says which part
+ * changed, and only that part and the activity are fetched again; an upload is a `ticket.changed`.
+ * Time entries are not published (D4): the page that books reloads them, and `resync` and `poll`
+ * do. The links, the children and the tree show the tickets at their other ends of any project or
+ * team, each as the reader sees it (docs/adr/0005 D3): the tree loads again on a link of the ticket
+ * and on any change of a ticket it shows, the links and the children on a change of a ticket they
+ * show, the children as well on an act that may have made a ticket a child of this one, and on the
+ * ticket's own `derived` — a child of another team moved its stages (docs/adr/0017 D3). The
+ * rendered body loads again when the ticket's version moves ({@link version}, which the page sets
+ * from the cache), and on a `ticket.changed` that moves no version, an upload — whose image the
+ * body may show (docs/adr/0016 D7). A part that is loading when its event arrives loads once more afterwards
  * (`refresh`), and a part that loads again and fails keeps what it shows ({@link keepShown}). Each
  * list part keeps the weak `ETag` of its last answer and is answered `304` while it is unchanged
  * (docs/adr/0054 D7). Provided by the page, so it lives exactly as long as the page.
@@ -79,23 +113,53 @@ export class TicketRelations {
     page(listActivity, { ...params, order: 'desc', limit: 100 }),
   );
   readonly questions = this.part((params, page) => page(listQuestions, { ...params, limit: 200 }));
-  readonly links = this.part((params, page) => page(listTicketLinks, { ...params, limit: 200 }));
+  /** The links in both directions, each other end as the reader sees it (docs/adr/0012 D2). */
+  readonly links: ResourceRef<RelationList | undefined> = this.part((params, page) =>
+    page(listTicketRelations, { ...params, kind: ['link'], limit: 200 }),
+  );
+  /** How many pages of the children the page holds; another ticket starts at one. */
+  readonly childPages = linkedSignal<TicketAddress | undefined, number>({
+    source: this.at,
+    computation: () => 1,
+  });
+  private readonly childPagesHeld = new ConditionalPages(this.api);
+  /**
+   * The children, of any project or team, each as the reader sees it, page after page in the order
+   * they were filed (docs/adr/0008 D2): a reload asks for every page held again.
+   */
+  readonly children: ResourceRef<PersonPages<Relation> | undefined> = resource({
+    params: () => {
+      const at = this.at();
+      return at ? { ...at, pages: this.childPages() } : undefined;
+    },
+    loader: ({ params: { pages, ...at } }) =>
+      keepShown(this.children, async () => {
+        const loaded = await this.childPagesHeld.load((page) =>
+          followPages(pages, (cursor) =>
+            page(listTicketRelations, { ...at, kind: ['child'], cursor, limit: childPageSize }),
+          ),
+        );
+        // Every page answered 304 hands back the items held: the part keeps what it shows.
+        const held = this.children.hasValue() ? this.children.value() : undefined;
+        return held && samePages(held, loaded) ? held : loaded;
+      }),
+  });
   readonly interest = this.part((params, page) => page(listInterest, { ...params, limit: 200 }));
   readonly attachments = this.part((params, page) =>
     page(listAttachments, { ...params, limit: 200 }),
   );
   readonly time = this.part((params, page) => page(listTicketTime, { ...params, limit: 200 }));
-  /** The prerequisites, or read upward the dependents (docs/adr/0012 D6). */
+  /** The prerequisites, or read upward the dependents, across teams (docs/adr/0012 D6). */
   readonly direction = signal<TreeDirection>('down');
   private readonly treePages = new ConditionalPages(this.api);
-  readonly tree: ResourceRef<PrerequisiteTree | undefined> = resource({
+  readonly tree: ResourceRef<PrerequisiteHeadTree | undefined> = resource({
     params: () => {
       const at = this.at();
       return at ? { ...at, direction: this.direction() } : undefined;
     },
     loader: ({ params }) =>
       keepShown(this.tree, () =>
-        this.treePages.load((page) => page(listPrerequisites, { ...params, limit: 200 })),
+        this.treePages.load((page) => page(listPrerequisiteTree, { ...params, limit: 200 })),
       ),
   });
 
@@ -116,6 +180,7 @@ export class TicketRelations {
         this.comments,
         this.questions,
         this.links,
+        this.children,
         this.interest,
         this.attachments,
         this.time,
@@ -134,14 +199,13 @@ export class TicketRelations {
       return;
     }
     if (event.key !== `${at.team}/${at.project}-${at.number}`) {
-      // A ticket of the tree moved, or was linked to another: the tree may show it otherwise.
-      if (
-        (event.name === 'ticket.changed' || event.name === 'link.changed') &&
-        this.tree.hasValue() &&
-        this.tree.value().items.some((node) => node.key === event.key)
-      ) {
-        refresh(this.tree, this.injector);
-      }
+      this.reactToAnother(event);
+      return;
+    }
+    if (event.name === 'ticket.changed' && event.kind === 'derived') {
+      // A child of another team moved the ticket's stages (docs/adr/0017 D3), which the cache
+      // fetches again; the child's head may have changed with it. No act: the activity stays.
+      refresh(this.children, this.injector);
       return;
     }
     if (event.name === 'comment.changed') {
@@ -161,6 +225,32 @@ export class TicketRelations {
       }
     }
     refresh(this.activity, this.injector);
+  }
+
+  /**
+   * An event of another ticket — of any team of the person, whose events the person-level stream
+   * carries (docs/adr/0054 D1): the tree loads again where it shows that ticket, which moved or was
+   * linked to another; the links and the children where they show it, its head having changed; and
+   * the children on an act that may have made it a child of this ticket or ended that.
+   */
+  private reactToAnother(event: TicketEvent): void {
+    const changed = event.name === 'ticket.changed';
+    if (
+      (changed || event.name === 'link.changed') &&
+      this.tree.hasValue() &&
+      this.tree.value().items.some((node) => node.head.key === event.key)
+    ) {
+      refresh(this.tree, this.injector);
+    }
+    if (!changed) {
+      return;
+    }
+    if (shows(this.links, event.key)) {
+      refresh(this.links, this.injector);
+    }
+    if (parentingKinds.has(event.kind) || shows(this.children, event.key)) {
+      refresh(this.children, this.injector);
+    }
   }
 
   /**

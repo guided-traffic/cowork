@@ -34,7 +34,14 @@ import { Menu } from 'primeng/menu';
 import { Select } from 'primeng/select';
 import { ToggleSwitch } from 'primeng/toggleswitch';
 import { Tooltip } from 'primeng/tooltip';
-import { Horizon, SavedFilter, SavedFilterParameters, Ticket, TicketState } from '../../api/models';
+import {
+  Horizon,
+  SavedFilter,
+  SavedFilterParameters,
+  Ticket,
+  TicketHead,
+  TicketState,
+} from '../../api/models';
 import { ProblemService } from '../../core/problem.service';
 import { refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
@@ -46,6 +53,7 @@ import { SizeIcon } from '../../shared/size';
 import { StageBar } from '../../shared/stage-bar';
 import { currentStage, Stage, stagesOf } from '../../shared/stages';
 import { ago, Clock, count, dateTime } from '../../shared/time';
+import { ParentChip, parentChip } from '../../shared/ticket-head';
 import { meanings } from '../../shared/vocabulary';
 import {
   alwaysShown,
@@ -271,7 +279,7 @@ export class Backlog {
       ticket,
       depth: 0,
       under: null,
-      elsewhere: ticket.parent,
+      elsewhere: ticket.parent_head,
     })),
   );
   private readonly groups = computed(() =>
@@ -458,6 +466,11 @@ export class Backlog {
 
   protected shortKey(key: string): string {
     return key.slice(key.indexOf('/') + 1);
+  }
+
+  /** The chip of a row whose parent is not in its group: by its head (docs/adr/0005 D3). */
+  protected parentChip(parent: TicketHead): ParentChip {
+    return parentChip(parent, this.session.tenant());
   }
 
   /** The progress column shows the stage the ticket works on now (docs/adr/0018 D1). */

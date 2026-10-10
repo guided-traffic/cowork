@@ -211,36 +211,83 @@
           }
         </section>
 
+        <section class="card" data-testid="children">
+          <h2>Children</h2>
+          @if (relations.children.error(); as error) {
+            <p class="muted" data-testid="children-failed">{{ failure(error) }}</p>
+          } @else if (relations.children.hasValue()) {
+            @for (child of relations.children.value()?.items ?? []; track $index) {
+              <div class="link" [attr.data-testid]="'child-' + $index">
+                <span class="link-target">
+                  <app-head-key [head]="child.head" [here]="session.tenant()" />
+                  @if (child.head.state; as state) {
+                    <app-state [value]="state" />
+                  }
+                </span>
+                @if (child.head.title !== null) {
+                  <span class="small">{{ child.head.title }}</span>
+                }
+              </div>
+            } @empty {
+              <p class="muted">No children.</p>
+            }
+            @if (relations.children.value()?.nextCursor) {
+              <button
+                pButton
+                type="button"
+                size="small"
+                [text]="true"
+                severity="secondary"
+                data-testid="children-more"
+                [disabled]="relations.children.isLoading()"
+                (click)="moreChildren()"
+              >
+                Load more
+              </button>
+            }
+          } @else {
+            <p-skeleton height="2rem" />
+          }
+        </section>
+
         <section class="card">
           <h2>Links</h2>
           @if (relations.links.error(); as error) {
             <p class="muted" data-testid="links-failed">{{ failure(error) }}</p>
           } @else if (relations.links.hasValue()) {
-            @for (link of relations.links.value().items; track link.id) {
-              <div class="link" [attr.data-testid]="'link-' + link.id">
-                <div class="link-head">
-                  <span class="muted small">{{ link.name }}</span>
-                  <button
-                    pButton
-                    type="button"
-                    [text]="true"
-                    [rounded]="true"
-                    size="small"
-                    severity="secondary"
-                    [attr.data-testid]="'unlink-' + link.id"
-                    [iconOnly]="true"
-                    (click)="unlink(link)"
-                    aria-label="Remove this link"
-                  >
-                    <i class="pi pi-times"></i>
-                  </button>
+            @for (relation of relations.links.value()?.items ?? []; track $index) {
+              @if (relation.link; as link) {
+                <div class="link" [attr.data-testid]="'link-' + link.id">
+                  <div class="link-head">
+                    <span class="muted small">{{ link.name }}</span>
+                    @if (sourceOf(relation); as source) {
+                      <button
+                        pButton
+                        type="button"
+                        [text]="true"
+                        [rounded]="true"
+                        size="small"
+                        severity="secondary"
+                        [attr.data-testid]="'unlink-' + link.id"
+                        [iconOnly]="true"
+                        (click)="unlink(source, link.id)"
+                        aria-label="Remove this link"
+                      >
+                        <i class="pi pi-times"></i>
+                      </button>
+                    }
+                  </div>
+                  <span class="link-target">
+                    <app-head-key [head]="relation.head" [here]="session.tenant()" />
+                    @if (relation.head.state; as state) {
+                      <app-state [value]="state" />
+                    }
+                  </span>
+                  @if (relation.head.title !== null) {
+                    <span class="small">{{ relation.head.title }}</span>
+                  }
                 </div>
-                <span class="link-target"
-                  ><span class="tabular">{{ link.ticket.key }}</span>
-                  <app-state [value]="link.ticket.state"
-                /></span>
-                <span class="small">{{ link.ticket.title }}</span>
-              </div>
+              }
             } @empty {
               <p class="muted">No links.</p>
             }

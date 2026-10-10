@@ -784,6 +784,49 @@ describe('TicketsService', () => {
     });
   });
 
+  describe('search', () => {
+    const url = '/api/v1/me/search';
+    const hit = {
+      key: 'globex/API-7',
+      team: { slug: 'globex', name: 'Globex' },
+      tenant: { slug: 'globex', name: 'Globex' },
+      title: 'Send the SameSite attribute',
+      type: 'task',
+      state: 'review',
+      found_in: 'ticket',
+      comment: null,
+      question: null,
+      snippet: [],
+    };
+
+    it('asks the person-level search of every team of the person for the first page, and hands the hits back', async () => {
+      const done = service.search('samesite');
+
+      const request = http.expectOne((each) => each.url === url);
+      expect(request.request.params.get('q')).toBe('samesite');
+      expect(request.request.params.get('limit')).toBe('20');
+      expect(request.request.params.has('team')).toBe(false);
+      request.flush({ items: [hit], next_cursor: 'more' });
+
+      expect(await done).toEqual([hit]);
+      expect(service.cache.ids()).toEqual([]);
+    });
+
+    it('rejects with the HTTP error', async () => {
+      const outcome = service.search('x').then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+      fail(
+        http.expectOne((each) => each.url === url),
+        400,
+      );
+
+      expect(await outcome).toBeInstanceOf(HttpErrorResponse);
+    });
+  });
+
   describe('ticket', () => {
     it('loads the ticket into the cache and hands out its key', async () => {
       const { ref } = await show('acme/VKO-12', 4);
@@ -902,6 +945,75 @@ describe('TicketsService', () => {
       stream.next(changed('interest.changed', 'acme/VKO-99', 1));
 
       http.expectNone(ticketUrl('acme/VKO-99'));
+    });
+
+    // docs/adr/0017 D3, docs/adr/0054 D2: a child of another team moved the parent's derived
+    // stages, which the parent's version does not count — the event names the version held.
+    it('refetches a cached ticket on the kind derived at the version it holds, because a child of another team moved its stages', async () => {
+      stream.next({ ...changed('ticket.changed', key, 5), kind: 'derived' });
+
+      http
+        .expectOne(ticketUrl(key))
+        .flush(ticket(key, 5, { progress: 60, progress_derived: true }));
+      await settle();
+
+      expect(service.cache.value(key)?.progress).toBe(60);
+      expect(service.cache.etag(key)).toBe('"5"');
+    });
+
+    it('does not fetch a ticket that is not cached on the kind derived', () => {
+      stream.next({ ...changed('ticket.changed', 'acme/VKO-99', 1), kind: 'derived' });
+
+      http.expectNone(ticketUrl('acme/VKO-99'));
+    });
+
+    it('does not fetch a ticket of another team on the kind derived, which only that team shows', () => {
+      service.cache.put('globex/API-7', ticket('globex/API-7', 2));
+
+      stream.next({ ...changed('ticket.changed', 'globex/API-7', 2), kind: 'derived' });
+
+      http.expectNone(ticketUrl('globex/API-7'));
+    });
+
+    describe('that is the parent of a ticket a detail view shows (docs/adr/0005 D3)', () => {
+      const child = 'acme/VKO-20';
+
+      /** Shows the child the way a detail view does, its parent `parent`. */
+      async function showChild(parent: string) {
+        service.ticket(() => child, view());
+        await settle();
+        await answer(ticketUrl(child), ticket(child, 3, { parent }));
+      }
+
+      it.each([
+        ['of the team the pages show', 'acme/VKO-12'],
+        ['of another team of the person', 'globex/API-7'],
+      ])(
+        'refetches the child, whose parent head the change may have moved, for a parent %s',
+        async (_where, parent) => {
+          await showChild(parent);
+
+          stream.next(changed('ticket.changed', parent, 9));
+
+          http
+            .expectOne(ticketUrl(child))
+            .flush(ticket(child, 3, { parent, title: 'Shown again' }));
+          await settle();
+          expect(service.cache.value(child)?.title).toBe('Shown again');
+          // The parent of the team the pages show is cached at version 5 by the outer setup.
+          http.match(ticketUrl(parent));
+        },
+      );
+
+      it('leaves the child alone for another ticket, and for an event of the parent that is no change of it', async () => {
+        await showChild('globex/API-7');
+
+        stream.next(changed('ticket.changed', 'globex/API-8', 9));
+        stream.next(changed('comment.changed', 'globex/API-7', 9));
+        stream.next(changed('link.changed', 'globex/API-7', 9));
+
+        http.expectNone(ticketUrl(child));
+      });
     });
 
     it.each([

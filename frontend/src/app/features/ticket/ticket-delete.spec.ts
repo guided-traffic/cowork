@@ -4,12 +4,25 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
-import { Problem, Ticket } from '../../api/models';
+import { Problem, Ticket, TicketHead } from '../../api/models';
 import { TicketActions } from '../../core/ticket-actions.service';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { TicketDelete } from './ticket-delete';
 
 const ticket = { key: 'acme/COW-12', title: 'Pasted into the wrong tenant' } as Ticket;
+
+/** An open ticket that waits on the one deleted, as the tree names it. */
+function head(key: string, team: string): TicketHead {
+  return {
+    team: { slug: team, name: team === 'acme' ? 'Acme' : 'Globex' },
+    key,
+    title: `Ticket ${key}`,
+    type: 'task',
+    state: 'filed',
+    placeholder: false,
+    readable: team === 'acme',
+  };
+}
 
 /** The page around the button: the confirmation is the page's, as on the detail page. */
 @Component({
@@ -77,7 +90,7 @@ describe('TicketDelete', () => {
   });
 
   it('names the open tickets that wait on it, and does not refuse over them (docs/adr/0024 D7)', async () => {
-    dependents.mockResolvedValue(['COW-13', 'OPS-2']);
+    dependents.mockResolvedValue([head('acme/COW-13', 'acme'), head('acme/OPS-2', 'acme')]);
 
     await ask();
 
@@ -85,6 +98,14 @@ describe('TicketDelete', () => {
     press('Delete');
     await new Promise((resolve) => setTimeout(resolve));
     expect(remove).toHaveBeenCalledExactlyOnceWith('acme/COW-12');
+  });
+
+  it('names a ticket of another team that waits on it by its team and short key (docs/adr/0005 D3)', async () => {
+    dependents.mockResolvedValue([head('globex/API-3', 'globex')]);
+
+    await ask();
+
+    expect(dialog()?.textContent).toContain('One open ticket waits on it: Globex · API-3.');
   });
 
   it('deletes it on confirmation, says where it went and leaves for the backlog of its project', async () => {

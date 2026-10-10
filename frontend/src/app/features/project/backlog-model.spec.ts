@@ -1,4 +1,4 @@
-import { Horizon, Ticket } from '../../api/models';
+import { Horizon, Ticket, TicketHead } from '../../api/models';
 import {
   alwaysShown,
   arrange,
@@ -18,12 +18,27 @@ import {
   withMoves,
 } from './backlog-model';
 
-/** The part of a ticket that the model reads. */
+/** The head of a parent the reader reads, by its canonical key (docs/adr/0005 D3). */
+function headOf(key: string): TicketHead {
+  return {
+    team: { slug: key.slice(0, key.indexOf('/')), name: 'Acme' },
+    key,
+    title: `Ticket ${key}`,
+    type: 'task',
+    state: 'filed',
+    placeholder: false,
+    readable: true,
+  };
+}
+
+/** The part of a ticket that the model reads; a parent comes with its head, as the API sends it. */
 function t(number: number, overrides: Partial<Ticket> = {}): Ticket {
+  const parent = overrides.parent ?? null;
   return {
     key: `acme/COW-${number}`,
     number,
-    parent: null,
+    parent,
+    parent_head: parent === null ? null : headOf(parent),
     horizon: 'later',
     ...overrides,
   } as Ticket;
@@ -127,14 +142,41 @@ describe('arrange', () => {
     const [child] = group(groups, 'later');
     expect(child.depth).toBe(0);
     expect(child.under).toBeNull();
-    expect(child.elsewhere).toBe(under(1));
+    expect(child.elsewhere).toEqual(headOf(under(1)));
   });
 
   it('names the parent of a ticket whose parent is not in the list at all, as a filter leaves it', () => {
     const [child] = rowsOf(t(2, { parent: under(1) }));
 
-    expect(child.elsewhere).toBe(under(1));
+    expect(child.elsewhere).toEqual(headOf(under(1)));
     expect(child.depth).toBe(0);
+  });
+
+  // docs/adr/0008 D2 as amended 2026-10-10: a parent of another project or team.
+  it('names a parent of another team by its head, which no group of the project holds', () => {
+    const [child] = rowsOf(t(2, { parent: 'globex/API-7' }));
+
+    expect(child.elsewhere).toEqual(headOf('globex/API-7'));
+    expect(child.under).toBeNull();
+  });
+
+  // docs/adr/0065 D5 as amended 2026-10-10: a parent the reader may not see has no key.
+  it('names a parent the reader may not see by its placeholder, a root in its group', () => {
+    const placeholder: TicketHead = {
+      team: { slug: 'acme', name: 'Acme' },
+      key: null,
+      title: null,
+      type: null,
+      state: null,
+      placeholder: true,
+      readable: false,
+    };
+    const rows = rowsOf(t(1), t(2, { parent: null, parent_head: placeholder }));
+
+    expect(rows.map((row) => [row.ticket.number, row.depth, row.elsewhere])).toEqual([
+      [1, 0, null],
+      [2, 0, placeholder],
+    ]);
   });
 
   it('names no parent for a ticket that has none, nor for one that stands under its parent', () => {
