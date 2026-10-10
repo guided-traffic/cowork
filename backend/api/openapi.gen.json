@@ -50,6 +50,18 @@
           "type": "string"
         }
       },
+      "ChildRelation": {
+        "description": "The `id` of a child's relation, as `…/relations` gives it: an opaque handle that names the child\nof this ticket without showing the child's id (docs/adr/0008 D2)\n",
+        "in": "path",
+        "name": "child",
+        "required": true,
+        "schema": {
+          "maxLength": 512,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "type": "string"
+        }
+      },
       "CommentID": {
         "description": "The comment's id",
         "in": "path",
@@ -1475,7 +1487,7 @@
         "type": "object"
       },
       "AuditAction": {
-        "description": "`prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it\nreaches done or dropped, naming that prerequisite in its refs alone — its activity entry is\nredacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who\nholds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5)\n",
+        "description": "`prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it\nreaches done or dropped, naming that prerequisite in its refs alone — its activity entry is\nredacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who\nholds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5).\n`detached` is recorded on a parent when a child leaves it from the parent's side, or from the\nchild's side where the parent is of another team, naming the child in its refs\n(docs/adr/0008 D2 as amended 2026-10-10)\n",
         "enum": [
           "created",
           "updated",
@@ -1520,7 +1532,8 @@
           "reopened",
           "accepted",
           "imported",
-          "prerequisite_settled"
+          "prerequisite_settled",
+          "detached"
         ],
         "type": "string"
       },
@@ -7333,6 +7346,7 @@
             "title": "Send the SameSite attribute on the session cookie",
             "type": "task"
           },
+          "id": "01a0f68e-5c40-7a3e-9b1d-4f2c8e6a7d10",
           "kind": "link",
           "link": {
             "created_at": "2026-10-01T08:22:00Z",
@@ -7350,6 +7364,13 @@
         "properties": {
           "head": {
             "$ref": "#/components/schemas/TicketHead"
+          },
+          "id": {
+            "description": "The relation's id, by which a writer of the ticket removes it (docs/adr/0008 D2,\ndocs/adr/0012 D2 as amended 2026-10-10): a link's id, which `DELETE …/links/{link}` takes;\nfor a child an opaque handle, which `DELETE …/children/{child}` takes and which shows no id\nof the child; null for the parent, which the update of `parent` removes\n",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "kind": {
             "enum": [
@@ -7373,6 +7394,7 @@
         },
         "required": [
           "kind",
+          "id",
           "link",
           "head"
         ],
@@ -7435,6 +7457,7 @@
                 "title": "Every supported browser signs in",
                 "type": "feature"
               },
+              "id": null,
               "kind": "parent",
               "link": null
             },
@@ -7451,6 +7474,7 @@
                 "title": null,
                 "type": null
               },
+              "id": "7l4WbIVeBm2dJt0Hc1qXr9Fk8aZuYe3PoS6gNvAwLnM5Ri2TfUjEs0Dy1Kx4Qh7Gp8Cz9Bm3Va6Lw5Hn2Jr4Ys7Tq0",
               "kind": "child",
               "link": null
             },
@@ -7467,6 +7491,7 @@
                 "title": "Log the sign-in failures with their reason",
                 "type": "task"
               },
+              "id": "01a0f68c-8780-7b4f-be55-ff44fa945045",
               "kind": "link",
               "link": {
                 "created_at": "2026-10-01T08:20:00Z",
@@ -7494,6 +7519,7 @@
                 "title": "Send the SameSite attribute on the session cookie",
                 "type": "task"
               },
+              "id": "01a0f68e-5c40-7a3e-9b1d-4f2c8e6a7d10",
               "kind": "link",
               "link": {
                 "created_at": "2026-10-01T08:22:00Z",
@@ -14054,7 +14080,7 @@
         }
       ],
       "patch": {
-        "description": "`If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new\nassignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change\nmakes confidential — only to its own person or to nobody, and another new assignee is 403\n`agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another\nnew assignee is 403 `session_required` — admitting a person takes a browser session\n(docs/adr/0035 D5).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
+        "description": "`If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on\nthe parent the change read: a ticket detached from its parent's side, or by a purge of the\nparent, keeps its version, and a change that raced such a removal is refused with `412` and the\nsent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change\nthat takes the ticket away from a parent of another team — clearing it or setting another —\nrecords `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended\n2026-10-10).\n\nAssigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a\nconfidential ticket — or one the change makes confidential — only to its own person or to\nnobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token\nis held the same way, and another new assignee is 403 `session_required` — admitting a person\ntakes a browser session (docs/adr/0035 D5).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
         "operationId": "updateTicket",
         "parameters": [
           {
@@ -14475,6 +14501,38 @@
           "tickets"
         ]
       }
+    },
+    "/api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child}": {
+      "delete": {
+        "description": "The parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a\nwriter of this ticket detaches a child of any project or team from it, whatever they read of\nthe child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The\nchild's side ends it by the update of its `parent`. The child's parent alone changes, its\nversion stays — an update of the child read before is refused with `412`, the parent being\npart of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived\nagain. A relation that is no child of this ticket, or none, answers exactly as a missing one,\n`404` \"no such child\", and removes nothing. The act `updated` is recorded on the child — in\nits own team's record, as `system:relation` where the caller holds no role in that team — and\n`detached` on this ticket.\n",
+        "operationId": "removeTicketChild",
+        "responses": {
+          "204": {
+            "description": "The child is no child of this ticket any more"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Remove a child of this ticket, of any project or team, by the id of the relation",
+        "tags": [
+          "tickets"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TeamSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/ChildRelation"
+        }
+      ]
     },
     "/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments": {
       "get": {
@@ -15141,17 +15199,17 @@
     },
     "/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link}": {
       "delete": {
-        "description": "The way to remove a link whose other end the caller may not see — a placeholder shows no key\n(docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must\nbe the link's source, whatever the caller reads of the other end (docs/adr/0012 D2). A link of\nwhich this ticket is not the source, or no link, answers 204 and removes nothing. The act is\nrecorded on both tickets, the other end's in its own team's record.\n",
+        "description": "The way to remove a link whose other end the caller may not see — a placeholder shows no key\n(docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must\nbe the link's source or its target, whatever the caller reads of the other end and whatever\nteam keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this\nticket, or none, answers exactly as a missing one, `404` \"no such link\", and removes nothing.\nThe act is recorded on both tickets, the other end's in its own team's record — as\n`system:relation` where the caller holds no role in that team.\n",
         "operationId": "removeTicketLink",
         "responses": {
           "204": {
-            "description": "The link is gone, or was never this ticket's to remove"
+            "description": "The link is gone"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Remove a link of this ticket, its source, by the link's id",
+        "summary": "Remove a link of this ticket, either end of it, by the link's id",
         "tags": [
           "tickets"
         ]
@@ -15173,7 +15231,7 @@
     },
     "/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}": {
       "delete": {
-        "description": "A write on this ticket, the link's source, whatever the caller reads of the other end\n(docs/adr/0012 D2); the link is found among this ticket's relations by the other end's key,\nso a key the caller sees as a head removes its link. Idempotent: no such link — or a key that\nnames none — answers 204 as well. An end the caller may not see shows no key; its link is\nremoved by its id, `DELETE …/links/{link}`. The act is recorded on both tickets.\n",
+        "description": "A write on this ticket, either end of the link — its source or its target —, whatever the\ncaller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket\nremoves a link another team keeps to it as well. The link is found among this ticket's\nrelations by the other end's key, so a key the caller sees as a head removes its link.\nIdempotent: no such link — or a key that names none — answers 204 as well. An end the caller\nmay not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is\nrecorded on both tickets, the other end's in its own team's record — as `system:relation`\nwhere the caller holds no role in that team.\n",
         "operationId": "unlinkTicketFrom",
         "responses": {
           "204": {
@@ -15244,7 +15302,7 @@
     },
     "/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}": {
       "delete": {
-        "description": "Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in\nthe path, the link's source, whatever the caller reads of the other end (docs/adr/0012 D2).\n",
+        "description": "Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in\nthe path, either end of the link — its source or its target —, whatever the caller reads of\nthe other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.\n",
         "operationId": "unlinkTickets",
         "responses": {
           "204": {
@@ -19953,7 +20011,7 @@
       ],
       "patch": {
         "deprecated": true,
-        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\n`If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new\nassignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change\nmakes confidential — only to its own person or to nobody, and another new assignee is 403\n`agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another\nnew assignee is 403 `session_required` — admitting a person takes a browser session\n(docs/adr/0035 D5).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\n`If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on\nthe parent the change read: a ticket detached from its parent's side, or by a purge of the\nparent, keeps its version, and a change that raced such a removal is refused with `412` and the\nsent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change\nthat takes the ticket away from a parent of another team — clearing it or setting another —\nrecords `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended\n2026-10-10).\n\nAssigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a\nconfidential ticket — or one the change makes confidential — only to its own person or to\nnobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token\nis held the same way, and another new assignee is 403 `session_required` — admitting a person\ntakes a browser session (docs/adr/0035 D5).\n\nThe three progress stages — `progress_refinement`, `progress` (implementation),\n`progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a\nticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).\nA change that brings the last of the three to 100 on a ticket without children is the done act\nin the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the\nverification (400 at `/note` otherwise); over open prerequisites it is 409\n`open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent\nneeds `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never\noverrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state\nit left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.\nA change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a\n`reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by\nhand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`\non a change that moves no state are 400. The version rises once.\n",
         "operationId": "updateTicketDeprecated",
         "parameters": [
           {
@@ -20383,6 +20441,39 @@
           "tenants"
         ]
       }
+    },
+    "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/children/{child}": {
+      "delete": {
+        "deprecated": true,
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nThe parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a\nwriter of this ticket detaches a child of any project or team from it, whatever they read of\nthe child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The\nchild's side ends it by the update of its `parent`. The child's parent alone changes, its\nversion stays — an update of the child read before is refused with `412`, the parent being\npart of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived\nagain. A relation that is no child of this ticket, or none, answers exactly as a missing one,\n`404` \"no such child\", and removes nothing. The act `updated` is recorded on the child — in\nits own team's record, as `system:relation` where the caller holds no role in that team — and\n`detached` on this ticket.\n",
+        "operationId": "removeTicketChildDeprecated",
+        "responses": {
+          "204": {
+            "description": "The child is no child of this ticket any more"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Deprecated: Remove a child of this ticket, of any project or team, by the id of the relation",
+        "tags": [
+          "tenants"
+        ]
+      },
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/TenantSlug"
+        },
+        {
+          "$ref": "#/components/parameters/ProjectKey"
+        },
+        {
+          "$ref": "#/components/parameters/TicketNumber"
+        },
+        {
+          "$ref": "#/components/parameters/ChildRelation"
+        }
+      ]
     },
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments": {
       "get": {
@@ -21066,17 +21157,17 @@
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{link}": {
       "delete": {
         "deprecated": true,
-        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nThe way to remove a link whose other end the caller may not see — a placeholder shows no key\n(docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must\nbe the link's source, whatever the caller reads of the other end (docs/adr/0012 D2). A link of\nwhich this ticket is not the source, or no link, answers 204 and removes nothing. The act is\nrecorded on both tickets, the other end's in its own team's record.\n",
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nThe way to remove a link whose other end the caller may not see — a placeholder shows no key\n(docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must\nbe the link's source or its target, whatever the caller reads of the other end and whatever\nteam keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this\nticket, or none, answers exactly as a missing one, `404` \"no such link\", and removes nothing.\nThe act is recorded on both tickets, the other end's in its own team's record — as\n`system:relation` where the caller holds no role in that team.\n",
         "operationId": "removeTicketLinkDeprecated",
         "responses": {
           "204": {
-            "description": "The link is gone, or was never this ticket's to remove"
+            "description": "The link is gone"
           },
           "default": {
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Deprecated: Remove a link of this ticket, its source, by the link's id",
+        "summary": "Deprecated: Remove a link of this ticket, either end of it, by the link's id",
         "tags": [
           "tenants"
         ]
@@ -21099,7 +21190,7 @@
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}": {
       "delete": {
         "deprecated": true,
-        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nA write on this ticket, the link's source, whatever the caller reads of the other end\n(docs/adr/0012 D2); the link is found among this ticket's relations by the other end's key,\nso a key the caller sees as a head removes its link. Idempotent: no such link — or a key that\nnames none — answers 204 as well. An end the caller may not see shows no key; its link is\nremoved by its id, `DELETE …/links/{link}`. The act is recorded on both tickets.\n",
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nA write on this ticket, either end of the link — its source or its target —, whatever the\ncaller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket\nremoves a link another team keeps to it as well. The link is found among this ticket's\nrelations by the other end's key, so a key the caller sees as a head removes its link.\nIdempotent: no such link — or a key that names none — answers 204 as well. An end the caller\nmay not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is\nrecorded on both tickets, the other end's in its own team's record — as `system:relation`\nwhere the caller holds no role in that team.\n",
         "operationId": "unlinkTicketFromDeprecated",
         "responses": {
           "204": {
@@ -21172,7 +21263,7 @@
     "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}": {
       "delete": {
         "deprecated": true,
-        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nIdempotent; removing a link that does not exist answers 204 as well. A write on the ticket in\nthe path, the link's source, whatever the caller reads of the other end (docs/adr/0012 D2).\n",
+        "description": "Deprecated: `/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}`, served under the name before for one release and removed in a later one, answering as it does (docs/adr/0005 D1, docs/adr/0046 D7).\n\nIdempotent; removing a link that does not exist answers 204 as well. A write on the ticket in\nthe path, either end of the link — its source or its target —, whatever the caller reads of\nthe other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.\n",
         "operationId": "unlinkTicketsDeprecated",
         "responses": {
           "204": {

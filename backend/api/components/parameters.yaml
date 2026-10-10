@@ -267,6 +267,14 @@ LinkID:
   required: true
   description: A link's id, as a relation of the ticket names it (docs/adr/0012 D1)
   schema: {type: string, format: uuid}
+ChildRelation:
+  name: child
+  in: path
+  required: true
+  description: |
+    The `id` of a child's relation, as `…/relations` gives it: an opaque handle that names the child
+    of this ticket without showing the child's id (docs/adr/0008 D2)
+  schema: {type: string, minLength: 1, maxLength: 512, pattern: '^[A-Za-z0-9_-]+$'}
 RelationKinds:
   name: kind
   in: query

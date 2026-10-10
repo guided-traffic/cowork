@@ -200,6 +200,11 @@ type FarEnd struct {
 // Key is the far end's canonical key.
 func (f FarEnd) Key() string { return f.key }
 
+// Ticket is the far end's id, which an act in the caller's own team names in
+// its refs, so that no reader of that team reads its payload
+// (docs/adr/0065 D4). It is never shown.
+func (f FarEnd) Ticket() uuid.UUID { return f.ticket }
+
 // Readable is a ticket the caller reads, found by its canonical key in any
 // team (readable_ticket): its id, its project, its head and, where it is a
 // ticket of another team, the far end its acts are recorded at.
@@ -579,6 +584,47 @@ func (w *Writer) holdFarTicket(ctx context.Context, far FarEnd) (bool, error) {
 		return false, fmt.Errorf("hold the ticket of the other team: %w", err)
 	}
 	return true, nil
+}
+
+// EndChildElsewhere ends the parent relation of a child of another team to
+// parent, a ticket of the transaction's team the caller sees (end_relation,
+// docs/adr/0008 D2 as amended 2026-10-10): the child's parent alone is
+// cleared, no version. It answers where the act on the child is recorded;
+// false where child is no such child — of the team, deleted, or none of
+// parent's.
+func (w *Writer) EndChildElsewhere(ctx context.Context, parent, child uuid.UUID) (FarEnd, bool, error) {
+	far, _, ok, err := w.endRelation(ctx, parent, RelationChild, child)
+	return far, ok, err
+}
+
+// EndLinkElsewhere ends a link another team keeps with target, a ticket of the
+// transaction's team the caller sees, as its target (end_relation,
+// docs/adr/0012 D2 as amended 2026-10-10). It answers where the act on the
+// link's source is recorded and the link's type; false where link is no such
+// link.
+func (w *Writer) EndLinkElsewhere(ctx context.Context, target, link uuid.UUID) (FarEnd, domain.LinkType, bool, error) {
+	return w.endRelation(ctx, target, RelationLink, link)
+}
+
+func (w *Writer) endRelation(ctx context.Context, anchor uuid.UUID, kind string, other uuid.UUID) (FarEnd, domain.LinkType, bool, error) {
+	var (
+		team, id uuid.UUID
+		key      string
+		typ      *domain.LinkType
+	)
+	err := w.tx.QueryRow(ctx, "SELECT far_tenant, far_id, far_key, link_type FROM end_relation($1, $2, $3)", anchor, kind, other).
+		Scan(&team, &id, &key, &typ)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return FarEnd{}, "", false, nil
+	}
+	if err != nil {
+		return FarEnd{}, "", false, fmt.Errorf("end the relation into another team: %w", err)
+	}
+	var linkType domain.LinkType
+	if typ != nil {
+		linkType = *typ
+	}
+	return FarEnd{team: team, ticket: id, key: key}, linkType, true, nil
 }
 
 // farEndOf reads one row of end_relations_elsewhere or end_team_relations.

@@ -139,6 +139,8 @@ export type { GetTicketBody$Params as GetTicketBody$Params } from './fn/tickets/
 export { getTicketBody as getTicketBody } from './fn/tickets/get-ticket-body';
 export type { ReplaceTicketBody$Params as ReplaceTicketBody$Params } from './fn/tickets/replace-ticket-body';
 export { replaceTicketBody as replaceTicketBody } from './fn/tickets/replace-ticket-body';
+export type { RemoveTicketChild$Params as RemoveTicketChild$Params } from './fn/tickets/remove-ticket-child';
+export { removeTicketChild as removeTicketChild } from './fn/tickets/remove-ticket-child';
 export type { SetConfidential$Params as SetConfidential$Params } from './fn/tickets/set-confidential';
 export { setConfidential as setConfidential } from './fn/tickets/set-confidential';
 export type { ExportTicketContext$Params as ExportTicketContext$Params } from './fn/tickets/export-ticket-context';

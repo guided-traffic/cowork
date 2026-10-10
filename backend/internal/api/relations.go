@@ -20,15 +20,32 @@ import (
 // are listed: the parent, the children, the links.
 var relationKinds = []string{store.RelationParent, store.RelationChild, store.RelationLink}
 
-// relationView is a relation as the API shows it: its kind, its link, and the
-// ticket at its other end as the caller sees it (docs/adr/0005 D3).
+// relationView is a relation as the API shows it: its kind, its id, its link,
+// and the ticket at its other end as the caller sees it (docs/adr/0005 D3).
+// The id of a link is the link's; a child's is set by relationOf, and the
+// parent has none — the child's update of its parent removes it.
 func relationView(r store.Relation) apigen.Relation {
-	v := apigen.Relation{Kind: apigen.RelationKind(r.Kind), Head: headView(r.Head), Link: nullableOf[apigen.RelationLink](nil)}
+	v := apigen.Relation{Kind: apigen.RelationKind(r.Kind), Head: headView(r.Head), Link: nullableOf[apigen.RelationLink](nil),
+		Id: nullableString(nil)}
 	if l := r.Link; l != nil {
 		link := apigen.RelationLink{Id: l.ID, Type: apigen.LinkType(l.Type), Direction: apigen.RelationLinkDirection(direction(l.Outgoing)),
 			Name: l.Type.Name(l.Outgoing), CreatedBy: personView(l.CreatedBy.ID, l.CreatedBy.Username, l.CreatedBy.Name),
 			CreatedAt: l.CreatedAt}
 		v.Link = nullableOf(&link)
+		id := l.ID.String()
+		v.Id = nullableString(&id)
+	}
+	return v
+}
+
+// relationOf is a relation of a ticket as its list shows it: a child's id the
+// sealed handle the removal of a child takes (docs/adr/0008 D2 as amended
+// 2026-10-10), which shows no ticket's id.
+func (s *Server) relationOf(r store.Relation) apigen.Relation {
+	v := relationView(r)
+	if r.Kind == store.RelationChild {
+		id := s.childHandle(r.Anchor, r.Position)
+		v.Id = nullableString(&id)
 	}
 	return v
 }
@@ -81,7 +98,7 @@ func (s *Server) ListTicketRelations(ctx context.Context, req apigen.ListTicketR
 	})
 	out := apigen.RelationList{Items: []apigen.Relation{}, NextCursor: nullableString(next)}
 	for _, r := range rows {
-		out.Items = append(out.Items, relationView(r))
+		out.Items = append(out.Items, s.relationOf(r))
 	}
 	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
 	if unchanged {

@@ -964,6 +964,7 @@ SET type = $1, title = $2, severity = $3,
     progress_review = $11, confidential = $12,
     version = version + 1, updated_at = now()
 WHERE tenant_id = $13 AND id = $14 AND version = $15
+  AND parent_id IS NOT DISTINCT FROM $16::uuid
 RETURNING version
 `
 
@@ -983,10 +984,14 @@ type UpdateTicketFieldsParams struct {
 	TenantID           uuid.UUID
 	ID                 uuid.UUID
 	Version            int32
+	ReadParentID       *uuid.UUID
 }
 
-// The fields of PATCH, a compare-and-set on the version (docs/adr/0050 D1);
-// progress is the implementation stage (docs/adr/0017 D2).
+// The fields of PATCH, a compare-and-set on the version (docs/adr/0050 D1)
+// and on the parent as the patch read it: a child detached from its parent's
+// side, or by a purge of the parent, keeps its version, and a patch read
+// before would write the parent back; progress is the implementation stage
+// (docs/adr/0017 D2).
 func (q *Queries) UpdateTicketFields(ctx context.Context, arg UpdateTicketFieldsParams) (int32, error) {
 	row := q.db.QueryRow(ctx, updateTicketFields,
 		arg.Type,
@@ -1004,6 +1009,7 @@ func (q *Queries) UpdateTicketFields(ctx context.Context, arg UpdateTicketFields
 		arg.TenantID,
 		arg.ID,
 		arg.Version,
+		arg.ReadParentID,
 	)
 	var version int32
 	err := row.Scan(&version)

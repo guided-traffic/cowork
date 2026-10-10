@@ -193,7 +193,8 @@ func TestAParentInAnotherTeamShowsItsHeadOnly(t *testing.T) {
 	items := list["items"].([]any)
 	require.Len(t, items, 1)
 	item := items[0].(map[string]any)
-	assert.ElementsMatch(t, []string{"kind", "link", "head"}, slices.Collect(maps.Keys(item)))
+	assert.ElementsMatch(t, []string{"kind", "id", "link", "head"}, slices.Collect(maps.Keys(item)))
+	assert.Nil(t, item["id"], "the parent relation has no id: the child's update removes it")
 	assert.ElementsMatch(t, headKeys, slices.Collect(maps.Keys(item["head"].(map[string]any))))
 
 	assert.True(t, e.readIn(t, both, e.SlugB, child).ParentHead.MustGet().Readable, "a member of both teams opens it")

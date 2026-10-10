@@ -104,7 +104,7 @@ func (db *DB) CheckRuntimeRole(ctx context.Context) error {
 var crossingFunctions = []string{
 	"relation_heads", "readable_ticket", "prerequisite_heads", "open_prerequisite_count", "open_prerequisite_targets",
 	"open_prerequisite_heads", "parent_chain_reaches", "blocks_reach", "refresh_derived", "relations_elsewhere",
-	"end_relations_elsewhere", "end_team_relations",
+	"end_relations_elsewhere", "end_team_relations", "end_relation",
 }
 
 const crossingPolicies = 8

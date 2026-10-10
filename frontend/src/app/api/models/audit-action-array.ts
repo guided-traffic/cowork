@@ -50,5 +50,6 @@ export const AUDIT_ACTION: AuditAction[] = [
   'reopened',
   'accepted',
   'imported',
-  'prerequisite_settled'
+  'prerequisite_settled',
+  'detached'
 ];

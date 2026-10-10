@@ -377,10 +377,11 @@ func (s *Server) UnlinkTicketFrom(ctx context.Context, req apigen.UnlinkTicketFr
 	return apigen.UnlinkTicketFrom204Response{}, nil
 }
 
-// RemoveTicketLink removes a link of the ticket in the path, its source, by
-// the link's id: the way to remove a link whose other end the caller may not
-// see (docs/adr/0065 D5). A link the path's ticket is not the source of, or no
-// link, removes nothing and answers the same.
+// RemoveTicketLink removes a link of the ticket in the path by the link's id,
+// whichever end of it the ticket is and whatever team keeps it: the way to
+// remove a link whose other end the caller may not see (docs/adr/0065 D5,
+// docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch the
+// path's ticket answers exactly as no link, 404 "no such link".
 func (s *Server) RemoveTicketLink(ctx context.Context, req apigen.RemoveTicketLinkRequestObject) (apigen.RemoveTicketLinkResponseObject, error) {
 	t := tenantFrom(ctx)
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
@@ -391,19 +392,27 @@ func (s *Server) RemoveTicketLink(ctx context.Context, req apigen.RemoveTicketLi
 		if perr := auth.Authorize(principal(ctx), path.role, work); perr != nil {
 			return perr
 		}
-		return removeLink(ctx, w, t, path, req.Link)
+		removed, err := removeLinkOf(ctx, w, t, path, req.Link)
+		if err != nil {
+			return err
+		}
+		if !removed {
+			return noSuchLink()
+		}
+		return nil
 	})
-	if err != nil && !errors.Is(err, store.ErrNoChange) {
+	if err != nil {
 		return nil, err
 	}
 	return apigen.RemoveTicketLink204Response{}, nil
 }
 
-// unlinkByKey removes a link of the ticket in the path, its source — inside
-// the team a relates-to from either end —, found among the path's relations by
-// the other end's key: a write on the path's ticket alone, whatever the caller
-// reads of the other end (docs/adr/0012 D2). A key that names no such link
-// removes nothing and answers the same.
+// unlinkByKey removes a link of the ticket in the path, found among its
+// relations by the type and the other end's key — the one the path's ticket is
+// the source of first, else the one it is the target of —: a write on the
+// path's ticket alone, whichever end it is and whatever the caller reads of
+// the other end (docs/adr/0012 D2 as amended 2026-10-10). A key that names no
+// such link removes nothing and answers the same.
 func (s *Server) unlinkByKey(ctx context.Context, t tenantScope, project string, number int, typ apigen.LinkType,
 	otherTeam, other string) error {
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
@@ -418,20 +427,22 @@ func (s *Server) unlinkByKey(ctx context.Context, t tenantScope, project string,
 		if err != nil || key.Tenant != "" {
 			return store.ErrNoChange
 		}
-		want := domain.FullKey(otherTeam, key.Project, key.Number)
 		rels, err := w.RelationHeads(ctx, []uuid.UUID{path.row.ID}, store.RelationLink)
 		if err != nil {
 			return err
 		}
-		for _, rel := range rels {
-			if rel.Link == nil || rel.Link.Type != domain.LinkType(typ) || rel.Head.Key() != want {
-				continue
-			}
-			if rel.Link.Outgoing || (rel.Link.Type == domain.LinkRelatesTo && rel.Head.TeamSlug == t.Slug) {
-				return removeLink(ctx, w, t, path, rel.Link.ID)
-			}
+		l := linkByKey(rels, domain.LinkType(typ), domain.FullKey(otherTeam, key.Project, key.Number))
+		if l == nil {
+			return store.ErrNoChange
 		}
-		return store.ErrNoChange
+		removed, err := removeLinkOf(ctx, w, t, path, l.ID)
+		if err != nil {
+			return err
+		}
+		if !removed {
+			return store.ErrNoChange
+		}
+		return nil
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return err
@@ -439,29 +450,35 @@ func (s *Server) unlinkByKey(ctx context.Context, t tenantScope, project string,
 	return nil
 }
 
-// removeLink removes a link of the team whose source is the path's ticket —
-// or, a relates-to inside the team, whose target it is — and records the act
-// on both tickets, the other end's in its own team's record
-// (docs/adr/0012 D3). Any other link is ErrNoChange.
-func removeLink(ctx context.Context, w *store.Writer, t tenantScope, path ticketCtx, id uuid.UUID) error {
-	l, err := w.GetLinkByID(ctx, writeq.GetLinkByIDParams{TenantID: t.ID, ID: id})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return store.ErrNoChange
+// linkByKey is the link of the type between a ticket and the other end of the
+// key among the ticket's relations: the one the ticket is the source of — the
+// link its PUT made — before the one it is the target of; nil for none.
+func linkByKey(rels []store.Relation, typ domain.LinkType, key string) *store.RelatedLink {
+	var incoming *store.RelatedLink
+	for _, rel := range rels {
+		if rel.Link == nil || rel.Link.Type != typ || rel.Head.Key() != key {
+			continue
+		}
+		if rel.Link.Outgoing {
+			return rel.Link
+		}
+		incoming = rel.Link
 	}
-	if err != nil {
-		return err
-	}
+	return incoming
+}
+
+// removeLink removes a link the team keeps that touches the path's ticket, its
+// source or its target, and records the act on both tickets, the other end's
+// in its own team's record (docs/adr/0012 D3). removed is false, and nothing
+// is recorded, where a writer that raced this one removed it first.
+func removeLink(ctx context.Context, w *store.Writer, t tenantScope, path ticketCtx, l writeq.GetLinkByIDRow) (removed bool, err error) {
 	otherID := l.TargetID
-	switch {
-	case l.SourceID == path.row.ID:
-	case l.TargetID == path.row.ID && l.Type == domain.LinkRelatesTo:
+	if l.SourceID != path.row.ID {
 		otherID = l.SourceID
-	default:
-		return store.ErrNoChange
 	}
-	far, elsewhere, err := linkFarEnd(ctx, w, path.row.ID, id)
+	far, elsewhere, err := linkFarEnd(ctx, w, path.row.ID, l.ID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	otherKey := ""
 	if elsewhere {
@@ -469,28 +486,29 @@ func removeLink(ctx context.Context, w *store.Writer, t tenantScope, path ticket
 	} else {
 		k, err := w.LinkEndKey(ctx, writeq.LinkEndKeyParams{TenantID: t.ID, ID: otherID})
 		if err != nil {
-			return fmt.Errorf("read the other end of the link: %w", err)
+			return false, fmt.Errorf("read the other end of the link: %w", err)
 		}
 		otherKey = domain.FullKey(t.Slug, k.ProjectKey, k.Number)
 	}
-	if _, err := w.DeleteLinkByID(ctx, writeq.DeleteLinkByIDParams{TenantID: t.ID, ID: id}); err != nil {
-		return err
+	n, err := w.DeleteLinkByID(ctx, writeq.DeleteLinkByIDParams{TenantID: t.ID, ID: l.ID})
+	if err != nil || n == 0 {
+		return false, err
 	}
 	sourceKey, targetKey := ticketKey(t, path.row), otherKey
 	if l.SourceID != path.row.ID {
 		sourceKey, targetKey = otherKey, sourceKey
 	}
 	payload := linkPayload(l.Type, sourceKey, targetKey)
-	near := linkAct(actionUnlinked, id, payload, otherID)
+	near := linkAct(actionUnlinked, l.ID, payload, otherID)
 	near.TicketID, near.TicketKey = path.row.ID, ticketKey(t, path.row)
 	w.Record(near)
-	other := linkAct(actionUnlinked, id, payload, path.row.ID)
+	other := linkAct(actionUnlinked, l.ID, payload, path.row.ID)
 	if elsewhere {
-		return w.RecordElsewhere(ctx, far, other)
+		return true, w.RecordElsewhere(ctx, far, other)
 	}
 	other.TicketID, other.TicketKey = otherID, otherKey
 	w.Record(other)
-	return nil
+	return true, nil
 }
 
 // linkFarEnd is where the act of a link of the ticket is recorded when its

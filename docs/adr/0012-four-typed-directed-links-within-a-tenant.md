@@ -71,9 +71,10 @@ ticket of any team; `PUT …/links/{type}/{other_team}/{other}` sets one by the 
 key, the route by the short key stays the short form inside the team
 ([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D3), and a key
 the setter cannot read answers `404 not_found` "no such ticket", as a missing one does. *(Made
-concrete by the implementer, open to the owner's objection:)* a link is removed by a writer of its
+concrete by the implementer, open to the owner's objection:)* a link is removed by a writer of ~~its
 source — a `relates-to` inside the team from either end, across teams from the end it was made
-from, which is its source —, by the other end's key or by its id (`DELETE …/links/{link}`), which
+from, which is its source —~~ *(2026-10-10, D2 as amended again by the owner: either end, below)*, by
+the other end's key or by its id (`DELETE …/links/{link}`), which
 removes one whose other end is a placeholder; its acts are recorded on both tickets, the other
 end's in that team's own record (D3), and the payload of an act that names a ticket of another team
 is never shown to a reader of the act's team
@@ -111,6 +112,27 @@ from a ticket the person may not open, or may not see, is offered no removal: it
 ticket the person cannot write, whose team removes it. The activity and the inbox name a settled
 prerequisite of another team by its head (D5).
 
+**Amended again 2026-10-10 by the owner (built the same day in the data layer and the API; the UI
+outstanding):** D2 — a link is removed by a writer of either end. The adversarial review of the build
+found that a viewer of team A who is a member of team B lets a B ticket block an A ticket, which A
+then reaches `done` only over a person's override and A's agents cannot close, and that nobody in A
+could remove the link, removing it being a write on its source in B; the owner chose that a writer of
+either end removes it, recorded in both teams' records, over consent of both teams to set it and
+over the gap written down
+([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2 likewise).
+Built ([migration 52](../../backend/internal/store/migrations/000052_end_a_relation_from_either_end.up.sql)):
+`DELETE …/links/{link}`, `DELETE …/links/{type}/{other_team}/{other}` and the short form inside the
+team remove a link of which the ticket in the path is the source or the target, whatever team keeps
+it — the key routes the one the ticket is the source of first, the link its `PUT` made. A link the
+team keeps is removed by the runtime role; one another team keeps onto the ticket by the crossing
+`end_relation` of [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7,
+which deletes that row alone. Each `…/relations` entry carries the relation's `id`, a link's own.
+*(Made concrete by the implementer, open to the owner's objection:)* the removal by id answers a
+link that does not touch the ticket in the path exactly as none, `404` "no such link", where it
+answered `204` and removed nothing before; the key routes stay idempotent, `204` for a key that names
+no link. Of two removals of one link at once, from its two ends, one removes it and records the act
+on both tickets, and the other finds it gone — `404` by id, `204` by key — and records nothing.
+
 ## Context
 
 Relations between tickets already exist in the Markdown backlog, each in its own place:
@@ -146,7 +168,10 @@ link is set by a `member` or `admin` of the source's team who can read the targe
 like a missing ticket where they cannot; the other end is shown to a person who holds no role in
 its team, or to whom its project is restricted, by its head only — the team's name, the key, the
 title, the type and the state — or as `<team> [Confidential]`
-([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3).
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3). *(Amended again
+2026-10-10 by the owner, built the same day in the data layer and the API:)* A link is removed by a
+`member` or `admin` of either end's team — the source's or the target's —, whether or not they read
+the other end, and the removal is recorded in the records of both teams.
 
 **D3 — A link is a recorded act.** It carries who created it and when; creating and removing
 a link is a timeline entry on both tickets. Links to a `done` or `dropped` ticket are kept and
@@ -252,7 +277,12 @@ an agent only while the links stand; a person who wants it to hold gives the age
 - *(Added 2026-10-06, accepted by the owner with D7's amendment.)* D7's override is a person's
   act, but an agent with `close` can remove the open `blocks` links into its ticket and then close
   it, so a prerequisite holds an agent only while its link stands. The removal is on the
-  activity of both tickets, marked as the agent's; nothing refuses it.
+  activity of both tickets, marked as the agent's; nothing refuses it. *(2026-10-10, with D2 as
+  amended again by the owner:)* that includes a link another team keeps onto the agent's ticket,
+  removed from the ticket's side: a prerequisite of team B holds team A's agent only while A lets
+  its link stand, the remedy the owner gave the team a relation lands on. The act in B's record is
+  `system:relation` where the agent's person holds no role in B, so B's record shows that the link
+  went and when, not which agent removed it; A's record names the agent.
 
 ## References
 

@@ -403,7 +403,22 @@ another.
   reads the ticket a key names; the cycle walks of the parents and of `blocks`, which answer yes or
   no; the derived progress of a parent from its children of every team, which writes those columns
   and nothing else; the address of an act in another team — its team, ticket and key, never shown
-  to the caller; and the end of the relations at a purge or a team's deletion.
+  to the caller; and the end of the relations at a purge or a team's deletion, and of one relation
+  by a writer of either end
+  ([migration 52](../../backend/internal/store/migrations/000052_end_a_relation_from_either_end.up.sql)).
+- **The removal into another team** (`end_relation`) ends exactly one relation of a ticket of the
+  caller's team: a child of another team whose parent the ticket is, or a link another team keeps
+  onto it — the parent's side of a parent relation, the target's side of a link
+  ([ADR 0008](../adr/0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2,
+  [ADR 0012](../adr/0012-four-typed-directed-links-within-a-tenant.md) D2 as amended 2026-10-10). It
+  checks for itself what the API checked: the ticket is of the transaction's team, seen by the caller
+  and not deleted, the caller a `member` or `admin` of the team — a viewer ends nothing, whatever the
+  request layer decided —, and the row really is that ticket's relation; anything else answers no row
+  and changes nothing (`TestEndingOneRelationIsTheAnchorsAlone`). It clears the child's parent alone
+  and deletes the link row alone, under the purge's guard and policies, and the act in the other
+  team's record follows the rule below. The API names a child to it only by the id `…/relations`
+  gave, sealed with the server's key so that it shows no ticket id; a forged or foreign id names no
+  child of the ticket and answers as a missing one.
 - **Admitted only inside them.** Eight permissive policies `TO` the owner role on `tickets`,
   `projects`, `tenants`, `project_access` and `ticket_links` admit a read, or one write, only while
   the setting `app.crossing` names the kind of crossing; each crossing function sets it as its first
@@ -1252,7 +1267,16 @@ The exposure is bounded by who may set a relation — only a member who reads bo
 ([ADR 0008](../adr/0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2) — and by
 what a head holds (`TestAParentInAnotherTeamShowsItsHeadOnly`, `TestTheChatStaysInItsTeam`).
 Mitigation: none in cowork beyond those bounds; a team that must keep its titles from another
-relates nothing to it, and its members remove a relation with a write on their own end.
+relates nothing to it, and its members remove any relation that touches its tickets — a child of
+another team from under its parent, a link another team keeps onto its ticket — from their own
+ticket, whether or not they read the other end, the act recorded in both teams' records
+([ADR 0008](../adr/0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2,
+[ADR 0012](../adr/0012-four-typed-directed-links-within-a-tenant.md) D2 as amended 2026-10-10;
+`TestAWriterOfEitherEndRemovesARelationAcrossTeams`). A viewer of A who is a member of B may still
+set one, and it shows A's heads to B until a writer of A removes it. A link set from B records
+`linked` on A's ticket in A's record ([ADR 0012](../adr/0012-four-typed-directed-links-within-a-tenant.md)
+D3); a parent set from B records nothing in A's record — A learns of it from the child among its
+parent's relations and from the derived progress.
 
 <a id="h-112"></a>
 ### H-112 — A writer of the release before walks one team, derives one team and ends relations without acts

@@ -602,7 +602,11 @@ missing, empty or `*` is `428 precondition_required`; a weak or unreadable tag i
 `412 precondition_failed`. The write is a compare-and-set in SQL (`WHERE … AND version = $n
 RETURNING version`); a moved version is `stale(version, current)`: `412` with the current `ETag`
 header and, per field the request tried to change, its current value in `errors[].current`,
-`null` for an empty field ([ADR 0050] D5). A write that changes nothing answers as one that did, with the current state,
+`null` for an empty field ([ADR 0050] D5). `updateTicket`'s compare-and-set covers the parent the
+patch read beside the version, because a child detached from its parent's side keeps its version
+([ADR 0050] D1 as made concrete 2026-10-10); one it loses is answered with the ticket read again
+through the predicate (`writeFields`), so the `412` carries the version and the values as they stand
+after the write that won, and a ticket that write took out of the caller's sight is `404`. A write that changes nothing answers as one that did, with the current state,
 and records no act. A `PATCH` whose progress stages close or reopen the ticket raises the version
 once: the state is written with `bump` false after the fields.
 
@@ -648,7 +652,10 @@ key derived under `cowork cursor nonce v1` as the nonce — deterministic, so a 
 `ETag` stay the same while the list does. `openPosition` refuses what it did not seal, and the
 list answers that `invalid_cursor`. A ticket's relations and the prerequisite tree across teams
 seal theirs too — `<kind>/<id>` and the node's path —, because they name tickets the caller may not
-see, read back by `sealedPosition`.
+see, read back by `sealedPosition`. The id of a child's relation, which `removeTicketChild` takes,
+is sealed the same way — `child/<parent>/<child>`, opened by `openChildHandle` only under the
+parent in the path — and is no cursor: it carries no operation, no scope and no MAC of the codec's
+`encode`, and it admits nothing, the removal checking the writer and the relation as it stands.
 
 - `limit` defaults to 50 and is clamped, not refused, at `COWORK_MAX_PAGE_SIZE`; the query
   fetches one row more than the page, which says whether `next_cursor` is set.
@@ -852,6 +859,10 @@ whose shapes carry a head and a placeholder, which `TicketRef` and `Prerequisite
 link routes by the short key stay, the short form inside the team
 ([ADR 0007](../adr/0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D3), not
 deprecated, beside the canonical `…/links/{type}/{other_team}/{other}` and `…/links/{link}`.
+*(2026-10-10.)* Every link route removes from either end, and `removeTicketLink` answers a link that
+does not touch the ticket in the path as a missing one, `404` "no such link", where it answered
+`204` before — a client that removed by id from the target's side got `204` and kept the link; the
+key routes stay `204` for a key that names no link ([ADR 0012] D2 as amended again 2026-10-10).
 
 What stays deprecated in `/api/v1` today is the team rename's old family and names, above, the two
 reads the relations replaced, and a token's `restricted_project_id` beside `restricted_project`

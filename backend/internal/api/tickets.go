@@ -689,9 +689,7 @@ func writeTicketChange(ctx context.Context, w *store.Writer, t tenantScope, tc t
 	if err != nil {
 		return store.TicketRow{}, err
 	}
-	if _, err := w.UpdateTicketFields(ctx, ch.params); errors.Is(err, pgx.ErrNoRows) {
-		return store.TicketRow{}, stale(tc.row.Version, pick(ch.before, ch.sent))
-	} else if err != nil {
+	if err := writeFields(ctx, w, t, tc, ch); err != nil {
 		return store.TicketRow{}, err
 	}
 	explainedBy, err := explain(ctx, w, t, tc, body.Comment)
@@ -699,6 +697,9 @@ func writeTicketChange(ctx context.Context, w *store.Writer, t tenantScope, tc t
 		return store.TicketRow{}, err
 	}
 	recordTicketChange(w, t, tc, changedBefore, changedAfter, ch, explainedBy)
+	if err := ch.left.record(ctx, w, t, tc); err != nil {
+		return store.TicketRow{}, err
+	}
 	if sm != nil {
 		if err := sm.write(ctx, w, t, tc, ch.params, body, explainedBy); err != nil {
 			return store.TicketRow{}, err
@@ -715,6 +716,24 @@ func writeTicketChange(ctx context.Context, w *store.Writer, t tenantScope, tc t
 		}
 	}
 	return reread(ctx, w, t, tc.row.ID)
+}
+
+// writeFields writes a patch's fields, a compare-and-set on the version and on
+// the parent as the patch read it (docs/adr/0050 D1 as made concrete
+// 2026-10-10): a patch that lost to a concurrent write is the 412 with the
+// sent fields as they stand now (docs/adr/0050 D5), read again through the
+// predicate as the patch read it first — a ticket the write that won took out
+// of the caller's sight is the 404 of one that does not exist.
+func writeFields(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, ch ticketChange) error {
+	_, err := w.UpdateTicketFields(ctx, ch.params)
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	now, err := visibleTicket(ctx, w.Reader, t, tc.project.Key, int(tc.row.Number))
+	if err != nil {
+		return err
+	}
+	return stale(now.row.Version, pick(ticketFields(fieldsOf(t, now.row)), ch.sent))
 }
 
 // stageMove is the state change a patch's stages make: the done act, or the
@@ -835,14 +854,16 @@ func changes(changed map[string]any, fields ...string) bool {
 }
 
 // ticketChange is a patch applied to a ticket: the update, the values of the
-// fields before and after, keyed as the request names them, and what its
-// stages do to the state.
+// fields before and after, keyed as the request names them, what its stages
+// do to the state, and the parent of another team it takes the ticket away
+// from.
 type ticketChange struct {
 	params             writeq.UpdateTicketFieldsParams
 	before, after      map[string]any
 	sent               []string
 	becameConfidential bool
 	effect             domain.StageEffect
+	left               leftParent
 }
 
 // The patch's names of the three progress stages (docs/adr/0017 D2).
@@ -852,14 +873,20 @@ const (
 	fieldReview     = "progress_review"
 )
 
-func applyTicketPatch(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, p apigen.TicketPatch) (ticketChange, error) {
-	row := tc.row
-	ch := ticketChange{params: writeq.UpdateTicketFieldsParams{
+// fieldsOf is a ticket's patchable fields as its update writes them, the
+// compare-and-set on its version and on its parent as read.
+func fieldsOf(t tenantScope, row store.TicketRow) writeq.UpdateTicketFieldsParams {
+	return writeq.UpdateTicketFieldsParams{
 		TenantID: t.ID, ID: row.ID, Version: row.Version, Type: row.Type, Title: row.Title, Severity: row.Severity,
-		Security: row.Security, Threat: row.Threat, Effort: row.Effort, ParentID: row.ParentID,
+		Security: row.Security, Threat: row.Threat, Effort: row.Effort, ParentID: row.ParentID, ReadParentID: row.ParentID,
 		AssigneeID: row.AssigneeID, Progress: row.Progress, ProgressRefinement: row.ProgressRefinement,
 		ProgressReview: row.ProgressReview, Confidential: row.Confidential,
-	}}
+	}
+}
+
+func applyTicketPatch(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, p apigen.TicketPatch) (ticketChange, error) {
+	row := tc.row
+	ch := ticketChange{params: fieldsOf(t, row)}
 	ch.before = ticketFields(ch.params)
 	applyScalars(p, &ch)
 	if perr := checkThreat(ch.params.Security, ch.params.Threat); perr != nil {
@@ -952,8 +979,32 @@ func applyStages(row store.TicketRow, p apigen.TicketPatch, ch *ticketChange) *p
 // lock of the parent graph before the walk that refuses a cycle through any
 // team — the first lock of the transaction (docs/adr/0008 D2,
 // docs/developer/data-access.md#advisory-locks). Clearing it is a write on the
-// child alone, whatever the caller reads of the parent it had.
+// child alone, whatever the caller reads of the parent it had; a parent of
+// another team the ticket leaves is told in its team's record
+// (docs/adr/0008 D2 as amended 2026-10-10).
 func applyRelations(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, p apigen.TicketPatch, ch *ticketChange) error {
+	if err := applyParent(ctx, w, t, tc, p, ch); err != nil {
+		return err
+	}
+	if p.Assignee.IsSpecified() {
+		ch.sent = append(ch.sent, fieldAssignee)
+		ch.params.AssigneeID = nil
+		if !p.Assignee.IsNull() {
+			person := p.Assignee.MustGet()
+			if err := checkAssignee(ctx, w.Reader, t, tc.project.ID, person); err != nil {
+				return err
+			}
+			if perr := mayAssign(principal(ctx), ch.params.Confidential, tc.row.AssigneeID, person); perr != nil {
+				return perr
+			}
+			ch.params.AssigneeID = &person
+		}
+	}
+	return nil
+}
+
+// applyParent applies the parent of a patch, as applyRelations states it.
+func applyParent(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, p apigen.TicketPatch, ch *ticketChange) error {
 	if p.Parent.IsSpecified() {
 		ch.sent = append(ch.sent, fieldParent)
 		ch.params.ParentID = nil
@@ -976,21 +1027,9 @@ func applyRelations(ctx context.Context, w *store.Writer, t tenantScope, tc tick
 			ch.params.ParentID = &parent.ID
 		}
 	}
-	if p.Assignee.IsSpecified() {
-		ch.sent = append(ch.sent, fieldAssignee)
-		ch.params.AssigneeID = nil
-		if !p.Assignee.IsNull() {
-			person := p.Assignee.MustGet()
-			if err := checkAssignee(ctx, w.Reader, t, tc.project.ID, person); err != nil {
-				return err
-			}
-			if perr := mayAssign(principal(ctx), ch.params.Confidential, tc.row.AssigneeID, person); perr != nil {
-				return perr
-			}
-			ch.params.AssigneeID = &person
-		}
-	}
-	return nil
+	left, err := parentLeftElsewhere(ctx, w, tc, ch.params.ParentID)
+	ch.left = left
+	return err
 }
 
 // ticketFields are a ticket's patchable fields, keyed as the request names

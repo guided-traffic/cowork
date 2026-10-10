@@ -31,6 +31,32 @@ func (q *Queries) DeleteLinkByID(ctx context.Context, arg DeleteLinkByIDParams) 
 	return result.RowsAffected(), nil
 }
 
+const detachChildOf = `-- name: DetachChildOf :execrows
+UPDATE tickets
+SET parent_id = NULL
+WHERE tenant_id = $1 AND id = $2 AND parent_id = $3::uuid
+  AND deleted_at IS NULL
+`
+
+type DetachChildOfParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+	ParentID uuid.UUID
+}
+
+// A child of the team leaves its parent from the parent's side, whatever the
+// caller sees of the child (docs/adr/0008 D2 as amended 2026-10-10): its
+// parent alone changes, no version, as at a purge — the write is the
+// parent's, whose writer the caller is. Nothing where the ticket is no such
+// child, or deleted.
+func (q *Queries) DetachChildOf(ctx context.Context, arg DetachChildOfParams) (int64, error) {
+	result, err := q.db.Exec(ctx, detachChildOf, arg.TenantID, arg.ID, arg.ParentID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getLinkByID = `-- name: GetLinkByID :one
 SELECT id, type, source_id, target_id, created_by, created_at
 FROM ticket_links
@@ -125,10 +151,12 @@ type LinkEndKeyRow struct {
 	Number     int32
 }
 
-// The key of a ticket of the transaction's team at the other end of a link the
-// caller removes, whatever they see of it: the removal is an act on both
-// tickets (docs/adr/0012 D3), the other one's shown to its own readers.
-// visibility: exempt (the other end of a link the caller removes, whose act is recorded on it)
+// The key of a ticket of the transaction's team at the other end of a
+// relation the caller removes — a link, or a child of the parent they write —,
+// whatever they see of it: the removal is an act on both tickets
+// (docs/adr/0012 D3, docs/adr/0008 D2), the other one's shown to its own
+// readers.
+// visibility: exempt (the other end of a relation the caller removes, whose act is recorded on it)
 // deletion: exempt (a link to a deleted ticket is removed with its act as well)
 func (q *Queries) LinkEndKey(ctx context.Context, arg LinkEndKeyParams) (LinkEndKeyRow, error) {
 	row := q.db.QueryRow(ctx, linkEndKey, arg.TenantID, arg.ID)

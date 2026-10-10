@@ -52,6 +52,34 @@ of another project or team by its head. *(Made concrete by the implementer, open
 objection:)* the chooser offers open tickets alone, as it did inside the project, so the browser
 sets no closed ticket as a parent; the compact cards of the board's *Next* name no parent.
 
+**Amended again 2026-10-10 by the owner (built the same day in the data layer and the API; the
+browser outstanding):** D2 — a parent relation is removed by a writer of either end. The adversarial
+review of the build found that a viewer of team A who is a member of team B makes a B ticket the
+child of an A ticket, whose derived progress A then shows and whose own progress A can no longer
+set, and that nobody in A could end the relation, removing it being a write on the child in B; the
+owner chose that a writer of either end removes it, recorded in both teams' records, over consent of
+both teams to set it and over the gap written down. Built
+([migration 52](../../backend/internal/store/migrations/000052_end_a_relation_from_either_end.up.sql)):
+`DELETE …/tickets/{number}/children/{child}` detaches a child of any project or team from the
+ticket in the path by the `id` `…/relations` gives the child's relation — the parent's side —, and
+the child's side keeps `PATCH {"parent": null}`. *(Made concrete by the implementer, open to the
+owner's objection:)* the child's relation id is the parent and the child sealed with the server's
+key, as a cursor's position is, so that it shows no id of a child the reader may not see; it names,
+it does not admit — the removal checks the writer of the parent and that the ticket is its child as
+it stands. A child of the parent's own team is detached by the runtime role; one of another team by
+the crossing `end_relation` of
+[ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7, which clears the
+child's parent alone. The child's version stays, as at a purge: the removal is a write on the
+parent, and in another team the crossing writes the parent column alone; a patch of the child that
+raced the removal is refused by its compare-and-set, which covers the parent it read
+([ADR 0050](0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md)
+D1 as made concrete 2026-10-10). The child records `updated` — in its own team's record, as
+`system:relation` where the remover holds no role there — and the parent records `detached`
+([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D1), each naming the
+other ticket in its refs; a patch that takes a child away from a parent of another team records
+`detached` on that parent in its team's record. A relation that is no child of the ticket in the
+path, or none, answers `404` "no such child", the same body whatever the reason.
+
 ## Context
 
 The Markdown tickets cowork will import come in three shapes: a defect analysed to its root
@@ -82,8 +110,11 @@ Setting the parent is a write on the child: a
 of the parent's team, the parent visible to them, a confidential one included. A parent the person
 cannot read is refused exactly like one that does not exist, because ticket numbers are a sequence
 per project ([ADR 0022](0022-uuidv7-everywhere-sequences-only-for-ticket-numbers.md)) and any key
-taken would let a person try `SUT-1`, `SUT-2`, … and read the heads. Removing it is a write on the
-child alone. The API names the parent by its canonical key
+taken would let a person try `SUT-1`, `SUT-2`, … and read the heads. ~~Removing it is a write on the
+child alone.~~ *(Amended again 2026-10-10 by the owner, built the same day in the data layer and
+the API:)* Removing it is a write on either end: a `member` or `admin` of the child's team clears it
+on the child, one of the parent's team detaches the child from the parent, whether or not they read
+the other end, and the removal is recorded in the records of both teams. The API names the parent by its canonical key
 ([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md)); the browser
 offers the tickets the person can read across their teams. A person who holds no role in the other
 end's team sees it by its head only — or as `<team> [Confidential]` —

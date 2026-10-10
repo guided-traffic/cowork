@@ -100,7 +100,8 @@ link:
     summary: Remove a link
     description: |
       Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in
-      the path, the link's source, whatever the caller reads of the other end (docs/adr/0012 D2).
+      the path, either end of the link — its source or its target —, whatever the caller reads of
+      the other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.
     responses:
       '204':
         description: The link is gone
@@ -149,11 +150,14 @@ linkAcross:
     tags: [tickets]
     summary: Remove a link to a ticket of any team by its canonical key
     description: |
-      A write on this ticket, the link's source, whatever the caller reads of the other end
-      (docs/adr/0012 D2); the link is found among this ticket's relations by the other end's key,
-      so a key the caller sees as a head removes its link. Idempotent: no such link — or a key that
-      names none — answers 204 as well. An end the caller may not see shows no key; its link is
-      removed by its id, `DELETE …/links/{link}`. The act is recorded on both tickets.
+      A write on this ticket, either end of the link — its source or its target —, whatever the
+      caller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket
+      removes a link another team keeps to it as well. The link is found among this ticket's
+      relations by the other end's key, so a key the caller sees as a head removes its link.
+      Idempotent: no such link — or a key that names none — answers 204 as well. An end the caller
+      may not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is
+      recorded on both tickets, the other end's in its own team's record — as `system:relation`
+      where the caller holds no role in that team.
     responses:
       '204':
         description: The link is gone
@@ -168,16 +172,44 @@ linkByID:
   delete:
     operationId: removeTicketLink
     tags: [tickets]
-    summary: Remove a link of this ticket, its source, by the link's id
+    summary: Remove a link of this ticket, either end of it, by the link's id
     description: |
       The way to remove a link whose other end the caller may not see — a placeholder shows no key
       (docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must
-      be the link's source, whatever the caller reads of the other end (docs/adr/0012 D2). A link of
-      which this ticket is not the source, or no link, answers 204 and removes nothing. The act is
-      recorded on both tickets, the other end's in its own team's record.
+      be the link's source or its target, whatever the caller reads of the other end and whatever
+      team keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this
+      ticket, or none, answers exactly as a missing one, `404` "no such link", and removes nothing.
+      The act is recorded on both tickets, the other end's in its own team's record — as
+      `system:relation` where the caller holds no role in that team.
     responses:
       '204':
-        description: The link is gone, or was never this ticket's to remove
+        description: The link is gone
+      default:
+        $ref: './components/responses.yaml#/Problem'
+children:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/ChildRelation'
+  delete:
+    operationId: removeTicketChild
+    tags: [tickets]
+    summary: Remove a child of this ticket, of any project or team, by the id of the relation
+    description: |
+      The parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a
+      writer of this ticket detaches a child of any project or team from it, whatever they read of
+      the child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The
+      child's side ends it by the update of its `parent`. The child's parent alone changes, its
+      version stays — an update of the child read before is refused with `412`, the parent being
+      part of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived
+      again. A relation that is no child of this ticket, or none, answers exactly as a missing one,
+      `404` "no such child", and removes nothing. The act `updated` is recorded on the child — in
+      its own team's record, as `system:relation` where the caller holds no role in that team — and
+      `detached` on this ticket.
+    responses:
+      '204':
+        description: The child is no child of this ticket any more
       default:
         $ref: './components/responses.yaml#/Problem'
 relations:

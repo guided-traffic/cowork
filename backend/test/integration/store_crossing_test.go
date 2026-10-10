@@ -565,6 +565,112 @@ func TestEndingATeamsRelations(t *testing.T) {
 	assert.Zero(t, outside, "nothing of it is recorded outside B")
 }
 
+// Ending one relation of a ticket into another team ends exactly that one: the
+// anchor a ticket of the transaction's team the caller sees, the caller a
+// member or an administrator of that team, and the row the anchor's own
+// relation kept in another team — a child of it there, a link onto it there.
+// Anything else answers no row and changes nothing, whatever the API asked;
+// the one ends with its version unmoved (docs/adr/0008 D2, docs/adr/0012 D2 as
+// amended 2026-10-10, docs/adr/0021 D7).
+func TestEndingOneRelationIsTheAnchorsAlone(t *testing.T) {
+	ctx := context.Background()
+	c := newCrossing(t)
+	f := fixtures(t)
+	db := openRuntime(t)
+	source, _, err := f.Ticket(ctx, c.B, c.ProjectB, c.MemberB, "a ticket of B linked onto A")
+	require.NoError(t, err)
+	link := func(team uuid.UUID, typ string, from, to, by uuid.UUID) uuid.UUID {
+		var id uuid.UUID
+		require.NoError(t, f.QueryRow(ctx, `INSERT INTO ticket_links (tenant_id, type, source_id, target_id, created_by)
+			VALUES ($1, $2, $3, $4, $5) RETURNING id`, team, typ, from, to, by).Scan(&id))
+		return id
+	}
+	ontoPA, ontoCA, fromPA := link(c.B, "blocks", source, c.PA, c.MemberB), link(c.B, "relates-to", source, c.CA, c.MemberB),
+		link(c.A, "found-in", c.PA, c.CB, c.MemberA)
+	endChild := func(person, team, anchor, child uuid.UUID) (store.FarEnd, bool) {
+		t.Helper()
+		var (
+			far store.FarEnd
+			ok  bool
+		)
+		_, err := db.Mutate(as(person), team, func(w *store.Writer) error {
+			var err error
+			far, ok, err = w.EndChildElsewhere(ctx, anchor, child)
+			w.Record(store.Event{EntityType: "seed", Action: "created"})
+			return err
+		})
+		require.NoError(t, err)
+		return far, ok
+	}
+	endLink := func(person, team, anchor, id uuid.UUID) bool {
+		t.Helper()
+		var ok bool
+		_, err := db.Mutate(as(person), team, func(w *store.Writer) error {
+			var err error
+			_, _, ok, err = w.EndLinkElsewhere(ctx, anchor, id)
+			w.Record(store.Event{EntityType: "seed", Action: "created"})
+			return err
+		})
+		require.NoError(t, err)
+		return ok
+	}
+	parentOf := func(ticket uuid.UUID) (parent *uuid.UUID, version int32) {
+		t.Helper()
+		require.NoError(t, f.QueryRow(ctx, "SELECT parent_id, version FROM tickets WHERE id = $1", ticket).Scan(&parent, &version))
+		return parent, version
+	}
+	stands := func(id uuid.UUID) bool {
+		t.Helper()
+		n, err := f.QueryCount(ctx, "SELECT count(*) FROM ticket_links WHERE id = $1", id)
+		require.NoError(t, err)
+		return n == 1
+	}
+
+	for name, try := range map[string][4]uuid.UUID{
+		"a viewer of the anchor's team":                  {c.ViewerA, c.A, c.PA, c.CB},
+		"an anchor the caller may not see, confidential": {c.MemberA, c.A, c.PC, c.CB2},
+		"an anchor in a project restricted from them":    {c.MemberA, c.A, c.PR, c.CB3},
+		"a child of another parent":                      {c.MemberA, c.A, c.PA, c.CB2},
+		"a child of the anchor's own team":               {c.MemberA, c.A, c.PA, c.CA},
+		"an anchor of another team than the transaction": {c.Both, c.B, c.PA, c.CB},
+	} {
+		_, ok := endChild(try[0], try[1], try[2], try[3])
+		assert.False(t, ok, name)
+	}
+	for child, parent := range map[uuid.UUID]uuid.UUID{c.CB: c.PA, c.CB2: c.PC, c.CB3: c.PR, c.CA: c.PA} {
+		now, _ := parentOf(child)
+		require.NotNil(t, now)
+		assert.Equal(t, parent, *now, "%s keeps its parent", child)
+	}
+	for name, try := range map[string][4]uuid.UUID{
+		"a viewer of the anchor's team":                  {c.ViewerA, c.A, c.PA, ontoPA},
+		"a link onto another ticket":                     {c.MemberA, c.A, c.PA, ontoCA},
+		"a link the anchor's own team keeps":             {c.MemberA, c.A, c.PA, fromPA},
+		"an anchor of another team than the transaction": {c.Both, c.B, c.PA, ontoPA},
+	} {
+		assert.False(t, endLink(try[0], try[1], try[2], try[3]), name)
+	}
+	for _, id := range []uuid.UUID{ontoPA, ontoCA, fromPA} {
+		assert.True(t, stands(id), "the link %s stands", id)
+	}
+
+	_, before := parentOf(c.CB)
+	far, ok := endChild(c.MemberA, c.A, c.PA, c.CB)
+	require.True(t, ok)
+	var key string
+	require.NoError(t, f.QueryRow(ctx, `SELECT tn.slug || '/' || p.key || '-' || t.number FROM tickets t
+		JOIN tenants tn ON tn.id = t.tenant_id JOIN projects p ON p.id = t.project_id WHERE t.id = $1`, c.CB).Scan(&key))
+	assert.Equal(t, key, far.Key(), "it answers where the act on the child is recorded")
+	now, version := parentOf(c.CB)
+	assert.Nil(t, now, "the child of B is a root")
+	assert.Equal(t, before, version, "its version unmoved")
+	_, ok = endChild(c.AdminA, c.A, c.PC, c.CB2)
+	assert.True(t, ok, "an administrator of A, admitted to the confidential parent, ends its child")
+	assert.True(t, endLink(c.MemberA, c.A, c.PA, ontoPA))
+	assert.False(t, stands(ontoPA), "the link onto PA is gone")
+	assert.True(t, stands(ontoCA), "the other stands")
+}
+
 // cowork serve refuses crossings that are not the owner role's alone: a policy
 // of a crossing that names another role, a crossing function another role
 // owns (docs/adr/0021 D7 as made concrete 2026-10-10). A database migrated

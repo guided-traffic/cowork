@@ -11,6 +11,14 @@ import { TicketHead } from '../models/ticket-head';
  */
 export interface Relation {
   head: TicketHead;
+
+  /**
+   * The relation's id, by which a writer of the ticket removes it (docs/adr/0008 D2,
+   * docs/adr/0012 D2 as amended 2026-10-10): a link's id, which `DELETE …/links/{link}` takes;
+   * for a child an opaque handle, which `DELETE …/children/{child}` takes and which shows no id
+   * of the child; null for the parent, which the update of `parent` removes
+   */
+  id: (string | null);
   kind: 'parent' | 'child' | 'link';
 
   /**

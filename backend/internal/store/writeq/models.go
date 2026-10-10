@@ -62,6 +62,7 @@ const (
 	AuditActionAccepted            AuditAction = "accepted"
 	AuditActionImported            AuditAction = "imported"
 	AuditActionPrerequisiteSettled AuditAction = "prerequisite_settled"
+	AuditActionDetached            AuditAction = "detached"
 )
 
 func (e *AuditAction) Scan(src interface{}) error {

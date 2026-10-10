@@ -28,8 +28,11 @@ INSERT INTO tickets (
 RETURNING id;
 
 -- name: UpdateTicketFields :one
--- The fields of PATCH, a compare-and-set on the version (docs/adr/0050 D1);
--- progress is the implementation stage (docs/adr/0017 D2).
+-- The fields of PATCH, a compare-and-set on the version (docs/adr/0050 D1)
+-- and on the parent as the patch read it: a child detached from its parent's
+-- side, or by a purge of the parent, keeps its version, and a patch read
+-- before would write the parent back; progress is the implementation stage
+-- (docs/adr/0017 D2).
 UPDATE tickets
 SET type = sqlc.arg(type), title = sqlc.arg(title), severity = sqlc.arg(severity),
     security = sqlc.arg(security), threat = sqlc.narg(threat), effort = sqlc.arg(effort),
@@ -38,6 +41,7 @@ SET type = sqlc.arg(type), title = sqlc.arg(title), severity = sqlc.arg(severity
     progress_review = sqlc.arg(progress_review), confidential = sqlc.arg(confidential),
     version = version + 1, updated_at = now()
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id) AND version = sqlc.arg(version)
+  AND parent_id IS NOT DISTINCT FROM sqlc.narg(read_parent_id)::uuid
 RETURNING version;
 
 -- name: UpdateTicketBody :one

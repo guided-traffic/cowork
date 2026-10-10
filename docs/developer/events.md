@@ -40,8 +40,9 @@ carries the facts the ticket had (`Event.Published`), because the row is gone wh
 written ([ADR 0024] D1, D2). Saved filters are not published; their list, like the bin, answers
 `304` to the poll of the fallback when nothing changed.
 
-**An act in another team** — a link across teams on its other end, the end of a relation at a
-purge, a settled prerequisite's `prerequisite_settled` on a ticket it blocks — is written by
+**An act in another team** — a link across teams on its other end, the removal of a relation by a
+writer of either end on the other ticket, the end of a relation at a purge, a settled
+prerequisite's `prerequisite_settled` on a ticket it blocks — is written by
 `Writer.RecordElsewhere` in that team's record and published like any act there, on that team's
 streams, by that ticket's facts ([data-access.md](data-access.md#crossings-between-teams)).
 **A parent's derived stages** that a change of a child — of its own team or another — moved are no act: the

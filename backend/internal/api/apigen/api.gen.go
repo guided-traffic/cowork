@@ -71,6 +71,7 @@ const (
 	AuditActionCreated             AuditAction = "created"
 	AuditActionDeactivated         AuditAction = "deactivated"
 	AuditActionDeleted             AuditAction = "deleted"
+	AuditActionDetached            AuditAction = "detached"
 	AuditActionDownloaded          AuditAction = "downloaded"
 	AuditActionEdited              AuditAction = "edited"
 	AuditActionExpired             AuditAction = "expired"
@@ -132,6 +133,8 @@ func (e AuditAction) Valid() bool {
 	case AuditActionDeactivated:
 		return true
 	case AuditActionDeleted:
+		return true
+	case AuditActionDetached:
 		return true
 	case AuditActionDownloaded:
 		return true
@@ -1583,7 +1586,10 @@ type Activity struct {
 	// Action `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
 	// reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
 	// redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
-	// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5)
+	// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5).
+	// `detached` is recorded on a parent when a child leaves it from the parent's side, or from the
+	// child's side where the parent is of another team, naming the child in its refs
+	// (docs/adr/0008 D2 as amended 2026-10-10)
 	Action      AuditAction               `json:"action"`
 	Actor       nullable.Nullable[Person] `json:"actor"`
 	ActorSystem nullable.Nullable[string] `json:"actor_system"`
@@ -1709,7 +1715,10 @@ type AttachmentUsage struct {
 // AuditAction `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
 // reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
 // redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
-// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5)
+// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5).
+// `detached` is recorded on a parent when a child leaves it from the parent's side, or from the
+// child's side where the parent is of another team, naming the child in its refs
+// (docs/adr/0008 D2 as amended 2026-10-10)
 type AuditAction string
 
 // AuditEvent defines model for AuditEvent.
@@ -1717,7 +1726,10 @@ type AuditEvent struct {
 	// Action `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
 	// reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
 	// redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
-	// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5)
+	// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5).
+	// `detached` is recorded on a parent when a child leaves it from the parent's side, or from the
+	// child's side where the parent is of another team, naming the child in its refs
+	// (docs/adr/0008 D2 as amended 2026-10-10)
 	Action AuditAction `json:"action"`
 
 	// Actor A person, or a system actor such as system:idempotency-expiry
@@ -3551,8 +3563,14 @@ type Relation struct {
 	// (docs/adr/0034 D4). A ticket the reader may not see is the placeholder, `<team> [Confidential]`:
 	// its team and nothing else, the key, the title, the type and the state null — in another team
 	// or in the reader's own.
-	Head TicketHead   `json:"head"`
-	Kind RelationKind `json:"kind"`
+	Head TicketHead `json:"head"`
+
+	// Id The relation's id, by which a writer of the ticket removes it (docs/adr/0008 D2,
+	// docs/adr/0012 D2 as amended 2026-10-10): a link's id, which `DELETE …/links/{link}` takes;
+	// for a child an opaque handle, which `DELETE …/children/{child}` takes and which shows no id
+	// of the child; null for the parent, which the update of `parent` removes
+	Id   nullable.Nullable[string] `json:"id"`
+	Kind RelationKind              `json:"kind"`
 
 	// Link The link of a relation of the kind `link`; null for a parent and a child
 	Link nullable.Nullable[RelationLink] `json:"link"`
@@ -4412,6 +4430,9 @@ type WipLimits struct {
 
 // AttachmentID defines model for AttachmentID.
 type AttachmentID = openapi_types.UUID
+
+// ChildRelation defines model for ChildRelation.
+type ChildRelation = string
 
 // CommentID defines model for CommentID.
 type CommentID = openapi_types.UUID
@@ -7226,12 +7247,19 @@ type ClientInterface interface {
 
 	// UpdateTicketWithBody Change a ticket's fields
 	//
-	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-	// new assignee is 403 `session_required` — admitting a person takes a browser session
-	// (docs/adr/0035 D5).
+	// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+	// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+	// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+	// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+	// that takes the ticket away from a parent of another team — clearing it or setting another —
+	// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+	// 2026-10-10).
+	//
+	// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+	// confidential ticket — or one the change makes confidential — only to its own person or to
+	// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+	// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+	// takes a browser session (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -7255,12 +7283,19 @@ type ClientInterface interface {
 
 	// UpdateTicket Change a ticket's fields
 	//
-	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-	// new assignee is 403 `session_required` — admitting a person takes a browser session
-	// (docs/adr/0035 D5).
+	// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+	// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+	// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+	// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+	// that takes the ticket away from a parent of another team — clearing it or setting another —
+	// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+	// 2026-10-10).
+	//
+	// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+	// confidential ticket — or one the change makes confidential — only to its own person or to
+	// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+	// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+	// takes a browser session (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -7365,6 +7400,22 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/body (the `ReplaceTicketBody` operationId).
 	ReplaceTicketBody(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ReplaceTicketBodyParams, body ReplaceTicketBodyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveTicketChild Remove a child of this ticket, of any project or team, by the id of the relation
+	//
+	// The parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a
+	// writer of this ticket detaches a child of any project or team from it, whatever they read of
+	// the child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The
+	// child's side ends it by the update of its `parent`. The child's parent alone changes, its
+	// version stays — an update of the child read before is refused with `412`, the parent being
+	// part of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived
+	// again. A relation that is no child of this ticket, or none, answers exactly as a missing one,
+	// `404` "no such child", and removes nothing. The act `updated` is recorded on the child — in
+	// its own team's record, as `system:relation` where the caller holds no role in that team — and
+	// `detached` on this ticket.
+	//
+	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child} (the `RemoveTicketChild` operationId).
+	RemoveTicketChild(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListComments The ticket's comment thread
 	//
@@ -7562,24 +7613,29 @@ type ClientInterface interface {
 	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListTicketLinks(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListTicketLinksParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// RemoveTicketLink Remove a link of this ticket, its source, by the link's id
+	// RemoveTicketLink Remove a link of this ticket, either end of it, by the link's id
 	//
 	// The way to remove a link whose other end the caller may not see — a placeholder shows no key
 	// (docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must
-	// be the link's source, whatever the caller reads of the other end (docs/adr/0012 D2). A link of
-	// which this ticket is not the source, or no link, answers 204 and removes nothing. The act is
-	// recorded on both tickets, the other end's in its own team's record.
+	// be the link's source or its target, whatever the caller reads of the other end and whatever
+	// team keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this
+	// ticket, or none, answers exactly as a missing one, `404` "no such link", and removes nothing.
+	// The act is recorded on both tickets, the other end's in its own team's record — as
+	// `system:relation` where the caller holds no role in that team.
 	//
 	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link} (the `RemoveTicketLink` operationId).
 	RemoveTicketLink(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, link LinkID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UnlinkTicketFrom Remove a link to a ticket of any team by its canonical key
 	//
-	// A write on this ticket, the link's source, whatever the caller reads of the other end
-	// (docs/adr/0012 D2); the link is found among this ticket's relations by the other end's key,
-	// so a key the caller sees as a head removes its link. Idempotent: no such link — or a key that
-	// names none — answers 204 as well. An end the caller may not see shows no key; its link is
-	// removed by its id, `DELETE …/links/{link}`. The act is recorded on both tickets.
+	// A write on this ticket, either end of the link — its source or its target —, whatever the
+	// caller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket
+	// removes a link another team keeps to it as well. The link is found among this ticket's
+	// relations by the other end's key, so a key the caller sees as a head removes its link.
+	// Idempotent: no such link — or a key that names none — answers 204 as well. An end the caller
+	// may not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is
+	// recorded on both tickets, the other end's in its own team's record — as `system:relation`
+	// where the caller holds no role in that team.
 	//
 	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other} (the `UnlinkTicketFrom` operationId).
 	UnlinkTicketFrom(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -7603,7 +7659,8 @@ type ClientInterface interface {
 	// UnlinkTickets Remove a link
 	//
 	// Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in
-	// the path, the link's source, whatever the caller reads of the other end (docs/adr/0012 D2).
+	// the path, either end of the link — its source or its target —, whatever the caller reads of
+	// the other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.
 	//
 	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other} (the `UnlinkTickets` operationId).
 	UnlinkTickets(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -10638,12 +10695,19 @@ func (c *Client) GetTicket(ctx context.Context, team TeamSlug, project ProjectKe
 
 // UpdateTicketWithBody Change a ticket's fields
 //
-// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-// makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-// new assignee is 403 `session_required` — admitting a person takes a browser session
-// (docs/adr/0035 D5).
+// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+// that takes the ticket away from a parent of another team — clearing it or setting another —
+// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+// 2026-10-10).
+//
+// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+// confidential ticket — or one the change makes confidential — only to its own person or to
+// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+// takes a browser session (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -10677,12 +10741,19 @@ func (c *Client) UpdateTicketWithBody(ctx context.Context, team TeamSlug, projec
 
 // UpdateTicket Change a ticket's fields
 //
-// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-// makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-// new assignee is 403 `session_required` — admitting a person takes a browser session
-// (docs/adr/0035 D5).
+// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+// that takes the ticket away from a parent of another team — clearing it or setting another —
+// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+// 2026-10-10).
+//
+// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+// confidential ticket — or one the change makes confidential — only to its own person or to
+// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+// takes a browser session (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -10868,6 +10939,32 @@ func (c *Client) ReplaceTicketBodyWithBody(ctx context.Context, team TeamSlug, p
 // Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/body (the `ReplaceTicketBody` operationId).
 func (c *Client) ReplaceTicketBody(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ReplaceTicketBodyParams, body ReplaceTicketBodyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReplaceTicketBodyRequest(c.Server, team, project, number, params, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// RemoveTicketChild Remove a child of this ticket, of any project or team, by the id of the relation
+//
+// The parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a
+// writer of this ticket detaches a child of any project or team from it, whatever they read of
+// the child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The
+// child's side ends it by the update of its `parent`. The child's parent alone changes, its
+// version stays — an update of the child read before is refused with `412`, the parent being
+// part of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived
+// again. A relation that is no child of this ticket, or none, answers exactly as a missing one,
+// `404` "no such child", and removes nothing. The act `updated` is recorded on the child — in
+// its own team's record, as `system:relation` where the caller holds no role in that team — and
+// `detached` on this ticket.
+//
+// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child} (the `RemoveTicketChild` operationId).
+func (c *Client) RemoveTicketChild(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveTicketChildRequest(c.Server, team, project, number, child)
 	if err != nil {
 		return nil, err
 	}
@@ -11253,13 +11350,15 @@ func (c *Client) ListTicketLinks(ctx context.Context, team TeamSlug, project Pro
 	return c.Client.Do(req)
 }
 
-// RemoveTicketLink Remove a link of this ticket, its source, by the link's id
+// RemoveTicketLink Remove a link of this ticket, either end of it, by the link's id
 //
 // The way to remove a link whose other end the caller may not see — a placeholder shows no key
 // (docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must
-// be the link's source, whatever the caller reads of the other end (docs/adr/0012 D2). A link of
-// which this ticket is not the source, or no link, answers 204 and removes nothing. The act is
-// recorded on both tickets, the other end's in its own team's record.
+// be the link's source or its target, whatever the caller reads of the other end and whatever
+// team keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this
+// ticket, or none, answers exactly as a missing one, `404` "no such link", and removes nothing.
+// The act is recorded on both tickets, the other end's in its own team's record — as
+// `system:relation` where the caller holds no role in that team.
 //
 // Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link} (the `RemoveTicketLink` operationId).
 func (c *Client) RemoveTicketLink(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, link LinkID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -11276,11 +11375,14 @@ func (c *Client) RemoveTicketLink(ctx context.Context, team TeamSlug, project Pr
 
 // UnlinkTicketFrom Remove a link to a ticket of any team by its canonical key
 //
-// A write on this ticket, the link's source, whatever the caller reads of the other end
-// (docs/adr/0012 D2); the link is found among this ticket's relations by the other end's key,
-// so a key the caller sees as a head removes its link. Idempotent: no such link — or a key that
-// names none — answers 204 as well. An end the caller may not see shows no key; its link is
-// removed by its id, `DELETE …/links/{link}`. The act is recorded on both tickets.
+// A write on this ticket, either end of the link — its source or its target —, whatever the
+// caller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket
+// removes a link another team keeps to it as well. The link is found among this ticket's
+// relations by the other end's key, so a key the caller sees as a head removes its link.
+// Idempotent: no such link — or a key that names none — answers 204 as well. An end the caller
+// may not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is
+// recorded on both tickets, the other end's in its own team's record — as `system:relation`
+// where the caller holds no role in that team.
 //
 // Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other} (the `UnlinkTicketFrom` operationId).
 func (c *Client) UnlinkTicketFrom(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, otherTeam OtherTeamSlug, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -11324,7 +11426,8 @@ func (c *Client) LinkTicketTo(ctx context.Context, team TeamSlug, project Projec
 // UnlinkTickets Remove a link
 //
 // Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in
-// the path, the link's source, whatever the caller reads of the other end (docs/adr/0012 D2).
+// the path, either end of the link — its source or its target —, whatever the caller reads of
+// the other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.
 //
 // Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other} (the `UnlinkTickets` operationId).
 func (c *Client) UnlinkTickets(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, pType PathLinkType, other OtherTicketKey, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -17799,6 +17902,61 @@ func NewReplaceTicketBodyRequestWithBody(server string, team TeamSlug, project P
 	return req, nil
 }
 
+// NewRemoveTicketChildRequest constructs an http.Request for the RemoveTicketChild method
+func NewRemoveTicketChildRequest(server string, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "team", team, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "project", project, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithOptions("simple", false, "number", number, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "integer", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam3 string
+
+	pathParam3, err = runtime.StyleParamWithOptions("simple", false, "child", child, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/teams/%s/projects/%s/tickets/%s/children/%s", pathParam0, pathParam1, pathParam2, pathParam3)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListCommentsRequest constructs an http.Request for the ListComments method
 func NewListCommentsRequest(server string, team TeamSlug, project ProjectKey, number TicketNumber, params *ListCommentsParams) (*http.Request, error) {
 	var err error
@@ -23403,12 +23561,19 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateTicketWithBodyWithResponse Change a ticket's fields
 	//
-	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-	// new assignee is 403 `session_required` — admitting a person takes a browser session
-	// (docs/adr/0035 D5).
+	// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+	// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+	// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+	// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+	// that takes the ticket away from a parent of another team — clearing it or setting another —
+	// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+	// 2026-10-10).
+	//
+	// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+	// confidential ticket — or one the change makes confidential — only to its own person or to
+	// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+	// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+	// takes a browser session (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -23432,12 +23597,19 @@ type ClientWithResponsesInterface interface {
 
 	// UpdateTicketWithResponse Change a ticket's fields
 	//
-	// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-	// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-	// makes confidential — only to its own person or to nobody, and another new assignee is 403
-	// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-	// new assignee is 403 `session_required` — admitting a person takes a browser session
-	// (docs/adr/0035 D5).
+	// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+	// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+	// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+	// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+	// that takes the ticket away from a parent of another team — clearing it or setting another —
+	// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+	// 2026-10-10).
+	//
+	// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+	// confidential ticket — or one the change makes confidential — only to its own person or to
+	// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+	// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+	// takes a browser session (docs/adr/0035 D5).
 	//
 	// The three progress stages — `progress_refinement`, `progress` (implementation),
 	// `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -23552,6 +23724,24 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/body (the `ReplaceTicketBody` operationId).
 	ReplaceTicketBodyWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ReplaceTicketBodyParams, body ReplaceTicketBodyJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceTicketBodyResponse, error)
+
+	// RemoveTicketChildWithResponse Remove a child of this ticket, of any project or team, by the id of the relation
+	//
+	// The parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a
+	// writer of this ticket detaches a child of any project or team from it, whatever they read of
+	// the child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The
+	// child's side ends it by the update of its `parent`. The child's parent alone changes, its
+	// version stays — an update of the child read before is refused with `412`, the parent being
+	// part of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived
+	// again. A relation that is no child of this ticket, or none, answers exactly as a missing one,
+	// `404` "no such child", and removes nothing. The act `updated` is recorded on the child — in
+	// its own team's record, as `system:relation` where the caller holds no role in that team — and
+	// `detached` on this ticket.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child} (the `RemoveTicketChild` operationId).
+	RemoveTicketChildWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation, reqEditors ...RequestEditorFn) (*RemoveTicketChildResponse, error)
 
 	// ListCommentsWithResponse The ticket's comment thread
 	//
@@ -23765,13 +23955,15 @@ type ClientWithResponsesInterface interface {
 	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListTicketLinksWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, params *ListTicketLinksParams, reqEditors ...RequestEditorFn) (*ListTicketLinksResponse, error)
 
-	// RemoveTicketLinkWithResponse Remove a link of this ticket, its source, by the link's id
+	// RemoveTicketLinkWithResponse Remove a link of this ticket, either end of it, by the link's id
 	//
 	// The way to remove a link whose other end the caller may not see — a placeholder shows no key
 	// (docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must
-	// be the link's source, whatever the caller reads of the other end (docs/adr/0012 D2). A link of
-	// which this ticket is not the source, or no link, answers 204 and removes nothing. The act is
-	// recorded on both tickets, the other end's in its own team's record.
+	// be the link's source or its target, whatever the caller reads of the other end and whatever
+	// team keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this
+	// ticket, or none, answers exactly as a missing one, `404` "no such link", and removes nothing.
+	// The act is recorded on both tickets, the other end's in its own team's record — as
+	// `system:relation` where the caller holds no role in that team.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -23780,11 +23972,14 @@ type ClientWithResponsesInterface interface {
 
 	// UnlinkTicketFromWithResponse Remove a link to a ticket of any team by its canonical key
 	//
-	// A write on this ticket, the link's source, whatever the caller reads of the other end
-	// (docs/adr/0012 D2); the link is found among this ticket's relations by the other end's key,
-	// so a key the caller sees as a head removes its link. Idempotent: no such link — or a key that
-	// names none — answers 204 as well. An end the caller may not see shows no key; its link is
-	// removed by its id, `DELETE …/links/{link}`. The act is recorded on both tickets.
+	// A write on this ticket, either end of the link — its source or its target —, whatever the
+	// caller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket
+	// removes a link another team keeps to it as well. The link is found among this ticket's
+	// relations by the other end's key, so a key the caller sees as a head removes its link.
+	// Idempotent: no such link — or a key that names none — answers 204 as well. An end the caller
+	// may not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is
+	// recorded on both tickets, the other end's in its own team's record — as `system:relation`
+	// where the caller holds no role in that team.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -23812,7 +24007,8 @@ type ClientWithResponsesInterface interface {
 	// UnlinkTicketsWithResponse Remove a link
 	//
 	// Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in
-	// the path, the link's source, whatever the caller reads of the other end (docs/adr/0012 D2).
+	// the path, either end of the link — its source or its target —, whatever the caller reads of
+	// the other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -29341,6 +29537,54 @@ func (r ReplaceTicketBodyResponse) ContentType() string {
 	return ""
 }
 
+// RemoveTicketChildResponseDefaultHeaders the declared response headers of an HTTP default response for RemoveTicketChild
+type RemoveTicketChildResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type RemoveTicketChildResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *RemoveTicketChildResponseDefaultHeaders
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RemoveTicketChildResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r RemoveTicketChildResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveTicketChildResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveTicketChildResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveTicketChildResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // ListCommentsResponse200Headers the declared response headers of an HTTP 200 response for ListComments
 type ListCommentsResponse200Headers struct {
 	ETag *string
@@ -34470,12 +34714,19 @@ func (c *ClientWithResponses) GetTicketWithResponse(ctx context.Context, team Te
 
 // UpdateTicketWithBodyWithResponse Change a ticket's fields
 //
-// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-// makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-// new assignee is 403 `session_required` — admitting a person takes a browser session
-// (docs/adr/0035 D5).
+// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+// that takes the ticket away from a parent of another team — clearing it or setting another —
+// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+// 2026-10-10).
+//
+// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+// confidential ticket — or one the change makes confidential — only to its own person or to
+// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+// takes a browser session (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -34505,12 +34756,19 @@ func (c *ClientWithResponses) UpdateTicketWithBodyWithResponse(ctx context.Conte
 
 // UpdateTicketWithResponse Change a ticket's fields
 //
-// `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-// assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-// makes confidential — only to its own person or to nobody, and another new assignee is 403
-// `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-// new assignee is 403 `session_required` — admitting a person takes a browser session
-// (docs/adr/0035 D5).
+// `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+// the parent the change read: a ticket detached from its parent's side, or by a purge of the
+// parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+// sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+// that takes the ticket away from a parent of another team — clearing it or setting another —
+// records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+// 2026-10-10).
+//
+// Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+// confidential ticket — or one the change makes confidential — only to its own person or to
+// nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+// is held the same way, and another new assignee is 403 `session_required` — admitting a person
+// takes a browser session (docs/adr/0035 D5).
 //
 // The three progress stages — `progress_refinement`, `progress` (implementation),
 // `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
@@ -34678,6 +34936,30 @@ func (c *ClientWithResponses) ReplaceTicketBodyWithResponse(ctx context.Context,
 		return nil, err
 	}
 	return ParseReplaceTicketBodyResponse(rsp)
+}
+
+// RemoveTicketChildWithResponse Remove a child of this ticket, of any project or team, by the id of the relation
+//
+// The parent's side of ending a parent relation (docs/adr/0008 D2 as amended 2026-10-10): a
+// writer of this ticket detaches a child of any project or team from it, whatever they read of
+// the child — a placeholder too —, by the `id` `…/relations` gives the child's relation. The
+// child's side ends it by the update of its `parent`. The child's parent alone changes, its
+// version stays — an update of the child read before is refused with `412`, the parent being
+// part of its compare-and-set (docs/adr/0050 D1) —; the parent's derived progress is derived
+// again. A relation that is no child of this ticket, or none, answers exactly as a missing one,
+// `404` "no such child", and removes nothing. The act `updated` is recorded on the child — in
+// its own team's record, as `system:relation` where the caller holds no role in that team — and
+// `detached` on this ticket.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child} (the `RemoveTicketChild` operationId).
+func (c *ClientWithResponses) RemoveTicketChildWithResponse(ctx context.Context, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation, reqEditors ...RequestEditorFn) (*RemoveTicketChildResponse, error) {
+	rsp, err := c.RemoveTicketChild(ctx, team, project, number, child, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveTicketChildResponse(rsp)
 }
 
 // ListCommentsWithResponse The ticket's comment thread
@@ -35000,13 +35282,15 @@ func (c *ClientWithResponses) ListTicketLinksWithResponse(ctx context.Context, t
 	return ParseListTicketLinksResponse(rsp)
 }
 
-// RemoveTicketLinkWithResponse Remove a link of this ticket, its source, by the link's id
+// RemoveTicketLinkWithResponse Remove a link of this ticket, either end of it, by the link's id
 //
 // The way to remove a link whose other end the caller may not see — a placeholder shows no key
 // (docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must
-// be the link's source, whatever the caller reads of the other end (docs/adr/0012 D2). A link of
-// which this ticket is not the source, or no link, answers 204 and removes nothing. The act is
-// recorded on both tickets, the other end's in its own team's record.
+// be the link's source or its target, whatever the caller reads of the other end and whatever
+// team keeps the link (docs/adr/0012 D2 as amended 2026-10-10). A link that does not touch this
+// ticket, or none, answers exactly as a missing one, `404` "no such link", and removes nothing.
+// The act is recorded on both tickets, the other end's in its own team's record — as
+// `system:relation` where the caller holds no role in that team.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -35021,11 +35305,14 @@ func (c *ClientWithResponses) RemoveTicketLinkWithResponse(ctx context.Context, 
 
 // UnlinkTicketFromWithResponse Remove a link to a ticket of any team by its canonical key
 //
-// A write on this ticket, the link's source, whatever the caller reads of the other end
-// (docs/adr/0012 D2); the link is found among this ticket's relations by the other end's key,
-// so a key the caller sees as a head removes its link. Idempotent: no such link — or a key that
-// names none — answers 204 as well. An end the caller may not see shows no key; its link is
-// removed by its id, `DELETE …/links/{link}`. The act is recorded on both tickets.
+// A write on this ticket, either end of the link — its source or its target —, whatever the
+// caller reads of the other end (docs/adr/0012 D2 as amended 2026-10-10): a writer of a ticket
+// removes a link another team keeps to it as well. The link is found among this ticket's
+// relations by the other end's key, so a key the caller sees as a head removes its link.
+// Idempotent: no such link — or a key that names none — answers 204 as well. An end the caller
+// may not see shows no key; its link is removed by its id, `DELETE …/links/{link}`. The act is
+// recorded on both tickets, the other end's in its own team's record — as `system:relation`
+// where the caller holds no role in that team.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -35065,7 +35352,8 @@ func (c *ClientWithResponses) LinkTicketToWithResponse(ctx context.Context, team
 // UnlinkTicketsWithResponse Remove a link
 //
 // Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in
-// the path, the link's source, whatever the caller reads of the other end (docs/adr/0012 D2).
+// the path, either end of the link — its source or its target —, whatever the caller reads of
+// the other end (docs/adr/0012 D2 as amended 2026-10-10). The act is recorded on both tickets.
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -40428,6 +40716,48 @@ func ParseReplaceTicketBodyResponse(rsp *http.Response) (*ReplaceTicketBodyRespo
 	return response, nil
 }
 
+// ParseRemoveTicketChildResponse parses an HTTP response from a RemoveTicketChildWithResponse call
+func ParseRemoveTicketChildResponse(rsp *http.Response) (*RemoveTicketChildResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveTicketChildResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 204:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case true:
+		var headers RemoveTicketChildResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
 // ParseListCommentsResponse parses an HTTP response from a ListCommentsWithResponse call
 func ParseListCommentsResponse(rsp *http.Response) (*ListCommentsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -43439,6 +43769,9 @@ type ServerInterface interface {
 	// ReplaceTicketBody Replace the ticket's body
 	// (PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/body)
 	ReplaceTicketBody(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ReplaceTicketBodyParams)
+	// RemoveTicketChild Remove a child of this ticket, of any project or team, by the id of the relation
+	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child})
+	RemoveTicketChild(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation)
 	// ListComments The ticket's comment thread
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/comments)
 	ListComments(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ListCommentsParams)
@@ -43480,7 +43813,7 @@ type ServerInterface interface {
 	//
 	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListTicketLinks(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, params ListTicketLinksParams)
-	// RemoveTicketLink Remove a link of this ticket, its source, by the link's id
+	// RemoveTicketLink Remove a link of this ticket, either end of it, by the link's id
 	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link})
 	RemoveTicketLink(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, link LinkID)
 	// UnlinkTicketFrom Remove a link to a ticket of any team by its canonical key
@@ -48231,6 +48564,59 @@ func (siw *ServerInterfaceWrapper) ReplaceTicketBody(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// RemoveTicketChild operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTicketChild(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "team" -------------
+	var team TeamSlug
+
+	err = runtime.BindStyledParameterWithOptions("simple", "team", r.PathValue("team"), &team, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "team", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "project" -------------
+	var project ProjectKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "project", r.PathValue("project"), &project, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "number" -------------
+	var number TicketNumber
+
+	err = runtime.BindStyledParameterWithOptions("simple", "number", r.PathValue("number"), &number, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "number", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "child" -------------
+	var child ChildRelation
+
+	err = runtime.BindStyledParameterWithOptions("simple", "child", r.PathValue("child"), &child, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "child", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTicketChild(w, r, team, project, number, child)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListComments operation middleware
 func (siw *ServerInterfaceWrapper) ListComments(w http.ResponseWriter, r *http.Request) {
 
@@ -52059,6 +52445,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/attachments/{attachment}/content", wrapper.DownloadAttachment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/body", wrapper.GetTicketBody)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/body", wrapper.ReplaceTicketBody)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child}", wrapper.RemoveTicketChild)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments", wrapper.ListComments)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments", wrapper.AddComment)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments/{comment}", wrapper.GetComment)
@@ -56441,6 +56828,46 @@ func (response ReplaceTicketBodydefaultApplicationProblemPlusJSONResponse) Visit
 	return err
 }
 
+type RemoveTicketChildRequestObject struct {
+	Team    TeamSlug      `json:"team"`
+	Project ProjectKey    `json:"project"`
+	Number  TicketNumber  `json:"number"`
+	Child   ChildRelation `json:"child"`
+}
+
+type RemoveTicketChildResponseObject interface {
+	VisitRemoveTicketChildResponse(w http.ResponseWriter) error
+}
+
+type RemoveTicketChild204Response struct {
+}
+
+func (response RemoveTicketChild204Response) VisitRemoveTicketChildResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type RemoveTicketChilddefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response RemoveTicketChilddefaultApplicationProblemPlusJSONResponse) VisitRemoveTicketChildResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListCommentsRequestObject struct {
 	Team    TeamSlug     `json:"team"`
 	Project ProjectKey   `json:"project"`
@@ -59459,6 +59886,9 @@ type StrictServerInterface interface {
 	// ReplaceTicketBody Replace the ticket's body
 	// (PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/body)
 	ReplaceTicketBody(ctx context.Context, request ReplaceTicketBodyRequestObject) (ReplaceTicketBodyResponseObject, error)
+	// RemoveTicketChild Remove a child of this ticket, of any project or team, by the id of the relation
+	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child})
+	RemoveTicketChild(ctx context.Context, request RemoveTicketChildRequestObject) (RemoveTicketChildResponseObject, error)
 	// ListComments The ticket's comment thread
 	// (GET /api/v1/teams/{team}/projects/{project}/tickets/{number}/comments)
 	ListComments(ctx context.Context, request ListCommentsRequestObject) (ListCommentsResponseObject, error)
@@ -59500,7 +59930,7 @@ type StrictServerInterface interface {
 	//
 	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	ListTicketLinks(ctx context.Context, request ListTicketLinksRequestObject) (ListTicketLinksResponseObject, error)
-	// RemoveTicketLink Remove a link of this ticket, its source, by the link's id
+	// RemoveTicketLink Remove a link of this ticket, either end of it, by the link's id
 	// (DELETE /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link})
 	RemoveTicketLink(ctx context.Context, request RemoveTicketLinkRequestObject) (RemoveTicketLinkResponseObject, error)
 	// UnlinkTicketFrom Remove a link to a ticket of any team by its canonical key
@@ -62072,6 +62502,35 @@ func (sh *strictHandler) ReplaceTicketBody(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ReplaceTicketBodyResponseObject); ok {
 		if err := validResponse.VisitReplaceTicketBodyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveTicketChild operation middleware
+func (sh *strictHandler) RemoveTicketChild(w http.ResponseWriter, r *http.Request, team TeamSlug, project ProjectKey, number TicketNumber, child ChildRelation) {
+	var request RemoveTicketChildRequestObject
+
+	request.Team = team
+	request.Project = project
+	request.Number = number
+	request.Child = child
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveTicketChild(ctx, request.(RemoveTicketChildRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveTicketChild")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveTicketChildResponseObject); ok {
+		if err := validResponse.VisitRemoveTicketChildResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

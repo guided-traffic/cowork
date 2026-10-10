@@ -318,7 +318,7 @@ the one on the ticket the query reads.
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket`, `ListRankKeys` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice, and a rebalancing spreads every key, so every ticket keeps its place ([domain.md](domain.md#rank)) |
 | `GetScoreInputs` | the inputs of the score of a ticket the caller read through the predicate in this transaction, read again after the write that changed one ([domain.md](domain.md#the-score)) |
 | `ImportNumbersTaken` | a number's existence in the project an import goes into, unique whether or not the caller sees the ticket that holds it — a deleted one's included, also exempt from the deletion filter ([import-and-export.md](import-and-export.md#the-dry-run)) |
-| `LinkEndKey` | the key of the other end, in the team, of a link the caller removes, whatever they see of it: the removal is an act on both tickets; also exempt from the deletion filter, a link to a deleted ticket is removed with its act as well |
+| `LinkEndKey` | the key of the other end, in the team, of a relation the caller removes — a link, or a child of the parent they write —, whatever they see of it: the removal is an act on both tickets; also exempt from the deletion filter, a link to a deleted ticket is removed with its act as well |
 | `ExportHiddenConfidential` | the count of the confidential tickets of the projects the caller sees that an export leaves out, which the manifest says ([ADR 0065](../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md) D5); it asks the predicate `IS NOT TRUE`, since it answers `NULL` for a ticket without an assignee |
 
 The search (`SearchTickets`, [search.md](search.md#the-query)) reads tickets in seven places — the
@@ -401,6 +401,7 @@ first; the runtime role gains nothing by setting `app.crossing` itself
 | `act` | `relations_elsewhere(ticket)` | `Reader.RelationsElsewhere` | every relation of a ticket of the team whose other end is a ticket of another team: that team, ticket and key, and its head as an outsider reads it — where an act is recorded, never shown to the caller |
 | `purge` | `end_relations_elsewhere(ticket)` | `Writer.PurgeTicket` | a purged ticket's children elsewhere made roots and the links another team keeps to it deleted; every far end answered for its act; only inside the purge of a deleted ticket of the team |
 | `purge` | `end_team_relations(team)` | `DB.EndTeamRelations` | every relation between a team and the others ended, both directions; only in a transaction named `team-deletion` with no team set; no route calls it |
+| `purge` | `end_relation(anchor, kind, other)` | `Writer.EndChildElsewhere`, `Writer.EndLinkElsewhere` | one relation of a ticket of the team into another team ended by a writer of it (migration 52): `child` — the ticket `other` of another team leaves `anchor` as its parent, its parent alone cleared —, `link` — the link `other` another team keeps onto `anchor` deleted —; only where `anchor` is a ticket of the transaction's team the caller sees, not deleted, the caller a `member` or `admin` of the team and the other end not deleted; it answers the far end for the act, and no row for anything else (`TestEndingOneRelationIsTheAnchorsAlone`) |
 
 The store calls the functions with pgx itself, not through sqlc: sqlc does not type the columns of a
 function that returns a table as they are — a placeholder's key and title are `NULL` —, so
@@ -415,7 +416,8 @@ outside a token's restriction (`app.restricted_tenant_id`, `app.restricted_proje
 any other ticket outside a token's restriction, of a team they hold no role in, or of a project
 restricted from them; `sees` otherwise. A deleted ticket answers like a missing one: every crossing
 that returns tickets leaves it out. Every head function asks besides `app_is_member()` — the caller
-holds a role in the transaction's team —, behind the boundary that admits nobody else.
+holds a role in the transaction's team —, behind the boundary that admits nobody else; `end_relation`
+asks for a `member` or `admin` of it, so a viewer ends no relation there whatever a handler decided.
 
 **What a crossing writes.** The trigger `tickets_crossing_guard` refuses (SQLSTATE `42501`) an update
 of a ticket inside a crossing that changes more than its kind may: `derive` the three derived

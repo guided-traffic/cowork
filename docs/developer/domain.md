@@ -124,9 +124,31 @@ restriction, a restricted project, a deleted ticket, a confidential one they are
 `PATCH` takes the installation's lock of the parents (`LockGraph(GraphParents)`) and then walks the
 chain across teams (`ParentChainReaches`): a parent that is the ticket or one of its descendants is
 `409 parent_cycle`. A filing takes no walk, since a new ticket has no descendants. Clearing the
-parent is a write on the child alone, whatever the caller reads of the parent. The answer shows
+parent is a write on the child alone, whatever the caller reads of the parent; a patch that takes the
+ticket away from a parent of another team records `detached` on that parent in its team's record
+(`parentLeftElsewhere`, [`removal.go`](../../backend/internal/api/removal.go)). The answer shows
 `parent`, the parent's canonical key — `null` for none and for a placeholder — and `parent_head`,
 the parent as the caller sees it (`shown`, `Reader.ParentHeads`).
+
+The parent's side removes a child too ([ADR 0008] D2 as amended again 2026-10-10):
+`DELETE …/tickets/{number}/children/{child}` (`RemoveTicketChild`) detaches a child of any project
+or team from the ticket in the path, a write on it (`work`), whatever the caller reads of the child.
+`{child}` is the `id` `…/relations` gives the child's relation: the parent and the child sealed with
+the server's key (`childHandle`, the cursor codec's `sealPosition`), so it shows no ticket id; it
+names, it does not admit — `openChildHandle` takes it only under the parent it was sealed for, and
+the write checks the relation as it stands. A child of the team leaves by the runtime role
+(`DetachChildOf`), one of another team through the crossing `end_relation`
+(`Writer.EndChildElsewhere`); either way its parent alone changes and its version stays, as at a
+purge. The child records `updated` (`after` `{"parent": null}`, the parent in its refs) in its own
+team's record — `system:relation` where the caller holds no role there —, the parent `detached`
+(`before` the child's key, the child in its refs), and the parent's progress is derived again: the
+parent's own team keeps the progress it showed when its last child leaves ([progress](#progress)). A
+handle that names no child of the ticket — none, another parent's, a child no more, one this server
+did not seal — is `404 not_found` "no such child" (`noSuchChild`), the same body whatever the reason.
+Because the removal moves no version, a `PATCH`'s compare-and-set covers the parent it read beside
+the version (`UpdateTicketFields`, `writeFields`): a patch that raced a removal is `412` with the
+sent fields as they stand now, and never writes the parent back ([ADR 0050] D1 as made concrete
+2026-10-10; `TestARelationRemovedFromBothEndsAtOnceEndsOnce`).
 
 ## Relations across teams
 
@@ -144,11 +166,15 @@ the caller sees of it (`ticket_sight`):
 
 A deleted ticket is absent everywhere, as a missing one. `GET …/tickets/{number}/relations`
 (`ListTicketRelations`, [`relations.go`](../../backend/internal/api/relations.go)) lists a
-ticket's parent, children and links in that order, `kind` narrowing them, each with its link — id,
+ticket's parent, children and links in that order, `kind` narrowing them, each with its `id` — a
+link's own, a child's sealed handle, `null` for the parent —, its link — id,
 type, direction, its name from this side, its maker and time — and its head; the cursor is sealed,
 because a position names an id the caller may not see ([api.md](api.md#paging)). What else crosses:
-the derived progress counts the children of every team ([progress](#progress)); an act on a link
-across teams, the end of a relation at a purge and a settled prerequisite are recorded on the other
+the derived progress counts the children of every team ([progress](#progress)); a relation is
+removed by a writer of either end, a child of another team from its parent's side and a link another
+team keeps from its target's side through the crossing `end_relation` ([parent](#parent),
+[links](#links)); an act on a link
+across teams, the removal of a relation, the end of a relation at a purge and a settled prerequisite are recorded on the other
 ticket in its own team's record (`RecordElsewhere`), naming the ticket of the caller's team in their
 refs, and as `system:relation` or `system:ticket-purge` where the caller holds no role in that team; and the context document and the export name
 the other end by its key, the placeholder by its team. An act in a ticket's activity whose `Refs`
@@ -250,11 +276,17 @@ NOTHING`) waits for the other writer's commit and takes the conflict, and `setLi
 back, whichever end stored it ([ADR 0045] D1; `TestALinkSetAtOnceFromBothEndsIsOneLink`); a link
 the racing writer stored that is gone again when it is read back — its other end deleted since —
 answers `404 not_found` "no such ticket", as an other end that names nothing. Two
-`PATCH`es of one ticket's parent with the same `If-Match` give one `200` and one `412`. Removing is a write on the source
-alone, whatever the caller reads of the other end — inside the team a `relates-to` from either end —:
-by the other end's key, either route with `DELETE`, or by the link's id, `DELETE …/links/{link}`
-(`RemoveTicketLink`), the way to remove one whose other end is a placeholder; a missing link, or one
-the ticket in the path is not the source of, is `204` and removes nothing.
+`PATCH`es of one ticket's parent with the same `If-Match` give one `200` and one `412`. Removing is a write on
+either end, its source or its target, whatever the caller reads of the other end and whatever team
+keeps the link ([ADR 0012] D2 as amended again 2026-10-10): by the other end's key, either route
+with `DELETE` — the link the ticket is the source of first (`linkByKey`) —, or by the link's id,
+`DELETE …/links/{link}` (`RemoveTicketLink`), the way to remove one whose other end is a
+placeholder. A link the team keeps is removed by the runtime role (`removeLink`); one another team
+keeps onto the ticket through the crossing `end_relation` (`removeFarLink`,
+`Writer.EndLinkElsewhere`), its act on the source recorded in that team's record. By id, a link that
+does not touch the ticket in the path, or none, is `404 not_found` "no such link" (`noSuchLink`);
+by key, a key that names no link is `204`. Of two removals of one link at once, the second finds it
+gone and records nothing — `DeleteLinkByID` answers the rows it deleted.
 
 ### The prerequisite tree
 

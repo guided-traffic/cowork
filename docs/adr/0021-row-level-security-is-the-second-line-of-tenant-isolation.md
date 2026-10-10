@@ -28,7 +28,11 @@ maker beside the tenant's administrators; built the same day, migration 45), and
 the relation between teams of [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md)
 D3 as amended that day (D7: the first widening, by the owner, its mechanism and its crossings built
 the same day, migration 47, and made concrete by the implementer, open to the owner's objection;
-D3: the ninth setting, `app.restricted_tenant_id`, and `app.crossing`, which no wrapper writes).
+D3: the ninth setting, `app.restricted_tenant_id`, and `app.crossing`, which no wrapper writes),
+and again on 2026-10-10 for the owner's answer that a writer of either end removes a relation
+across teams ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2,
+[ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2) (D7: the thirteenth crossing,
+`end_relation`, of the kind `purge`; built the same day, migration 52).
 Date: 2026-09-30.
 Decided by the owner as the answer to the catalog question "how
 is tenant isolation enforced?": application filtering **and** PostgreSQL row-level security,
@@ -309,7 +313,8 @@ policy holds them to the transaction's team as before, so a forgotten filter sti
 of another team, and an unset setting admits nothing. Eight permissive policies `TO` the owner
 role — the role that runs the migration, named as `current_user` when they are created — on
 `tickets`, `projects`, `tenants`, `project_access` and `ticket_links` admit a read, or one write,
-only while `app_crossing()` names its kind. Twelve `SECURITY DEFINER` functions in plpgsql, owned by
+only while `app_crossing()` names its kind. Twelve *(2026-10-10, migration 52: thirteen)*
+`SECURITY DEFINER` functions in plpgsql, owned by
 the owner role and executable by the runtime role alone, are the only code that names one: each
 sets `app.crossing` with `set_config('app.crossing', '<kind>', true)` as its first statement and
 restores the value it found before every return. A function's `SET` clause cannot carry the
@@ -327,13 +332,18 @@ behind reaches neither the runtime role's queries nor another function. The cros
 | `walk` | `parent_chain_reaches`, `blocks_reach` | yes or no: whether a new parent or a new `blocks` link closes a cycle through any team ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D4) |
 | `derive` | `refresh_derived` | a parent's derived progress from its children of every team — the write above |
 | `act` | `relations_elsewhere` | the team, the ticket and the key at the other end of each relation into another team: where the act is recorded that ADR 0012 D3 puts on both tickets of a link, and that [ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D2 puts in the record of the team a change changes |
-| `purge` | `end_relations_elsewhere`, `end_team_relations` | the end of a purged ticket's or a deleted team's relations into other teams: a child there made a root, a link to it deleted (ADR 0024 D2, D6) |
+| `purge` | `end_relations_elsewhere`, `end_team_relations`, `end_relation` *(2026-10-10, migration 52)* | the end of a purged ticket's or a deleted team's relations into other teams: a child there made a root, a link to it deleted (ADR 0024 D2, D6); and the end of one relation of a ticket of the caller's team by a writer of it — a child in another team made a root, a link another team keeps onto it deleted ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D2 as amended 2026-10-10) |
 
 The act in the other team is written by the runtime role, the transaction bound to that team for
 those statements alone and to its own again after them (`Writer.RecordElsewhere`), under that
 team's own policies; the far end it is written at comes only from a crossing. Every head function
 asks besides whether the caller holds a role in the transaction's team (`app_is_member()`), behind
-the request layer that admits nobody else. A rule on columns stays a trigger (D6):
+the request layer that admits nobody else. *(2026-10-10, migration 52:)* `end_relation` asks more:
+its anchor a ticket of the transaction's team the caller sees, the caller a `member` or `admin` of
+that team — a viewer ends nothing there, whatever the request layer decided —, and the row the
+anchor's own relation kept in another team, a child whose parent the anchor is or a link whose
+target it is; anything else answers no row and changes nothing (`TestEndingOneRelationIsTheAnchorsAlone`).
+A rule on columns stays a trigger (D6):
 `tickets_crossing_guard` holds what a writing crossing changes of a ticket to the derived progress —
 on a ticket of the writer's own team besides the stages it seeds, done by hand and `updated_at`
 (*2026-10-10, migration 48:* on another team's, the derived columns alone) —, and the purge's to the

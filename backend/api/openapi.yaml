@@ -257,6 +257,8 @@ paths:
     $ref: './tickets.yaml#/link'
   /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}:
     $ref: './tickets.yaml#/linkAcross'
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/children/{child}:
+    $ref: './tickets.yaml#/children'
   /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link}:
     $ref: './tickets.yaml#/linkByID'
   /api/v1/teams/{team}/projects/{project}/tickets/{number}/relations:

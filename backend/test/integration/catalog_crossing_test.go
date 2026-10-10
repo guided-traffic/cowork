@@ -54,7 +54,7 @@ func TestEverySecurityDefinerInTheCatalogPinsTheCrossing(t *testing.T) {
 			t.Errorf("%s: %s", f.Name, problem)
 		}
 	}
-	assert.GreaterOrEqual(t, definers, 13, "the twelve crossings and the purge's function are SECURITY DEFINER")
+	assert.GreaterOrEqual(t, definers, 14, "the thirteen crossings and the purge's function are SECURITY DEFINER")
 
 	// A function a later statement makes SECURITY DEFINER, quoted otherwise
 	// than the migrations quote theirs, is read as the catalog holds it.

@@ -652,12 +652,19 @@ ticket:
     tags: [tickets]
     summary: Change a ticket's fields
     description: |
-      `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
-      assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
-      makes confidential — only to its own person or to nobody, and another new assignee is 403
-      `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
-      new assignee is 403 `session_required` — admitting a person takes a browser session
-      (docs/adr/0035 D5).
+      `If-Match` is required (docs/adr/0050 D3). The write is a compare-and-set on the version and on
+      the parent the change read: a ticket detached from its parent's side, or by a purge of the
+      parent, keeps its version, and a change that raced such a removal is refused with `412` and the
+      sent fields as they stand now, never writing the parent back (docs/adr/0050 D1, D5). A change
+      that takes the ticket away from a parent of another team — clearing it or setting another —
+      records `detached` on that parent, in its team's record (docs/adr/0008 D2 as amended
+      2026-10-10).
+
+      Assigning a confidential ticket admits the new assignee (docs/adr/0065 D9): an agent assigns a
+      confidential ticket — or one the change makes confidential — only to its own person or to
+      nobody, and another new assignee is 403 `agent_forbidden` (docs/adr/0043 D3); a person's token
+      is held the same way, and another new assignee is 403 `session_required` — admitting a person
+      takes a browser session (docs/adr/0035 D5).
 
       The three progress stages — `progress_refinement`, `progress` (implementation),
       `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a

@@ -19,15 +19,28 @@ SELECT id, type, source_id, target_id, created_by, created_at
 FROM ticket_links
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
 
+-- name: DetachChildOf :execrows
+-- A child of the team leaves its parent from the parent's side, whatever the
+-- caller sees of the child (docs/adr/0008 D2 as amended 2026-10-10): its
+-- parent alone changes, no version, as at a purge — the write is the
+-- parent's, whose writer the caller is. Nothing where the ticket is no such
+-- child, or deleted.
+UPDATE tickets
+SET parent_id = NULL
+WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id) AND parent_id = sqlc.arg(parent_id)::uuid
+  AND deleted_at IS NULL;
+
 -- name: DeleteLinkByID :execrows
 DELETE FROM ticket_links
 WHERE tenant_id = sqlc.arg(tenant_id) AND id = sqlc.arg(id);
 
 -- name: LinkEndKey :one
--- The key of a ticket of the transaction's team at the other end of a link the
--- caller removes, whatever they see of it: the removal is an act on both
--- tickets (docs/adr/0012 D3), the other one's shown to its own readers.
--- visibility: exempt (the other end of a link the caller removes, whose act is recorded on it)
+-- The key of a ticket of the transaction's team at the other end of a
+-- relation the caller removes — a link, or a child of the parent they write —,
+-- whatever they see of it: the removal is an act on both tickets
+-- (docs/adr/0012 D3, docs/adr/0008 D2), the other one's shown to its own
+-- readers.
+-- visibility: exempt (the other end of a relation the caller removes, whose act is recorded on it)
 -- deletion: exempt (a link to a deleted ticket is removed with its act as well)
 SELECT p.key AS project_key, t.number
 FROM tickets t

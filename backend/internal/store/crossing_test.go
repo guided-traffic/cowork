@@ -75,6 +75,7 @@ func TestEveryCrossingFunctionDecidesSight(t *testing.T) {
 		"relations_elsewhere":     "answers where an act is recorded in another team; the store shows the caller none of it",
 		"end_relations_elsewhere": "ends a purged ticket's relations and answers where the purge records its acts",
 		"end_team_relations":      "ends a team's relations and answers where the acts are recorded",
+		"end_relation":            "ends one relation of the caller's ticket into another team and answers where its act is recorded",
 	}
 	all := allMigrations(t)
 	var crossings []string
