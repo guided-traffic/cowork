@@ -7,7 +7,9 @@ types and hierarchy?": a small fixed set of types and an optional parent, over l
 over configurable types, and over a parent expressed as a link.
 
 **Partly built** (phase 2, 2026-10-02): D1 and D2 — the five types and the parent in the same
-project (a composite key; a cycle refused by a walk under a per-project lock). The views of
+project (~~a composite key; a cycle refused by a walk under a per-project lock~~ *(2026-10-10: the
+key is the ticket alone, and the walk crosses projects and teams under one lock for the
+installation, D2)*). The views of
 D3 ~~and the importer's mapping~~ arrive with them. *(2026-10-06.)* D5 is built with the importer
 of [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md), except the family: the type comes from the title — a
 question mark, a `live` or `boundary` finding, the words of a decision, a defect or a missing
@@ -20,11 +22,21 @@ a `parent:` key, which an export writes. Whether it should recognise a family is
 person sets the parents after the import. *(2026-10-04.)* The browser chooses the parent,
 on filing and on the detail page, among the project's open tickets.
 
-**Amended 2026-10-10 by the owner (not built):** D2 — a parent may be a ticket of another project
-of the team or of another team of the installation, under the rules D2 now states; the answer that
-a tenant is a team inside an organisation's installation
+**Amended 2026-10-10 by the owner (~~not built~~ built the same day in the data layer and the API;
+the browser's offer of a parent in another project or team not built):** D2 — a parent may be a
+ticket of another project of the team or of another team of the installation, under the rules D2
+now states; the answer that a tenant is a team inside an organisation's installation
 ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1, D3) made the
-bound to the project too narrow, since a ticket of one team can need a change in another.
+bound to the project too narrow, since a ticket of one team can need a change in another. Built
+([migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql)):
+`parent_id` references the ticket alone; `TicketCreate.parent` and `TicketPatch.parent` take a
+canonical key of any team, or a short key of any project of the child's team
+([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D3);
+`Ticket.parent` answers the parent's canonical key — null for none and for a placeholder — and
+`Ticket.parent_head` its head; the setter's sight of the parent is read in the write's own
+transaction (`readable_ticket`), so nothing changes between the check and the write; and the
+cycle walk, `parent_chain_reaches`, crosses teams. Both reads and the walk are crossings of
+[ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7.
 
 ## Context
 
@@ -45,11 +57,12 @@ The open-question entity inside a ticket (its own record) is not this: a `questi
 the case where the question *is* the work.
 
 **D2 — A ticket may have one parent, ~~which is a ticket of the same project~~** *(amended
-2026-10-10, not built:)* **a ticket of any project of its team or of another team of the
+2026-10-10, built the same day:)* **a ticket of any project of its team or of another team of the
 installation.** The relation is a nullable column, not a link. Cycles are refused at write time;
 depth is not bounded. ~~A parent in another project or another tenant is not a parent: a
 dependency across projects is a `blocks` link (the links record), never a hierarchy.~~
-*(Amended 2026-10-10 by the owner, not built:)* Setting the parent is a write on the child: a
+*(Amended 2026-10-10 by the owner, built the same day in the API, the browser's offer outstanding:)*
+Setting the parent is a write on the child: a
 `member` or `admin` of the child's team may set it to a ticket they can read — at least a `viewer`
 of the parent's team, the parent visible to them, a confidential one included. A parent the person
 cannot read is refused exactly like one that does not exist, because ticket numbers are a sequence
@@ -63,6 +76,15 @@ end's team sees it by its head only — or as `<team> [Confidential]` —
 member to whom the other end's project is restricted
 ([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D4). The cycle check walks the parents across teams under a lock that spans the teams involved.
+*(Made concrete 2026-10-10 by the implementer, open to the owner's objection:)* the lock spans the
+installation — one advisory lock for every team's parents, `Writer.LockGraph(GraphParents)`, taken
+before any other lock of the transaction ([docs/developer/data-access.md](../developer/data-access.md#advisory-locks)).
+Locks per team taken in a fixed order were rejected: the set of teams a walk crosses is known only
+after the walk, a concurrent writer can grow it, and four writers in a ring close a cycle that no
+one of them sees. A ticket filed with a parent takes no walk, because a new ticket has no
+descendants to close a cycle with. The miss a parent the person cannot read answers is `400
+validation_failed` with "no such ticket" at `/parent`, the same body for a ticket that does not
+exist.
 
 **D3 — A parent is a view, not a type.** Any ticket of any type may have children. There is
 no `epic`; a ticket with children is shown with its children, its progress is derived from

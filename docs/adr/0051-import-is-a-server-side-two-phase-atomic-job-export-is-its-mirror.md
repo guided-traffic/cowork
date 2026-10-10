@@ -269,12 +269,25 @@ A bulk need beyond import is a question of its own.
 **D9 — Links that leave the archive are warnings, not guesses.** A `blocks` or `found-in`
 whose target key is not in the archive and not already in the project is reported and
 omitted; the person adds it after the import if it belongs. *(Made concrete 2026-10-10 on the
-recommendation, open to the owner's objection, not built:)* a parent or a link into another team
+recommendation, open to the owner's objection, built the same day:)* a parent or a link into another team
 ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3) is exported by its key and nothing else, never the other ticket's head; the import
 resolves such a key under [ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2's rule — the importing person must be able to read the other
 ticket — and reports it as not set where they cannot, as an unresolved parent is reported today;
 nothing in an import refuses
 ([ADR 0063](0063-the-importer-takes-whatever-the-user-hands-it-open-and-archived-tickets-alike.md)).
+*(Built 2026-10-10; made concrete by the implementer, open to the owner's objection:)* the export
+writes such a parent's key in the frontmatter and lists such a link in the links manifest by the
+keys of its two ends, leaving out one whose other end is a placeholder to the exporter. The dry run
+resolves a key of another project or team for the importing person (`readable_ticket`) and
+reports "<key> is no ticket you can read" where they cannot, and the execution resolves it again;
+a link of the manifest whose source is a ticket of another team is omitted with a warning, since
+setting it is a write on that ticket, a member of its team's; a link the import makes to a ticket
+of another team records its act on that ticket in that team's record
+([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D3); and a blocked file whose block
+waits on a ticket of another team is an error of the file, as one whose ticket resolves to nothing,
+since a block waits on a ticket of its own team as the transition to `blocked` takes it
+([ADR 0009](0009-ticket-states-are-the-frontmatter-states-plus-blocked.md) D2). An execution that may
+make a `blocks` link takes the installation's lock of the `blocks` graph before it inserts anything.
 
 ## Consequences
 

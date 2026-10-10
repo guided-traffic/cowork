@@ -29,7 +29,7 @@ into the file of its path family.
 | [`filters.yaml`](../../backend/api/filters.yaml) | the saved filters of a team: list, create, read, edit, delete ([filters](#filters)) |
 | [`accounts.yaml`](../../backend/api/accounts.yaml) | the team's local accounts: list, create, reset the password, unlock, deactivate, end the sessions |
 | [`members.yaml`](../../backend/api/members.yaml) | who belongs where: the members and their grants, the group mappings, a project's restriction and access list, and the tokens that can act in the team (`/teams/{team}/tokens`) |
-| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{team}/{key}`, links, the prerequisite tree, transitions, the move in the rank, interest, the Markdown export and the context |
+| [`tickets.yaml`](../../backend/api/tickets.yaml) | the key resolver `/tickets/{team}/{key}`, links, the relations, the prerequisite tree across teams and its deprecated predecessor, transitions, the move in the rank, interest, the Markdown export and the context |
 | [`questions.yaml`](../../backend/api/questions.yaml), [`comments.yaml`](../../backend/api/comments.yaml), [`time.yaml`](../../backend/api/time.yaml), [`attachments.yaml`](../../backend/api/attachments.yaml) | their entities; `comments.yaml` also the activity list, `attachments.yaml` also the team's attachment usage (`/teams/{team}/attachment-usage`) and its consistency check with its two confirmations (`/teams/{team}/attachment-consistency`, [storage.md](storage.md#the-consistency-check)) |
 | [`events.yaml`](../../backend/api/events.yaml) | `/teams/{team}/events`, with `me=true` the person-level stream ([events.md](events.md#the-person-level-stream)) |
 | [`chat.yaml`](../../backend/api/chat.yaml) | `/teams/{team}/chat`: the chat's availability and a turn of it, with the contract of the turn's stream in prose; `/teams/{team}/chat/turns`: stopping the person's running turns ([chat.md](chat.md)) |
@@ -119,7 +119,9 @@ The examples are one world, so a reader can follow a ticket from one route to th
 `acme/WEB-42` with its comment, question Q1, attachment and time, and four persons —
 Ada Lovelace (the local account `ada`, a global administrator who administers `acme`), Grace Hopper
 and Alan Turing (persons of the identity provider, `grace@acme.example`, `alan@acme.example`) and
-Sam Rivera (the local account `sam`). An id the server makes is a UUIDv7 whose time is the entity's
+Sam Rivera (the local account `sam`) — and, at the other end of a relation across teams, a second
+team, `globex` (*Globex*), whose ticket `globex/API-7` blocks `acme/WEB-42` and is read by its head.
+An id the server makes is a UUIDv7 whose time is the entity's
 creation, one a client makes — the browser's idempotency key, the chat's conversation — a v4; times
 are RFC 3339 in UTC, values the handlers' own. A text the server renders is the renderer's output
 for the example's input, not a hand-written guess: `body_html`, `options_html` and `answer_html` are what
@@ -614,8 +616,8 @@ the ticket goes, so the last move wins — and raises the ticket's version.
 
 The two ticket lists, and every list the UI loads again on a poll — `listProjects`,
 `listMembers`, `listGroupMappings`, `listProjectAccess`, `listComments`, `listActivity`,
-`listQuestions`, `listTicketLinks`, `listInterest`, `listAttachments`, `listTicketTime`,
-`listPrerequisites`, `listMyInbox`, `listMyNext`, `listMyAssigned`, `listMyDecisions`,
+`listQuestions`, `listTicketLinks`, `listTicketRelations`, `listInterest`, `listAttachments`, `listTicketTime`,
+`listPrerequisites`, `listPrerequisiteTree`, `listMyInbox`, `listMyNext`, `listMyAssigned`, `listMyDecisions`,
 `listDeletedTickets`, `listSavedFilters`, `listTeamTokens` — and the dashboard, `getDashboard`, and
 the attachments' usage, `getAttachmentUsage`, answer a
 weak `ETag` — `W/"…"`, 24 hex characters of the SHA-256 of the page as the caller reads it — and
@@ -644,7 +646,9 @@ may not see ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md
 `cowork cursor position v1`, padded to 144 bytes, with an HMAC of the padded position under a
 key derived under `cowork cursor nonce v1` as the nonce — deterministic, so a page and its weak
 `ETag` stay the same while the list does. `openPosition` refuses what it did not seal, and the
-list answers that `invalid_cursor`.
+list answers that `invalid_cursor`. A ticket's relations and the prerequisite tree across teams
+seal theirs too — `<kind>/<id>` and the node's path —, because they name tickets the caller may not
+see, read back by `sealedPosition`.
 
 - `limit` defaults to 50 and is clamped, not refused, at `COWORK_MAX_PAGE_SIZE`; the query
   fetches one row more than the page, which says whether `next_cursor` is set.
@@ -663,7 +667,8 @@ list answers that `invalid_cursor`.
   is `invalid_cursor`; the team's tickets and time entries, the audit record and the person's
   tokens newest first; comments and activity oldest first unless `order=desc`; projects by key;
   questions by number; members, interest and a project's access list by person id; the group
-  mappings by group; the installation's teams by slug; the team's tokens newest first; a team's bin the last deleted first, its
+  mappings by group; a ticket's relations by kind — the parent, the children, the links — then by
+the id their position names; the prerequisite tree depth first by the path of ids; the installation's teams by slug; the team's tokens newest first; a team's bin the last deleted first, its
   position the deletion's time and the id; a team's saved filters by id; the person's inbox newest
   first, merged across the teams by the notifications' ids, which order by time; the person's projects
   by their team's slug, then the key; "next for me" and
@@ -839,9 +844,18 @@ now, not `tenant` ([storage.md](storage.md#the-consistency-check)). The contract
 twins and every old name, variable, value and label out once no supported client reads them; until
 1.0 no commit carries a breaking mark ([ADR 0003] D9).
 
-What stays deprecated in `/api/v1` today is the team rename's old family and names, above, and a
-token's `restricted_project_id` beside `restricted_project` ([ADR 0035] D2, `projectKeys` in
-[`me.go`](../../backend/internal/api/me.go)).
+The relations across teams deprecated two reads ([ADR 0012] D6 as amended 2026-10-10, built
+2026-10-10): `listTicketLinks` (`GET …/links`) and `listPrerequisites` (`GET …/prerequisites`) keep
+their meaning — inside the team, among the ends the caller sees — and are replaced by
+`listTicketRelations` (`GET …/relations`) and `listPrerequisiteTree` (`GET …/prerequisite-tree`),
+whose shapes carry a head and a placeholder, which `TicketRef` and `PrerequisiteNode` cannot. The
+link routes by the short key stay, the short form inside the team
+([ADR 0007](../adr/0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D3), not
+deprecated, beside the canonical `…/links/{type}/{other_team}/{other}` and `…/links/{link}`.
+
+What stays deprecated in `/api/v1` today is the team rename's old family and names, above, the two
+reads the relations replaced, and a token's `restricted_project_id` beside `restricted_project`
+([ADR 0035] D2, `projectKeys` in [`me.go`](../../backend/internal/api/me.go)).
 
 ## Media types beside JSON
 
@@ -881,6 +895,7 @@ token's `restricted_project_id` beside `restricted_project` ([ADR 0035] D2, `pro
 [ADR 0003]: ../adr/0003-test-and-ci-policy.md
 [ADR 0005]: ../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md
 [ADR 0010]: ../adr/0010-the-frontmatter-vocabularies-become-ticket-columns.md
+[ADR 0012]: ../adr/0012-four-typed-directed-links-within-a-tenant.md
 [ADR 0018]: ../adr/0018-the-views-of-the-first-release.md
 [ADR 0019]: ../adr/0019-no-sprints-and-no-milestones-continuous-flow-with-optional-wip-limits.md
 [ADR 0021]: ../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md

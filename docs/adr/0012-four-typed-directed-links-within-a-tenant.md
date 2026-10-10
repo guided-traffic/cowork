@@ -21,7 +21,8 @@ type is added. D6 makes the transitive closure a view, D7 (proposed with the ame
 to objection) stops a ticket from being closed over open prerequisites without a recorded
 override.
 
-**Amended 2026-10-10 by the owner (not built):** D2, D4, D6, D7 — links cross teams, under the
+**Amended 2026-10-10 by the owner (~~not built~~ built the same day in the data layer and the API;
+the UI not built):** D2, D4, D6, D7 — links cross teams, under the
 rules of a parent across teams
 ([ADR 0008](0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md) D2), once a tenant
 became a team inside an organisation's installation
@@ -30,9 +31,10 @@ one team needs a change in another" is what `blocks` means, and one rule for eve
 simpler one to hold. The title's "within a tenant" is the rule before.
 
 **Partly built** (phase 2, 2026-10-02): D1–D5 and D7 — `ticket_links` (migration 9) with the
-reverse names read from either end, links across projects and never across tenants (by the
-API and by the schema's composite keys), an act on both tickets, no self link, the `blocks`
-cycle refused by a walk over the tenant's graph under a per-tenant lock, and `done` refused
+reverse names read from either end, links across projects ~~and never across tenants (by the
+API and by the schema's composite keys)~~ *(2026-10-10: and teams, below)*, an act on both tickets,
+no self link, the `blocks` cycle refused by a walk over the ~~tenant's graph under a per-tenant
+lock~~ *(2026-10-10: installation's graph under one lock for it, below)*, and `done` refused
 over open direct prerequisites the closer can see unless a person overrides with a reason
 (an agent cannot). D6's prerequisite view arrives with the ticket detail. ~~Removing a `blocks`
 link is open to agents until the agent gates are reviewed after experience
@@ -62,6 +64,36 @@ Consequences — `blocked-by: T<n>` a `blocks` link, `filed-from: T<n>` a `found
 export's links manifest's: each once, never to its own ticket, a `blocks` link that would close a
 cycle among the imported tickets left out by the analysis and one through the project's tickets by
 D4's walk under the tenant's lock, each named in the report.
+*(2026-10-10.)* The amendment is built in the data layer and the API
+([migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql)); the UI is not. A link lives in its source's team, its target a
+ticket of any team; `PUT …/links/{type}/{other_team}/{other}` sets one by the other end's canonical
+key, the route by the short key stays the short form inside the team
+([ADR 0007](0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md) D3), and a key
+the setter cannot read answers `404 not_found` "no such ticket", as a missing one does. *(Made
+concrete by the implementer, open to the owner's objection:)* a link is removed by a writer of its
+source — a `relates-to` inside the team from either end, across teams from the end it was made
+from, which is its source —, by the other end's key or by its id (`DELETE …/links/{link}`), which
+removes one whose other end is a placeholder; its acts are recorded on both tickets, the other
+end's in that team's own record (D3), and the payload of an act that names a ticket of another team
+is never shown to a reader of the act's team
+([ADR 0065](0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md)
+D4's redaction). D4's walk crosses teams under one lock for the installation's `blocks` graph, taken
+before any other lock of the transaction: the transition to `blocked` and an import's execution
+take it before they write a ticket ([docs/developer/data-access.md](../developer/data-access.md#advisory-locks)).
+D5 across teams: a ticket that reaches `done` or `dropped` records `prerequisite_settled` on every
+ticket of another team it blocks, in that team's record, naming itself by its head as a person
+outside its team reads it — the placeholder where it is confidential —, and the act tells the
+blocked ticket's watchers who see it, as `blocker_closed`
+([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D1 gains the action).
+D6: `GET …/tickets/{number}/prerequisite-tree`, and its mirror with `direction=up`, reads the tree
+across teams, each node by its head; the walk goes on only from a ticket the caller reads, a head
+and a placeholder are leaves, and only a node of the caller's own team they read shows its assignee
+and its progress; `…/prerequisites` keeps its meaning, the team's tickets the caller sees, and is
+deprecated ([ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D7). D6's count
+and D7's refusal read one rule: an open direct prerequisite counts, and refuses `done`, whenever the
+caller reads its state in a head, of any team, and a placeholder neither counts nor refuses — so a
+prerequisite of the caller's own team in a project restricted from them, hidden before, now counts
+by its head.
 
 ## Context
 
@@ -92,7 +124,8 @@ here"), never a second row.
 
 **D2 — ~~Links stay inside the tenant and may cross projects.~~ ~~A link whose two ends are in
 different tenants is refused by the server, not hidden by the UI.~~** *(Amended 2026-10-10 by the
-owner, not built:)* **Links may cross projects and teams of the installation, every type alike.** A
+owner, built the same day in the API:)* **Links may cross projects and teams of the installation,
+every type alike.** A
 link is set by a `member` or `admin` of the source's team who can read the target, and refused
 like a missing ticket where they cannot; the other end is shown to a person who holds no role in
 its team, or to whom its project is restricted, by its head only — the team's name, the key, the
@@ -104,26 +137,31 @@ a link is a timeline entry on both tickets. Links to a `done` or `dropped` ticke
 shown with that state.
 
 **D4 — Integrity rules.** No link from a ticket to itself; `blocks` may not form a cycle
-(checked at write time over the `blocks` graph ~~of the tenant~~ *(2026-10-10, not built: across
-the teams it reaches, under a lock that spans them)*); one link of one type between the same two
+(checked at write time over the `blocks` graph ~~of the tenant~~ *(2026-10-10, built the same day:
+across the teams it reaches, under a lock that spans them — one lock for the installation's
+`blocks` graph)*); one link of one type between the same two
 tickets in the same direction.
 
 **D5 — No link sets a state.** A ticket whose `blocks` source is open shows a hint; the
 `blocked` state is set by a person with a reason (ADR 0009 D2), and leaving it is a person's
 act as well. When a blocking ticket reaches `done` or `dropped`, the blocked ticket is
-notified, not moved.
+notified, not moved. *(Made concrete 2026-10-10 by the implementer, open to the owner's
+objection:)* a blocked ticket of another team is notified through an act in its own team's record,
+`prerequisite_settled`, which names the prerequisite by its head and tells the blocked ticket's
+watchers.
 
 **D6 — The prerequisites of a ticket are a first-class view** *(added 2026-10-01)*. The
 prerequisites of B are the transitive closure of `blocks` edges into B: every A that blocks
-B, every ticket that blocks such an A, and so on — a tree because D4 forbids cycles, limited
-to the tenant because D2 is. The view shows each node with its key, title, state, assignee
+B, every ticket that blocks such an A, and so on — a tree because D4 forbids cycles, ~~limited
+to the tenant because D2 is~~ *(2026-10-10: across the teams D2 lets links reach)*. The view shows each node with its key, title, state, assignee
 and progress, marks the `done` and `dropped` ones as settled, and gives the count of open
 prerequisites; it is served at `…/tickets/{number}/prerequisites` and its mirror, the
 dependents of a ticket, at `…/prerequisites` read upward. ~~The ticket card shows the count of
 open prerequisites;~~ *(Amended 2026-10-03:)* the ticket card shows the count of the open
 tickets that block it directly and that the reader can see, computed per read — the tickets
 D7 would refuse `done` over —; the detail page shows the tree. A prerequisite in another project is
-shown with its project; ~~the tree never crosses a tenant~~ *(amended 2026-10-10, not built:)* a
+shown with its project; ~~the tree never crosses a tenant~~ *(amended 2026-10-10, built the same
+day as `…/prerequisite-tree`:)* a
 prerequisite in another team is shown with its team, by its head only — key, title, type and state,
 no assignee and no progress — to a person who holds no role there.
 
@@ -132,7 +170,7 @@ no assignee and no progress — to a person who holds no role there.
 sources are not `done` or `dropped` is refused with the list of them; a person may repeat the
 transition with an explicit override and a reason, which the activity list records as
 "closed over open prerequisites". An agent cannot override. `dropped` is never refused by a
-prerequisite. *(2026-10-10, not built:)* A prerequisite in another team counts like one of the
+prerequisite. *(2026-10-10, built the same day:)* A prerequisite in another team counts like one of the
 own team whenever the closer reads its state in its head. *(Amended 2026-10-06 by the owner:)* An agent may remove a `blocks` link, an open
 one into a ticket it is about to close included, and the owner accepts that an agent with `close`
 steps around the override that way: it removes the links of the open prerequisites and closes,
@@ -149,8 +187,9 @@ an agent only while the links stand; a person who wants it to hold gives the age
 - A fifth type is a migration and a UI change, as with types, states and vocabularies.
 - D5 keeps state transitions attributable to people at the cost of one manual act per
   unblock; the notification of D5 makes the act cheap.
-- D6 is a recursive query per view (a `WITH RECURSIVE` over the tenant's `blocks` edges);
-  the cycle check of D4 bounds it. ~~The count on the card is cached on the ticket and
+- D6 is a recursive query per view (a `WITH RECURSIVE` over the ~~tenant's~~ `blocks` edges
+  *(2026-10-10: of every team, stepping on only from a ticket the reader reads)*); the cycle check
+  of D4 bounds it. ~~The count on the card is cached on the ticket and
   recomputed when a link or a prerequisite's state changes.~~ *(Amended 2026-10-03:)* The
   count on the card is one indexed lookup per row, under the reader's visibility; in a chain
   A blocks B blocks C, C shows 1 while A is open behind B, and the tree tells the rest.

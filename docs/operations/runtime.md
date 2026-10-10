@@ -31,7 +31,13 @@ logs. The variables named here are explained one by one in
 4. **The database check.** A runtime role that could bypass row-level security is refused
    ([installation.md](installation.md#the-database-and-its-two-roles)), and so is a schema
    that is dirty or has pending migrations —
-   `pending migrations: N; run the migration job (or set COWORK_MIGRATE_ON_START=true)`. Each
+   `pending migrations: N; run the migration job (or set COWORK_MIGRATE_ON_START=true)`, and so is
+   a database whose crossings between teams are not the owner role's alone — a crossing policy that
+   names another role than the owner of the tables, a crossing function missing or not that
+   owner's — with `refusing a database whose crossings between teams are not the owner role's
+   alone`, each problem named: an ownership changed past the migrations, by `REASSIGN OWNED` or an
+   `ALTER … OWNER`, leaves policies that no function meets
+   ([docs/security/tenancy.md](../security/tenancy.md#relations-between-teams-cross-through-the-owners-functions-alone)). Each
    ends the process with `database check failed` and exit code 1. A schema newer than the
    binary is served, with the warning `database schema is ahead of this binary; serving it`.
 5. **The identity provider**, when `COWORK_OIDC_ISSUER` is set: the backend fetches

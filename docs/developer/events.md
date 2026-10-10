@@ -40,6 +40,19 @@ carries the facts the ticket had (`Event.Published`), because the row is gone wh
 written ([ADR 0024] D1, D2). Saved filters are not published; their list, like the bin, answers
 `304` to the poll of the fallback when nothing changed.
 
+**An act in another team** — a link across teams on its other end, the end of a relation at a
+purge, a settled prerequisite's `prerequisite_settled` on a ticket it blocks — is written by
+`Writer.RecordElsewhere` in that team's record and published like any act there, on that team's
+streams, by that ticket's facts ([data-access.md](data-access.md#crossings-between-teams)).
+**A parent's derived stages** that a change of a child of another team moved are no act: the
+crossing `refresh_derived` sends the notification itself, entity `ticket`, action `derived`, with
+an id `uuidv7()` makes for it — not an audit row's —, the parent's team, project, key and version,
+which the change does not move, and the confidential rule's inputs; the stream sends it as
+`ticket.changed` of the kind `derived`. Its version is the one the client holds, so a client that
+refetches only a newer version must refetch on this kind; the UI does not yet. A parent of the
+writer's own team gets no notification of its own: the child's act is published there
+([ADR 0054] D2 as made concrete 2026-10-10).
+
 **A project's creation** is published as a notification of the entity `project`, with the
 team and the project and nothing else (`Event.NewProject`, set by `insertProject` in
 [`projects.go`](../../backend/internal/api/projects.go)): it changes what a stream may admit, and no
@@ -208,7 +221,8 @@ event: ticket.changed
 data: {"key":"acme/VKO-12","version":4,"kind":"transitioned"}
 ```
 
-with the audit row's id as `id`, `kind` the act's action, and the name by entity:
+with the audit row's id as `id` — the id made for it for the kind `derived`, which no act
+records —, `kind` the act's action, and the name by entity:
 `comment.changed`, `question.changed`, `link.changed`, `interest.changed`, `membership.changed`,
 `project.changed`, everything else `ticket.changed` — an upload included (`# example` values above). A membership
 event's `data` is its team's slug — as `team`, and as `tenant` beside it for one release, which a

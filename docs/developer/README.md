@@ -72,6 +72,11 @@ change.
   query runs in a transaction bound to that team, and the predicates in SQL hide restricted
   projects and confidential tickets. What the caller may not see answers exactly like what does
   not exist ([api.md](api.md#the-team-boundary), [data-access.md](data-access.md#visibility-in-sql)).
+- **A relation crosses teams through the owner's functions alone.** A parent, a child or a link may
+  be a ticket of another team, shown by its head or as `<team> [Confidential]`; what crosses is read
+  and written by `SECURITY DEFINER` functions of the owner role under policies only the owner meets,
+  never by a query of the runtime role ([data-access.md](data-access.md#crossings-between-teams),
+  [domain.md](domain.md#relations-across-teams)).
 - **Every write is `Mutate`, and every act is an audit row.** A request's write commits through
   `store.Mutate` together with one audit row per act it records — no act, no commit — and a
   ticket's act and a membership's are published to the event streams at commit; a job commits
@@ -124,7 +129,7 @@ change.
 
 | Flow | The fact | Where |
 |---|---|---|
-| Backend start | Configuration is validated completely before anything else runs; the migration runs as the owner role before the pool opens; `serve` refuses a role that could bypass row-level security and a dirty or pending schema; a configured identity provider must be discoverable; then the local administrator and the bootstrap team are synchronised under an advisory lock | [architecture.md](architecture.md#backend-startup-sequence-cowork-serve) |
+| Backend start | Configuration is validated completely before anything else runs; the migration runs as the owner role before the pool opens; `serve` refuses a role that could bypass row-level security, a dirty or pending schema and crossings between teams that are not the owner role's alone; a configured identity provider must be discoverable; then the local administrator and the bootstrap team are synchronised under an advisory lock | [architecture.md](architecture.md#backend-startup-sequence-cowork-serve) |
 | Backend request | Request id, the HTTP instruments, log and recovery wrap a mux; `/api/` and `/auth/` run the pipeline: a deprecated twin's path read as its team path, route in the document, authenticate (token or cookie — a provider's session refreshed when due, a provider person's token held to the gate), the session rules (CSRF, an agent-marked session refused what only a session does, temporary password), team boundary, limits, validation, then the generated handler — or, for the event stream and a turn of the chat, a handler of their own that streams | [architecture.md](architecture.md#backend-request-path), [api.md](api.md#the-pipeline) |
 | A local login | The password is verified — against the account's hash or a dummy, one computation either way — before the attempt is recorded under the username's advisory lock; every refusal is the same `401`; a success commits a session whose cookie value is never stored | [api.md](api.md#the-login-flows), [local-accounts](../security/local-accounts.md) |
 | A login through the identity provider | The start seals the state, the nonce and the PKCE verifier into a cookie and redirects; the callback checks them, redeems the code, verifies the ID token, and one transaction — under the advisory lock of the issuer's subject, taken before the person is read, then the person's — applies the gate, keeps or makes the person, derives the memberships and makes the session | [architecture.md](architecture.md#the-two-logins), [identity provider](../security/identity-provider.md) |

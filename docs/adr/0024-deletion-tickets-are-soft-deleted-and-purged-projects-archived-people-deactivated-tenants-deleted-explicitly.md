@@ -41,7 +41,9 @@ the same filter — the `q` filter of the lists and the search of
 [ADR 0025](0025-search-is-postgresql-full-text-under-the-same-policy-as-the-data.md) D5, every ticket
 it reads —, and the person-level stream carries the deletion and the restoration across the
 person's tenants, on which the person-level pages and the inbox's count read their lists again; the
-dashboard of D1's "dashboard tile" is not built. D4's deletion of a project and D6 are not built. *(2026-10-06,
+dashboard of D1's "dashboard tile" is not built. D4's deletion of a project and D6 are not built
+*(2026-10-10: but D6's end of the relations into other teams, a function of the data layer that no
+route calls, D6)*. *(2026-10-06,
 made concrete by the implementer with the import of
 [ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md), open to the
 owner's objection:)* the purge of a ticket an import created also takes the ticket's file out of the
@@ -92,9 +94,16 @@ purge**: they keep the ticket's key, the actor and the act, with the content fie
 *(Added 2026-10-06, decided by the implementer in building and accepted by the owner that day:)* a
 purged ticket's children become roots, and a ticket blocked on it waits on its key as an external
 reference from then on, an act recorded on that ticket. *(Made concrete 2026-10-10 on the
-recommendation, open to the owner's objection, not built:)* the same holds across teams
+recommendation, open to the owner's objection, ~~not built~~ built the same day:)* the same holds across teams
 ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3): its children in another team become roots and its links into another team go, each
-change recorded in the audit record of the team it changes.
+change recorded in the audit record of the team it changes. *(Built through
+`end_relations_elsewhere`, a crossing of
+[ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7, inside the purge
+of a deleted ticket only: a child of another team becomes a root, its version unchanged, with an
+`updated` act whose reason is "the parent was purged" and which names no ticket; a link to or from
+the ticket goes, with an `unlinked` act on the other end, read from its side; the actor is the
+purge's, the administrator or `system:ticket-purge`. A block of another team never waits on the
+ticket, since a block names a ticket of its own team.)*
 
 **D3 — Soft deletion is an application filter, not a policy.** Row-level security
 ([ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md)) stays the
@@ -113,8 +122,15 @@ and the deletion is immediate and complete:** every row of the tenant, every att
 object under its prefix ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
 D2), every notification that referenced it. The audit rows of the tenant are deleted with
 it, after one final audit row in the installation-level record names the tenant, the
-administrator and the time. The slug is not reused. *(2026-10-10, not built:)* Every relation from
-another team into it ends as D2's purge ends it, recorded in that other team's audit record.
+administrator and the time. The slug is not reused. *(2026-10-10, ~~not built~~ built the same day
+as a function of the data layer that no route calls, while the deletion of a team is not built:)*
+Every relation from another team into it ends as D2's purge ends it, recorded in that other team's
+audit record. *(`DB.EndTeamRelations`, a job transaction named `team-deletion` over
+`end_team_relations`: the children in other teams of the team's tickets become roots, the team's
+tickets whose parent is elsewhere become roots, the links between the team and the others go in
+both directions, each change in another team recorded there as `system:team-deletion`, and the
+parents elsewhere that counted the team's tickets derive their progress again; the integration tier
+calls it at the store.)*
 
 **D7 — Who may, and what warns.** Delete, restore and purge are tenant-administrator acts;
 tenant deletion is a global administrator's. An agent never deletes anything. Deleting a

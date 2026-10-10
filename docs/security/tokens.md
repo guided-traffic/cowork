@@ -215,7 +215,13 @@ administrator reads no team of the installation the person is not a member of.
 ## Restrictions
 
 - A token restricted to a team answers `404` on every other team, exactly as for an
-  unknown slug ([`api/tenant.go`](../../backend/internal/api/tenant.go) `boundary`).
+  unknown slug ([`api/tenant.go`](../../backend/internal/api/tenant.go) `boundary`). A ticket of
+  another team that a relation of its team's tickets names — a parent, a child, a link, a
+  prerequisite — it reads by its head alone, or as the placeholder where it is confidential, even
+  where its person is a member of that team: the data layer reads the restriction in
+  `app.restricted_tenant_id` (`ticket_sight`; `TestARestrictedTokenReadsAStrangersHeads`,
+  [tenancy.md](tenancy.md#relations-between-teams-cross-through-the-owners-functions-alone)). A
+  token restricted to a project reads a related ticket outside its project the same way.
 - A token restricted to a project — always inside its team restriction — carries the
   project into the visibility predicate. It reaches its project's routes, the project list,
   the team-wide ticket list, the team's search, the key resolver and the event stream, each narrowed to the

@@ -103,21 +103,56 @@ stream applies the confidential rule once more in Go, to each event it holds
 - **The ticket.** A confidential ticket is visible, inside a visible project, to the team's
   administrators, its assignee and its reporter only.
 
-What a reader may not see does not exist for them: its routes answer `404`, lists, links and
-the event stream leave it out, and an act that names it is shown without its payload
-([ADR 0065] D5). A deleted ticket is the same for everybody, its team's administrators included,
+What a reader may not see does not exist for them: its routes answer `404`, lists, the deprecated
+link list and the event stream leave it out, and an act that names it is shown without its payload
+([ADR 0065] D5). The one exception is the other end of a relation of a ticket they see — its parent,
+a child, a link —, which is shown by its head or as `<team> [Confidential]`, of any team
+([relations across teams](#relations-across-teams)). A deleted ticket is the same for everybody, its team's administrators included,
 everywhere but the bin ([deletion](#deletion-the-bin-and-the-purge)). The SQL is
 [data-access.md](data-access.md#visibility-in-sql).
 
 ## Parent
 
-A parent is a ticket of the same project: the composite foreign key
-`(tenant_id, project_id, parent_id)` holds it, `resolveParent` refuses another project at
-`/parent`, and a ticket is never its own parent ([ADR 0008] D2). Re-parenting takes the project's
-lock (`LockParents`) and then walks the chain (`ParentChainContains` over
-`ticket_ancestor_or_self`): a parent that is the ticket or one of its descendants is
-`409 parent_cycle`. The answer shows the parent by its full key, or `null` when the caller cannot
-see it.
+A parent is a ticket of any project or team of the installation ([ADR 0008] D2 as amended
+2026-10-10): `parent_id` references the ticket alone (migration 47), and a ticket is never its own
+parent. `parent` in a filing or a `PATCH` takes a canonical key of any team, or a short key of any
+project of the child's team; `resolveParent` reads it through the crossing `readable_ticket`, in the
+write's own transaction, and answers a key the caller does not read exactly as one that names
+nothing — no such team, project or number, a team they hold no role in, a token outside its
+restriction, a restricted project, a deleted ticket, a confidential one they are not admitted to:
+`400 validation_failed`, "no such ticket" at `/parent` (`noSuchParent`). Setting a parent in a
+`PATCH` takes the installation's lock of the parents (`LockGraph(GraphParents)`) and then walks the
+chain across teams (`ParentChainReaches`): a parent that is the ticket or one of its descendants is
+`409 parent_cycle`. A filing takes no walk, since a new ticket has no descendants. Clearing the
+parent is a write on the child alone, whatever the caller reads of the parent. The answer shows
+`parent`, the parent's canonical key — `null` for none and for a placeholder — and `parent_head`,
+the parent as the caller sees it (`shown`, `Reader.ParentHeads`).
+
+## Relations across teams
+
+A ticket's parent, its children and its links may be tickets of another project or team
+([ADR 0005] D3 as amended 2026-10-10). The other end of each is read through a crossing of the data
+layer ([data-access.md](data-access.md#crossings-between-teams)) and shown as a `TicketHead` — the
+team's slug and name, the key, the title, the type, the state, `placeholder` and `readable` — by what
+the caller sees of it (`ticket_sight`):
+
+| Sight | Who | Shown |
+|---|---|---|
+| sees (`readable: true`) | a member of its team, any role, whose project is open to them, and — confidential — its team's administrator, its assignee or its reporter | the head; a ticket of the caller's own team adds its assignee and its progress where a surface shows them |
+| head | a person who holds no role in its team, a member to whom its project is restricted, a token outside its restriction | the head alone: no body, no assignee, no progress, no id |
+| placeholder | a confidential ticket the caller is not admitted to, in any team, theirs included | `<team> [Confidential]`: the team alone, the key, title, type and state `null` |
+
+A deleted ticket is absent everywhere, as a missing one. `GET …/tickets/{number}/relations`
+(`ListTicketRelations`, [`relations.go`](../../backend/internal/api/relations.go)) lists a
+ticket's parent, children and links in that order, `kind` narrowing them, each with its link — id,
+type, direction, its name from this side, its maker and time — and its head; the cursor is sealed,
+because a position names an id the caller may not see ([api.md](api.md#paging)). What else crosses:
+the derived progress counts the children of every team ([progress](#progress)); an act on a link
+across teams, the end of a relation at a purge and a settled prerequisite are recorded on the other
+ticket in its own team's record (`RecordElsewhere`); and the context document and the export name
+the other end by its key, the placeholder by its team. An act in a ticket's activity whose `Refs`
+name a ticket of another team is always shown without its payload, since the reader's visible
+tickets are their team's ([comments and the activity list](#comments-and-the-activity-list)).
 
 ## Confidential tickets and assignment
 
@@ -185,10 +220,12 @@ decision blocked — into horizons set by nobody, so no ticket moved when the de
 
 ## Links
 
-Four types, directed, inside one team and across its projects ([ADR 0012]):
-`PUT …/links/{type}/{other}` makes the ticket in the path the source and `other` (a short key)
-the target; `GET …/links` lists both directions, each read from the ticket's side
-(`LinkType.Name`):
+Four types, directed, across projects and teams ([ADR 0012] D2 as amended 2026-10-10):
+`PUT …/links/{type}/{other}` makes the ticket in the path the source and `other`, a short key of its
+team, the target; `PUT …/links/{type}/{other_team}/{other}` does the same for a ticket of any team by
+its canonical key (`LinkTicketTo`); `GET …/relations` lists them with the parent and the children
+([above](#relations-across-teams)), and the deprecated `GET …/links` both directions inside the team
+among the ends the caller sees, each read from the ticket's side (`LinkType.Name`):
 
 | Type | From the source | From the target |
 |---|---|---|
@@ -197,20 +234,37 @@ the target; `GET …/links` lists both directions, each read from the ticket's s
 | `found-in` | found in | found here |
 | `relates-to` | relates to | relates to |
 
-No link to the ticket itself, one link per type and direction (table constraints);
-`relates-to` is stored once with the smaller id as source. A new `blocks` link takes the
-team's lock (`LockBlocks`) and refuses a cycle (`blocks_path_exists`) with
-`409 link_cycle`. Both ends are read through the predicate — an end the caller cannot see is
-`404` — and a listed link whose other end the caller cannot see is absent. A link is an act on
-both tickets (`linked`, `unlinked`, each with the other ticket in `Refs`). An existing link is
-`200` without a second act, a new one `201`; removing a missing link is `204`.
+No link to the ticket itself, one link per type and direction (table constraints); a link
+lives in its source's team. `relates-to` is stored once: inside a team with the smaller id as
+source, across teams with the end it was made from as source (the unique index
+`ticket_links_relates_once`). A new `blocks` link takes the installation's lock of the `blocks`
+graph (`LockGraph(GraphBlocks)`) and refuses a cycle through any team (`BlocksReach`) with
+`409 link_cycle`. The ticket in the path is read through the predicate and needs `work`; the other
+end through `readable_ticket`, and one the caller does not read is `404 not_found`, "no such
+ticket", like a missing one (`noSuchTicket`). A link is an act on both tickets (`linked`,
+`unlinked`, each with the other ticket in `Refs`), the other end's in its own team's record. An
+existing link is `200` without a second act, a new one `201`. Removing is a write on the source
+alone, whatever the caller reads of the other end — inside the team a `relates-to` from either end —:
+by the other end's key, either route with `DELETE`, or by the link's id, `DELETE …/links/{link}`
+(`RemoveTicketLink`), the way to remove one whose other end is a placeholder; a missing link, or one
+the ticket in the path is not the source of, is `204` and removes nothing.
 
 ### The prerequisite tree
 
-`GET …/{number}/prerequisites` ([ADR 0012] D6,
-[`prerequisites.go`](../../backend/internal/api/prerequisites.go)) is the tree of the tickets that
-block a ticket, what blocks those, and so on; `direction=up` reads the `blocks` links the other
-way, the dependents. The walk is SQL, `ListPrerequisites` and its mirror `ListDependents` in
+`GET …/{number}/prerequisite-tree` ([ADR 0012] D6 as amended 2026-10-10,
+[`prerequisites.go`](../../backend/internal/api/prerequisites.go) `ListPrerequisiteTree`) is the tree
+of the tickets that block a ticket, what blocks those, and so on, across teams; `direction=up` reads
+the `blocks` links the other way, the dependents. The walk is the crossing `prerequisite_heads`,
+`ListPrerequisites`' walk below with every step decided by the sight: it goes on only from a ticket
+the caller reads, so a head and a placeholder are leaves and what lies behind them stays behind
+their team's membership. A node carries its depth, `repeated`, `settled` (`null` for a
+placeholder), `blocked_from` and its head; its assignee and its progress only where it is a ticket of
+the caller's own team they read. `open` counts the open tickets of the tree whose state the caller
+reads, each once, never a placeholder. The cursor carries the node's path, ids of tickets the caller
+may not see among them, so it is sealed.
+
+`GET …/{number}/prerequisites`, deprecated, is the same tree inside the team among the tickets the
+caller sees ([ADR 0046] D7). The walk is SQL, `ListPrerequisites` and its mirror `ListDependents` in
 [`links.sql`](../../backend/internal/store/queries/read/links.sql):
 
 - **Each link once per depth, never each path.** The recursive part keeps `(ticket, the ticket it
@@ -272,16 +326,22 @@ review: …` (`mayClose`, which the done act of the stages calls as well).
   unless it has no children and its three stages are full
   (`domain.WithdrawalStaysDone`): then it stays done, by its stages, and the act is `updated`,
   `done_by_hand` from true to false, with the reason (`keepDoneByStages`, `EndDoneByHand`).
-- **A block that names a ticket** — required for kind `ticket` — reads it through the predicate
-  and adds `<that ticket> blocks <this one>` when the link is missing, with its acts, lock and
-  cycle check.
+- **A block that names a ticket** — required for kind `ticket` — reads it through the predicate,
+  a ticket of the team, and adds `<that ticket> blocks <this one>` when the link is missing, with its
+  acts and cycle check; the transition takes the `blocks` graph's lock first, before it writes the
+  ticket.
 - **Prerequisites** ([ADR 0012] D7): the done act — by hand or by the stages — over open direct
-  `blocks` sources the caller can see is `409 open_prerequisites`, listing them in `errors[]`
-  under the field that closes (`/to`, or the stage of the `PATCH`), unless
+  `blocks` sources whose state the caller reads in a head — of any team, a project restricted from
+  them included, never a placeholder (`OpenPrerequisiteHeads`) — is `409 open_prerequisites`, listing
+  them in `errors[]` under the field that closes (`/to`, or the stage of the `PATCH`), unless
   `override_prerequisites` with a reason — a person's act, hard-off for agents (`closeOver`).
   The act then names the overridden keys and carries them in `Refs`. Every ticket carries the
-  count of those prerequisites as `open_prerequisites`, a subquery of the ticket's columns
-  under the predicate: a prerequisite the caller cannot see is never counted.
+  count of those prerequisites as `open_prerequisites`, through the crossing
+  `open_prerequisite_count`: a placeholder is never counted, and a prerequisite of the caller's own
+  team in a project restricted from them is, by its head. A ticket that reaches `done` or `dropped`
+  records `prerequisite_settled` on each ticket of another team it blocks, in that team's record,
+  naming itself by its head as an outsider reads it, which tells that ticket's watchers
+  (`tellBlockedElsewhere`; [who is told](#who-is-told)).
 - An `Idempotency-Key` sent with a transition is recorded on the act.
 
 ## Rank
@@ -476,13 +536,16 @@ Three stages, each 0 to 100 in steps of five ([ADR 0017] D2): `progress_refineme
 but `dropped` on a ticket without children; on a dropped ticket, or one whose stages are
 derived, it is `409 state_conflict` with the current value (`applyStages`).
 
-A ticket with children shows each stage derived from the same stage of its children
-(`ticket_derived_stage(tenant, id, stage)`, migration 19; `progress_derived`,
-`progress_refinement_derived`, `progress_review_derived`): the mean weighted by effort (XS 1,
-S 2, M 3, L 5), a dropped child left out, a done child counted as 100 in each stage, rounded to
-the nearest five with halves up; 0 when every child is dropped. `refreshProgress` derives them
-again up the ancestors, as far as a value changes, after a child is filed, re-parented, changes
-effort or a stage, or moves; the version stays. When the last child leaves, each own value
+A ticket with children shows each stage derived from the same stage of its children of every
+team (`progress_derived`, `progress_refinement_derived`, `progress_review_derived`; [ADR 0017] D3
+as amended 2026-10-10): the mean weighted by effort (XS 1, S 2, M 3, L 5), a dropped or deleted
+child left out, a done child counted as 100 in each stage, rounded to the nearest five with halves
+up; 0 when every child is dropped. `refreshProgress` derives them again up the ancestors, across
+teams, the deepest first, as far as a value changes, after a child is filed, re-parented, changes
+effort or a stage, moves, is deleted or restored — through the crossing `refresh_derived`
+(migration 47), which derives as `ticket_derived_stage(tenant, id, stage)` of migration 19 does
+within a team; the version stays, and a parent of another team whose values changed is told on its
+team's streams as `ticket.changed` of the kind `derived` ([events.md](events.md)). When the last child leaves, each own value
 starts at the last derived one. A ticket shows its stages as they are — derived while it has
 children, else its own — done or not (D3, D5); `progress_derived` says they are derived.
 `progress_derived` alone says whether there are children: the release before the stages, run
@@ -515,7 +578,7 @@ The stages move the state ([ADR 0009] D5), decided by the pure
 - `note` and `override_prerequisites` on a `PATCH` that is not the done act, and `reason` on one
   that moves no state, are `400`.
 - **A parent is never done by its stages.** Its stages take no write, and a done ticket that
-  gains children is done by hand from then on (`RefreshDerivedProgress` sets `done_by_hand`).
+  gains children is done by hand from then on (`refresh_derived` sets `done_by_hand`).
 
 ## Time
 
@@ -569,7 +632,8 @@ them; the activity marks their acts ([tokens.md H-50](../security/tokens.md#h-50
 A person's inbox ([ADR 0020]) holds a notification for each act of D2 that concerns them: a ticket
 assigned to them, a question asked of them, a question they asked answered, a state change of a
 ticket they watch — a block's reason comes only with a move into `blocked` —, a comment on one, a
-ticket that blocks one they watch reaching `done` or `dropped`, and an `urgent` stake on a ticket
+ticket that blocks one they watch reaching `done` or `dropped` — of another team too, through the
+act `prerequisite_settled` on the ticket they watch, in its own team's record —, and an `urgent` stake on a ticket
 assigned to them. The watchers are everyone with a stake of any weight, the assignee, the reporter
 and whoever asked or was asked an open question on the ticket, or is mentioned by a comment on it
 that is not withdrawn ([ADR 0013] D6, [ADR 0015] D5), and a comment that mentions a person tells
@@ -603,19 +667,24 @@ store's side are [data-access.md](data-access.md#notifications).
 - **Purging** (`DELETE …/deleted-tickets/{key}`, `purged`; or the job, thirty days after the
   deletion, as `system:ticket-purge`) removes it and everything that belongs only to it, its
   attachments' objects last; its children become roots, a block that waited on it waits on its key
-  as an external reference — an `updated` act on that ticket, its version raised —, and its audit
-  rows keep its key, the actor and the act, their content emptied. Its number is never handed out
+  as an external reference — an `updated` act on that ticket, its version raised —, its relations
+  into other teams end — a child there becomes a root, a link goes, each with its act in that team's
+  record ([ADR 0024] D2 as made concrete 2026-10-10) —, and its audit rows keep its key, the actor
+  and the act, their content emptied. Its number is never handed out
   again: the project's counter only grows.
 - **Concurrent acts** answer as a later request would: a deletion that lost the race is `404`; of a
   purge and a restoration at once, one wins and the other is `404`.
 
 ## Not built
 
-The deletion of a project and of a team ([ADR 0024] D4, D6) is not built. No route creates
+The deletion of a project and of a team ([ADR 0024] D4, D6) is not built; the end of a team's
+relations into the other teams is, as `DB.EndTeamRelations`, which no route calls
+([data-access.md](data-access.md#crossings-between-teams)). No route creates
 memberships, entries on a restricted
 project's list or tokens; the tests and `make dev-seed` write them over the administrative
 connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 
+[ADR 0005]: ../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md
 [ADR 0006]: ../adr/0006-a-project-is-the-backlog-unit-of-a-tenant-and-owns-its-repositories.md
 [ADR 0007]: ../adr/0007-a-ticket-key-is-globally-unique-tenant-slash-project-dash-number.md
 [ADR 0008]: ../adr/0008-five-ticket-types-and-an-optional-parent-in-the-same-project.md
@@ -637,6 +706,7 @@ connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 [ADR 0036]: ../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md
 [ADR 0043]: ../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md
 [ADR 0045]: ../adr/0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md
+[ADR 0046]: ../adr/0046-spec-first-the-openapi-document-is-the-contract.md
 [ADR 0050]: ../adr/0050-optimistic-concurrency-a-version-per-entity-if-match-where-a-write-overwrites.md
 [ADR 0065]: ../adr/0065-a-confidential-flag-replaces-the-file-name-embargo-set-automatically-lifted-only-by-a-person.md
 [ADR 0066]: ../adr/0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md
