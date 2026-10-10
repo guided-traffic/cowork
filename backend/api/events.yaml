@@ -1,12 +1,12 @@
-# The event stream of a tenant (docs/adr/0054). It is served outside the
+# The event stream of a team (docs/adr/0054). It is served outside the
 # generated server: a stream is not a response a handler returns.
 events:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: streamEvents
     tags: [events]
-    summary: The tenant's events the caller may see, as server-sent events
+    summary: The team's events the caller may see, as server-sent events
     description: |
       `ticket.changed` (an upload included), `comment.changed`, `question.changed`,
       `link.changed` and `interest.changed`, each with `data: {"key", "version", "kind"}` — a key
@@ -17,34 +17,36 @@ events:
       `project.changed` says that a project's tickets changed as a whole — its rank set by the
       score (docs/adr/0014 D3), `kind` `ranked`, or an import executed into it (docs/adr/0051 D3),
       `kind` `imported`, whose tickets announce no event of their own — with
-      `data: {"key": "<tenant>/<PROJECT>", "kind": …}`; `id:` is the act's id. It reaches whoever
+      `data: {"key": "<team>/<PROJECT>", "kind": …}`; `id:` is the act's id. It reaches whoever
       sees the project, and the client reloads the lists it shows.
 
-      `membership.changed` says that who belongs to the tenant, or who sees a project, changed —
+      `membership.changed` says that who belongs to the team, or who sees a project, changed —
       by an administrator's act or by the identity provider's groups (docs/adr/0030 D2, D6). Its
-      `data` carries the tenant's slug, `tenant`, and keys only, each where it applies:
+      `data` carries the team's slug, `team` — and the same slug under the deprecated `tenant`,
+      written for one release and dropped in a later one (docs/adr/0005 D1, docs/adr/0046 D7) —,
+      and keys only, each where it applies:
       `person_id`, the person whose membership or project access changed; `project_id`, the
       project whose restriction or access list changed; `mapping_id`, the group mapping made,
-      changed or removed. The client reloads what it shows of that tenant's members, mappings and
+      changed or removed. The client reloads what it shows of that team's members, mappings and
       access lists, its project list when `project_id` is there, and the person's own
-      `GET /api/v1/me`. An event about an access entry reaches the tenant's administrators and the
+      `GET /api/v1/me`. An event about an access entry reaches the team's administrators and the
       person it names, one about a mapping the administrators, every other every member.
 
       With `me=true` — the person-level pages, and the bell in the top bar — the stream carries
-      every event of every tenant the person belongs to that the tenant's own stream would carry
+      every event of every team the person belongs to that the team's own stream would carry
       to them, each with its `id:` (docs/adr/0054 D1, D3), and `inbox.changed` with
-      `data: {"unread": n}`, the person's unread notifications in every tenant the request reaches
+      `data: {"unread": n}`, the person's unread notifications in every team the request reaches
       (`GET /api/v1/me/inbox` counts the same), sent when the stream opens and whenever the inbox
       changes — a notification for them, or theirs marked read. The count carries no `id:` and is
-      not replayed: it says how things stand. A tenant the person is granted a role in is followed
+      not replayed: it says how things stand. A team the person is granted a role in is followed
       at once, one they leave no more after the act that took it away. A token restricted to a
-      tenant hears its tenant alone (docs/adr/0035 D3).
+      team hears its team alone (docs/adr/0035 D3).
 
       A reconnect with `Last-Event-ID` inside the replay window replays the gap — on a person-level
-      stream the gap of every tenant it follows, in the order the server received the events;
+      stream the gap of every team it follows, in the order the server received the events;
       beyond it the stream starts with `event: resync`, and the client refetches its lists (D5).
       A comment every twenty seconds keeps proxies open and checks the token and the
-      memberships again; the stream ends when the token or the membership of the tenant in the
+      memberships again; the stream ends when the token or the membership of the team in the
       path fails. `event: unavailable` ends a stream
       the server closes — the person's eleventh, a shutdown — and the client polls (D7, D8).
     parameters:
@@ -54,7 +56,7 @@ events:
         schema: {type: string, format: uuid}
       - name: me
         in: query
-        description: Carries the events of every tenant of the person and their unread count (docs/adr/0054 D1)
+        description: Carries the events of every team of the person and their unread count (docs/adr/0054 D1)
         schema: {type: boolean, default: false}
     responses:
       '200':
@@ -63,7 +65,7 @@ events:
           text/event-stream:
             schema:
               type: string
-            # The first lines of the tenant's stream: two acts on acme/WEB-42, a member
+            # The first lines of the team's stream: two acts on acme/WEB-42, a member
             # added, and the comment every twenty seconds.
             example: |
               id: 01a110b2-f108-7b07-8514-a75fc430bb9f
@@ -76,7 +78,7 @@ events:
 
               id: 01a110b3-eef0-78b3-aecf-33b6e003a0d5
               event: membership.changed
-              data: {"tenant":"acme","person_id":"01a0e855-4ee0-7f87-8f19-0a5c9c75145e"}
+              data: {"team":"acme","tenant":"acme","person_id":"01a0e855-4ee0-7f87-8f19-0a5c9c75145e"}
 
               : heartbeat
       default:

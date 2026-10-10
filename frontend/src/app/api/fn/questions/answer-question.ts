@@ -13,9 +13,9 @@ import { Question } from '../../models/question';
 export interface AnswerQuestion$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -43,7 +43,7 @@ export interface AnswerQuestion$Params {
 export function answerQuestion(http: HttpClient, rootUrl: string, params: AnswerQuestion$Params, context?: HttpContext): Observable<StrictHttpResponse<Question>> {
   const rb = new RequestBuilder(rootUrl, answerQuestion.PATH, 'put');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('question', params.question, {});
@@ -61,4 +61,4 @@ export function answerQuestion(http: HttpClient, rootUrl: string, params: Answer
   );
 }
 
-answerQuestion.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/answer';
+answerQuestion.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/questions/{question}/answer';

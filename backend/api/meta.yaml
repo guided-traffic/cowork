@@ -22,7 +22,8 @@ coworkYamlSchema:
     summary: The JSON Schema of a repository's `.cowork.yaml`
     description: |
       The optional binding file of a repository without a remote or of a fork
-      (docs/adr/0066 D4): `tenant` and `project`, and optionally `path` — the
+      (docs/adr/0066 D4): `team` — or its deprecated name `tenant`, read for one
+      release — and `project`, and optionally `path` — the
       sub-directory of a monorepo it binds — and `url`, the installation it
       belongs to. Unauthenticated, so an editor can load it.
     security: []
@@ -41,9 +42,13 @@ coworkYamlSchema:
                   title: .cowork.yaml
                   type: object
                   additionalProperties: false
-                  required: [tenant, project]
+                  required: [project]
+                  anyOf:
+                    - required: [team]
+                    - required: [tenant]
                   properties:
-                    tenant: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
+                    team: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$'}
+                    tenant: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,62}$', deprecated: true}
                     project: {type: string, pattern: '^[A-Z][A-Z0-9]{1,9}$'}
                     path: {type: string, maxLength: 512}
                     url: {type: string, maxLength: 2000, pattern: '^https?://'}
@@ -71,7 +76,7 @@ document:
                   info:
                     title: cowork
                     version: 0.7.0
-                    description: A multi-tenant backlog for people and the agents that work for them.
+                    description: A multi-team backlog for people and the agents that work for them.
                   servers:
                     - url: /
                   security:

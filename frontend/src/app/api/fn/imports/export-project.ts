@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface ExportProject$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -24,7 +24,7 @@ export interface ExportProject$Params {
 export function exportProject(http: HttpClient, rootUrl: string, params: ExportProject$Params, context?: HttpContext): Observable<StrictHttpResponse<Blob>> {
   const rb = new RequestBuilder(rootUrl, exportProject.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
   }
 
@@ -38,4 +38,4 @@ export function exportProject(http: HttpClient, rootUrl: string, params: ExportP
   );
 }
 
-exportProject.PATH = '/api/v1/tenants/{tenant}/projects/{project}/export';
+exportProject.PATH = '/api/v1/teams/{team}/projects/{project}/export';

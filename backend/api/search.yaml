@@ -1,18 +1,18 @@
 # Search (docs/adr/0025, docs/adr/0018 D7): ranked hits with snippets, within
-# a tenant and as a union over the person's tenants (docs/adr/0023 D2).
-tenant:
+# a team and as a union over the person's teams (docs/adr/0023 D2).
+team:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
-    operationId: searchTenant
+    operationId: searchTeam
     tags: [search]
-    summary: Search the tenant's tickets
+    summary: Search the team's tickets
     description: |
       Full text in PostgreSQL — the `simple` dictionary after `unaccent` (docs/adr/0025 D2, D6) —
       over a ticket's title and body, its comments but a withdrawn one, its questions (the question,
       the options, the recommendation and the answer) and its attachments' file names; a text
       matches when it holds every word of `q`. A ticket's key matches by its beginning as well —
-      `COW-1` finds COW-1 and COW-12, `acme/COW-12` names the tenant too — and its title by trigram
+      `COW-1` finds COW-1 and COW-12, `acme/COW-12` names the team too — and its title by trigram
       similarity, so a word half typed or misspelt still finds it (D3).
 
       One hit per ticket, at its best match, ranked by `ts_rank`: a key above everything, then the
@@ -23,7 +23,7 @@ tenant:
       D5). The snippet is text in parts, never HTML: a client shows every part as text.
 
       Only what the caller can see is searched, snippets included: a restricted project they are
-      not on, a confidential ticket of which they are neither a tenant administrator, the assignee
+      not on, a confidential ticket of which they are neither a team administrator, the assignee
       nor the reporter, and a project-restricted token's other projects find nothing
       (docs/adr/0034 D3, docs/adr/0065 D5). Cursor paging only, no total (docs/adr/0048 D3); a
       cursor belongs to its query.
@@ -45,17 +45,18 @@ tenant:
         $ref: './components/responses.yaml#/Problem'
 me:
   get:
-    operationId: searchMyTenants
+    operationId: searchMyTeams
     tags: [search]
-    summary: Search the tickets of every tenant of the person
+    summary: Search the tickets of every team of the person
     description: |
-      The search of `GET /api/v1/tenants/{tenant}/search` over every tenant the person belongs to —
-      one read per tenant, never one query across them (docs/adr/0021 D5) — merged by rank; each hit
-      names its tenant. `tenant` narrows to one of them. A token restricted to a tenant searches that
-      tenant, one restricted to a project that project (docs/adr/0035 D3). A global administrator
-      without a role in a tenant searches nothing of it (docs/adr/0034 D2).
+      The search of `GET /api/v1/teams/{team}/search` over every team the person belongs to —
+      one read per team, never one query across them (docs/adr/0021 D5) — merged by rank; each hit
+      names its team. `team` narrows to one of them. A token restricted to a team searches that
+      team, one restricted to a project that project (docs/adr/0035 D3). A global administrator
+      without a role in a team searches nothing of it (docs/adr/0034 D2).
     parameters:
       - $ref: './components/parameters.yaml#/SearchQuery'
+      - $ref: './components/parameters.yaml#/MeTeam'
       - $ref: './components/parameters.yaml#/MeTenant'
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'

@@ -12,9 +12,9 @@ import { LinkType } from '../../models/link-type';
 export interface UnlinkTickets$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -40,7 +40,7 @@ export interface UnlinkTickets$Params {
 export function unlinkTickets(http: HttpClient, rootUrl: string, params: UnlinkTickets$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, unlinkTickets.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('type', params.type, {});
@@ -57,4 +57,4 @@ export function unlinkTickets(http: HttpClient, rootUrl: string, params: UnlinkT
   );
 }
 
-unlinkTickets.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}';
+unlinkTickets.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}';

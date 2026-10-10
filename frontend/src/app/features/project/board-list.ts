@@ -35,7 +35,7 @@ export function boardList(
     const { horizon, ...rest } = filter();
     return {
       ...rest,
-      tenant: at,
+      team: at,
       project: project(),
       pages: everyPage,
       horizon: horizonsOf(horizon),

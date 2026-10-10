@@ -107,7 +107,7 @@ func TestMeListsThePersonsTenants(t *testing.T) {
 	assert.Equal(t, w.Both, me.JSON200.Id)
 	slugs := make([]string, 0, len(me.JSON200.Memberships))
 	for _, m := range me.JSON200.Memberships {
-		slugs = append(slugs, m.Tenant.Slug)
+		slugs = append(slugs, m.Team.Slug)
 		assert.Equal(t, apigen.RoleMember, m.Role)
 	}
 	assert.ElementsMatch(t, []string{w.SlugA, w.SlugB}, slugs)
@@ -130,7 +130,7 @@ func TestARestrictedTokenSeesItsTenantAndItselfOnly(t *testing.T) {
 	me, err := cl.GetMeWithResponse(ctx)
 	require.NoError(t, err)
 	require.Len(t, me.JSON200.Memberships, 1, "the other tenant's name stays hidden")
-	assert.Equal(t, w.SlugA, me.JSON200.Memberships[0].Tenant.Slug)
+	assert.Equal(t, w.SlugA, me.JSON200.Memberships[0].Team.Slug)
 
 	list, err := cl.ListMyTokensWithResponse(ctx, &apigen.ListMyTokensParams{})
 	require.NoError(t, err)
@@ -163,8 +163,8 @@ func TestATokenOfOneTenantCannotSeeAnother(t *testing.T) {
 				if strings.HasSuffix(route, "/archive") {
 					method = http.MethodPut
 				}
-				refused := s.do(t, c, method, "/api/v1/tenants/"+w.SlugB+route, nil)
-				unknown := s.do(t, c, method, "/api/v1/tenants/no-such-tenant-x"+route, nil)
+				refused := s.do(t, c, method, "/api/v1/teams/"+w.SlugB+route, nil)
+				unknown := s.do(t, c, method, "/api/v1/teams/no-such-tenant-x"+route, nil)
 				rb := assertProblem(t, refused, http.StatusNotFound, "not_found")
 				ub := assertProblem(t, unknown, http.StatusNotFound, "not_found")
 				for _, k := range []string{"type", "title", "status", "detail", "code"} {
@@ -174,7 +174,7 @@ func TestATokenOfOneTenantCannotSeeAnother(t *testing.T) {
 		}
 	}
 	// The person in both tenants reaches B with a token that is not restricted.
-	res := s.do(t, caller{Token: tk.Both}, http.MethodGet, "/api/v1/tenants/"+w.SlugB, nil)
+	res := s.do(t, caller{Token: tk.Both}, http.MethodGet, "/api/v1/teams/"+w.SlugB, nil)
 	assert.Equal(t, http.StatusOK, res.StatusCode)
 }
 
@@ -184,31 +184,31 @@ func TestValidationRefusesWhatTheDocumentDoesNotDescribe(t *testing.T) {
 	s := newAPI(t)
 	c := caller{Token: tk.AdminA}
 
-	body := assertProblem(t, s.do(t, c, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/projects?sort=key", nil), http.StatusBadRequest, "validation_failed")
+	body := assertProblem(t, s.do(t, c, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/projects?sort=key", nil), http.StatusBadRequest, "validation_failed")
 	assert.Equal(t, "query:sort", body["errors"].([]any)[0].(map[string]any)["pointer"], "an unknown parameter is refused (docs/adr/0049 D4)")
 
-	body = assertProblem(t, s.do(t, c, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/projects?page=0&per_page=7", nil), http.StatusBadRequest, "validation_failed")
+	body = assertProblem(t, s.do(t, c, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/projects?page=0&per_page=7", nil), http.StatusBadRequest, "validation_failed")
 	assert.Equal(t, []any{
 		map[string]any{"pointer": "query:page", "message": "minimum: got 0, want 1"},
 		map[string]any{"pointer": "query:per_page", "message": "value must be one of 25, 50, 100"},
 	}, body["errors"], "a parameter is named by its failure alone, as a body's field is")
 
-	body = assertProblem(t, s.do(t, c, http.MethodPost, "/api/v1/tenants/"+w.SlugA+"/projects", map[string]any{"key": "lower", "name": "x", "extra": 1}), http.StatusBadRequest, "validation_failed")
+	body = assertProblem(t, s.do(t, c, http.MethodPost, "/api/v1/teams/"+w.SlugA+"/projects", map[string]any{"key": "lower", "name": "x", "extra": 1}), http.StatusBadRequest, "validation_failed")
 	pointers := map[string]bool{}
 	for _, e := range body["errors"].([]any) {
 		pointers[e.(map[string]any)["pointer"].(string)] = true
 	}
 	assert.True(t, pointers["/key"], "the key breaks its pattern: %v", pointers)
 
-	assertProblem(t, s.do(t, c, http.MethodGet, "/api/v1/tenants/Not_A_Slug", nil), http.StatusNotFound, "not_found")
-	assertProblem(t, s.do(t, c, http.MethodPost, "/api/v1/tenants/"+w.SlugA+"/projects", "{not json"), http.StatusBadRequest, "validation_failed")
+	assertProblem(t, s.do(t, c, http.MethodGet, "/api/v1/teams/Not_A_Slug", nil), http.StatusNotFound, "not_found")
+	assertProblem(t, s.do(t, c, http.MethodPost, "/api/v1/teams/"+w.SlugA+"/projects", "{not json"), http.StatusBadRequest, "validation_failed")
 }
 
 func TestBodyLimit(t *testing.T) {
 	w := newWorld(t)
 	tk := issueTokens(t, w)
 	s := newAPI(t, func(o *api.Options) { o.MaxJSONBody = 64 })
-	res := s.do(t, caller{Token: tk.AdminA}, http.MethodPost, "/api/v1/tenants/"+w.SlugA+"/projects",
+	res := s.do(t, caller{Token: tk.AdminA}, http.MethodPost, "/api/v1/teams/"+w.SlugA+"/projects",
 		map[string]any{"key": "BIG", "name": strings.Repeat("x", 200)})
 	assertProblem(t, res, http.StatusRequestEntityTooLarge, "payload_too_large")
 }
@@ -232,7 +232,7 @@ func TestABodyOfATypeTheRouteDoesNotTakeIsRefusedBeforeItIsRead(t *testing.T) {
 	assert.Zero(t, auth.Computations()-before, "no hash computed")
 	assert.Zero(t, scalar[int64](t, attempts, names["memberA"]), "no attempt counted")
 
-	projects := "/api/v1/tenants/" + w.SlugA + "/projects"
+	projects := "/api/v1/teams/" + w.SlugA + "/projects"
 	for name, body := range map[string]any{
 		"a valid body":    map[string]any{"key": "MULTI", "name": "Multi"},
 		"an invalid body": map[string]any{"key": "not a key", "name": strings.Repeat("x", 4096)},
@@ -325,19 +325,19 @@ func TestTenantSettings(t *testing.T) {
 	ctx := context.Background()
 	admin := s.client(t, caller{Token: tk.AdminA})
 
-	got, err := admin.GetTenantWithResponse(ctx, w.SlugA)
+	got, err := admin.GetTeamWithResponse(ctx, w.SlugA)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, got.StatusCode(), string(got.Body))
 	assert.True(t, got.JSON200.MembersCreateProjects, "members create projects by default (docs/adr/0034 D9)")
 	etag := got.HTTPResponse.Header.Get("ETag")
 	require.NotEmpty(t, etag)
 
-	patch := apigen.TenantPatch{MembersCreateProjects: ptr(false)}
-	res, err := admin.UpdateTenantWithResponse(ctx, w.SlugA, &apigen.UpdateTenantParams{}, patch)
+	patch := apigen.TeamPatch{MembersCreateProjects: ptr(false)}
+	res, err := admin.UpdateTeamWithResponse(ctx, w.SlugA, &apigen.UpdateTeamParams{}, patch)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusPreconditionRequired, res.StatusCode(), "an overwriting write needs If-Match (docs/adr/0050 D3)")
 
-	res, err = admin.UpdateTenantWithResponse(ctx, w.SlugA, &apigen.UpdateTenantParams{IfMatch: ptr(`"99"`)}, patch)
+	res, err = admin.UpdateTeamWithResponse(ctx, w.SlugA, &apigen.UpdateTeamParams{IfMatch: ptr(`"99"`)}, patch)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusPreconditionFailed, res.StatusCode())
 	assert.Equal(t, etag, res.HTTPResponse.Header.Get("ETag"), "a 412 names the current version")
@@ -345,17 +345,17 @@ func TestTenantSettings(t *testing.T) {
 	require.NotNil(t, res.ApplicationproblemJSONDefault.Errors)
 	assert.Equal(t, "/members_create_projects", (*res.ApplicationproblemJSONDefault.Errors)[0].Pointer)
 
-	res, err = admin.UpdateTenantWithResponse(ctx, w.SlugA, &apigen.UpdateTenantParams{IfMatch: &etag}, patch)
+	res, err = admin.UpdateTeamWithResponse(ctx, w.SlugA, &apigen.UpdateTeamParams{IfMatch: &etag}, patch)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
 	assert.False(t, res.JSON200.MembersCreateProjects)
 	assert.NotEqual(t, etag, res.HTTPResponse.Header.Get("ETag"))
 
 	member := s.client(t, caller{Token: tk.MemberA})
-	denied, err := member.UpdateTenantWithResponse(ctx, w.SlugA, &apigen.UpdateTenantParams{IfMatch: &etag}, patch)
+	denied, err := member.UpdateTeamWithResponse(ctx, w.SlugA, &apigen.UpdateTeamParams{IfMatch: &etag}, patch)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusForbidden, denied.StatusCode())
-	writeAdmin, err := s.client(t, caller{Token: tk.AdminAWrite}).UpdateTenantWithResponse(ctx, w.SlugA, &apigen.UpdateTenantParams{IfMatch: &etag}, patch)
+	writeAdmin, err := s.client(t, caller{Token: tk.AdminAWrite}).UpdateTeamWithResponse(ctx, w.SlugA, &apigen.UpdateTeamParams{IfMatch: &etag}, patch)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusForbidden, writeAdmin.StatusCode(), "an administration act needs admin scope")
 	assert.Equal(t, "insufficient_scope", string(writeAdmin.ApplicationproblemJSONDefault.Code))
@@ -389,7 +389,7 @@ func TestAuditViewForAdministrators(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "claude-code/opus/s1", agent)
 
-	res := s.do(t, caller{Token: tk.AdminA}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/audit", nil, "Accept", "text/csv")
+	res := s.do(t, caller{Token: tk.AdminA}, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/audit", nil, "Accept", "text/csv")
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	assert.Equal(t, "text/csv", res.Header.Get("Content-Type"))
 	records, err := csv.NewReader(res.Body).ReadAll()
@@ -431,6 +431,6 @@ func TestCursorPagination(t *testing.T) {
 	next, err := first.JSON200.NextCursor.Get()
 	require.NoError(t, err)
 	tampered := next[:len(next)-2] + "AA"
-	assertProblem(t, s.do(t, caller{Token: tk.AdminA}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/projects?cursor="+tampered, nil), http.StatusBadRequest, "invalid_cursor")
-	assertProblem(t, s.do(t, caller{Token: tk.AdminA}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/members?cursor="+next, nil), http.StatusBadRequest, "invalid_cursor")
+	assertProblem(t, s.do(t, caller{Token: tk.AdminA}, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/projects?cursor="+tampered, nil), http.StatusBadRequest, "invalid_cursor")
+	assertProblem(t, s.do(t, caller{Token: tk.AdminA}, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/members?cursor="+next, nil), http.StatusBadRequest, "invalid_cursor")
 }

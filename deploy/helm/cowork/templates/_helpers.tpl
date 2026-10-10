@@ -423,6 +423,50 @@ or the release Secret rendered from the inline values. The existing Secret wins.
 {{- end }}
 
 {{/*
+The bootstrap team's slug and name as YAML, slug and name (docs/adr/0032 D6):
+bootstrap.team, or bootstrap.tenant, its name before, which the chart reads for
+one release where bootstrap.team leaves a value empty (docs/adr/0005 D1). The
+two set to different values fail, naming both. A release upgraded with
+--reuse-values from a chart without bootstrap.team reads bootstrap.tenant.
+*/}}
+{{- define "cowork.bootstrapTeam" -}}
+{{- $bootstrap := .Values.bootstrap | default dict -}}
+{{- $team := $bootstrap.team | default dict -}}
+{{- $tenant := $bootstrap.tenant | default dict -}}
+{{- $out := dict -}}
+{{- range $key := list "slug" "name" -}}
+{{- $now := get $team $key | default "" | toString -}}
+{{- $before := get $tenant $key | default "" | toString -}}
+{{- if and $now $before (ne $now $before) -}}
+{{- fail (printf "bootstrap.team.%s and bootstrap.tenant.%s are both set and differ: bootstrap.tenant is the name before of bootstrap.team, read for one release (docs/adr/0005 D1); set bootstrap.team.%s alone" $key $key $key) -}}
+{{- end -}}
+{{- $_ := set $out $key (coalesce $now $before "") -}}
+{{- end -}}
+{{- toYaml $out -}}
+{{- end }}
+
+{{/*
+What one team's attachments may hold together, in bytes, 0 for no quota
+(docs/adr/0016 D6): backend.config.attachmentTeamQuota, or
+attachmentTenantQuota, its name before, which the chart reads for one release
+while attachmentTeamQuota is 0 or absent (docs/adr/0005 D1). The two set to
+different values other than 0 fail, naming both.
+*/}}
+{{- define "cowork.attachmentTeamQuota" -}}
+{{- $config := .Values.backend.config | default dict -}}
+{{- $now := get $config "attachmentTeamQuota" | default 0 | int64 -}}
+{{- $before := get $config "attachmentTenantQuota" | default 0 | int64 -}}
+{{- if and $now $before (ne $now $before) -}}
+{{- fail "backend.config.attachmentTeamQuota and backend.config.attachmentTenantQuota are both set and differ: attachmentTenantQuota is the name before of attachmentTeamQuota, read for one release (docs/adr/0005 D1); set attachmentTeamQuota alone" -}}
+{{- end -}}
+{{- if $now -}}
+{{- $now -}}
+{{- else -}}
+{{- $before -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Whether the login through an identity provider is configured (docs/adr/0029
 D4): auth.oidc.issuer is set. It needs the public URL for the redirect URI, a
 client id and a client secret. Without the issuer the other auth.oidc values

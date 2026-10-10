@@ -257,7 +257,7 @@ func (s *Server) storeFile(ctx context.Context, w *store.Writer, t tenantScope, 
 // commits, so two uploads of the tenant cannot both pass the quota
 // (docs/adr/0016 D6 as amended 2026-10-05). Without a quota it takes none.
 func (s *Server) lockQuota(ctx context.Context, w *store.Writer) error {
-	if s.h.opts.AttachmentTenantQuota <= 0 {
+	if s.h.opts.AttachmentTeamQuota <= 0 {
 		return nil
 	}
 	return w.LockAttachmentQuota(ctx)
@@ -268,16 +268,16 @@ func (s *Server) lockQuota(ctx context.Context, w *store.Writer) error {
 // Every attachment of the tenant counts, whether or not the uploader sees its
 // ticket, and the refusal names no sum.
 func (s *Server) withinQuota(ctx context.Context, r *store.Reader, t tenantScope, size int64) error {
-	quota := s.h.opts.AttachmentTenantQuota
+	quota := s.h.opts.AttachmentTeamQuota
 	if quota <= 0 {
 		return nil
 	}
 	usage, err := r.TenantAttachmentUsage(ctx, t.ID)
 	if err != nil {
-		return fmt.Errorf("read the tenant's attachment usage: %w", err)
+		return fmt.Errorf("read the team's attachment usage: %w", err)
 	}
 	if usage.UsedBytes+size > quota {
-		return problem.New(problem.AttachmentQuota, fmt.Sprintf("the tenant's attachments may hold %d bytes together, and this file of %d bytes does not fit", quota, size))
+		return problem.New(problem.AttachmentQuota, fmt.Sprintf("the team's attachments may hold %d bytes together, and this file of %d bytes does not fit", quota, size))
 	}
 	return nil
 }
@@ -302,7 +302,7 @@ func (s *Server) GetAttachmentUsage(ctx context.Context, req apigen.GetAttachmen
 		return nil, err
 	}
 	out := apigen.AttachmentUsage{UsedBytes: usage.UsedBytes, Attachments: usage.Attachments, QuotaBytes: nullableOf[int64](nil)}
-	if quota := s.h.opts.AttachmentTenantQuota; quota > 0 {
+	if quota := s.h.opts.AttachmentTeamQuota; quota > 0 {
 		out.QuotaBytes = nullableOf(&quota)
 	}
 	tag, unchanged := listTag(req.Params.IfNoneMatch, out)

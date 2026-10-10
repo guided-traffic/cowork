@@ -65,7 +65,7 @@ func TestBindingARepository(t *testing.T) {
 	assert.Equal(t, "github.com/acme/alpha", bound.Identity)
 	assert.Equal(t, "", bound.Path)
 	assert.Equal(t, "https://github.com/acme/alpha.git", bound.Remote, "the credentials are never stored")
-	assert.Equal(t, "/api/v1/tenants/"+e.SlugA+"/projects/ALPHA/repositories/"+bound.Id.String(), *res.Headers201.Location)
+	assert.Equal(t, "/api/v1/teams/"+e.SlugA+"/projects/ALPHA/repositories/"+bound.Id.String(), *res.Headers201.Location)
 
 	res = e.bind(t, member, e.SlugA, "ALPHA", apigen.RepositoryBind{Remote: "https://github.com/acme/alpha.git"})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
@@ -118,7 +118,7 @@ func TestWhoBindsAndUnbindsRepositories(t *testing.T) {
 	res = e.bind(t, caller{Token: e.tk.AssistedAgentA, Agent: agentHeader}, e.SlugA, "ALPHA", body)
 	require.Equal(t, http.StatusForbidden, res.StatusCode())
 	assert.Equal(t, "missing capability: create-project", *res.ApplicationproblemJSONDefault.Detail)
-	assertProblem(t, e.s.do(t, caller{Token: e.tk.AgentA}, http.MethodPost, "/api/v1/tenants/"+e.SlugA+"/projects/ALPHA/repositories",
+	assertProblem(t, e.s.do(t, caller{Token: e.tk.AgentA}, http.MethodPost, "/api/v1/teams/"+e.SlugA+"/projects/ALPHA/repositories",
 		map[string]any{"remote": "git@github.com:acme/who.git"}), http.StatusBadRequest, "idempotency_key_required")
 	res = e.bind(t, caller{Token: e.tk.MemberB}, e.SlugA, "ALPHA", body)
 	assert.Equal(t, http.StatusNotFound, res.StatusCode(), "another tenant's token finds no tenant")
@@ -194,7 +194,7 @@ func TestLookingUpARepository(t *testing.T) {
 	got := e.lookup(t, both, "", "https://github.com/acme/app")
 	require.Equal(t, apigen.RepositoryLookupStatusBound, got.Status)
 	require.Len(t, got.Bindings, 1)
-	assert.Equal(t, e.SlugA, got.Bindings[0].Tenant.Slug)
+	assert.Equal(t, e.SlugA, got.Bindings[0].Team.Slug)
 	assert.Equal(t, "ALPHA", got.Bindings[0].Project.Key)
 	assert.False(t, got.Proposal.IsSpecified() && !got.Proposal.IsNull(), "a bound repository has no proposal")
 
@@ -220,7 +220,7 @@ func TestLookingUpARepository(t *testing.T) {
 	require.NoError(t, err)
 	got = e.lookup(t, caller{Token: restricted}, "", "git@github.com:acme/app.git")
 	require.Equal(t, apigen.RepositoryLookupStatusBound, got.Status, "a token restricted to a tenant searches that tenant only")
-	assert.Equal(t, e.SlugB, got.Bindings[0].Tenant.Slug)
+	assert.Equal(t, e.SlugB, got.Bindings[0].Team.Slug)
 
 	require.NoError(t, fixtures(t).Exec(e.ctx, "UPDATE projects SET restricted = true WHERE id = $1", e.ProjectA))
 	got = e.lookup(t, caller{Token: e.tk.MemberA}, "", "git@github.com:acme/app.git")
@@ -249,29 +249,29 @@ func TestTheLookupProposesAProject(t *testing.T) {
 	require.Equal(t, apigen.RepositoryLookupStatusUnbound, got.Status)
 	p := got.Proposal.MustGet()
 	assert.Equal(t, apigen.RepositoryProposalReasonOnlyTenant, p.Reason)
-	assert.Equal(t, e.SlugA, p.Tenant.MustGet())
+	assert.Equal(t, e.SlugA, p.Team.MustGet())
 	assert.Equal(t, "valkey-operator", p.Name)
 	assert.Equal(t, "github.com/acme/valkey-operator", p.Identity)
-	require.Len(t, p.Tenants, 1)
-	assert.Equal(t, "VO", p.Tenants[0].Key)
+	require.Len(t, p.Teams, 1)
+	assert.Equal(t, "VO", p.Teams[0].Key)
 
 	_, err := f.Project(ctx, e.A, "VO", "Taken")
 	require.NoError(t, err)
 	got = e.lookup(t, caller{Token: e.tk.MemberA}, "", "git@github.com:acme/valkey-operator.git")
-	assert.Equal(t, "VO2", got.Proposal.MustGet().Tenants[0].Key, "a number is appended on collision")
+	assert.Equal(t, "VO2", got.Proposal.MustGet().Teams[0].Key, "a number is appended on collision")
 
 	got = e.lookup(t, caller{Token: e.tk.Both}, "", "git@github.com:acme/valkey-operator.git")
 	p = got.Proposal.MustGet()
 	assert.Equal(t, apigen.RepositoryProposalReasonChoose, p.Reason, "two tenants and no hint: the person chooses")
-	assert.True(t, p.Tenant.IsNull())
-	assert.Len(t, p.Tenants, 2)
+	assert.True(t, p.Team.IsNull())
+	assert.Len(t, p.Teams, 2)
 
 	res := e.bind(t, caller{Token: e.tk.MemberB}, e.SlugB, "BETA", apigen.RepositoryBind{Remote: "git@github.com:acme/sibling.git"})
 	require.Equal(t, http.StatusCreated, res.StatusCode())
 	got = e.lookup(t, caller{Token: e.tk.Both}, "", "git@github.com:acme/valkey-operator.git")
 	p = got.Proposal.MustGet()
 	assert.Equal(t, apigen.RepositoryProposalReasonRemoteOwner, p.Reason, "the tenant that binds the owner's other repositories")
-	assert.Equal(t, e.SlugB, p.Tenant.MustGet())
+	assert.Equal(t, e.SlugB, p.Team.MustGet())
 
 	for label, c := range map[string]caller{
 		"a viewer":          {Token: e.tk.ViewerA},
@@ -279,7 +279,7 @@ func TestTheLookupProposesAProject(t *testing.T) {
 	} {
 		got = e.lookup(t, c, "", "git@github.com:acme/new-thing.git")
 		assert.True(t, got.Proposal.IsNull(), label)
-		assert.Contains(t, got.ProposalUnavailable.MustGet(), "none of your tenants", label)
+		assert.Contains(t, got.ProposalUnavailable.MustGet(), "none of your teams", label)
 	}
 	scoped, _, err := f.Token(ctx, fixture.TokenSpec{UserID: e.MemberA, TenantID: e.A, ProjectID: e.ProjectA})
 	require.NoError(t, err)
@@ -370,7 +370,7 @@ func TestTheTokenOfTheRequest(t *testing.T) {
 	require.NoError(t, err)
 	restricted := get(caller{Token: scoped})
 	assert.Equal(t, id, restricted.Id)
-	assert.Equal(t, w.SlugA, restricted.RestrictedTenant.MustGet())
+	assert.Equal(t, w.SlugA, restricted.RestrictedTeam.MustGet())
 	assert.Equal(t, "ALPHA", restricted.RestrictedProject.MustGet())
 
 	b := s.browser(t)
@@ -387,10 +387,13 @@ func TestTheBindingFileSchemaIsServed(t *testing.T) {
 	schema := decode[map[string]any](t, res)
 	props, ok := schema["properties"].(map[string]any)
 	require.True(t, ok)
-	for _, key := range []string{"tenant", "project", "path", "url"} {
+	for _, key := range []string{"team", "tenant", "project", "path", "url"} {
 		assert.Contains(t, props, key)
 	}
-	assert.Equal(t, []any{"tenant", "project"}, schema["required"])
+	assert.Equal(t, []any{"project"}, schema["required"])
+	assert.Equal(t, []any{map[string]any{"required": []any{"team"}}, map[string]any{"required": []any{"tenant"}}}, schema["anyOf"],
+		"the team by its name, or by the name before (docs/adr/0005 D1)")
+	assert.Equal(t, true, props["tenant"].(map[string]any)["deprecated"])
 }
 
 // The lookup takes the remotes as given and sends nothing back but their

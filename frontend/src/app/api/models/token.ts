@@ -20,7 +20,7 @@ export interface Token {
   /**
    * The key of the project the token is restricted to (docs/adr/0035 D3); null for a token
    * without a project restriction, and for one whose project the person no longer sees or
-   * whose tenant they no longer belong to — such a token reaches nothing
+   * whose team they no longer belong to — such a token reaches nothing
    */
   restricted_project: (string | null);
 
@@ -34,7 +34,14 @@ export interface Token {
   restricted_project_id?: (string | null);
 
   /**
-   * The slug of the tenant the token is restricted to
+   * The slug of the team the token is restricted to
+   */
+  restricted_team?: (string | null);
+
+  /**
+   * Deprecated, replaced by `restricted_team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
+   *
+   * @deprecated
    */
   restricted_tenant?: (string | null);
   revoked_at?: (string | null);

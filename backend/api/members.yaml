@@ -1,10 +1,10 @@
-# Who belongs to a tenant and who sees which project (docs/adr/0030,
+# Who belongs to a team and who sees which project (docs/adr/0030,
 # docs/adr/0034): the members with their roles and where each comes from, the
 # manual grant, the group mappings that derive memberships from the identity
 # provider's groups, and a project's restriction with its access list.
 #
 # The member list is every member's to read (docs/adr/0034 D7); everything else
-# is the tenant's administrators', a token's `read` scope for a read. What gives
+# is the team's administrators', a token's `read` scope for a read. What gives
 # access — adding a member, setting a grant, making or changing a mapping,
 # restricting or opening a project, putting a person on an access list — takes a
 # browser session only, and a token gets `403 session_required`: made with a
@@ -12,32 +12,32 @@
 # password would (docs/adr/0035 D5). What only takes access away — removing a
 # grant, a mapping or an entry — stays open to an administrator's `admin`-scope
 # token. Making a group mapping or changing its role takes, besides, a global
-# administrator who administers the tenant: every tenant shares the identity
+# administrator who administers the team: every team shares the identity
 # provider's one namespace of groups, and a mapping admits everyone in its group
 # at once; any other administrator is `403 forbidden` (docs/adr/0030 D7). An
 # agent writes none of it (docs/adr/0043 D3). Every change is recorded
-# (docs/adr/0030 D6, docs/adr/0026) and announced on the tenant's event stream
+# (docs/adr/0030 D6, docs/adr/0026) and announced on the team's event stream
 # as `membership.changed` (docs/adr/0054 D2). A change that would leave the
-# tenant without an administrator — nobody holding `admin`, mapped or granted —
-# is `409 last_admin`. A global administrator who holds no role in the tenant
+# team without an administrator — nobody holding `admin`, mapped or granted —
+# is `409 last_admin`. A global administrator who holds no role in the team
 # reads its members and its group mappings and grants themselves a role, in a
 # browser session, and does nothing else here until they have one; one who
 # holds a role below `admin` raises their own grant (docs/adr/0034 D2).
 members:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: listMembers
-    tags: [tenants]
-    summary: The tenant's members and their roles (docs/adr/0034 D7)
+    tags: [teams]
+    summary: The team's members and their roles (docs/adr/0034 D7)
     description: |
       Each member with the effective role — the higher of the mapped and the
       granted one (docs/adr/0030 D4) — and `origins`, every source with its
       own role; `local` marks a person with a local account rather than an
       identity of the identity provider (docs/adr/0033). `email` is the
-      address that tells two persons of one name apart, for the tenant's
+      address that tells two persons of one name apart, for the team's
       administrators; everyone else reads null — a global administrator who
-      holds no role in the tenant and reads the list as part of its
+      holds no role in the team and reads the list as part of its
       administration too (docs/adr/0034 D2). Paged by cursor, or by number
       with a total (docs/adr/0048 D2).
     parameters:
@@ -62,7 +62,7 @@ members:
         $ref: './components/responses.yaml#/Problem'
   post:
     operationId: addMember
-    tags: [tenants]
+    tags: [teams]
     summary: Grant a role to a person, by e-mail address or username
     description: |
       A manual grant, marked as such (docs/adr/0030 D3), for a person who
@@ -106,27 +106,27 @@ members:
         $ref: './components/responses.yaml#/Problem'
 memberGrant:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/PersonID'
   put:
     operationId: setMemberGrant
-    tags: [tenants]
+    tags: [teams]
     summary: Give a member a grant, or change its role
     description: |
       Creates the member's manual grant with the role, or changes the role of
       the one they hold; repeating it changes nothing (docs/adr/0045 D1). The
       mapped membership is never touched: it holds until the mapping or the
       groups change (docs/adr/0030 D3). The person must be a member of the
-      tenant, else `404 person_not_found` — a person who is not one yet is
+      team, else `404 person_not_found` — a person who is not one yet is
       added by e-mail address or username.
 
-      A global administrator who does not hold `admin` in the tenant — who
+      A global administrator who does not hold `admin` in the team — who
       holds no role there, or a lower one — sets their own grant here, their
       own id as `person_id` and any role (docs/adr/0034 D2): a marked grant like
-      any other, made or its role changed under the tenant's lock, recorded in
-      the tenant's audit with the administrator as its actor and announced to
+      any other, made or its role changed under the team's lock, recorded in
+      the team's audit with the administrator as its actor and announced to
       its members as `membership.changed`. It takes no administrator away, so
-      it is never `409 last_admin`; it is how a tenant left without an
+      it is never `409 last_admin`; it is how a team left without an
       administrator who can log in gets one again. A grant to anybody else
       stays an administrator's act: `403 forbidden`.
     security:
@@ -161,7 +161,7 @@ memberGrant:
         $ref: './components/responses.yaml#/Problem'
   delete:
     operationId: removeMemberGrant
-    tags: [tenants]
+    tags: [teams]
     summary: Remove a member's grant
     description: |
       The mapped membership, if any, stays; without one the person is no
@@ -169,23 +169,23 @@ memberGrant:
       does not exist answers 204 as well.
     responses:
       '204':
-        description: The person holds no grant in the tenant
+        description: The person holds no grant in the team
       default:
         $ref: './components/responses.yaml#/Problem'
 groupMappings:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: listGroupMappings
-    tags: [tenants]
-    summary: The tenant's group mappings, by group
+    tags: [teams]
+    summary: The team's group mappings, by group
     description: |
       Each mapping gives its role to every person whose groups include its
       group; several matches yield the highest role (docs/adr/0030 D2).
       `includes_caller` says the calling person is one of them, so the editor
-      can warn before a change takes the editor's own role away. The tenant's
+      can warn before a change takes the editor's own role away. The team's
       administrators read them, and a global administrator who holds no role
-      in the tenant, in a browser session (docs/adr/0034 D2).
+      in the team, in a browser session (docs/adr/0034 D2).
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
@@ -206,7 +206,7 @@ groupMappings:
         $ref: './components/responses.yaml#/Problem'
   post:
     operationId: createGroupMapping
-    tags: [tenants]
+    tags: [teams]
     summary: Map a group of the identity provider to a role
     description: |
       The group is matched exactly, case and all, against the groups the
@@ -215,11 +215,11 @@ groupMappings:
       refresh, include it: their memberships are derived in the same
       transaction, recorded with the cause `mapping`. Everyone else is caught
       up at their next login or groups refresh (docs/adr/0030 D5). A group the
-      tenant maps already is `409 mapping_exists`.
+      team maps already is `409 mapping_exists`.
 
-      Only a global administrator who administers the tenant maps a group, in
-      a browser session; any other administrator of the tenant is
-      `403 forbidden`, and nothing is written. Every tenant shares the identity
+      Only a global administrator who administers the team maps a group, in
+      a browser session; any other administrator of the team is
+      `403 forbidden`, and nothing is written. Every team shares the identity
       provider's one namespace of groups, and a mapping admits everyone in its
       group at once (docs/adr/0030 D7).
     security:
@@ -251,16 +251,16 @@ groupMappings:
         $ref: './components/responses.yaml#/Problem'
 groupMapping:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/GroupMappingID'
   patch:
     operationId: updateGroupMapping
-    tags: [tenants]
+    tags: [teams]
     summary: Change a mapping's role
     description: |
       `If-Match` is required (docs/adr/0050 D3). The memberships the mapping
       derives change at once, as at its creation. Like its creation, a global
-      administrator's who administers the tenant: any other administrator is
+      administrator's who administers the team: any other administrator is
       `403 forbidden` (docs/adr/0030 D7).
     security:
       - sessionCookie: []
@@ -296,12 +296,12 @@ groupMapping:
         $ref: './components/responses.yaml#/Problem'
   delete:
     operationId: deleteGroupMapping
-    tags: [tenants]
+    tags: [teams]
     summary: Remove a mapping
     description: |
       The memberships it derived go at once, or fall to the highest of the
       person's other mapped groups; grants stay (docs/adr/0030 D3). Any
-      administrator of the tenant may remove one, with an `admin`-scope token
+      administrator of the team may remove one, with an `admin`-scope token
       too: it only takes access away (docs/adr/0030 D7).
       Idempotent: removing a mapping that does not exist answers 204 as well.
     responses:
@@ -311,14 +311,14 @@ groupMapping:
         $ref: './components/responses.yaml#/Problem'
 projectRestriction:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
   put:
     operationId: setProjectRestriction
     tags: [projects]
     summary: Restrict a project to its access list, or open it
     description: |
-      A restricted project is visible to the tenant's administrators and the
+      A restricted project is visible to the team's administrators and the
       people on its access list only, each with at most the role of their
       entry; anyone else does not see it, its tickets, its board or its search
       hits (docs/adr/0034 D3, D4). The restriction is a project setting:
@@ -363,16 +363,16 @@ projectRestriction:
         $ref: './components/responses.yaml#/Problem'
 projectAccessList:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
   get:
     operationId: listProjectAccess
     tags: [projects]
     summary: The project's access list
     description: |
-      The people a restricted project admits besides the tenant's
+      The people a restricted project admits besides the team's
       administrators, each with the most they may do in it, `member` or
-      `viewer`; a person's role in the project is the lower of their tenant
+      `viewer`; a person's role in the project is the lower of their team
       role and their entry (docs/adr/0034 D3).
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
@@ -394,7 +394,7 @@ projectAccessList:
         $ref: './components/responses.yaml#/Problem'
 projectAccess:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/PersonID'
   put:
@@ -402,7 +402,7 @@ projectAccess:
     tags: [projects]
     summary: Put a member on the access list, or change their entry
     description: |
-      The person must be a member of the tenant, else `404 person_not_found`.
+      The person must be a member of the team, else `404 person_not_found`.
       Repeating it changes nothing (docs/adr/0045 D1).
     security:
       - sessionCookie: []
@@ -429,33 +429,33 @@ projectAccess:
     summary: Take a person off the access list
     description: |
       On a restricted project the person no longer sees it, unless they
-      administer the tenant. Idempotent: removing an entry that does not exist
+      administer the team. Idempotent: removing an entry that does not exist
       answers 204 as well.
     responses:
       '204':
         description: The person is not on the list
       default:
         $ref: './components/responses.yaml#/Problem'
-# The tokens that can act in the tenant (docs/adr/0035 D5 as amended
+# The tokens that can act in the team (docs/adr/0035 D5 as amended
 # 2026-10-05): the members' unrestricted tokens and those restricted to this
-# tenant, for its administrators. A token restricted to another tenant is not
+# team, for its administrators. A token restricted to another team is not
 # there — not its name, not that it exists — and neither is a token of a person
 # who is no member here.
-tenantTokens:
+teamTokens:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
-    operationId: listTenantTokens
-    tags: [tenants]
-    summary: The members' tokens that can act in the tenant, for its administrators
+    operationId: listTeamTokens
+    tags: [teams]
+    summary: The members' tokens that can act in the team, for its administrators
     description: |
-      Every token of a member of the tenant that is unrestricted or restricted
-      to this tenant, revoked and expired ones included, with its person:
-      metadata only, never the secret (docs/adr/0035 D1, D5). `restricted_tenant`
-      null marks an unrestricted token, which reaches every tenant its person
+      Every token of a member of the team that is unrestricted or restricted
+      to this team, revoked and expired ones included, with its person:
+      metadata only, never the secret (docs/adr/0035 D1, D5). `restricted_team`
+      null marks an unrestricted token, which reaches every team its person
       belongs to — revoking it ends it there too. An unrestricted token's name
-      and last-used day are its person's across their tenants, and so may say
-      something of their work elsewhere. The tenant's administrators, a token's
+      and last-used day are its person's across their teams, and so may say
+      something of their work elsewhere. The team's administrators, a token's
       `read` scope; anybody else is `403 forbidden`. Newest first, paged by
       cursor, or by number with a total (docs/adr/0048 D2); a page the client
       holds unchanged is `304` to its weak `ETag` (docs/adr/0054 D7).
@@ -479,23 +479,23 @@ tenantTokens:
         $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
-tenantToken:
+teamToken:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - name: token_id
       in: path
       required: true
       schema: {type: string, format: uuid}
   delete:
-    operationId: revokeTenantToken
-    tags: [tenants]
-    summary: Revoke a member's token that can act in the tenant
+    operationId: revokeTeamToken
+    tags: [teams]
+    summary: Revoke a member's token that can act in the team
     description: |
       Immediate and final, the row kept (docs/adr/0035 D6), and recorded in
-      the tenant's audit as the administrator's act `revoked` (D9). Revoking an
-      unrestricted token ends it in every tenant of its person, not only in
-      this one; the person makes a new one in a session. A token this tenant's
-      list does not show — restricted to another tenant, or of a person who is
+      the team's audit as the administrator's act `revoked` (D9). Revoking an
+      unrestricted token ends it in every team of its person, not only in
+      this one; the person makes a new one in a session. A token this team's
+      list does not show — restricted to another team, or of a person who is
       no member here — is `404 not_found`, as one that does not exist.
       Revoking a revoked token changes nothing. It only takes access away, so
       an administrator's `admin`-scope token may; an agent may not

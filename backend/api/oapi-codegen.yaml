@@ -14,6 +14,11 @@ output-options:
   # (internal/api/events.go, chat.go): a stream is not a response a handler
   # returns.
   exclude-operation-ids: [streamEvents, runChatTurn]
+  # The deprecated twins under /api/v1/tenants, which tools/specbundle writes
+  # (docs/adr/0046 D7): the server answers them as the team paths they stand
+  # for, rewriting the path before it is routed (internal/api), and no Go
+  # client calls them.
+  exclude-tags: [tenants]
   # Keep the models nothing generated refers to: the chat turn's body, which
   # only the excluded operation takes, and the data of its events, which only
   # the document's components name. The server reads and writes those types.

@@ -23,12 +23,14 @@ var errItself = errors.New("the chat does not call itself")
 // Loopback sends a turn's tool calls to the server in the same process, each
 // as a request of its own that the whole pipeline runs — validation,
 // authentication, the CSRF check, authorization, the agent rules, the audit,
-// the events (docs/adr/0076). It sends nothing outside the turn's tenant,
+// the events (docs/adr/0076). It sends nothing outside the turn's team,
 // nothing to the chat's own routes or to the event stream, and nothing that is
 // no clean path.
 type Loopback struct {
 	Handler http.Handler
-	Tenant  string
+	// Tenant is the slug of the turn's team, under the name the database
+	// keeps (docs/adr/0005 D1).
+	Tenant string
 	// RemoteAddr and ForwardedFor are the person's request's, so that the acts
 	// of a tool call record the person's address (docs/adr/0035 D2).
 	RemoteAddr   string
@@ -54,19 +56,33 @@ func (l Loopback) Do(req *http.Request) (*http.Response, error) {
 	return tools.HandlerDoer{Handler: l.Handler}.Do(inner)
 }
 
+// families are the two path families of a team: the team's, which the tools'
+// generated client calls, and the tenant's, its deprecated twin, which the
+// server answers as the team's for one release (docs/adr/0005 D1,
+// docs/adr/0023 D1). The loopback holds a call to either to the same rules:
+// the server rewrites a twin to the team path before it routes it, so a
+// twin's chat or event stream is the team's.
+var families = []string{"/api/v1/teams/", "/api/v1/tenants/"}
+
 func (l Loopback) allowed(p string) error {
-	tenant := "/api/v1/tenants/" + l.Tenant
-	switch {
-	case path.Clean(p) != p:
+	if path.Clean(p) != p {
 		return fmt.Errorf("the path %q is not clean", p)
-	case p == tenant+"/chat", strings.HasPrefix(p, tenant+"/chat/"):
-		return errItself
-	case p == tenant+"/events":
-		return errors.New("the chat reads no event stream")
-	case p == tenant, strings.HasPrefix(p, tenant+"/"), strings.HasPrefix(p, "/api/v1/tickets/"+l.Tenant+"/"):
+	}
+	for _, family := range families {
+		team := family + l.Tenant
+		switch {
+		case p == team+"/chat", strings.HasPrefix(p, team+"/chat/"):
+			return errItself
+		case p == team+"/events":
+			return errors.New("the chat reads no event stream")
+		case p == team, strings.HasPrefix(p, team+"/"):
+			return nil
+		}
+	}
+	if strings.HasPrefix(p, "/api/v1/tickets/"+l.Tenant+"/") {
 		return nil
 	}
-	return fmt.Errorf("the chat works in the tenant %s and calls nothing outside it", l.Tenant)
+	return fmt.Errorf("the chat works in the team %s and calls nothing outside it", l.Tenant)
 }
 
 // detached is a context that ends when parent ends — its deadline copied, so
@@ -112,8 +128,8 @@ func Mark(model string, conversation uuid.UUID) string {
 }
 
 // NewSession is the API client of a turn: the person's agent through the
-// loopback, bound to the page's project or else to the tenant, confined to
-// the tenant, knowing its person, and holding capabilities — the person's
+// loopback, bound to the page's project or else to the team, confined to the
+// team, knowing its person, and holding capabilities — the person's
 // chat capabilities, which the API reads again on every call, so these only
 // tell the model what it may do (docs/adr/0043 D5, D6). installation is the
 // installation's URL, which the tools' links name.
@@ -127,9 +143,9 @@ func NewSession(l Loopback, installation string, editor apigen.RequestEditorFn, 
 	if project != "" {
 		s.Bind(l.Tenant, project)
 	} else {
-		s.BindTenant(l.Tenant)
+		s.BindTeam(l.Tenant)
 	}
-	s.Person, s.Tenants = &person, []string{l.Tenant}
+	s.Person, s.Teams = &person, []string{l.Tenant}
 	s.Assume(tools.Token{Agent: true, Mark: mark, Capabilities: slices.Clone(capabilities)})
 	return s, nil
 }

@@ -85,9 +85,9 @@ func TestTheCheckPrintsEveryTenantsCounts(t *testing.T) {
 			{TenantID: quiet, Slug: "quiet"},
 			{TenantID: loud, Slug: "loud", Dangling: 1, Accepted: 2, Orphans: 3, OrphanBytes: 4096},
 		}})
-	assert.Equal(t, "consistency check at 2026-10-06T03:12:00Z: 2 tenants, 1 dangling, 2 accepted as lost, 3 orphaned objects (4096 bytes)\n"+
-		"tenant quiet ("+quiet.String()+"): 0 dangling, 0 accepted as lost, 0 orphaned objects (0 bytes)\n"+
-		"tenant loud ("+loud.String()+"): 1 dangling, 2 accepted as lost, 3 orphaned objects (4096 bytes)\n", out.String())
+	assert.Equal(t, "consistency check at 2026-10-06T03:12:00Z: 2 teams, 1 dangling, 2 accepted as lost, 3 orphaned objects (4096 bytes)\n"+
+		"team quiet ("+quiet.String()+"): 0 dangling, 0 accepted as lost, 0 orphaned objects (0 bytes)\n"+
+		"team loud ("+loud.String()+"): 1 dangling, 2 accepted as lost, 3 orphaned objects (4096 bytes)\n", out.String())
 }
 
 func TestRunDownIsUnknown(t *testing.T) {
@@ -141,7 +141,7 @@ func TestTheIdentityProvidersClientIsServesRequirementAlone(t *testing.T) {
 		config.EnvSessionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", config.EnvBaseURL: "https://cowork.example.com",
 		config.EnvMigrateOnStart: "false", config.EnvMigrateBootstrap: "true", config.EnvLogFormat: "text",
 		config.EnvOIDCIssuer: "https://login.example.com/realms/acme", config.EnvAdminGroup: "cowork-admins",
-		config.EnvBootstrapTenantSlug: "acme", config.EnvBootstrapTenantName: "Acme",
+		config.EnvBootstrapTeamSlug: "acme", config.EnvBootstrapTeamName: "Acme",
 	}
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{"serve"}, envOf(provider), &stdout, &stderr)
@@ -155,6 +155,53 @@ func TestTheIdentityProvidersClientIsServesRequirementAlone(t *testing.T) {
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stderr.String(), "migration failed", "the configuration passed")
 	assert.NotContains(t, stderr.String(), config.EnvOIDCClientSecret)
+}
+
+// docs/adr/0005 D1: a variable set under the name it had before a tenant was
+// called a team, alone, is read, and every command says so in its log at its
+// start, naming the variable that replaces it; the new name alone warns of
+// nothing, and nor do both at the same value, as the chart sets them
+// (docs/adr/0028 D4). Each command fails afterwards on the runtime URL nobody
+// can parse, before it reaches any network.
+func TestEveryCommandWarnsOfADeprecatedVariable(t *testing.T) {
+	base := map[string]string{
+		config.EnvDatabaseURL: "://not-a-url", config.EnvDatabaseOwnerURL: "postgres://cowork_owner@db/cowork",
+		config.EnvSessionKey: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=", config.EnvMigrateOnStart: "false",
+		config.EnvLogFormat: "text", config.EnvS3Endpoint: "http://silo:9000", config.EnvS3Bucket: "cowork",
+		config.EnvS3AccessKeyID: "id", config.EnvS3SecretAccessKey: "secret",
+	}
+	for _, command := range []string{"migrate", "serve", "check-consistency"} {
+		t.Run(command, func(t *testing.T) {
+			for name, c := range map[string]struct {
+				variables []string
+				warned    bool
+			}{
+				"the name before": {[]string{config.EnvAttachmentTenantQuota}, true},
+				"the new name":    {[]string{config.EnvAttachmentTeamQuota}, false},
+				"both, the same":  {[]string{config.EnvAttachmentTeamQuota, config.EnvAttachmentTenantQuota}, false},
+			} {
+				env := map[string]string{}
+				for _, v := range c.variables {
+					env[v] = "1GiB"
+				}
+				for k, v := range base {
+					env[k] = v
+				}
+				var stdout, stderr bytes.Buffer
+				code := run(context.Background(), []string{command}, envOf(env), &stdout, &stderr)
+				assert.Equal(t, 1, code, name)
+				log := stderr.String()
+				assert.NotContains(t, log, "cowork: ", "%s: the configuration passed", name)
+				if !c.warned {
+					assert.NotContains(t, log, "deprecated", name)
+					continue
+				}
+				assert.Contains(t, log, "level=WARN", name)
+				assert.Contains(t, log, "variable="+config.EnvAttachmentTenantQuota, name)
+				assert.Contains(t, log, "replaced_by="+config.EnvAttachmentTeamQuota, name)
+			}
+		})
+	}
 }
 
 // docs/adr/0058 D4: migrate takes the owner role's connection as components

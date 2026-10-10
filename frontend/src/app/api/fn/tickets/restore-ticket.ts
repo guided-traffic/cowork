@@ -12,9 +12,9 @@ import { Ticket } from '../../models/ticket';
 export interface RestoreTicket$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The ticket's short key, <PROJECT>-<number>, in one path segment (docs/adr/0007 D3)
@@ -25,7 +25,7 @@ export interface RestoreTicket$Params {
 export function restoreTicket(http: HttpClient, rootUrl: string, params: RestoreTicket$Params, context?: HttpContext): Observable<StrictHttpResponse<Ticket>> {
   const rb = new RequestBuilder(rootUrl, restoreTicket.PATH, 'put');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('key', params.key, {});
   }
 
@@ -39,4 +39,4 @@ export function restoreTicket(http: HttpClient, rootUrl: string, params: Restore
   );
 }
 
-restoreTicket.PATH = '/api/v1/tenants/{tenant}/deleted-tickets/{key}/restore';
+restoreTicket.PATH = '/api/v1/teams/{team}/deleted-tickets/{key}/restore';

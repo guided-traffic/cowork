@@ -265,7 +265,7 @@ func (m *Metrics) Request(ctx context.Context, method string) (context.Context, 
 
 // SetRoute names the route of the request ctx belongs to: the pattern the API
 // document or the server's mux matched, such as
-// /api/v1/tenants/{tenant}/projects/{project}/tickets/{number} — never the
+// /api/v1/teams/{team}/projects/{project}/tickets/{number} — never the
 // path the client sent (docs/adr/0060 D5). Outside a recorded request it does
 // nothing.
 func SetRoute(ctx context.Context, pattern string) {
@@ -599,9 +599,9 @@ func (m *Metrics) TokenRefused(reason TokenRefusal) {
 // the attachments (docs/adr/0059 D4): the metadata whose bytes are missing and
 // not accepted as lost, and the objects no metadata names.
 type ConsistencyCounts struct {
-	// Tenant is the tenant's id, the value of the family's tenant label: an
-	// id, never its slug, which names a client on a port without
-	// authentication (docs/adr/0060 D5).
+	// Tenant is the team's id, the value of the family's team label and of
+	// tenant beside it: an id, never its slug, which names a client on a port
+	// without authentication (docs/adr/0060 D5).
 	Tenant            string
 	Dangling, Orphans int64
 }
@@ -624,8 +624,17 @@ type Consistency struct {
 	Exports []TenantExport
 }
 
-// tenantLabel is the consistency family's one label: the tenant's id.
-const tenantLabel = "tenant"
+// teamLabel is the consistency family's label: the team's id. tenantLabel
+// carries the same id under the name the label had before a tenant was called
+// a team, for one release, so that a dashboard or an alert can move to team
+// (docs/adr/0005 D1, docs/adr/0060 D5); a later release drops it.
+const (
+	teamLabel   = "team"
+	tenantLabel = "tenant"
+)
+
+// consistencyLabels are the labels of the consistency family, team first.
+var consistencyLabels = []string{teamLabel, tenantLabel}
 
 // consistencyReadEvery is how long a read of the family for a scrape is
 // reused: the counts change at a run of the check — daily — and at an
@@ -641,14 +650,14 @@ const (
 func (m *Metrics) consistencyInstruments() {
 	m.consistency = &consistencyCollector{
 		dangling: prometheus.NewDesc(m.name("consistency", "dangling_attachments"),
-			"Attachments of a tenant whose metadata is there and whose object is missing, not accepted as lost, at its latest consistency check, by the tenant's id.",
-			[]string{tenantLabel}, nil),
+			"Attachments of a team whose metadata is there and whose object is missing, not accepted as lost, at its latest consistency check, by the team's id; the label tenant repeats team for one release.",
+			consistencyLabels, nil),
 		orphans: prometheus.NewDesc(m.name("consistency", "orphaned_objects"),
-			"Objects under a tenant's prefix that no attachment names, at its latest consistency check, by the tenant's id.",
-			[]string{tenantLabel}, nil),
+			"Objects under a team's prefix that no attachment names, at its latest consistency check, by the team's id; the label tenant repeats team for one release.",
+			consistencyLabels, nil),
 		exportAge: prometheus.NewDesc(m.name("consistency", "last_export_age_seconds"),
-			"Seconds since a project of a tenant or the whole tenant was last exported, or since the tenant was made where it never was, by the tenant's id.",
-			[]string{tenantLabel}, nil),
+			"Seconds since a project of a team or the whole team was last exported, or since the team was made where it never was, by the team's id; the label tenant repeats team for one release.",
+			consistencyLabels, nil),
 	}
 	m.registry.MustRegister(m.consistency)
 }
@@ -708,12 +717,12 @@ func (c *consistencyCollector) Collect(ch chan<- prometheus.Metric) {
 		return
 	}
 	for _, t := range c.last.Counts {
-		ch <- prometheus.MustNewConstMetric(c.dangling, prometheus.GaugeValue, float64(t.Dangling), t.Tenant)
-		ch <- prometheus.MustNewConstMetric(c.orphans, prometheus.GaugeValue, float64(t.Orphans), t.Tenant)
+		ch <- prometheus.MustNewConstMetric(c.dangling, prometheus.GaugeValue, float64(t.Dangling), t.Tenant, t.Tenant)
+		ch <- prometheus.MustNewConstMetric(c.orphans, prometheus.GaugeValue, float64(t.Orphans), t.Tenant, t.Tenant)
 	}
 	for _, e := range c.last.Exports {
 		// A database clock ahead of the replica's makes no negative age.
 		age := max(now.Sub(e.Since).Seconds(), 0)
-		ch <- prometheus.MustNewConstMetric(c.exportAge, prometheus.GaugeValue, age, e.Tenant)
+		ch <- prometheus.MustNewConstMetric(c.exportAge, prometheus.GaugeValue, age, e.Tenant, e.Tenant)
 	}
 }

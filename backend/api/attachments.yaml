@@ -2,7 +2,7 @@
 # (docs/adr/0016).
 attachments:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
   get:
@@ -37,8 +37,8 @@ attachments:
       and must be on the allow-list, else 415 names it (docs/adr/0016 D3); above
       COWORK_ATTACHMENT_MAX_BYTES 413 before anything is stored (D6); a ticket that holds
       COWORK_ATTACHMENT_MAX_PER_TICKET attachments `409 attachment_limit`; a file that would take
-      the tenant's attachments above COWORK_ATTACHMENT_TENANT_QUOTA bytes `409 attachment_quota`,
-      checked under the tenant's lock before the bytes are stored; without object storage
+      the team's attachments above COWORK_ATTACHMENT_TEAM_QUOTA bytes `409 attachment_quota`,
+      checked under the team's lock before the bytes are stored; without object storage
       501 `uploads_disabled`.
     parameters:
       - $ref: './components/parameters.yaml#/IdempotencyKey'
@@ -70,7 +70,7 @@ attachments:
         $ref: './components/responses.yaml#/Problem'
 attachment:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/AttachmentID'
@@ -89,7 +89,7 @@ attachment:
         $ref: './components/responses.yaml#/Problem'
 attachmentContent:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/TicketNumber'
     - $ref: './components/parameters.yaml#/AttachmentID'
@@ -134,21 +134,21 @@ attachmentContent:
             schema: {type: string}
       default:
         $ref: './components/responses.yaml#/Problem'
-# The bytes a tenant's attachments hold, against its quota (docs/adr/0016 D6
-# as amended 2026-10-05), for the tenant's administrators.
+# The bytes a team's attachments hold, against its quota (docs/adr/0016 D6
+# as amended 2026-10-05), for the team's administrators.
 attachmentUsage:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: getAttachmentUsage
     tags: [attachments]
-    summary: The bytes the tenant's attachments hold, and the quota
+    summary: The bytes the team's attachments hold, and the quota
     description: |
-      Every attachment of the tenant counts, on every ticket, confidential ones and those of
+      Every attachment of the team counts, on every ticket, confidential ones and those of
       restricted projects included, and a deleted ticket's until the purge removes them — they
       occupy the bucket until then (docs/adr/0024 D2): the sum the quota is checked against. The
-      tenant's administrators, a token's `read` scope; anybody else is `403 forbidden`, because the
-      sum counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TENANT_QUOTA,
+      team's administrators, a token's `read` scope; anybody else is `403 forbidden`, because the
+      sum counts files of tickets they may not see. `quota_bytes` is COWORK_ATTACHMENT_TEAM_QUOTA,
       null where the installation sets none. An answer the client holds unchanged is `304` to its
       weak `ETag` (docs/adr/0054 D7).
     parameters:
@@ -167,25 +167,25 @@ attachmentUsage:
         $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
-# The consistency check of the tenant's attachments against the bucket
-# (docs/adr/0059 D4), for the tenant's administrators: its latest result, the
+# The consistency check of the team's attachments against the bucket
+# (docs/adr/0059 D4), for the team's administrators: its latest result, the
 # removal of its orphans and the acceptance of its missing files.
 attachmentConsistency:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: getAttachmentConsistency
     tags: [attachments]
-    summary: The latest consistency check of the tenant's attachments against the bucket
+    summary: The latest consistency check of the team's attachments against the bucket
     description: |
       What the daily check found last: the files whose metadata is there and whose bytes the bucket
       lacks — dangling, after a restore that brought the database back without them; their download
-      answers 404 saying so — and the objects under the tenant's prefix that no metadata names —
+      answers 404 saying so — and the objects under the team's prefix that no metadata names —
       orphans, after a restore that brought the bucket back from a later point, or a removal that
-      failed. The counts are exact, the lists at most 1000 entries each. The tenant's administrators,
+      failed. The counts are exact, the lists at most 1000 entries each. The team's administrators,
       a token's `read` scope; anybody else is `403 forbidden`, because the lists name files of tickets
       they may not see. Before the first check `check_id` is null. Beside the check, when a project
-      of the tenant or the whole tenant was last exported — the second line of its backup
+      of the team or the whole team was last exported — the second line of its backup
       (docs/adr/0059 D2) —, null before the first. An answer the client holds unchanged is `304` to
       its weak `ETag` (docs/adr/0054 D7).
     parameters:
@@ -206,13 +206,13 @@ attachmentConsistency:
         $ref: './components/responses.yaml#/Problem'
 orphanRemoval:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   post:
     operationId: removeOrphanedObjects
     tags: [attachments]
     summary: Remove the orphaned objects of a consistency check, confirmed
     description: |
-      A tenant administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a
+      A team administrator's act, never an agent's (docs/adr/0059 D4, docs/adr/0043 D3), **in a
       browser session only**: nothing brings a removed object back, so a token — an administrator's
       `admin` token included — answers `403 session_required` (docs/adr/0035 D5). The body names the
       check whose list the administrator confirms; a newer check, or a removal confirmed already, is
@@ -242,13 +242,13 @@ orphanRemoval:
         $ref: './components/responses.yaml#/Problem'
 danglingAcceptance:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   post:
     operationId: acceptDanglingAttachments
     tags: [attachments]
     summary: Accept the loss of a consistency check's missing files
     description: |
-      A tenant administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,
+      A team administrator's act with `admin` scope, never an agent's (docs/adr/0059 D5,
       docs/adr/0043 D3): the missing files of the check's list nobody accepted yet count as accepted
       from now on — as lost — instead of dangling, and no longer hold the alert. Nothing is removed:
       the files stay listed on their tickets and their download answers 404 saying the bytes are

@@ -12,9 +12,9 @@ import { ActivityList } from '../../models/activity-list';
 export interface ListActivity$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -50,7 +50,7 @@ export interface ListActivity$Params {
 export function listActivity(http: HttpClient, rootUrl: string, params: ListActivity$Params, context?: HttpContext): Observable<StrictHttpResponse<ActivityList>> {
   const rb = new RequestBuilder(rootUrl, listActivity.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.query('order', params.order, {});
@@ -69,4 +69,4 @@ export function listActivity(http: HttpClient, rootUrl: string, params: ListActi
   );
 }
 
-listActivity.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/activity';
+listActivity.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/activity';

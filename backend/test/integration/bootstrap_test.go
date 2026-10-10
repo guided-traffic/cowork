@@ -41,7 +41,7 @@ func TestBootstrapKeepsTheConfiguredAdministrator(t *testing.T) {
 	ctx := context.Background()
 	iso := newIsolated(t)
 	logger := (&recordingLogger{}).logger()
-	p := bootstrap.Params{Username: "root", Password: testPassword, TenantSlug: "main", TenantName: "Main"}
+	p := bootstrap.Params{Username: "root", Password: testPassword, TeamSlug: "main", TeamName: "Main"}
 	require.NoError(t, bootstrap.Sync(ctx, iso.DB, p, logger))
 
 	var id uuid.UUID
@@ -70,7 +70,7 @@ func TestBootstrapKeepsTheConfiguredAdministrator(t *testing.T) {
 	assert.Equal(t, hash, hashOfRoot(t, iso), "a password that fits is not re-hashed")
 
 	// The bootstrap tenant does nothing once a tenant exists, whatever it says.
-	require.NoError(t, bootstrap.Sync(ctx, iso.DB, bootstrap.Params{Username: "root", Password: testPassword, TenantSlug: "other", TenantName: "Other"}, logger))
+	require.NoError(t, bootstrap.Sync(ctx, iso.DB, bootstrap.Params{Username: "root", Password: testPassword, TeamSlug: "other", TeamName: "Other"}, logger))
 	assert.Zero(t, scalar2[int64](t, iso, `SELECT count(*) FROM tenants WHERE slug = 'other'`))
 
 	// A changed password: re-hashed, every session ended, every token
@@ -88,7 +88,7 @@ func TestBootstrapKeepsTheConfiguredAdministrator(t *testing.T) {
 		assertProblem(t, s.browser(t).login("root", "wrong password!"), http.StatusUnauthorized, "invalid_credentials")
 	}
 	assert.EqualValues(t, 1, scalar2[int64](t, iso, `SELECT count(*) FROM login_locks WHERE username = 'root'`))
-	changed := bootstrap.Params{Username: "root", Password: "a rotated password", TenantSlug: "main", TenantName: "Main"}
+	changed := bootstrap.Params{Username: "root", Password: "a rotated password", TeamSlug: "main", TeamName: "Main"}
 	require.NoError(t, bootstrap.Sync(ctx, iso.DB, changed, logger))
 	assert.NotEqual(t, hash, hashOfRoot(t, iso))
 	assertProblem(t, b.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
@@ -162,7 +162,7 @@ func TestBootstrapTakesOverAnAccountOfTheSameName(t *testing.T) {
 func TestConcurrentBootstrapsAgree(t *testing.T) {
 	ctx := context.Background()
 	iso := newIsolated(t)
-	p := bootstrap.Params{Username: "root", Password: testPassword, TenantSlug: "main", TenantName: "Main"}
+	p := bootstrap.Params{Username: "root", Password: testPassword, TeamSlug: "main", TeamName: "Main"}
 	logger := (&recordingLogger{}).logger()
 	errs := make([]error, 4)
 	var wg sync.WaitGroup

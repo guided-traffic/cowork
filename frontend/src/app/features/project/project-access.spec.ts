@@ -84,6 +84,7 @@ describe('ProjectAccess', () => {
 
   const administrator: Membership = {
     role: 'admin',
+    team: { slug: 'acme', name: 'Acme Corp' },
     tenant: { slug: 'acme', name: 'Acme Corp' },
     origins: [{ source: 'grant', role: 'admin' }],
   };
@@ -134,7 +135,7 @@ describe('ProjectAccess', () => {
 
   /** The load of a project's access list, which is open until a test answers it. */
   const listLoad = (key = 'SEC') =>
-    http.expectOne((request) => request.url === `/api/v1/tenants/acme/projects/${key}/access`);
+    http.expectOne((request) => request.url === `/api/v1/teams/acme/projects/${key}/access`);
 
   /**
    * Shows the section for the project, and answers the load of its access list with the entries —
@@ -258,7 +259,7 @@ describe('ProjectAccess', () => {
 
       expect(fixture.componentInstance['candidate']()).toBe('p3');
       expect(el(fixture, 'access-notice')?.textContent?.trim()).toBe(
-        'Sam Rivera is no longer a member of this tenant.',
+        'Sam Rivera is no longer a member of this team.',
       );
       http.expectNone((request) => request.url.endsWith('/access'));
     });
@@ -270,7 +271,7 @@ describe('ProjectAccess', () => {
 
       expect(switchOn(fixture)).toBe(false);
       expect(el(fixture, 'access-hint')?.textContent).toContain(
-        'Every member of the tenant sees this project',
+        'Every member of the team sees this project',
       );
       expect(el(fixture, 'access-hint')?.textContent).toContain(
         'fill it before restricting, so that nobody on it loses the project in between',
@@ -294,7 +295,7 @@ describe('ProjectAccess', () => {
 
       expect(dialog()?.querySelector('.p-dialog-title')?.textContent).toBe('Restrict SEC?');
       expect(dialog()?.querySelector('.p-confirmdialog-message')?.textContent).toBe(
-        "1 person is on its access list. Once it is restricted, only they and the tenant's administrators see it.",
+        "1 person is on its access list. Once it is restricted, only they and the team's administrators see it.",
       );
       expect(restrict).not.toHaveBeenCalled();
       expect(switchOn(fixture)).toBe(true);
@@ -310,7 +311,7 @@ describe('ProjectAccess', () => {
       await settle(fixture);
 
       expect(dialog()?.querySelector('.p-confirmdialog-message')?.textContent).toBe(
-        "Nobody is on its access list: once it is restricted, only the tenant's administrators see it.",
+        "Nobody is on its access list: once it is restricted, only the team's administrators see it.",
       );
       press('Keep it open');
       await settle(fixture);
@@ -394,7 +395,7 @@ describe('ProjectAccess', () => {
           'Open SEC to every member?',
         );
         expect(dialog()?.querySelector('.p-confirmdialog-message')?.textContent).toBe(
-          'SEC and its tickets become visible to every member of the tenant. A confidential ' +
+          'SEC and its tickets become visible to every member of the team. A confidential ' +
             'ticket stays visible only to the administrators, its assignee and its reporter.',
         );
         expect(restrict).not.toHaveBeenCalled();
@@ -620,7 +621,7 @@ describe('ProjectAccess', () => {
         await settle(fixture);
 
         expect(el(fixture, 'access-notice')?.textContent?.trim()).toBe(
-          'Sam Rivera is no longer a member of this tenant.',
+          'Sam Rivera is no longer a member of this team.',
         );
         expect(membersReload).toHaveBeenCalled();
         expect(entriesReload).toHaveBeenCalled();
@@ -780,7 +781,7 @@ describe('ProjectAccess', () => {
           `viewer: ${accessMeanings.viewer}`,
         );
         expect(el(fixture, 'access-meaning')?.textContent).toContain(
-          "The tenant's administrators see every project without an entry.",
+          "The team's administrators see every project without an entry.",
         );
       });
 
@@ -845,7 +846,7 @@ describe('ProjectAccess', () => {
         await settle(fixture);
 
         expect(el(fixture, 'access-notice')?.textContent?.trim()).toBe(
-          'Bob Example is no longer a member of this tenant.',
+          'Bob Example is no longer a member of this team.',
         );
         expect(fixture.componentInstance['candidate']()).toBe('p3');
       });
@@ -857,19 +858,19 @@ describe('restrictionNotice', () => {
   it.each<[number | undefined, string]>([
     [
       0,
-      "Nobody is on its access list: once it is restricted, only the tenant's administrators see it.",
+      "Nobody is on its access list: once it is restricted, only the team's administrators see it.",
     ],
     [
       1,
-      "1 person is on its access list. Once it is restricted, only they and the tenant's administrators see it.",
+      "1 person is on its access list. Once it is restricted, only they and the team's administrators see it.",
     ],
     [
       3,
-      "3 people are on its access list. Once it is restricted, only they and the tenant's administrators see it.",
+      "3 people are on its access list. Once it is restricted, only they and the team's administrators see it.",
     ],
     [
       undefined,
-      "Once it is restricted, only the tenant's administrators and the people on its access list see it.",
+      "Once it is restricted, only the team's administrators and the people on its access list see it.",
     ],
   ])('says for %s people on the list: %s', (people, said) => {
     expect(restrictionNotice(people)).toBe(said);

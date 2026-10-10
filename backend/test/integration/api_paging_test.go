@@ -38,7 +38,7 @@ func TestTheTablesTakeNumberedPages(t *testing.T) {
 	// per_page is clamped like limit: two rows a page show the paging with a few rows.
 	s := newAPI(t, func(o *api.Options) { o.MaxPageSize = 2 })
 	admin, member := caller{Token: tok.AdminA}, caller{Token: tok.MemberA}
-	tenant := "/api/v1/tenants/" + w.SlugA
+	tenant := "/api/v1/teams/" + w.SlugA
 
 	for _, key := range []string{"CHARLIE", "DELTA", "ECHO"} {
 		res := s.do(t, admin, http.MethodPost, tenant+"/projects", map[string]any{"key": key, "name": key})

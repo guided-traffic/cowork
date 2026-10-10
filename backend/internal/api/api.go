@@ -1,11 +1,13 @@
 // Package api serves the API under /api/v1 from the generated server
 // interface (docs/adr/0046). Every request runs one pipeline before its
-// handler: the operation is found in the API document; it is authenticated
-// when the document says so (docs/adr/0035, 0036); a route under a tenant
-// passes the tenant boundary (docs/adr/0023 D5); the request is held to its
-// size and time limits (docs/adr/0039) and validated against the document
-// (docs/adr/0046 D4); only then does the handler run. Every error is a
-// problem details body (docs/adr/0047).
+// handler: a path under /api/v1/tenants, the deprecated twin of the team
+// family, is read as its team path (asTeamPath); the operation is found in
+// the API document; it is authenticated when the document says so
+// (docs/adr/0035, 0036); a route under a team passes the team boundary
+// (docs/adr/0023 D5); the request is held to its size and time limits
+// (docs/adr/0039) and validated against the document (docs/adr/0046 D4); only
+// then does the handler run. Every error is a problem details body
+// (docs/adr/0047).
 package api
 
 import (
@@ -58,11 +60,11 @@ type Options struct {
 	// (docs/adr/0016 D1).
 	Storage *storage.Client
 	// AttachmentMaxBytes is the per-file maximum; AttachmentMaxPerTicket the
-	// per-ticket count; AttachmentTenantQuota the bytes a tenant's
+	// per-ticket count; AttachmentTeamQuota the bytes a team's
 	// attachments hold together; 0 for none (docs/adr/0016 D6).
 	AttachmentMaxBytes     int64
 	AttachmentMaxPerTicket int
-	AttachmentTenantQuota  int64
+	AttachmentTeamQuota    int64
 	// MaxImportBytes bounds an import's upload, and what its files hold
 	// unpacked; 0 for no bound (docs/adr/0051 D7).
 	MaxImportBytes int64
@@ -297,9 +299,42 @@ func loadDocument(version string) (*openapi3.T, []byte, error) {
 
 var allMethods = []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete}
 
+// teamFamily is the path family of a team; tenantFamily is the family under
+// the name before, which the document serves as its deprecated twin for one
+// release (docs/adr/0023 D1, docs/adr/0046 D7).
+const (
+	teamFamily   = "/api/v1/teams"
+	tenantFamily = "/api/v1/tenants"
+)
+
+// asTeamPath answers a request to a twin as its team path: a shallow copy of
+// the request with a cloned URL whose path names the team family, so that
+// everything after — the route, the security, the boundary, the handler, the
+// metrics' route label and a problem's instance — is the team path's, while
+// the request the log middleware holds keeps the path as it was sent. Any
+// other request is returned as it is.
+func asTeamPath(r *http.Request) *http.Request {
+	rest, ok := strings.CutPrefix(r.URL.Path, tenantFamily)
+	if !ok || (rest != "" && !strings.HasPrefix(rest, "/")) {
+		return r
+	}
+	u := *r.URL
+	u.Path = teamFamily + rest
+	if raw, ok := strings.CutPrefix(u.RawPath, tenantFamily); ok {
+		u.RawPath = teamFamily + raw
+	} else {
+		u.RawPath = ""
+	}
+	twin := new(http.Request)
+	*twin = *r
+	twin.URL = &u
+	return twin
+}
+
 // ServeHTTP runs the pipeline.
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
+	r = asTeamPath(r)
 	route, pathParams, err := h.router.FindRoute(r)
 	if err != nil {
 		h.writeRouteError(w, r, err)
@@ -327,7 +362,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if slug, ok := pathParams["tenant"]; ok {
+	if slug, ok := pathParams["team"]; ok {
 		scope, perr := h.boundary(ctx, slug, route.Path, route.Operation.OperationID)
 		if perr != nil {
 			problem.Write(w, r, perr)

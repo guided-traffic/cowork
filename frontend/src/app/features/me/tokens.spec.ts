@@ -24,6 +24,7 @@ function token(id: string, overrides: Partial<Token> = {}): Token {
     expires_at: '2026-12-30T10:00:00Z',
     last_used_on: null,
     revoked_at: null,
+    restricted_team: null,
     restricted_tenant: null,
     restricted_project: null,
     state: 'active',
@@ -35,7 +36,9 @@ const laptop = token('t1', {
   name: 'claude on my laptop',
   agent: true,
   capabilities: [...selectableCapabilities],
-  restricted_tenant: 'acme',
+  restricted_team: 'acme',
+  // The deprecated name of restricted_team, which the page never shows (docs/adr/0005 D1).
+  restricted_tenant: 'not shown',
   restricted_project: 'COW',
   restricted_project_id: '0199aaaa-0000-7000-8000-00000000c0de',
   last_used_on: '2026-10-02',
@@ -376,7 +379,7 @@ describe('Tokens', () => {
     });
 
     it('shows the tenant alone for a token that is restricted to a tenant only', async () => {
-      list.set([token('a', { restricted_tenant: 'globex' })]);
+      list.set([token('a', { restricted_team: 'globex', restricted_tenant: 'not shown' })]);
       const fixture = await render();
 
       expect(text(restriction(fixture, 'a'))).toBe('globex');
@@ -386,6 +389,7 @@ describe('Tokens', () => {
     it('says so of a project the person no longer sees, which the token no longer reaches', async () => {
       list.set([
         token('a', {
+          restricted_team: 'acme',
           restricted_tenant: 'acme',
           restricted_project: null,
           restricted_project_id: '0199a3c2-5b1e-7a40-8c11-4d2f9e0a71b3',

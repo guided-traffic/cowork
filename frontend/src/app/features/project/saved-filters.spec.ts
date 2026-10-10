@@ -81,7 +81,7 @@ describe('SavedFilters', () => {
           useValue: {
             person: signal({ id: 'p-ada' }),
             tenant: signal('acme'),
-            membership: computed(() => ({ tenant: { slug: 'acme' }, role: role() })),
+            membership: computed(() => ({ team: { slug: 'acme' }, role: role() })),
           },
         },
       ],
@@ -369,7 +369,7 @@ describe('SavedFilters', () => {
     await settle(fixture);
 
     expect(el(fixture, 'filter-notes')?.textContent).toBe(
-      'project: a backlog is one project; the tenant’s ticket list applies this condition',
+      'project: a backlog is one project; the team’s ticket list applies this condition',
     );
   });
 

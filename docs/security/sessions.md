@@ -50,7 +50,7 @@ random value of 256 bits, stores its SHA-256 and sends the value once, as the co
 `authenticate` in [`api/authn.go`](../../backend/internal/api/authn.go) resolves a request to
 its person ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D6). The
 operation's own security requirement in the API document says which credentials it takes
-(`credentialsOf`); everything after the resolver — the tenant boundary, the role, the
+(`credentialsOf`); everything after the resolver — the team boundary, the role, the
 predicates — is the code a token's request runs.
 
 - **A request with an `Authorization` header is a token's, whatever else it carries.** Its
@@ -118,7 +118,7 @@ session of the local login has no groups and no refresh.
 
 A session acts as its person with no agent flag and with the person's whole role: it has no
 scope of its own, which the pipeline writes as the scope `admin`, the one that leaves every
-decision to the person's role in the tenant ([ADR 0035](../adr/0035-personal-access-tokens.md)
+decision to the person's role in the team ([ADR 0035](../adr/0035-personal-access-tokens.md)
 D3, [tokens.md](tokens.md)). No agent rule applies to it — unless its request carries
 `X-Cowork-Agent`: the header marks that request as an agent's, with every agent rule and the
 capabilities the person chose for the chat, read anew for each such request — every capability is
@@ -131,21 +131,21 @@ person's.
 
 - **Nineteen routes take a session only** and answer a token `403 session_required`
   ([ADR 0035](../adr/0035-personal-access-tokens.md) D5, [ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
-  D1, D5): creating a token (`POST /api/v1/me/tokens`), creating a tenant
-  (`POST /api/v1/tenants`), creating a local account (`POST …/accounts`), resetting its
+  D1, D5): creating a token (`POST /api/v1/me/tokens`), creating a team
+  (`POST /api/v1/teams`), creating a local account (`POST …/accounts`), resetting its
   password (`PUT …/accounts/{username}/password`), unlocking it
   (`DELETE …/accounts/{username}/lockout`), changing one's own password
   (`PUT /api/v1/me/password`), logging out (`POST /auth/logout`), the six administration acts
   that can give access — adding a member, setting a grant, making or changing a group mapping,
   restricting or opening a project, putting a person on a project's access list —, a turn of the
   chat (`POST …/chat`) and stopping the person's turns (`DELETE …/chat/turns`), choosing the chat's
-  capabilities (`PUT /api/v1/me/chat`), a global administrator's list of every tenant
-  (`GET /api/v1/tenants`), purging a deleted ticket (`DELETE …/deleted-tickets/{key}`,
+  capabilities (`PUT /api/v1/me/chat`), a global administrator's list of every team
+  (`GET /api/v1/teams`), purging a deleted ticket (`DELETE …/deleted-tickets/{key}`,
   [ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
   D7), and removing the orphaned objects of a consistency check
   (`POST …/attachment-consistency/orphan-removal`,
   [ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
-  D4). What creating a token, a tenant or an account, the two password acts, the six administration
+  D4). What creating a token, a team or an account, the two password acts, the six administration
   acts and choosing the chat's capabilities leave behind, what a purge
   or a removal destroys, and a lockout an unlock undoes, would outlive the revocation of a leaked
   token; a logout has no session of a
@@ -157,7 +157,7 @@ person's.
   ([`backend/api/document_test.go`](../../backend/api/document_test.go)). A session's request the
   agent header marks is refused all nineteen with `403 agent_forbidden`. Every other operation
   that names a person takes either credential. Three acts of those
-  operations take a session in their giving direction alone — widening the tenant's settings,
+  operations take a session in their giving direction alone — widening the team's settings,
   lifting the confidential flag, assigning a confidential ticket to another person — and refuse a
   token `403 session_required` in the handler
   ([tokens.md](tokens.md#acts-that-take-a-session-in-their-giving-direction)).
@@ -187,7 +187,7 @@ person's.
 Revocation is a delete and is immediate: the next request with the cookie is `401`
 ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D4). In the browser, a
 sign-in and a sign-out replace the document, so nothing the previous person loaded — their tokens,
-a tenant's accounts, cached tickets — stays in memory for the next person in the same tab
+a team's accounts, cached tickets — stays in memory for the next person in the same tab
 ([frontend.md](../developer/frontend.md#where-state-lives)). A session that a limit or another end
 takes away is not one of them: the page goes to the login page by a route change ([H-92](#h-92)).
 
@@ -212,7 +212,7 @@ idle clock — a page that loads what it shows, the event stream's connections a
 polling fallback's reloads, the reloads an event triggers —, and so does every write that passes
 the CSRF check, at most once a minute. The UI sends nothing of its own to keep a session: a person
 keeps it with the requests the pages make, and a page that asks nothing for the length of the idle
-limit — one ticket read for two hours over a stream that stays connected in a tenant where nobody
+limit — one ticket read for two hours over a stream that stays connected in a team where nobody
 acts — ends at it, as before 0.8.0. **A forged write extends nothing**: a write a page of the same site sends, where `SameSite=Lax`
 lets the cookie ride along, fails the CSRF check and leaves the idle clock where it was
 (`TestEveryRequestButARefusedWriteMovesTheIdleClock`). A read is a different matter: a link of
@@ -245,14 +245,14 @@ is recorded only by the new `logged_in`, and the sessions past a limit by the jo
 counts the rows it removed and names no person. They are
 installation-level rows with no `token_id`, the mark of a browser session
 ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D1); a
-tenant administrator's act on a managed account is a row of the tenant. Each row written for a
+team administrator's act on a managed account is a row of the team. Each row written for a
 request carries the keyed hash of the client's address ([tokens.md](tokens.md#what-is-recorded)).
 **The cookie, its hash
 and the row's id are in no audit row and no log line**: the request log carries method, path,
 status, duration and the request id, and `TestNoPasswordCookieOrTokenIsLoggedOrRecorded`
 records every log level through a login, a password change, an administrator's reset and a
 logout and searches the log, the answers and every table of the login for the cookies. The
-session table is not tenant-bound
+session table is not team-bound
 ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D6):
 its policies admit a person's own rows, the one row of the cookie presented, the
 administrators of a managed account, a global administrator for reading (no route reads them
@@ -279,7 +279,7 @@ limit (twelve hours) or an end. The row holds the
 SHA-256 of the `User-Agent` it was made with (`sessions.user_agent_hash`) and nothing compares
 it. A person cannot list their sessions, and ends the others only by changing their password;
 an administrator ends a managed account's through `DELETE …/accounts/{username}/sessions` — their
-own as well, all of them, when their own account is one their tenant manages —, and no one but the
+own as well, all of them, when their own account is one their team manages —, and no one but the
 operator ends the local administrator's — by rotating its Secret and restarting. A person of the identity provider has no password to change (`403 forbidden`) and no
 account an administrator manages: their other sessions end only at their limits, or at a refresh,
 when the issuer refuses the refresh token or the gate no longer admits them — at the issuer,
@@ -292,7 +292,7 @@ The gaps of the identity provider's sessions — stale groups while the issuer c
 session that never learns the groups anew without a refresh token, the stored refresh tokens, the
 issuer's own session after a logout, and the sign-in without a click while that session lives — are
 [identity-provider.md](identity-provider.md) H-24, H-25, H-27, H-28 and H-62. Not a gap of its own:
-the lifetimes are the installation's, not a tenant's. Which browser stores a `Secure` cookie from
+the lifetimes are the installation's, not a team's. Which browser stores a `Secure` cookie from
 `http://localhost` is measured, not assumed: Chromium does, WebKit does not
 ([ADR 0031](../adr/0031-server-side-sessions-in-an-httponly-cookie.md) D2, with Playwright on
 2026-10-03); Firefox was not measured. The integration tier tests the rule and sets the cookie by
@@ -304,7 +304,7 @@ hand; it runs no browser.
 Live in every tab whose session ends while it is open. A `401` of the API sends the page to the login
 page by a route change, not a new document
 ([`core/http.ts`](../../frontend/src/app/core/http.ts) `toSignIn`), so the services of the page keep
-what they had loaded — tickets, a tenant's accounts, the person's tokens' metadata — until the next
+what they had loaded — tickets, a team's accounts, the person's tokens' metadata — until the next
 sign-in or sign-out replaces the document. Whoever sits at the tab meanwhile reaches that state with
 the browser's tools, and a page the router opens from it before a request of its own fails may show
 it. Not verified in a browser: which pages show loaded state without asking the API first. A full
@@ -337,8 +337,8 @@ Ingress controller's timeouts, a restart of a backend pod, a network change of t
 polling fallback reloads while the stream is down, and its page reloads what an event of another
 person's act changed. Whenever one of them falls inside each idle window, the session lives on until
 `COWORK_SESSION_LIFETIME` (twelve hours) ends it, and the idle limit, `COWORK_SESSION_IDLE`, guards
-only a tab that sends nothing — a stream that stays connected and a tenant where nobody acts. So an
-unattended, unlocked browser with cowork open shows the person's tenants to whoever sits at it for
+only a tab that sends nothing — a stream that stays connected and a team where nobody acts. So an
+unattended, unlocked browser with cowork open shows the person's teams to whoever sits at it for
 up to the absolute limit, where the idle limit would have ended the session after two hours; for a
 person of the identity provider, the login page then signs them in again at the first sign of a
 person while the issuer's session lives ([identity-provider.md](identity-provider.md#h-62) H-62).

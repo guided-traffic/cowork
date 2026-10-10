@@ -175,7 +175,7 @@ export class AttachmentConsistencySection {
     this.confirm.confirm({
       header: `Remove ${counted(c.orphans, 'object', 'objects')} from the bucket?`,
       message:
-        `${counted(c.orphans, 'object', 'objects')} under this tenant's prefix, ${byteSize(c.orphan_bytes)}, ` +
+        `${counted(c.orphans, 'object', 'objects')} under this team's prefix, ${byteSize(c.orphan_bytes)}, ` +
         'are named by no file of any ticket — files uploaded between the snapshots a restore brought ' +
         'back, or bytes a removal left. Each is asked again whether a file names it now, and one that ' +
         'does is kept. Whoever runs the bucket can copy them out first.',

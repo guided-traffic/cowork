@@ -18,7 +18,7 @@ export interface SavedFilter {
   redacted: boolean;
 
   /**
-   * Shown to every member of the tenant, with its owner
+   * Shown to every member of the team, with its owner
    */
   shared: boolean;
   updated_at: string;

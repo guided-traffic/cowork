@@ -52,7 +52,7 @@ func slot(ctx context.Context, slots chan struct{}) (func(), error) {
 
 // importURL is the job's address.
 func importURL(t tenantScope, project string, id uuid.UUID) string {
-	return fmt.Sprintf("/api/v1/tenants/%s/projects/%s/imports/%s", t.Slug, project, id)
+	return fmt.Sprintf(teamFamily+"/%s/projects/%s/imports/%s", t.Slug, project, id)
 }
 
 // CreateImport reads an upload into a dry run: every file read, the report

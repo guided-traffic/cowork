@@ -6,7 +6,7 @@ import { Attachment, TimeEntry } from '../api/models';
 import { TicketRecords } from './ticket-records.service';
 
 const key = 'acme/VKO-12';
-const base = '/api/v1/tenants/acme/projects/VKO/tickets/12';
+const base = '/api/v1/teams/acme/projects/VKO/tickets/12';
 /** The key a form holds for its content (docs/adr/0045 D3). */
 const formKey = '0199aaaa-0000-7000-8000-00000000f0f0';
 
@@ -37,7 +37,7 @@ function attachment(overrides: Partial<Attachment> = {}): Attachment {
     id: '0199aaaa-0000-7000-8000-0000000000a1',
     file_name: 'notes.txt',
     content_type: 'text/plain; charset=utf-8',
-    content_url: '/api/v1/tenants/acme/attachments/a1/content',
+    content_url: '/api/v1/teams/acme/attachments/a1/content',
     size: 5,
     sha256: '0'.repeat(64),
     comment: null,
@@ -125,9 +125,7 @@ describe('TicketRecords', () => {
     it('addresses the ticket through the tenant, the project and the number of its key', async () => {
       const done = records.attach('globex/COW-3', file(), formKey);
 
-      http
-        .expectOne('/api/v1/tenants/globex/projects/COW/tickets/3/attachments')
-        .flush(attachment());
+      http.expectOne('/api/v1/teams/globex/projects/COW/tickets/3/attachments').flush(attachment());
       await done;
     });
 
@@ -322,7 +320,7 @@ describe('TicketRecords', () => {
       const done = records.void('globex/COW-3', entry({ id: 'another-entry' }));
 
       http
-        .expectOne('/api/v1/tenants/globex/projects/COW/tickets/3/time-entries/another-entry/void')
+        .expectOne('/api/v1/teams/globex/projects/COW/tickets/3/time-entries/another-entry/void')
         .flush(entry({ id: 'another-entry', voided: true }));
       await done;
     });

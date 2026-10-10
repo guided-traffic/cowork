@@ -566,7 +566,7 @@ describe('Login', () => {
 
     it.each([
       ['not_allowed', 'does not admit your account'],
-      ['not_initialised', 'until its first tenant exists'],
+      ['not_initialised', 'until its first team exists'],
       ['oidc_failed', 'did not complete'],
       ['oidc_unavailable', 'offers no sign-in through an identity provider'],
     ])('explains %s in words', async (code, words) => {

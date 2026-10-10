@@ -63,7 +63,8 @@ type Page struct {
 
 // Turn is one turn of a conversation, which Check holds to the rules first.
 type Turn struct {
-	// Tenant is the slug of the tenant the turn runs in, TenantName its name.
+	// Tenant is the slug of the team the turn runs in, TenantName its name,
+	// under the names the database keeps (docs/adr/0005 D1).
 	Tenant, TenantName string
 	// Conversation is the conversation's id, which the calls' keys derive
 	// from.

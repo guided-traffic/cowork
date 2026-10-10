@@ -40,7 +40,7 @@ func v7At(t time.Time) uuid.UUID {
 
 // consistencyPath is the tenant's consistency route, with a suffix.
 func consistencyPath(slug, suffix string) string {
-	return "/api/v1/tenants/" + slug + "/attachment-consistency" + suffix
+	return "/api/v1/teams/" + slug + "/attachment-consistency" + suffix
 }
 
 // consistencyOf reads the tenant's latest result as c.
@@ -397,8 +397,8 @@ func TestTheCheckRunsAtOnceFromTheCommandLine(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	require.NoError(t, cmd.Run(), "stderr: %s", stderr.String())
-	assert.Contains(t, stdout.String(), "1 tenants, 1 dangling, 0 accepted as lost, 1 orphaned objects")
-	assert.Contains(t, stdout.String(), "tenant restored ("+tenant.String()+"): 1 dangling, 0 accepted as lost, 1 orphaned objects")
+	assert.Contains(t, stdout.String(), "1 teams, 1 dangling, 0 accepted as lost, 1 orphaned objects")
+	assert.Contains(t, stdout.String(), "team restored ("+tenant.String()+"): 1 dangling, 0 accepted as lost, 1 orphaned objects")
 	assert.NotContains(t, stdout.String()+stderr.String(), "secret-plan")
 	n, err := iso.F.QueryCount(ctx, "SELECT count(*) FROM consistency_checks WHERE tenant_id = $1 AND dangling = 1 AND orphans = 1", tenant)
 	require.NoError(t, err)

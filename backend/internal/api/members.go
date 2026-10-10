@@ -50,7 +50,7 @@ func (s *Server) lastAdmin(ctx context.Context, w *store.Writer, tenantID uuid.U
 		return err
 	}
 	if !ok {
-		return problem.New(problem.LastAdmin, "the change would leave the tenant without an administrator")
+		return problem.New(problem.LastAdmin, "the change would leave the team without an administrator")
 	}
 	return nil
 }
@@ -203,7 +203,7 @@ func insertGrant(ctx context.Context, w *store.Writer, t tenantScope, id, person
 }
 
 func grantExists() *problem.Error {
-	return problem.New(problem.GrantExists, "the person holds a grant in this tenant already; change it with PUT …/grant")
+	return problem.New(problem.GrantExists, "the person holds a grant in this team already; change it with PUT …/grant")
 }
 
 // SetMemberGrant creates a member's grant or changes its role
@@ -243,7 +243,7 @@ func (s *Server) setGrant(ctx context.Context, w *store.Writer, t tenantScope, p
 		return apigen.Member{}, err
 	}
 	if !member {
-		return apigen.Member{}, personNotFound("the person is not a member of the tenant; add them by e-mail address or username")
+		return apigen.Member{}, personNotFound("the person is not a member of the team; add them by e-mail address or username")
 	}
 	cur, err := w.GetGrant(ctx, readq.GetGrantParams{TenantID: t.ID, UserID: person})
 	switch {
@@ -460,7 +460,7 @@ func mappingChange(id uuid.UUID) *store.MembershipChange {
 }
 
 func mappingURL(t tenantScope, id uuid.UUID) string {
-	return "/api/v1/tenants/" + t.Slug + "/group-mappings/" + id.String()
+	return teamFamily + "/" + t.Slug + "/group-mappings/" + id.String()
 }
 
 // mapsGroups authorizes the making of a mapping and the change of its role:
@@ -473,7 +473,7 @@ func mapsGroups(p auth.Principal, role domain.Role, act string) *problem.Error {
 		return perr
 	}
 	if !p.GlobalAdmin {
-		return problem.New(problem.Forbidden, act+" needs a global administrator who administers the tenant")
+		return problem.New(problem.Forbidden, act+" needs a global administrator who administers the team")
 	}
 	return nil
 }
@@ -550,7 +550,7 @@ func (s *Server) CreateGroupMapping(ctx context.Context, req apigen.CreateGroupM
 }
 
 func mappingExists() *problem.Error {
-	return &problem.Error{Code: problem.MappingExists, Detail: "the tenant maps this group already",
+	return &problem.Error{Code: problem.MappingExists, Detail: "the team maps this group already",
 		Errors: []problem.FieldError{{Pointer: "/group", Message: messageTaken}}}
 }
 
@@ -762,7 +762,7 @@ func (s *Server) SetProjectAccess(ctx context.Context, req apigen.SetProjectAcce
 		}
 		m, err := w.GetMember(ctx, readq.GetMemberParams{TenantID: t.ID, UserID: person})
 		if errors.Is(err, pgx.ErrNoRows) {
-			return personNotFound("the person is not a member of the tenant")
+			return personNotFound("the person is not a member of the team")
 		}
 		if err != nil {
 			return err

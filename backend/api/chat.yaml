@@ -4,20 +4,20 @@
 # is not a response a handler returns.
 chat:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
     operationId: getChatAvailability
     tags: [chat]
-    summary: Whether the chat is available in the tenant, and with which providers
+    summary: Whether the chat is available in the team, and with which providers
     description: |
-      For every member of the tenant. The chat is available when the installation configures at
+      For every member of the team. The chat is available when the installation configures at
       least one provider (`COWORK_CHAT_PROVIDERS`); `providers` lists them in the configured order,
       the first being the one a turn uses when it names none. Otherwise `reason` says why. A
       provider's address and key are never shown, and nothing here asks a provider whether it
       answers: a turn that cannot reach it ends with an `error` event.
     responses:
       '200':
-        description: The chat's availability in the tenant
+        description: The chat's availability in the team
         content:
           application/json:
             schema:
@@ -29,9 +29,9 @@ chat:
     tags: [chat]
     summary: One turn of the chat, answered as server-sent events
     description: |
-      A person in a browser session, any member of the tenant: a token is `403 session_required` —
+      A person in a browser session, any member of the team: a token is `403 session_required` —
       an agent with a token has the MCP server (docs/adr/0040) — and the CSRF check holds as for
-      every write of a session (docs/adr/0037). A tenant without the chat is `409
+      every write of a session (docs/adr/0037). A team without the chat is `409
       chat_unavailable`, and `GET …/chat` says why; a `provider` the installation does not configure
       is `400 validation_failed`. A person with as many turns running as
       `COWORK_CHAT_TURNS_PER_PERSON` allows on the replica — in another tab, say — is `429
@@ -44,7 +44,7 @@ chat:
       (docs/adr/0036): it holds the capabilities the person chose for the chat (`GET
       /api/v1/me/chat`, docs/adr/0043 D5), passes validation, authorization, the agent rules and the
       audit like any agent's request, and what it changes reaches the event stream. It runs at once:
-      nothing waits for the person. It works in the turn's tenant only. A tool the API refuses — an
+      nothing waits for the person. It works in the turn's team only. A tool the API refuses — an
       act that needs a capability the person did not give the chat is `403 agent_forbidden`
       naming it — is an answer the model reads, not a failed turn. A call's creating requests carry
       keys derived from the conversation and the call; a turn the model answers anew repeats its
@@ -126,18 +126,18 @@ chat:
         $ref: './components/responses.yaml#/Problem'
 turns:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   delete:
     operationId: stopChatTurns
     tags: [chat]
-    summary: Stop every running turn of the person in the tenant
+    summary: Stop every running turn of the person in the team
     description: |
       A person in a browser session, any member: a token is `403 session_required`, a session the
       agent header marks `403 agent_forbidden`, and the CSRF check holds. Every turn of the
-      session's person in the tenant that runs on the replica answering this request ends at once:
+      session's person in the team that runs on the replica answering this request ends at once:
       its call of the model is cancelled, so is a tool call in flight, and its stream ends with
       `done` and the reason `stopped`. The answer comes once those turns have ended, or after five
-      seconds; a turn of another person, or of the person in another tenant, runs on. What the
+      seconds; a turn of another person, or of the person in another team, runs on. What the
       stopped turns' tool calls did before has happened.
 
       The turns are those of this replica (docs/adr/0076): behind several backend replicas a turn
@@ -147,6 +147,6 @@ turns:
       - sessionCookie: []
     responses:
       '204':
-        description: The person's turns in the tenant on this replica are stopped
+        description: The person's turns in the team on this replica are stopped
       default:
         $ref: './components/responses.yaml#/Problem'

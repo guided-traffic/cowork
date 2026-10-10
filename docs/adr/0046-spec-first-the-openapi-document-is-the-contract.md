@@ -33,7 +33,16 @@ session-only operations, unlocking a local account the twentieth; built 2026-10-
 `Content-Type`, and a body of an undeclared type is `415`), and on 2026-10-09 with the webhook's
 removal, which the owner dropped before its trial (D1: `integrations.yaml` and a ticket's pull
 requests gone; D2: no webhook outside the generated server; D6, D8: nineteen session-only
-operations, `x-cowork-signed` gone; ADR 0071 Status). `oapi-codegen`
+operations, `x-cowork-signed` gone; ADR 0071 Status), and on 2026-10-10 by the owner's rename of a
+tenant to a team ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1,
+[ADR 0023](0023-the-tenant-is-in-the-path.md) D1; D1: the family `teams.yaml` in place of
+`tenants.yaml`, and the deprecated twins of the team paths, which `tools/specbundle` writes; D2: both
+generators leave the twins out; D7 made concrete by the implementer, open to the owner's
+objection: a renamed path family is served as generated deprecated twins for a release, answered by
+reading a twin's path as the new one before it is routed, a twin keeping the operationId of the
+release before where the rename renamed it, and a cursor and an idempotency key bound by an
+operation's name before; D8: the document test holds the twins and the deprecated names, and `createTeam`
+and `listTeams` are among the nineteen session-only operations; built the same day). `oapi-codegen`
 does not resolve references into other files, so the split document is bundled first; a stream
 is not a response a strict handler returns; and the rule D8 wants checked is three assertions
 over the loaded document, which a unit test makes without a Node toolchain in the backend's
@@ -48,7 +57,11 @@ every response with a body has an example, its own or the one of the schema it n
 bytes of a download or of an export's archive, and the two uploads, which describe their parts
 instead —, and every example validates against its schema. The `sessionCookie` scheme is built
 since phase 3 (2026-10-03): the sessions of [ADR 0031](0031-server-side-sessions-in-an-httponly-cookie.md) exist,
-and every operation declares which credential it takes.
+and every operation declares which credential it takes. *(2026-10-10:)* The team's names of D1, the
+twins and their exclusion from both clients (D2), D7 as made concrete, and D8's tests of the twins
+and the deprecated names
+([`backend/api/document_test.go`](../../backend/api/document_test.go)); the removal of the twins
+and of the names before is a later release's.
 
 ## Context
 
@@ -66,10 +79,10 @@ enforced at the boundary is a contract; one that is only published is documentat
 ## Decision
 
 **D1 — `backend/api/openapi.yaml` is the source of the API.** OpenAPI 3.1, one root document
-with `$ref`s into one file per path family — `tenants.yaml`, `me.yaml`, `tickets.yaml`
+with `$ref`s into one file per path family — ~~`tenants.yaml`~~ `teams.yaml` *(2026-10-10)*, `me.yaml`, `tickets.yaml`
 (the key resolver), `auth.yaml`, `admin.yaml` — and `components/` for schemas, responses
 and security schemes. A change to the API is a change to these files first. *(Amended
-2026-10-02: the families built are `meta.yaml`, `me.yaml`, `tenants.yaml`, `tickets.yaml`,
+2026-10-02: the families built are `meta.yaml`, `me.yaml`, ~~`tenants.yaml`~~ `teams.yaml` *(2026-10-10)*, `tickets.yaml`,
 `questions.yaml`, `comments.yaml`, `time.yaml`, `attachments.yaml` and `events.yaml`;
 `make generate` bundles them into `backend/api/openapi.gen.json`, which the generator reads
 and the server embeds and serves.)* *(Added 2026-10-03: `auth.yaml` and `accounts.yaml`; the
@@ -84,7 +97,12 @@ in `me.yaml` the chat's capabilities, `/me/chat`.)* ~~*(Added 2026-10-06: `integ
 webhook, its secret and the tenant's view of it, `/tenants/{tenant}/integrations/github…`, and in
 `tickets.yaml` a ticket's pull requests,
 [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md).)*~~ *(Removed 2026-10-09 with the
-webhook.)*
+webhook.)* *(Added 2026-10-10, the tenant named a team,
+[ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1: the family of a
+team is `teams.yaml`, and every family names the team's paths, `/api/v1/teams/{team}/…`, with the
+path parameter `team`. Their deprecated twins under `/api/v1/tenants/{tenant}/…` are in no family
+file: [`tools/specbundle`](../../backend/tools/specbundle/main.go) writes one for every path under
+`/api/v1/teams` into the bundle, and fails on a twin the source holds (D7).)*
 
 **D2 — `oapi-codegen` generates the Go server interface and the Go client.** Handlers
 implement the generated strict server interface; the MCP server and the integration tests use
@@ -100,7 +118,11 @@ of the turn's body and its events, which only the document's components name.)* 
 so is GitHub's webhook, `receiveGitHubWebhook`, whose handler reads the raw body to verify its
 signature before anything parses it — the generated server would decode it first; after the body
 limit, with the request's headers validated and its body not, ADR 0071 D3.)*~~ *(Removed
-2026-10-09 with the webhook.)*
+2026-10-09 with the webhook.)* *(Added 2026-10-10: neither generator writes the deprecated twins of
+D7 — `exclude-tags: [tenants]` in [`api/oapi-codegen.yaml`](../../backend/api/oapi-codegen.yaml) and
+`excludeTags` in [`ng-openapi-gen.json`](../../frontend/ng-openapi-gen.json) leave out the
+operations tagged `tenants` —, so the server interface, the Go client and the Angular client know
+the team paths only; the server answers a twin as its team path, before it routes it.)*
 
 **D3 — The Angular client is generated from the same document** into
 `frontend/src/app/api/`, by `ng-openapi-gen` or an equivalent that emits typed services; it
@@ -169,7 +191,31 @@ example and validates every example against its schema; how one is written is
 
 **D7 — Versioning is in the path.** `/api/v1` is the first; a breaking change opens `/api/v2`
 beside it and the old family stays until its clients are gone; there is no version header
-and no content negotiation on versions.
+and no content negotiation on versions. *(Made concrete 2026-10-10 by the implementer, open to the
+owner's objection, with the rename of a tenant to a team,
+[ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1, as the horizon's
+rename had it in [ADR 0010](0010-the-frontmatter-vocabularies-become-ticket-columns.md) D1:)* a rename inside `/api/v1` is an expand and a later contract
+([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D3): the new
+names beside the old ones for one release, the old ones deprecated and behaving as they did, and
+removed once no supported client reads them. **A renamed path family is served as generated
+deprecated twins for that release:** the source names the new family only; the bundler writes,
+beside each of its paths, a twin under the old family — the same operations, each deprecated and
+tagged apart, which neither generated client carries (D2) —; and the server answers a twin by
+reading its path as the new one before it routes it, so that a twin and its path are one route to
+the boundary, the security, the handler and the metrics. **A twin keeps the operationId of the
+release before where the rename renamed the operation**, so that a client of that release, which
+checks at its start that the operations it calls are in the served document
+([ADR 0040](0040-rest-is-the-contract-mcp-is-the-ergonomic-surface-and-can-do-nothing-the-api-cannot.md)
+D5), passes; an operation that kept its name has its twin's operationId suffixed `Deprecated`,
+since an operationId is unique. What binds a request to an operation across the two releases keeps the
+operation's name before — a cursor of `listTenantTickets`, `listTenantTime`, `listTenantTokens`,
+`listTenants`, `searchTenant` and `searchMyTenants`
+([ADR 0048](0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D5), and the
+idempotency key of `createTenant`
+([ADR 0045](0045-idempotency-put-where-it-is-free-a-required-key-on-agent-posts-stored-with-the-act.md)) —,
+so that a cursor pages on and a retry is replayed across replicas of both releases during a rollout
+and after an image rollback
+([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D4).
 
 **D8 — The document is part of the security documentation.** The security page of the API
 reads auth schemes, scopes and error responses from the document, not from prose; a route
@@ -182,7 +228,16 @@ credential, the session cookie alone for exactly the ~~six~~ session-only operat
 2026-10-04: ~~twelve~~ ~~thirteen~~ ~~fourteen~~ ~~sixteen~~; amended 2026-10-05: ~~seventeen~~; amended 2026-10-06: ~~eighteen~~ ~~nineteen~~; amended 2026-10-07: ~~twenty~~; amended 2026-10-09: nineteen)*, or an explicit empty one on the public operations, which as writes also carry
 `x-cowork-origin-check` ~~*(amended 2026-10-06: or, signed, `x-cowork-signed`, which the test holds to
 GitHub's webhook alone)*~~ *(the signed form removed 2026-10-09 with the webhook)*.)* *(Added 2026-10-04: the same test holds `x-cowork-open-query` to the
-callback alone.)*
+callback alone.)* *(Added 2026-10-10: the same file holds every team path to its deprecated twin and
+every twin to its team path — the same operations, parameters but the path's, body, answers,
+security and marks, and the operationId of D7 (`TestTheTenantPathsAreDeprecatedTwinsOfTheTeamPaths`)
+—, and every name before to `deprecated` beside the name that replaces it, no `{tenant}` outside the
+twins and no schema named for the tenant (`TestEveryTenantNameIsDeprecatedBesideItsTeamName`);
+`TestEveryOperationIsDeclaredCompletely` holds a twin to a unique operationId and leaves the rest of
+it to the first of them. The nineteen session-only operations count no
+twin: the rename renamed two of them, `createTeam` and `listTeams` — `createTenant` and
+`listTenants` before, the operationIds their twins keep —, and each twin takes the session alone as
+its operation does.)*
 
 ## Consequences
 

@@ -37,7 +37,7 @@ describe('AttachmentConsistencyService', () => {
   const latest = () =>
     http.expectOne(
       (request) =>
-        request.method === 'GET' && request.url === '/api/v1/tenants/acme/attachment-consistency',
+        request.method === 'GET' && request.url === '/api/v1/teams/acme/attachment-consistency',
     );
 
   beforeEach(() => {
@@ -113,7 +113,7 @@ describe('AttachmentConsistencyService', () => {
     const accepted = service.acceptLoss('c1');
     const acceptance = http.expectOne({
       method: 'POST',
-      url: '/api/v1/tenants/acme/attachment-consistency/dangling-acceptance',
+      url: '/api/v1/teams/acme/attachment-consistency/dangling-acceptance',
     });
     expect(acceptance.request.body).toEqual({ check_id: 'c1' });
     acceptance.flush({ accepted: 1 });
@@ -125,7 +125,7 @@ describe('AttachmentConsistencyService', () => {
     const removed = service.removeOrphans('c1');
     const removal = http.expectOne({
       method: 'POST',
-      url: '/api/v1/tenants/acme/attachment-consistency/orphan-removal',
+      url: '/api/v1/teams/acme/attachment-consistency/orphan-removal',
     });
     expect(removal.request.body).toEqual({ check_id: 'c1' });
     removal.flush({ removed: 2, kept: 0, failed: 0 });

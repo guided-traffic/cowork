@@ -1,13 +1,13 @@
 import { inject, Injectable } from '@angular/core';
 import { Api } from '../api/api';
-import { listAudit } from '../api/fn/tenants/list-audit';
-import { listAudit$Csv } from '../api/fn/tenants/list-audit-csv';
+import { listAudit } from '../api/fn/teams/list-audit';
+import { listAudit$Csv } from '../api/fn/teams/list-audit-csv';
 import { AuditAction, AuditList } from '../api/models';
 import { PerPage } from './table-pages';
 
 /** The filters of the tenant's audit record (docs/adr/0026 D6): actor, token, action, entity, period. */
 export interface AuditQuery {
-  tenant: string;
+  team: string;
   /** A person's id. */
   actor?: string;
   /** A token's id. */

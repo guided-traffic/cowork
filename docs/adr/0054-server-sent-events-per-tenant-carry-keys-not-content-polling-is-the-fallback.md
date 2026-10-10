@@ -12,6 +12,15 @@ Amended 2026-10-09 with the removal of GitHub's webhook, which the owner dropped
 (D2: `pull_request.changed` is gone; [ADR 0071](0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
 Status).
 
+Amended 2026-10-10 by the owner's rename of a tenant to a team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1; D1: the stream is
+`GET /api/v1/teams/{slug}/events`, its twin under `/api/v1/tenants/{slug}/events` answered as it for
+one release ([ADR 0023](0023-the-tenant-is-in-the-path.md) D1), and a membership event names its
+team as `team` and, beside it for one release, as `tenant`), built the same day
+(`membershipData` and `eventsRoute` in [`api/events.go`](../../backend/internal/api/events.go); the
+client reads `team`, or `tenant` from a server of the release before). The event's `tenant` goes in a
+later release.
+
 Amended 2026-10-02 (D3: the visible projects are recomputed at every heartbeat; D4: what a
 payload carries and which acts are published; D5: the heartbeat checks the token and the
 membership again, and a replica that lost its listener keeps no replay point from before). Revocation is immediate
@@ -126,7 +135,8 @@ which is all a client that refetches needs.
 
 ## Decision
 
-**D1 — One event stream per tenant and person:** `GET /api/v1/tenants/{slug}/events`,
+**D1 — One event stream per tenant and person:** ~~`GET /api/v1/tenants/{slug}/events`~~
+`GET /api/v1/teams/{slug}/events` *(2026-10-10; the old path answered as it for one release)*,
 `text/event-stream`, authenticated like any route (session cookie; a bearer token may
 subscribe too). The stream delivers events of that tenant the person may see, plus the
 person's own events (inbox, ~~questions asked of them~~) across their tenants when opened with
@@ -135,7 +145,8 @@ the stream carries, besides the person's inbox, every event of every tenant the 
 that D3's filter of that tenant admits — the person-level pages follow all of the person's tenants
 over one connection. A token restricted to a tenant reaches no other
 ([ADR 0035](0035-personal-access-tokens.md) D3): its person-level stream carries its tenant
-alone. A membership event names its tenant, `{"tenant": "<slug>", …}`, since the stream no longer
+alone. A membership event names its tenant, ~~`{"tenant": "<slug>", …}`~~ `{"team": "<slug>", "tenant": "<slug>", …}`
+*(2026-10-10: `team`, and `tenant` beside it, the same slug, for one release)*, since the stream no longer
 says it by its address; a ticket's event names it in its key.)*
 
 **D2 — An event carries a key and a version, never content.**

@@ -35,9 +35,10 @@ type Memory interface {
 	SetModel(projectDir, model string) error
 }
 
-// MemoryKey names a binding of an installation.
+// MemoryKey names a binding of an installation: its team's slug and its
+// project's key.
 type MemoryKey struct {
-	Installation, Tenant, Project string
+	Installation, Team, Project string
 }
 
 // InMemory is a Memory that lives as long as the process: a host without a
@@ -113,14 +114,14 @@ type memoryFile struct {
 
 var unsafeName = regexp.MustCompile(`[^A-Za-z0-9.-]+`)
 
-// path is the file of a key: the installation's host and port, the tenant
-// and the project, readable and safe as a file name.
+// path is the file of a key: the installation's host and port, the team and
+// the project, readable and safe as a file name.
 func (m FileMemory) path(key MemoryKey) string {
 	host := key.Installation
 	if u, err := url.Parse(key.Installation); err == nil && u.Host != "" {
 		host = u.Host + u.Path
 	}
-	name := unsafeName.ReplaceAllString(host+"_"+key.Tenant+"_"+key.Project, "_")
+	name := unsafeName.ReplaceAllString(host+"_"+key.Team+"_"+key.Project, "_")
 	return filepath.Join(m.Dir, name+".json")
 }
 
@@ -143,7 +144,7 @@ func (m FileMemory) LastStart(key MemoryKey) (time.Time, bool, error) {
 
 // SetLastStart writes the time for the key.
 func (m FileMemory) SetLastStart(key MemoryKey, at time.Time) error {
-	return m.write(m.path(key), memoryFile{Installation: key.Installation, Binding: key.Tenant + "/" + key.Project, LastStart: at.UTC()})
+	return m.write(m.path(key), memoryFile{Installation: key.Installation, Binding: key.Team + "/" + key.Project, LastStart: at.UTC()})
 }
 
 // modelFile is what the file of a project directory holds: the directory,

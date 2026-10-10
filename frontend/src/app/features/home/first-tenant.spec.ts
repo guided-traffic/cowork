@@ -3,11 +3,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
-import { Problem, Tenant } from '../../api/models';
+import { Problem, Team } from '../../api/models';
 import { TenantsService } from '../../core/tenants.service';
 import { FirstTenant, tenantSlug } from './first-tenant';
 
-const made: Tenant = {
+const made: Team = {
   slug: 'acme',
   name: 'Acme Corp',
   version: 1,
@@ -24,7 +24,7 @@ function refusal(
 ) {
   const body: Problem = {
     type: 'about:blank',
-    title: 'The tenant is not valid',
+    title: 'The team is not valid',
     status,
     detail: 'Check the slug.',
     code,
@@ -118,13 +118,13 @@ describe('FirstTenant', () => {
     it('is headed Create the first tenant, and says what a tenant is and what the person becomes', async () => {
       const fixture = await render();
 
-      expect(host(fixture).querySelector('h1')?.textContent).toBe('Create the first tenant');
+      expect(host(fixture).querySelector('h1')?.textContent).toBe('Create the first team');
       const lead = host(fixture).querySelector('.lead')?.textContent ?? '';
-      expect(lead).toContain('A tenant is one client or one organisation');
       expect(lead).toContain(
-        'You are a global administrator and are not a member of any tenant yet',
+        'A team holds its own projects and their tickets, apart from every other team of this installation; a person may belong to several.',
       );
-      expect(lead).toContain('The tenant you create makes you its administrator');
+      expect(lead).toContain('You are a global administrator and are not a member of any team yet');
+      expect(lead).toContain('The team you create makes you its administrator');
     });
 
     it('is a labelled region of the page, and asks for a slug and a name', async () => {
@@ -133,11 +133,11 @@ describe('FirstTenant', () => {
       const region = el(fixture, 'first-tenant');
       expect(region?.getAttribute('aria-labelledby')).toBe('first-tenant-title');
       expect(host(fixture).querySelector('#first-tenant-title')?.textContent).toBe(
-        'Create the first tenant',
+        'Create the first team',
       );
       expect(el(fixture, 'first-tenant-slug')).not.toBeNull();
       expect(el(fixture, 'first-tenant-name')).not.toBeNull();
-      expect(createButton(fixture).textContent?.trim()).toBe('Create tenant');
+      expect(createButton(fixture).textContent?.trim()).toBe('Create team');
     });
 
     it('limits the slug to 63 characters and the name to two hundred, as the schema does', async () => {
@@ -226,8 +226,8 @@ describe('FirstTenant', () => {
     );
 
     it('creates nothing while another one is on its way, and shows the button as busy', async () => {
-      let finish: (tenant: Tenant) => void = () => undefined;
-      create.mockReturnValue(new Promise<Tenant>((resolve) => (finish = resolve)));
+      let finish: (tenant: Team) => void = () => undefined;
+      create.mockReturnValue(new Promise<Team>((resolve) => (finish = resolve)));
       const fixture = await render();
       fill(fixture);
 
@@ -308,7 +308,7 @@ describe('FirstTenant', () => {
         type: 'about:blank',
         title: 'Forbidden',
         status: 403,
-        detail: 'Only a global administrator creates a tenant.',
+        detail: 'Only a global administrator creates a team.',
         code: 'forbidden',
       };
       create.mockRejectedValue(
@@ -325,7 +325,7 @@ describe('FirstTenant', () => {
         expect.objectContaining({
           severity: 'warn',
           summary: 'Forbidden',
-          detail: 'Only a global administrator creates a tenant.',
+          detail: 'Only a global administrator creates a team.',
         }),
       );
       expect(host(fixture).querySelector('small.error')).toBeNull();
@@ -415,8 +415,8 @@ describe('FirstTenant', () => {
 
     it('takes it away again with the next attempt, and leaves no field claiming to be invalid', async () => {
       const fixture = await refused();
-      let finish: (tenant: Tenant) => void = () => undefined;
-      create.mockReturnValue(new Promise<Tenant>((resolve) => (finish = resolve)));
+      let finish: (tenant: Team) => void = () => undefined;
+      create.mockReturnValue(new Promise<Team>((resolve) => (finish = resolve)));
 
       submit(fixture);
       await settle(fixture);

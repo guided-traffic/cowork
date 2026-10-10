@@ -67,6 +67,15 @@ under the default capabilities and the same close once the person gave `close`, 
 the person's pick, and the policies of `chat_capabilities`; the panel, the stream reader and the
 service have their vitest specs.
 
+Amended 2026-10-10 by the owner's rename of a tenant to a team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1; D1, D8: the chat's
+routes are under the team family, `/api/v1/teams/{team}/chat` and `…/chat/turns`, their twins under
+`/api/v1/tenants/{tenant}/…` answered as them for one release
+([ADR 0023](0023-the-tenant-is-in-the-path.md) D1); D1: the loopback holds both families of the
+turn's team to the same rules, so it refuses the chat's own routes and the event stream under
+either), built the same day (`families` in [`chat/loopback.go`](../../backend/internal/chat/loopback.go),
+`TestTheLoopback`, `TestTheChatStaysInItsTeam`).
+
 **Verified on 2026-10-04, before the owner's answers were built:** against LM Studio serving
 `qwen/qwen3-30b-a3b-2507`, loaded with a context of 32k tokens, the chat filed a ticket, set its
 urgency to `now` and moved it to `analysed`; the open board showed the card at once, and every act
@@ -123,7 +132,8 @@ not stop by itself made the stop a decision of its own.
 ## Decision
 
 **D1 — The loop runs in the backend, and its tools are the shared catalogue, run in-process through
-the server's own handler.** `POST /api/v1/tenants/{tenant}/chat` runs one turn: the backend calls
+the server's own handler.** ~~`POST /api/v1/tenants/{tenant}/chat`~~ `POST /api/v1/teams/{team}/chat`
+*(2026-10-10; the old path answered as it for one release)* runs one turn: the backend calls
 the model of the provider the turn names (D3) with the conversation the request carries, runs the
 tools the model calls, calls the model again with their answers, and streams the turn to the
 browser as server-sent events — `text`, `tool_call`, `ui`, `tool_result`, ~~`confirm`,~~ `error`, and
@@ -144,7 +154,9 @@ request id, the request log, authentication, the CSRF check, the tenant boundary
 authorization with the agent rules, the audit row and the publication to the event streams like
 any request, under a request id of its own and with the person's client address. The loopback
 sends nothing outside the turn's tenant, nothing to the chat's own routes — the turn and the stop —
-or to the event stream, and no path that is not clean.
+or to the event stream, and no path that is not clean *(2026-10-10: under either family of the turn's
+team, `/api/v1/teams/…` and its deprecated twin `/api/v1/tenants/…`, which the server answers as the
+team's)*.
 
 **D2 — The chat acts as an agent of the person, ~~and the person decides the acts a person owes a
 reason, a note or a decision for~~ with the capabilities the person chose, and nothing waits for the
@@ -277,7 +289,8 @@ every ten seconds.
 **D8 — A running turn stops at once, from anywhere** *(added 2026-10-04 by the owner's answer: "a
 running agent must be stoppable at once")*. Aborting a turn's request ends it: the turn's context is
 the request's, so the model's request and a tool call in flight are cancelled with it.
-`DELETE /api/v1/tenants/{tenant}/chat/turns` ends every running turn of the session's person in the
+~~`DELETE /api/v1/tenants/{tenant}/chat/turns`~~ `DELETE /api/v1/teams/{team}/chat/turns`
+*(2026-10-10; the old path answered as it for one release)* ends every running turn of the session's person in the
 tenant on the replica that answers it, at once: each turn the replica runs is registered with the
 cancel of its context while it runs — the registry the count of D7 reads — and the stop cancels it,
 so the model's request and a tool call in flight are cancelled, and the turn's stream ends with

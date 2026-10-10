@@ -1,6 +1,6 @@
 # The identity provider shape (docs/adr/0029, docs/adr/0030): the client id
 # and secret from one Secret with key names of its own, the gate and the
-# administrator group, a bootstrap tenant without a local administrator (the
+# administrator group, a bootstrap team without a local administrator (the
 # administrator group is mapped to its admin role, docs/adr/0032 D6), and
 # every other value changed from its default. The redirect URI needs the
 # public origin.
@@ -11,7 +11,7 @@ database:
 session:
   existingSecret: cowork-session
 bootstrap:
-  tenant:
+  team:
     slug: acme
     name: Acme Corp
 auth:

@@ -143,27 +143,27 @@ func TestTokenCreationRules(t *testing.T) {
 	assert.Equal(t, "/scope", pointer(create(map[string]any{"scope": "admin", "agent": true})))
 	assert.Equal(t, "/capabilities", pointer(create(map[string]any{"scope": "write", "capabilities": []string{"drop"}})))
 	assert.Equal(t, "/name", pointer(create(map[string]any{"scope": "read", "name": "   "})))
-	assert.Equal(t, "/project", pointer(create(map[string]any{"scope": "read", "project": "ALPHA"})), "a project needs its tenant")
-	notMine := pointer(create(map[string]any{"scope": "read", "tenant": uniqueSlug("nobody")}))
-	assert.Equal(t, "/tenant", notMine)
-	assert.Equal(t, "/tenant", pointer(create(map[string]any{"scope": "read", "tenant": w.SlugB + "-x"})), "unknown")
-	assert.Equal(t, "/project", pointer(create(map[string]any{"scope": "read", "tenant": w.SlugA, "project": "BETA"})), "a project of another tenant")
+	assert.Equal(t, "/project", pointer(create(map[string]any{"scope": "read", "project": "ALPHA"})), "a project needs its team")
+	notMine := pointer(create(map[string]any{"scope": "read", "team": uniqueSlug("nobody")}))
+	assert.Equal(t, "/team", notMine)
+	assert.Equal(t, "/team", pointer(create(map[string]any{"scope": "read", "team": w.SlugB + "-x"})), "unknown")
+	assert.Equal(t, "/project", pointer(create(map[string]any{"scope": "read", "team": w.SlugA, "project": "BETA"})), "a project of another team")
 	assertProblem(t, create(map[string]any{"scope": "read", "unknown": 1}), http.StatusBadRequest, "validation_failed")
 	assertProblem(t, create(map[string]any{"scope": "superuser"}), http.StatusBadRequest, "validation_failed")
 
-	// A tenant the person does not belong to is "no such tenant", exactly like
+	// A team the person does not belong to is "no such team", exactly like
 	// one that does not exist.
 	member := s.browser(t)
 	member.mustLogin(names["memberB"], testPassword)
-	res := member.request(http.MethodPost, "/api/v1/me/tokens", map[string]any{"name": "t", "scope": "read", "tenant": w.SlugA})
-	assert.Equal(t, "/tenant", pointer(res))
+	res := member.request(http.MethodPost, "/api/v1/me/tokens", map[string]any{"name": "t", "scope": "read", "team": w.SlugA})
+	assert.Equal(t, "/team", pointer(res))
 
-	narrow := decode[apigen.TokenCreated](t, created(t, create(map[string]any{"scope": "write", "tenant": w.SlugA, "project": "ALPHA"})))
-	assert.Equal(t, w.SlugA, narrow.RestrictedTenant.MustGet())
+	narrow := decode[apigen.TokenCreated](t, created(t, create(map[string]any{"scope": "write", "team": w.SlugA, "project": "ALPHA"})))
+	assert.Equal(t, w.SlugA, narrow.RestrictedTeam.MustGet())
 	assert.Equal(t, "ALPHA", narrow.RestrictedProject.MustGet())
 	assert.Equal(t, w.ProjectA, narrow.RestrictedProjectId.MustGet()) //nolint:staticcheck // SA1019: the deprecated field is still answered
-	assert.Equal(t, http.StatusOK, s.do(t, caller{Token: *narrow.Token}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/projects/ALPHA", nil).StatusCode)
-	assertProblem(t, s.do(t, caller{Token: *narrow.Token}, http.MethodGet, "/api/v1/tenants/"+w.SlugB, nil), http.StatusNotFound, "not_found")
+	assert.Equal(t, http.StatusOK, s.do(t, caller{Token: *narrow.Token}, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/projects/ALPHA", nil).StatusCode)
+	assertProblem(t, s.do(t, caller{Token: *narrow.Token}, http.MethodGet, "/api/v1/teams/"+w.SlugB, nil), http.StatusNotFound, "not_found")
 }
 
 // docs/adr/0035 D3: a token names the project it is restricted to by its key,
@@ -177,9 +177,9 @@ func TestATokenNamesItsProjectByKey(t *testing.T) {
 	b := s.browser(t)
 	b.mustLogin(names["both"], testPassword)
 	narrow := decode[apigen.TokenCreated](t, created(t, b.request(http.MethodPost, "/api/v1/me/tokens",
-		map[string]any{"name": "narrow", "scope": "read", "tenant": w.SlugA, "project": "ALPHA"})))
+		map[string]any{"name": "narrow", "scope": "read", "team": w.SlugA, "project": "ALPHA"})))
 	tenantOnly := decode[apigen.TokenCreated](t, created(t, b.request(http.MethodPost, "/api/v1/me/tokens",
-		map[string]any{"name": "tenant", "scope": "read", "tenant": w.SlugB})))
+		map[string]any{"name": "tenant", "scope": "read", "team": w.SlugB})))
 	listed := func() map[uuid.UUID]apigen.Token {
 		list := decode[apigen.TokenList](t, b.get("/api/v1/me/tokens"))
 		out := map[uuid.UUID]apigen.Token{}
@@ -203,7 +203,7 @@ func TestATokenNamesItsProjectByKey(t *testing.T) {
 	tokens = listed()
 	assert.True(t, tokens[narrow.Id].RestrictedProject.IsNull(), "a project the person no longer sees has no key")
 	assert.Equal(t, w.ProjectA, tokens[narrow.Id].RestrictedProjectId.MustGet()) //nolint:staticcheck // SA1019: the deprecated field is still answered
-	assert.Equal(t, http.StatusNotFound, s.do(t, caller{Token: *narrow.Token}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/projects/ALPHA", nil).StatusCode,
+	assert.Equal(t, http.StatusNotFound, s.do(t, caller{Token: *narrow.Token}, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/projects/ALPHA", nil).StatusCode,
 		"and the token reaches nothing")
 
 	// Open again, but the person left the tenant: no key either.
@@ -264,20 +264,20 @@ func TestOnlyAGlobalAdministratorCreatesATenant(t *testing.T) {
 
 	member := s.browser(t)
 	member.mustLogin(names["memberA"], testPassword)
-	assertProblem(t, member.request(http.MethodPost, "/api/v1/tenants", body), http.StatusForbidden, "forbidden")
-	assertProblem(t, s.do(t, caller{Token: rootToken}, http.MethodPost, "/api/v1/tenants", body), http.StatusForbidden, "session_required")
-	assertProblem(t, s.do(t, caller{Token: tokens.AdminA}, http.MethodPost, "/api/v1/tenants", body), http.StatusForbidden, "session_required")
-	assertProblem(t, s.do(t, caller{}, http.MethodPost, "/api/v1/tenants", body), http.StatusUnauthorized, "unauthenticated")
+	assertProblem(t, member.request(http.MethodPost, "/api/v1/teams", body), http.StatusForbidden, "forbidden")
+	assertProblem(t, s.do(t, caller{Token: rootToken}, http.MethodPost, "/api/v1/teams", body), http.StatusForbidden, "session_required")
+	assertProblem(t, s.do(t, caller{Token: tokens.AdminA}, http.MethodPost, "/api/v1/teams", body), http.StatusForbidden, "session_required")
+	assertProblem(t, s.do(t, caller{}, http.MethodPost, "/api/v1/teams", body), http.StatusUnauthorized, "unauthenticated")
 	assert.Zero(t, scalar[int64](t, `SELECT count(*) FROM tenants WHERE slug = $1`, slug))
 
 	b := s.browser(t)
 	b.mustLogin(usernameOf(t, root), testPassword)
-	assertProblem(t, b.get("/api/v1/tenants/"+w.SlugA+"/projects"), http.StatusNotFound, "not_found")
-	res := b.request(http.MethodPost, "/api/v1/tenants", body)
+	assertProblem(t, b.get("/api/v1/teams/"+w.SlugA+"/projects"), http.StatusNotFound, "not_found")
+	res := b.request(http.MethodPost, "/api/v1/teams", body)
 	require.Equal(t, http.StatusCreated, res.StatusCode)
-	assert.Equal(t, "/api/v1/tenants/"+slug, res.Header.Get("Location"))
+	assert.Equal(t, "/api/v1/teams/"+slug, res.Header.Get("Location"))
 	assert.Equal(t, `"1"`, res.Header.Get("ETag"))
-	tenant := decode[apigen.Tenant](t, res)
+	tenant := decode[apigen.Team](t, res)
 	assert.Equal(t, slug, tenant.Slug)
 	assert.Equal(t, "Created", tenant.Name)
 
@@ -286,19 +286,19 @@ func TestOnlyAGlobalAdministratorCreatesATenant(t *testing.T) {
 		"the creator's marked grant as admin")
 	assert.EqualValues(t, 2, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE actor_user_id = $1 AND tenant_id IS NULL AND action = 'created'
 		AND entity_type IN ('tenant', 'membership') AND (entity_id = $2 OR after->>'tenant' = $3)`, root, tenantID, slug))
-	assert.Equal(t, http.StatusOK, b.get("/api/v1/tenants/"+slug+"/projects").StatusCode, "the first administrator works in the tenant")
-	assertProblem(t, b.get("/api/v1/tenants/"+w.SlugB+"/projects"), http.StatusNotFound, "not_found")
+	assert.Equal(t, http.StatusOK, b.get("/api/v1/teams/"+slug+"/projects").StatusCode, "the first administrator works in the tenant")
+	assertProblem(t, b.get("/api/v1/teams/"+w.SlugB+"/projects"), http.StatusNotFound, "not_found")
 
-	assertProblem(t, b.request(http.MethodPost, "/api/v1/tenants", body), http.StatusConflict, "tenant_slug_taken")
-	assertProblem(t, b.request(http.MethodPost, "/api/v1/tenants", map[string]string{"slug": "Bad_Slug", "name": "x"}), http.StatusBadRequest, "validation_failed")
-	assertProblem(t, b.request(http.MethodPost, "/api/v1/tenants", map[string]string{"slug": uniqueSlug("blank"), "name": "   "}), http.StatusBadRequest, "validation_failed")
+	assertProblem(t, b.request(http.MethodPost, "/api/v1/teams", body), http.StatusConflict, "tenant_slug_taken")
+	assertProblem(t, b.request(http.MethodPost, "/api/v1/teams", map[string]string{"slug": "Bad_Slug", "name": "x"}), http.StatusBadRequest, "validation_failed")
+	assertProblem(t, b.request(http.MethodPost, "/api/v1/teams", map[string]string{"slug": uniqueSlug("blank"), "name": "   "}), http.StatusBadRequest, "validation_failed")
 
 	key := uuid.Must(uuid.NewV7()).String()
 	keyed := map[string]string{"slug": uniqueSlug("keyed"), "name": "Keyed"}
-	require.Equal(t, http.StatusCreated, b.request(http.MethodPost, "/api/v1/tenants", keyed, withHeader("Idempotency-Key", key)).StatusCode)
-	replay := b.request(http.MethodPost, "/api/v1/tenants", keyed, withHeader("Idempotency-Key", key))
+	require.Equal(t, http.StatusCreated, b.request(http.MethodPost, "/api/v1/teams", keyed, withHeader("Idempotency-Key", key)).StatusCode)
+	replay := b.request(http.MethodPost, "/api/v1/teams", keyed, withHeader("Idempotency-Key", key))
 	require.Equal(t, http.StatusCreated, replay.StatusCode)
-	assert.Equal(t, "/api/v1/tenants/"+keyed["slug"], replay.Header.Get("Location"))
+	assert.Equal(t, "/api/v1/teams/"+keyed["slug"], replay.Header.Get("Location"))
 	assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM tenants WHERE slug = $1`, keyed["slug"]))
 }
 
@@ -313,12 +313,12 @@ func TestWideningTheTenantSettingsTakesASession(t *testing.T) {
 	tk := issueTokens(t, w)
 	s := newAPI(t, withLogin)
 	token, session := caller{Token: tk.AdminA}, sessionOf(t, w.AdminA)
-	path := "/api/v1/tenants/" + w.SlugA
-	read := func() (apigen.Tenant, string) {
+	path := "/api/v1/teams/" + w.SlugA
+	read := func() (apigen.Team, string) {
 		t.Helper()
 		res := s.do(t, token, http.MethodGet, path, nil)
 		require.Equal(t, http.StatusOK, res.StatusCode)
-		return decode[apigen.Tenant](t, res), res.Header.Get("ETag")
+		return decode[apigen.Team](t, res), res.Header.Get("ETag")
 	}
 	patch := func(c caller, body map[string]any) *http.Response {
 		t.Helper()
@@ -344,7 +344,7 @@ func TestWideningTheTenantSettingsTakesASession(t *testing.T) {
 
 	widened := patch(session, map[string]any{"time_visible_to_members": true, "members_create_projects": true, "time_locked_until": nil})
 	require.Equal(t, http.StatusOK, widened.StatusCode, "a session widens")
-	got := decode[apigen.Tenant](t, widened)
+	got := decode[apigen.Team](t, widened)
 	assert.True(t, got.TimeVisibleToMembers)
 	assert.True(t, got.MembersCreateProjects)
 	assert.True(t, got.TimeLockedUntil.IsNull())
@@ -372,7 +372,7 @@ func TestARecordedReadOfASessionComesFromTheInstallationsOwnPages(t *testing.T) 
 	}
 
 	reads := []string{a.ContentUrl, ticket + "/markdown", ticket + "/context",
-		"/api/v1/tenants/" + e.SlugA + "/projects/ALPHA/export", "/api/v1/tenants/" + e.SlugA + "/export"}
+		"/api/v1/teams/" + e.SlugA + "/projects/ALPHA/export", "/api/v1/teams/" + e.SlugA + "/export"}
 	for _, path := range reads {
 		before := recorded()
 		for _, site := range []string{"same-site", "cross-site"} {
@@ -407,7 +407,7 @@ func TestSessionWritesAreCSRFChecked(t *testing.T) {
 	s := newAPI(t, withLogin)
 	b := s.browser(t)
 	b.mustLogin(names["memberA"], testPassword)
-	path := "/api/v1/tenants/" + w.SlugA + "/projects"
+	path := "/api/v1/teams/" + w.SlugA + "/projects"
 	write := func(opts ...reqOpt) *http.Response {
 		return b.request(http.MethodPost, path, map[string]string{"key": strings.ToUpper(strings.ReplaceAll(uniqueSlug("c"), "-", "")), "name": "p"}, opts...)
 	}
@@ -479,7 +479,7 @@ func TestEventStreamEndsWithItsSession(t *testing.T) {
 	b := s.browser(t)
 	b.mustLogin(names["memberA"], testPassword)
 
-	stream := b.get("/api/v1/tenants/" + w.SlugA + "/events")
+	stream := b.get("/api/v1/teams/" + w.SlugA + "/events")
 	require.Equal(t, http.StatusOK, stream.StatusCode)
 	assert.Equal(t, "text/event-stream", stream.Header.Get("Content-Type"))
 	ended := make(chan struct{})
@@ -511,8 +511,8 @@ func TestEveryTenantRouteRefusesAnotherTenantForASessionToo(t *testing.T) {
 	s := newAPI(t, withLogin)
 	b := s.browser(t)
 	b.mustLogin(names["adminA"], testPassword)
-	routes := tenantRoutes(t)
-	require.Greater(t, len(routes), 40)
+	routes := teamRoutes(t)
+	require.Greater(t, countByParam(routes)["{tenant}"], 40, "the twins are walked with the team paths")
 	strip := func(res *http.Response) map[string]any {
 		body := problemBody(t, res)
 		delete(body, "instance")
@@ -524,8 +524,8 @@ func TestEveryTenantRouteRefusesAnotherTenantForASessionToo(t *testing.T) {
 		if r.method != http.MethodGet && r.method != http.MethodDelete {
 			body = map[string]any{}
 		}
-		other := b.request(r.method, strings.ReplaceAll(r.path, "{tenant}", w.SlugB), body)
-		unknown := b.request(r.method, strings.ReplaceAll(r.path, "{tenant}", "no-such-tenant-9"), body)
+		other := b.request(r.method, r.at(w.SlugB), body)
+		unknown := b.request(r.method, r.at("no-such-tenant-9"), body)
 		require.Equal(t, http.StatusNotFound, other.StatusCode, "%s %s", r.method, r.path)
 		require.Equal(t, http.StatusNotFound, unknown.StatusCode, "%s %s", r.method, r.path)
 		assert.Equal(t, strip(unknown), strip(other), "%s %s answers another tenant like no tenant", r.method, r.path)

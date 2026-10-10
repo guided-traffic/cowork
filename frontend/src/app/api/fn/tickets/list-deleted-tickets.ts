@@ -12,9 +12,9 @@ import { DeletedTicketList } from '../../models/deleted-ticket-list';
 export interface ListDeletedTickets$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -35,7 +35,7 @@ export interface ListDeletedTickets$Params {
 export function listDeletedTickets(http: HttpClient, rootUrl: string, params: ListDeletedTickets$Params, context?: HttpContext): Observable<StrictHttpResponse<DeletedTicketList>> {
   const rb = new RequestBuilder(rootUrl, listDeletedTickets.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
     rb.header('If-None-Match', params['If-None-Match'], {});
@@ -51,4 +51,4 @@ export function listDeletedTickets(http: HttpClient, rootUrl: string, params: Li
   );
 }
 
-listDeletedTickets.PATH = '/api/v1/tenants/{tenant}/deleted-tickets';
+listDeletedTickets.PATH = '/api/v1/teams/{team}/deleted-tickets';

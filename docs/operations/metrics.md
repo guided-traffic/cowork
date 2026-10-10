@@ -24,7 +24,7 @@ listener off, and nothing is recorded then.
   the schema's version and dirty flag come from one query of the version table at most every ten
   seconds, within two — a read that fails leaves both out of the scrape until the next read and logs
   `the schema version could not be read for the metrics` at warn. The consistency family — the
-  check's counts and every tenant's last export — is one read-only transaction at most once a
+  check's counts and every team's last export — is one read-only transaction at most once a
   minute, within two seconds; one that fails leaves the family out and logs `the consistency counts
   could not be read for the metrics` at warn. At most four scrapes are served at once; a fifth is
   answered `503`.
@@ -79,8 +79,8 @@ two below that are values; to change another, switch the rule off and write your
 | [`CoworkEventStreamDrops`](#coworkeventstreamdrops) | warning | a pod dropped an event stream that fell behind in every ten minutes for fifteen |
 | [`CoworkDatabasePoolExhausted`](#coworkdatabasepoolexhausted) | warning | every connection of a pod's pool has been in use, with acquires waiting, for ten minutes |
 | [`CoworkJobFailing`](#coworkjobfailing) | warning | a background job failed at its last two runs on a pod |
-| [`CoworkAttachmentsOutOfStep`](#coworkattachmentsoutofstep) | warning | a tenant's latest consistency check found files whose bytes are missing or objects no file names, and they stayed for `metrics.prometheusRule.restoreWindow` (`24h` `# default`) |
-| [`CoworkExportOverdue`](#coworkexportoverdue) | warning | neither a tenant nor a project of it has been exported for more than `metrics.prometheusRule.exportMaxAgeDays` days (`7` `# default`), or it was never exported and was made longer ago than that |
+| [`CoworkAttachmentsOutOfStep`](#coworkattachmentsoutofstep) | warning | a team's latest consistency check found files whose bytes are missing or objects no file names, and they stayed for `metrics.prometheusRule.restoreWindow` (`24h` `# default`) |
+| [`CoworkExportOverdue`](#coworkexportoverdue) | warning | neither a team nor a project of it has been exported for more than `metrics.prometheusRule.exportMaxAgeDays` days (`7` `# default`), or it was never exported and was made longer ago than that |
 
 Two thresholds are values, because they are the installation's
 ([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
@@ -88,8 +88,20 @@ D6): `metrics.prometheusRule.restoreWindow`, how long a restore takes to be sett
 `metrics.prometheusRule.exportMaxAgeDays`, a whole number of days of at least 1 — your export
 schedule's interval with room for a run that failed ([backups.md](backups.md#the-export-the-second-line));
 anything else fails rendering. A release upgraded with `--reuse-values` from a chart without it gets
-the 7. Switching the rule on alerts at once for every tenant older than the days that nobody has
+the 7. Switching the rule on alerts at once for every team older than the days that nobody has
 exported within them.
+
+The consistency family names a team by its id under the label `team`, and for this release under
+`tenant` beside it with the same id — the label's name before
+([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1). The two
+alerts of a team aggregate by `namespace` and `tenant` in this release: every image of a rollout or
+of an image rollback carries `tenant` — 0.14's series carry nothing else —, and an alert label named
+`team` could meet a routing label of `metrics.prometheusRule.alertLabels` of the same name, such as
+`team: platform`, which would give two cowork teams' alerts one label set. Their texts say team. A
+dashboard or a recording rule of your own reads `team`. An alert of your own groups by `team` only
+where no routing label of yours has that name; otherwise it copies the id to a label of another name
+with `label_replace`, as the chart's alerts will under `cowork_team` once a later release drops
+`tenant`. One on `tenant` works for this release.
 
 ## The dashboard
 
@@ -99,7 +111,8 @@ is `grafana_dashboard: "1"` `# default`, the label and value kube-prometheus-sta
 for, and `metrics.grafanaDashboard.annotations` carries what your sidecar reads beside it, a folder
 for one. The dashboard picks a Prometheus data source and a namespace, and has a row each for HTTP,
 the database, the background jobs, the event stream, the audit and the login, the attachments'
-consistency and the time since the last export by tenant id, and the process — the last reads the
+consistency and the time since the last export by team id — by the label `tenant` in this
+release, which every image of a rollback window carries —, and the process — the last reads the
 series of the container `backend`,
 the label the operator's targets carry. Not run
 here: a Grafana loading it.
@@ -188,7 +201,7 @@ for a quarter of an hour are a pattern.
 
 **What to do.** On the dashboard, set the drops beside the events published: a burst of acts — an
 import, a script or an agent writing in a loop — larger than a stream's buffer drops every stream of
-its tenant, and is over when the burst is. Steady drops without bursts point at the way to the
+its team, and is over when the burst is. Steady drops without bursts point at the way to the
 clients: the Ingress controller must pass `text/event-stream` unbuffered
 ([installation.md](installation.md#expose-it)); check that the controller's read timeout sits above
 twenty seconds and that nothing between it and the browsers holds responses back. The buffer is no
@@ -221,7 +234,7 @@ process when it fails, so its alert shows only as a pod that does not start. Whi
 what it removes stays: stored responses of idempotent requests, sessions past their limits — which are
 refused at their next request all the same —, failed login attempts and ended locks, notifications
 read long ago, and — `ticket-purge` — the tickets deleted more than thirty days ago, which stay in
-their tenant's bin past the thirty days they promise
+their team's bin past the thirty days they promise
 ([ADR 0024](../adr/0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md)
 D2).
 
@@ -234,18 +247,18 @@ hour later.
 
 ## CoworkAttachmentsOutOfStep
 
-**What it means.** The latest consistency check of the tenant with the id in the label `tenant`
-found files whose metadata is there and whose bytes the bucket lacks, or objects under the tenant's
+**What it means.** The latest consistency check of the team with the id in the label `tenant`
+found files whose metadata is there and whose bytes the bucket lacks, or objects under the team's
 prefix that no file names, and they have stayed for longer than the restore window
 ([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D4). The value is the two counts together; a loss an administrator accepted counts in neither. The
 usual cause is a restore of the database and the bucket from two points in time; an orphan alone is
-also what a removal that failed after a purge leaves. The tenant's people see a file that answers its
+also what a removal that failed after a purge leaves. The team's people see a file that answers its
 download with `404` saying the bytes are missing, or nothing at all — an orphan is a file no ticket
 lists any more.
 
-**What to do.** Find the tenant: the label is its id; the slug is in the log line `the attachments of
-a tenant are out of step with the bucket` of the check's run, and in the output of
+**What to do.** Find the team: the label is its id; the slug is in the log line `the attachments of
+a team are out of step with the bucket` of the check's run, and in the output of
 `cowork check-consistency`. Its administrators see the lists on its settings page and settle them
 there — putting lost bytes back or accepting their loss, copying orphans out and removing them —, as
 [backups.md](backups.md#the-consistency-check) says. Bytes put back show at the next check, which
@@ -254,22 +267,22 @@ ends when the counts are zero.
 
 ## CoworkExportOverdue
 
-**What it means.** Neither the tenant with the id in the label `tenant` nor any project of it has
+**What it means.** Neither the team with the id in the label `tenant` nor any project of it has
 been exported for longer than `metrics.prometheusRule.exportMaxAgeDays` days — or it was never
 exported, and was made longer ago than that. The value is the seconds since its last export, or since
-it was made. The export is the second line of the tenant's backup, a copy a person can read without
+it was made. The export is the second line of the team's backup, a copy a person can read without
 cowork ([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)
 D2); the usual causes are a schedule that was never set up, a CronJob that fails — its token expired
-(`401 token_expired`) or was revoked, the person behind it lost the tenant, the address or the volume
+(`401 token_expired`) or was revoked, the person behind it lost the team, the address or the volume
 changed —, or a schedule that runs less often than the days. A restore of the database brings the
 audit record back to its point in time, and with it the time of the last export.
 
-**What to do.** Find the tenant: the label is its id; its administrators see the time of the last
+**What to do.** Find the team: the label is its id; its administrators see the time of the last
 export on its settings page, under *Files and the bucket*. Look at the export's CronJob
 (`kubectl -n cowork get cronjob,job`, and the log of its last pod): a `401` is a token to renew,
 which only its person makes, in a browser session ([backups.md](backups.md#the-export-the-second-line)).
-Once a project of the tenant or the whole tenant is exported, the alert ends when a scrape after the
+Once a project of the team or the whole team is exported, the alert ends when a scrape after the
 next read shows it — the read is reused for a minute at the most. What
 counts is the recorded act: an export whose download was cut off ends the alert too, so check that
-the archive arrived where your backups are kept. A tenant nobody means to export — a scratch tenant —
+the archive arrived where your backups are kept. A team nobody means to export — a scratch team —
 fires for as long as it exists: silence it in Alertmanager by its `tenant` label.

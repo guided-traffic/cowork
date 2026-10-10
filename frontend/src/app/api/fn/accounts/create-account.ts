@@ -13,9 +13,9 @@ import { AccountCreate } from '../../models/account-create';
 export interface CreateAccount$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * A UUID the client generates per act and repeats on every retry of it; an
@@ -28,7 +28,7 @@ export interface CreateAccount$Params {
 export function createAccount(http: HttpClient, rootUrl: string, params: CreateAccount$Params, context?: HttpContext): Observable<StrictHttpResponse<Account>> {
   const rb = new RequestBuilder(rootUrl, createAccount.PATH, 'post');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.header('Idempotency-Key', params['Idempotency-Key'], {});
     rb.body(params.body, 'application/json');
   }
@@ -43,4 +43,4 @@ export function createAccount(http: HttpClient, rootUrl: string, params: CreateA
   );
 }
 
-createAccount.PATH = '/api/v1/tenants/{tenant}/accounts';
+createAccount.PATH = '/api/v1/teams/{team}/accounts';

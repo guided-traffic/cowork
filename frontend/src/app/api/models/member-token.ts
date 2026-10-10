@@ -7,7 +7,7 @@ import { Scope } from '../models/scope';
 import { TokenState } from '../models/token-state';
 
 /**
- * A member's token that can act in the tenant, as its administrators see it (docs/adr/0035 D5):
+ * A member's token that can act in the team, as its administrators see it (docs/adr/0035 D5):
  * its person and its metadata, never its secret, hash or prefix
  */
 export interface MemberToken {
@@ -22,7 +22,7 @@ export interface MemberToken {
   id: string;
 
   /**
-   * The last day it was used, wherever; for an unrestricted token possibly in another tenant
+   * The last day it was used, wherever; for an unrestricted token possibly in another team
    */
   last_used_on: (string | null);
 
@@ -33,13 +33,20 @@ export interface MemberToken {
   person: Person;
 
   /**
-   * The key of the project of this tenant the token is restricted to; null for none
+   * The key of the project of this team the token is restricted to; null for none
    */
   restricted_project: (string | null);
 
   /**
-   * This tenant's slug for a token restricted to it; null for an unrestricted token, which reaches
-   * every tenant its person belongs to, so revoking it ends it in all of them
+   * This team's slug for a token restricted to it; null for an unrestricted token, which reaches
+   * every team its person belongs to, so revoking it ends it in all of them
+   */
+  restricted_team: (string | null);
+
+  /**
+   * Deprecated, replaced by `restricted_team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
+   *
+   * @deprecated
    */
   restricted_tenant: (string | null);
   revoked_at: (string | null);

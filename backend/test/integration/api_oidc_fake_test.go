@@ -79,7 +79,7 @@ func (w fakeWorld) turn(knob func(*fakeissuer.Issuer)) {
 
 func roleIn(me apigen.Me, slug string) apigen.Role {
 	for _, m := range me.Memberships {
-		if m.Tenant.Slug == slug {
+		if m.Team.Slug == slug {
 			return m.Role
 		}
 	}
@@ -370,7 +370,7 @@ func TestTheMappingEditorsOwnRole(t *testing.T) {
 	b := w.login(t)
 	assert.Equal(t, apigen.RoleAdmin, roleIn(decode[apigen.Me](t, b.get("/api/v1/me")), w.slug))
 
-	list := decode[apigen.GroupMappingList](t, b.get("/api/v1/tenants/"+w.slug+"/group-mappings"))
+	list := decode[apigen.GroupMappingList](t, b.get("/api/v1/teams/"+w.slug+"/group-mappings"))
 	require.Len(t, list.Items, 2)
 	var own apigen.GroupMapping
 	for _, m := range list.Items {
@@ -380,18 +380,18 @@ func TestTheMappingEditorsOwnRole(t *testing.T) {
 		}
 	}
 	tag := `"` + strconv.Itoa(own.Version) + `"`
-	demote := b.request(http.MethodPatch, "/api/v1/tenants/"+w.slug+"/group-mappings/"+own.Id.String(),
+	demote := b.request(http.MethodPatch, "/api/v1/teams/"+w.slug+"/group-mappings/"+own.Id.String(),
 		map[string]string{"role": "member"}, withHeader("If-Match", tag))
 	assertProblem(t, demote, http.StatusConflict, "last_admin")
 
 	other, err := f.Person(ctx, uniqueSlug("other"), "Other")
 	require.NoError(t, err)
 	require.NoError(t, f.Account(ctx, other, testPassword, w.tenant, false))
-	added := b.request(http.MethodPost, "/api/v1/tenants/"+w.slug+"/members", map[string]string{"person": usernameOf(t, other), "role": "admin"})
+	added := b.request(http.MethodPost, "/api/v1/teams/"+w.slug+"/members", map[string]string{"person": usernameOf(t, other), "role": "admin"})
 	require.Equal(t, http.StatusCreated, added.StatusCode)
 	assert.True(t, decode[apigen.Member](t, added).Local)
 
-	demote = b.request(http.MethodPatch, "/api/v1/tenants/"+w.slug+"/group-mappings/"+own.Id.String(),
+	demote = b.request(http.MethodPatch, "/api/v1/teams/"+w.slug+"/group-mappings/"+own.Id.String(),
 		map[string]string{"role": "member"}, withHeader("If-Match", tag))
 	require.Equal(t, http.StatusOK, demote.StatusCode)
 	assert.Equal(t, `"`+strconv.Itoa(own.Version+1)+`"`, demote.Header.Get("ETag"))

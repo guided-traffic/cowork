@@ -12,7 +12,15 @@ D1, D3, D4, D6 and D7, by the implementer, open to the owner's objection), amend
 second time for the `consistency` family's two counts and their alert, built with the check (D4,
 D5, D6, made concrete in place the same way), amended 2026-10-09 for the family's third gauge, the
 seconds since a tenant's last export, and its alert, built with the export (D4, D6, made concrete
-in place the same way). Date: 2026-10-01. Decided
+in place the same way), amended 2026-10-10 by the owner's rename of a tenant to a team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1; D4, D5: the
+consistency family's label is `team`, with `tenant` beside it, the same id, for one release, for
+the operators' own dashboards, recording rules and alerts; D5: a request to a deprecated twin is
+labelled with its team path's pattern; D6, made concrete by the implementer the same day, open to
+the owner's objection: the chart's two alerts and its generated dashboard keep grouping and naming
+the team by `tenant` in this release, their texts saying team, and the contract release moves the
+alerts to the team's label under a name no routing label collides with and the dashboard to `team`;
+built the same day). Date: 2026-10-01. Decided
 by the owner as the answer to the catalog question "metrics?": Prometheus on a separate port with `client_golang`, together with the
 kube-prometheus custom resources (`ServiceMonitor`/`PodMonitor`, `PrometheusRule`) rendered
 by the chart, over metrics on the main port behind authentication, over OpenTelemetry push,
@@ -41,8 +49,8 @@ D4 that sets them *(both built since, below)*:
 - **D4, D5** — every instrument of the table but `consistency`, recorded by the HTTP pipeline, the
   store, the hub and the API; the reference with every name and label is
   [README.md, Metrics](../../README.md#metrics). A unit test walks every family and fails on a label
-  named for a person, a ticket, a key, a token or a request id, and on `tenant` outside a
-  `cowork_consistency_` family (`TestNoInstrumentCarriesAForbiddenLabel`); the route label is the
+  named for a person, a ticket, a key, a token or a request id, and on ~~`tenant`~~ `team` or
+  `tenant` *(2026-10-10)* outside a `cowork_consistency_` family (`TestNoInstrumentCarriesAForbiddenLabel`); the route label is the
   document's pattern (`TestTheRouteLabelIsTheDocumentsPattern`).
 - **D6** — four alerts, each linking its section of [docs/operations/metrics.md](../operations/metrics.md).
 - **D7** — `stub_status` on `127.0.0.1:8082` in [`default.conf`](../../frontend/nginx/default.conf),
@@ -74,7 +82,7 @@ family's third gauge, `cowork_consistency_last_export_age_seconds`, read by the 
 its panel in the dashboard's row, renamed *Consistency and export*; the alert `CoworkExportOverdue`
 with `metrics.prometheusRule.exportMaxAgeDays`; made concrete in D4 and D6 by the implementer, open
 to the owner's objection. With it every instrument of D4 and every alert of D6 is built.
-`TestNoInstrumentCarriesAForbiddenLabel` names the gauge in `tenantLabelled`;
+`TestNoInstrumentCarriesAForbiddenLabel` names the gauge in ~~`tenantLabelled`~~ `teamLabelled` *(2026-10-10)*;
 `TestTheLastExportsAgeIsCountedAtEveryScrape` holds its read and its age; the integration tier reads
 it on a second store before any export — counted from the tenant's creation —, after a ticket's
 Markdown, which does not count, and after a project's and a tenant's export, and holds the job's read
@@ -153,7 +161,7 @@ into `deploy/helm/cowork/files/` by `make generate`, which `make generate-check`
 | `db` | pool connections (idle, in use, waiting), acquire latency, query errors by kind |
 | `jobs` | runs, duration and failures by job (purge, cleanup, consistency, idempotency expiry) |
 | `events` | open streams, events published, subscribers dropped, replay hits and misses |
-| `consistency` | dangling attachment metadata, orphaned objects, seconds since last export — the only instruments with a `tenant` label |
+| `consistency` | dangling attachment metadata, orphaned objects, seconds since last export — the only instruments with a ~~`tenant`~~ `team` label *(2026-10-10: `tenant` beside it, the same id, for one release)* |
 | `audit` | acts total by action and by actor kind (person, agent, system) |
 | `auth` | logins by method and outcome, lockouts, token refusals by reason |
 | `migrations` | current schema version, dirty flag |
@@ -198,7 +206,12 @@ admits it to the acts of a project's or a tenant's export and to no other row of
 
 **D5 — Cardinality discipline.** No label carries a person, a ticket key, a token or a
 request id; route labels are the pattern (`/tenants/{slug}/projects/{KEY}/tickets/{number}`),
-never the instance; the `tenant` label appears on the `consistency` family only. *(Made concrete
+never the instance *(2026-10-10: a request to a deprecated twin under `/api/v1/tenants` is labelled
+with its team path's pattern, `/api/v1/teams/{team}/…`, since the server reads the twin's path as the
+team path before it routes it,
+[ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D7)*; the ~~`tenant`~~ `team`
+label *(2026-10-10: with `tenant` beside it, the same id, for one release)* appears on the
+`consistency` family only. *(Made concrete
 2026-10-06 by the implementer; confirmed by the owner 2026-10-09, over the slug:)* its value is the tenant's id, never
 its slug: the listener has no authentication, a slug names a client, and the list of the clients is
 a session's view even for a global administrator
@@ -232,7 +245,23 @@ installation's schedule; a release upgraded with `--reuse-values` from a chart w
 gets the 7. No `for`: the age only grows until an export, which the next read shows — a minute
 later at the most — and which ends the alert at the next evaluation after a scrape. A
 tenant never exported fires once it is older than the days, and a tenant nobody means to export
-fires until it is silenced in Alertmanager.
+fires until it is silenced in Alertmanager. *(Made concrete 2026-10-10 by the implementer with the
+label `team`, open to the owner's objection:)* the two
+alerts on a team keep grouping by `tenant` and naming the team's id by it in this release, while
+their texts say team, and so do the generated dashboard's panels of the family: every image of an
+image rollback's window emits `tenant`
+([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md) D4), and an
+alert's own label `team` would collide with a routing label of that name —
+`metrics.prometheusRule.alertLabels`, which wins, gives `team` as its example —, so that two teams'
+alerts would share one label set, which Prometheus refuses to evaluate. `team` beside `tenant` is
+for the operators' own rules: their dashboards and recording rules move to `team`; their own alert
+groups by `team` only where no routing label of theirs has that name, and otherwise copies the id to
+another name with `label_replace`, as the contract release plans for the chart's alerts. The
+contract release moves these alerts to the team's
+label under a name no routing label collides with, `cowork_team` through `label_replace`, and the
+dashboard to `team`
+([`prometheusrule.yaml`](../../deploy/helm/cowork/templates/prometheusrule.yaml),
+[`dashboard.go`](../../backend/internal/metrics/dashboard.go) `teamLabelOfDashboard`).
 
 **D7 — nginx metrics are opt-in.** `stub_status` on `127.0.0.1` inside the frontend
 container; `frontend.metrics.exporter.enabled` adds the nginx exporter sidecar and the

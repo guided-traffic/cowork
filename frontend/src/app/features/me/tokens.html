@@ -73,8 +73,8 @@
             }
           </td>
           <td data-testid="restriction">
-            @if (token.restricted_tenant; as tenant) {
-              {{ tenant }}
+            @if (token.restricted_team; as team) {
+              {{ team }}
               @if (token.restricted_project; as project) {
                 <span class="muted"> / </span><span class="key">{{ project }}</span>
               } @else if (token.restricted_project_id) {

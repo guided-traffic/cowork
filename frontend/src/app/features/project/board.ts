@@ -70,7 +70,7 @@ export class Board {
     const tenant = this.session.tenant();
     return tenant
       ? {
-          tenant,
+          team: tenant,
           project: this.project(),
           state: ['done'],
           done_after: this.doneSince(),

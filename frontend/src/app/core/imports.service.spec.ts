@@ -67,7 +67,7 @@ describe('ImportsService', () => {
 
       const answer = service.dryRun('acme', 'VKO', files);
       await settle();
-      const request = http.expectOne('/api/v1/tenants/acme/projects/VKO/imports');
+      const request = http.expectOne('/api/v1/teams/acme/projects/VKO/imports');
       expect(request.request.method).toBe('POST');
       const body = request.request.body as FormData;
       expect(body).toBeInstanceOf(FormData);
@@ -85,27 +85,27 @@ describe('ImportsService', () => {
       const answered = job({ summary: { ...job().summary, files: 2, create: 2 } });
       const made = service.dryRun('acme', 'VKO', [new File(['x'], '001-a.md')]);
       await settle();
-      http.expectOne('/api/v1/tenants/acme/projects/VKO/imports').flush(answered);
+      http.expectOne('/api/v1/teams/acme/projects/VKO/imports').flush(answered);
       await made;
 
       expect(await service.job('acme', 'VKO', id)).toEqual(answered);
-      http.expectNone(`/api/v1/tenants/acme/projects/VKO/imports/${id}`);
+      http.expectNone(`/api/v1/teams/acme/projects/VKO/imports/${id}`);
 
       const again = service.job('acme', 'VKO', id);
       await settle();
-      http.expectOne(`/api/v1/tenants/acme/projects/VKO/imports/${id}`).flush(answered);
+      http.expectOne(`/api/v1/teams/acme/projects/VKO/imports/${id}`).flush(answered);
       expect(await again).toEqual(answered);
     });
 
     it('hands nothing over to the address of another tenant or project', async () => {
       const made = service.dryRun('acme', 'VKO', [new File(['x'], '001-a.md')]);
       await settle();
-      http.expectOne('/api/v1/tenants/acme/projects/VKO/imports').flush(job());
+      http.expectOne('/api/v1/teams/acme/projects/VKO/imports').flush(job());
       await made;
 
       const elsewhere = service.job('globex', 'VKO', id);
       await settle();
-      http.expectOne(`/api/v1/tenants/globex/projects/VKO/imports/${id}`).flush(job());
+      http.expectOne(`/api/v1/teams/globex/projects/VKO/imports/${id}`).flush(job());
       await elsewhere;
     });
   });
@@ -114,7 +114,7 @@ describe('ImportsService', () => {
     it('is read by its id (GET …/imports/{import})', async () => {
       const read = service.job('acme', 'VKO', id);
       await settle();
-      const request = http.expectOne(`/api/v1/tenants/acme/projects/VKO/imports/${id}`);
+      const request = http.expectOne(`/api/v1/teams/acme/projects/VKO/imports/${id}`);
       expect(request.request.method).toBe('GET');
       request.flush(job({ status: 'executed', expires_at: null }));
 
@@ -129,7 +129,7 @@ describe('ImportsService', () => {
 
       const executed = service.execute('acme', 'VKO', id, corrections);
       await settle();
-      const request = http.expectOne(`/api/v1/tenants/acme/projects/VKO/imports/${id}/execution`);
+      const request = http.expectOne(`/api/v1/teams/acme/projects/VKO/imports/${id}/execution`);
       expect(request.request.method).toBe('POST');
       expect(request.request.body).toEqual({ corrections });
       request.flush(job({ status: 'executed' }));
@@ -144,7 +144,7 @@ describe('ImportsService', () => {
 
       const exported = service.exportProject('acme', 'VKO');
       await settle();
-      const request = http.expectOne('/api/v1/tenants/acme/projects/VKO/export');
+      const request = http.expectOne('/api/v1/teams/acme/projects/VKO/export');
       expect(request.request.method).toBe('GET');
       expect(request.request.responseType).toBe('blob');
       expect(request.request.headers.get('Accept')).toBe('application/gzip');
@@ -162,12 +162,12 @@ describe('ImportsService', () => {
     it('names an archive itself where the server gives no name', async () => {
       const project = service.exportProject('acme', 'VKO');
       await settle();
-      http.expectOne('/api/v1/tenants/acme/projects/VKO/export').flush(new Blob(['x']));
+      http.expectOne('/api/v1/teams/acme/projects/VKO/export').flush(new Blob(['x']));
       expect((await project).filename).toBe('acme-VKO-export.tar.gz');
 
       const tenant = service.exportTenant('acme');
       await settle();
-      http.expectOne('/api/v1/tenants/acme/export').flush(new Blob(['x']));
+      http.expectOne('/api/v1/teams/acme/export').flush(new Blob(['x']));
       expect((await tenant).filename).toBe('acme-export.tar.gz');
     });
 
@@ -183,7 +183,7 @@ describe('ImportsService', () => {
       const exported = service.exportTenant('acme');
       await settle();
       http
-        .expectOne('/api/v1/tenants/acme/export')
+        .expectOne('/api/v1/teams/acme/export')
         .flush(new Blob([JSON.stringify(body)], { type: 'application/problem+json' }), {
           status: 404,
           statusText: 'Not Found',
@@ -200,7 +200,7 @@ describe('ImportsService', () => {
       const exported = service.exportTenant('acme');
       await settle();
       http
-        .expectOne('/api/v1/tenants/acme/export')
+        .expectOne('/api/v1/teams/acme/export')
         .flush(new Blob(['<html>bad gateway</html>']), { status: 502, statusText: 'Bad Gateway' });
 
       const error = await exported.catch((refusal: unknown) => refusal);
@@ -217,6 +217,7 @@ describe('exportNote', () => {
   });
   const manifest = (tickets: number, left: number): ExportArchive['manifest'] => ({
     format: 'cowork export v1',
+    team: 'acme',
     tenant: 'acme',
     projects: [],
     exported_at: '2026-10-07T08:00:00Z',

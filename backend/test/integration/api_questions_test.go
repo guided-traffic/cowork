@@ -59,7 +59,7 @@ func TestQuestionLifecycle(t *testing.T) {
 	assert.Equal(t, 1, q1.Number)
 	assert.Equal(t, apigen.QuestionStatusOpen, q1.Status)
 	assert.Equal(t, e.Both, q1.AskedOf.MustGet().Id)
-	assert.Equal(t, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/tickets/%d/questions/1", e.SlugA, tk.Number), *first.Headers201.Location)
+	assert.Equal(t, fmt.Sprintf("/api/v1/teams/%s/projects/ALPHA/tickets/%d/questions/1", e.SlugA, tk.Number), *first.Headers201.Location)
 	q2 := *e.ask(t, member, tk, apigen.QuestionCreate{Question: "Which port?"}).JSON201
 	assert.True(t, q2.AskedOf.IsNull(), "no one named: open in the tenant")
 

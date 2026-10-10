@@ -1,8 +1,8 @@
 import { computed, inject, Injectable, resource } from '@angular/core';
 import { Api } from '../api/api';
-import { getTenant } from '../api/fn/tenants/get-tenant';
-import { updateTenant } from '../api/fn/tenants/update-tenant';
-import { Tenant, TenantPatch } from '../api/models';
+import { getTeam } from '../api/fn/teams/get-team';
+import { updateTeam } from '../api/fn/teams/update-team';
+import { Team, TeamPatch } from '../api/models';
 import { etagOf } from './entity-cache';
 import { SessionService } from './session.service';
 
@@ -18,9 +18,9 @@ export class TenantService {
 
   readonly tenant = resource({
     params: () => this.session.tenant() ?? undefined,
-    loader: ({ params: tenant }) => this.api.invoke(getTenant, { tenant }),
+    loader: ({ params: tenant }) => this.api.invoke(getTeam, { team: tenant }),
   });
-  readonly value = computed<Tenant | undefined>(() =>
+  readonly value = computed<Team | undefined>(() =>
     this.tenant.hasValue() ? this.tenant.value() : undefined,
   );
   readonly isAdmin = computed(() => this.session.membership()?.role === 'admin');
@@ -38,11 +38,11 @@ export class TenantService {
   });
 
   /** Writes the settings; the answer is shown only while its tenant is still the one entered. */
-  async update(patch: TenantPatch): Promise<Tenant> {
+  async update(patch: TeamPatch): Promise<Team> {
     const slug = this.session.tenant() as string;
     const held = this.value();
-    const tenant = await this.api.invoke(updateTenant, {
-      tenant: slug,
+    const tenant = await this.api.invoke(updateTeam, {
+      team: slug,
       ...(held ? { 'If-Match': etagOf(held.version) } : {}),
       body: patch,
     });

@@ -2,8 +2,8 @@
 hack/dex/config.yaml, and three projects with tickets in every state, questions, comments,
 links, interest, progress and time, so the UI has something to show while it is built.
 
-Usage: dev_demo.py <base-url> <token> <tenant>. It writes through the API like any client —
-every act is an audit row and an event — and adds no project when the tenant has one
+Usage: dev_demo.py <base-url> <token> <team>. It writes through the API like any client —
+every act is an audit row and an event — and adds no project when the team has one
 already. Some acts carry an X-Cowork-Agent header, so the activity shows an agent at work.
 A mapping is made by a browser session only (docs/adr/0035 D5), so the script logs in as the
 local administrator of make dev for it: COWORK_DEV_ADMIN, COWORK_DEV_ADMIN_PASSWORD and
@@ -17,9 +17,9 @@ import urllib.error
 import urllib.request
 import uuid
 
-base, token, tenant = sys.argv[1], sys.argv[2], sys.argv[3]
+base, token, team = sys.argv[1], sys.argv[2], sys.argv[3]
 AGENT = "claude/opus-5.5/demo"
-T = f"/api/v1/tenants/{tenant}"
+T = f"/api/v1/teams/{team}"
 
 
 def call(method, path, body=None, agent=False, etag=None, expect=(200, 201, 204)):
@@ -49,8 +49,8 @@ def get(path):
     return call("GET", path)[0]
 
 
-# The mapping comes before the projects, so that a tenant seeded before the identity provider
-# gains it too; a group the tenant maps already keeps its mapping, whatever the UI made of it
+# The mapping comes before the projects, so that a team seeded before the identity provider
+# gains it too; a group the team maps already keeps its mapping, whatever the UI made of it
 # (docs/adr/0030 D2).
 def session_call(method, path, body=None, cookie=None, expect=(200, 201, 204)):
     req = urllib.request.Request(base + path, method=method)
@@ -84,7 +84,7 @@ if "code" in mapping and mapping["code"] != "mapping_exists":
 print("demo data: the group team-red maps to member" + (" (it did already)" if "code" in mapping else ""))
 
 if get(f"{T}/projects")["items"]:
-    print("demo data: the tenant has projects already, no more to add")
+    print("demo data: the team has projects already, no more to add")
     sys.exit(0)
 
 me = get("/api/v1/me")
@@ -134,13 +134,13 @@ def advance(t, to, note="Verified with make test and by hand in the UI.", agent=
         state = nxt
 
 
-def urgency(t, value, reason=None):
-    """An urgency override (docs/adr/0010 D3): the board shows now and release by state, next beside them."""
+def horizon(t, value, reason=None):
+    """A ticket's horizon (docs/adr/0010 D3): the board shows now and release by state, next beside them."""
     _, headers = call("GET", path(t))
     body = {"value": value}
     if reason:
         body["reason"] = reason
-    call("PUT", f"{path(t)}/urgency-override", body, etag=headers["ETag"])
+    call("PUT", f"{path(t)}/horizon", body, etag=headers["ETag"])
 
 
 def block(t, kind, reason, on=None):
@@ -194,10 +194,10 @@ shell = ticket(cow, "An app shell with the logo, the theme and dark mode", "feat
 backlog = ticket(cow, "A ranked backlog with drag order and the score marker", "feature", "high", effort="L",
                  body="Rank is the decision, score is the warning: the backlog orders by rank and marks where the score disagrees.")
 board = ticket(cow, "A project board with drag between the states", "feature", "medium", effort="M")
-tenant_board = ticket(cow, "A tenant board with one swimlane per project", "feature", "medium", effort="M")
+team_board = ticket(cow, "A team board with one swimlane per project", "feature", "medium", effort="M")
 dashboard = ticket(cow, "The fixed dashboard of nine tiles", "feature", "low", effort="L")
 inbox = ticket(cow, "An in-app inbox per person", "feature", "medium", effort="M", assignee=sam)
-search = ticket(cow, "Search across the person's tenants", "feature", "low", effort="S")
+search = ticket(cow, "Search across the person's teams", "feature", "low", effort="S")
 flicker = ticket(cow, "The board flickers when an event arrives during a drag", "bug", "medium", effort="S",
                  body="Steps: start a drag, let another person move a card. The dragged card jumps back.")
 preset = ticket(cow, "Which preset: Aura, Lara or Nora?", "decision", "low", effort="XS")
@@ -220,16 +220,16 @@ patch(board, progress_refinement=100)
 block(board, "ticket", "The board needs the rank of the backlog first.", on=f"{backlog[0]}-{backlog[1]}")
 advance(flicker, "analysed")
 drop(gantt, "Not in the first release (docs/adr/0018 D8).")
-advance(search, "done", note="Searched three tenants for a word in a comment; every hit named its tenant.")
+advance(search, "done", note="Searched three teams for a word in a comment; every hit named its team.")
 for t in (login, shell, toasts, inbox, board):
-    urgency(t, "now")
-urgency(backlog, "next", "The board needs it first.")
-urgency(flicker, "next")
-urgency(preset, "next")
+    horizon(t, "now")
+horizon(backlog, "next", "The board needs it first.")
+horizon(flicker, "next")
+horizon(preset, "next")
 
 link(login, "blocks", backlog)
 link(flicker, "found-in", board)
-link(dashboard, "relates-to", tenant_board)
+link(dashboard, "relates-to", team_board)
 question(preset, "Which PrimeNG preset should cowork build on?",
          options="Aura (the default, crisp), Lara (rounder, more contrast), Nora (dense, square)",
          recommendation="Aura: the default ADR 0052 names, and the cowork palette sits on top of it.",
@@ -251,16 +251,16 @@ secrets = ticket(ops, "The session key is logged at debug level", "bug", "high",
                  assignee=me["id"])
 rotate = ticket(ops, "Rotate the storage key without downtime", "task", "medium", "hardening", "M",
                 threat="A leaked storage key stays usable until someone notices.")
-quota = ticket(ops, "A tenant can fill the bucket", "bug", "medium", "boundary", "M",
-               threat="A member of tenant A uploads until the shared bucket is full and tenant B cannot attach a file.")
+quota = ticket(ops, "A team can fill the bucket", "bug", "medium", "boundary", "M",
+               threat="A member of team A uploads until the shared bucket is full and team B cannot attach a file.")
 backup = ticket(ops, "Document the restore of a backup", "task", "low", effort="S", assignee=sam)
 upgrade = ticket(ops, "Upgrade PostgreSQL to 18.1", "task", "low", effort="XS")
 advance(secrets, "in-progress")
 patch(secrets, progress_refinement=100, progress=50)
-urgency(secrets, "now", "A live finding.")
+horizon(secrets, "now", "A live finding.")
 advance(quota, "decided")
 patch(quota, progress_refinement=100)
-urgency(quota, "next")
+horizon(quota, "next")
 advance(upgrade, "done", note="Ran the integration tier against 18.1: green.")
 block(backup, "human", "Waiting for the operations team to name the backup tool.")
 question(rotate, "Two keys at once, or a maintenance window?",
@@ -272,8 +272,8 @@ hero = ticket(web, "The landing page explains cowork in one screen", "feature", 
 docs_portal = ticket(web, "Publish the documentation as a portal", "feature", "low", effort="L")
 typo = ticket(web, "Typo on the pricing page", "bug", "cosmetic", effort="XS")
 advance(hero, "analysed")
-urgency(hero, "next")
+horizon(hero, "next")
 advance(typo, "done", note="Checked the page in two browsers.")
 link(docs_portal, "relates-to", hero)
 
-print(f"demo data: 3 projects and {13 + 5 + 3} tickets in the tenant {tenant}")
+print(f"demo data: 3 projects and {13 + 5 + 3} tickets in the team {team}")

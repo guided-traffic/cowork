@@ -15,8 +15,8 @@ and each is backed up by its own tools:
 
 | What | Lives in | Is backed up by |
 |---|---|---|
-| tenants, people, projects, tickets, comments, time, the audit record, the attachments' names and sizes | the PostgreSQL database | its operator: continuous archiving with point-in-time recovery where the database has it — CloudNativePG's backups, for one —, `pg_dump` otherwise. The two roles and their passwords are not part of a database's dump (`pg_dumpall --roles-only`) |
-| the attachments' bytes | the bucket, `<tenant-id>/<attachment-id>` | the object store: versioning, replication, the provider's snapshots |
+| teams, people, projects, tickets, comments, time, the audit record, the attachments' names and sizes | the PostgreSQL database | its operator: continuous archiving with point-in-time recovery where the database has it — CloudNativePG's backups, for one —, `pg_dump` otherwise. The two roles and their passwords are not part of a database's dump (`pg_dumpall --roles-only`) |
+| the attachments' bytes | the bucket, `<team-id>/<attachment-id>` | the object store: versioning, replication, the provider's snapshots |
 | the server key, the database URLs, the storage key | the Kubernetes Secrets you created | whoever keeps the cluster's Secrets. A server key that is lost is replaced as a rotation is ([installation.md](installation.md#the-secrets)) |
 
 The two copies are never taken in the same transaction, which is what [the consistency
@@ -24,28 +24,28 @@ check](#the-consistency-check) and [the restore](#a-restore-step-by-step) are ab
 
 ## The export, the second line
 
-The export of a tenant or a project is a copy a person can read without cowork (D2):
-`GET /api/v1/tenants/{tenant}/export` answers a `tar.gz` with every project of the tenant the caller
+The export of a team or a project is a copy a person can read without cowork (D2):
+`GET /api/v1/teams/{team}/export` answers a `tar.gz` with every project of the team the caller
 sees, each ticket as its Markdown document, a manifest, the links and the attachments' names, types
 and sizes — never their bytes, which only the bucket's backup keeps
 ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4);
-`GET /api/v1/tenants/{tenant}/projects/{project}/export` the same for one project. Every export is a
+`GET /api/v1/teams/{team}/projects/{project}/export` the same for one project. Every export is a
 recorded act (D3). This page describes the export as the release that brings this page builds it.
 
 **The installation fetches it, on its own schedule.** cowork does not export by itself; it watches
 that somebody does ([below](#watching-the-schedule)). Give the fetch a personal access token of its
 own (D2):
 
-- `read` scope, and **restricted to the tenant** — a token restricted to a project cannot fetch the
-  tenant's export; one restricted to nothing reaches every tenant of its person.
-- **Of a person who sees what the copy must hold.** The export holds what its caller sees: a tenant
+- `read` scope, and **restricted to the team** — a token restricted to a project cannot fetch the
+  team's export; one restricted to nothing reaches every team of its person.
+- **Of a person who sees what the copy must hold.** The export holds what its caller sees: a team
   administrator sees every project and every confidential ticket, anybody else's copy leaves out what
   they cannot see and counts the confidential tickets it left out in its manifest.
 - Made in that person's browser session — `POST /api/v1/me/tokens` takes no token — and with a
   lifetime at most `COWORK_TOKEN_MAX_LIFETIME`: a fetch fails with `401 token_expired` the day it
   ends, so put its renewal in your calendar.
 
-A CronJob that fetches one tenant every night is one way; it is an illustration to adapt, not a
+A CronJob that fetches one team every night is one way; it is an illustration to adapt, not a
 manifest the project maintains:
 
 ```yaml
@@ -77,7 +77,7 @@ spec:
                 - >-
                   curl -fsS -H "Authorization: Bearer $TOKEN"
                   -o /backup/acme-$(date -u +%Y%m%d).tar.gz
-                  https://cowork.example.com/api/v1/tenants/acme/export
+                  https://cowork.example.com/api/v1/teams/acme/export
               volumeMounts:
                 - name: backup
                   mountPath: /backup
@@ -92,16 +92,16 @@ insure against. Not run against a cluster here.
 
 ### Watching the schedule
 
-Every export is recorded as the act `exported` in the tenant's audit record, and the last one shows
+Every export is recorded as the act `exported` in the team's audit record, and the last one shows
 in three places
 ([ADR 0060](../adr/0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
 D4, D6):
 
 | Where | Shows | To whom |
 |---|---|---|
-| the tenant's settings page, *Files and the bucket*; `last_exported_at` of `GET /api/v1/tenants/{tenant}/attachment-consistency` | when a project of the tenant or the whole tenant was last exported, or that it never was | the tenant's administrators |
-| the metrics | `cowork_consistency_last_export_age_seconds` per tenant id: the seconds since, or since the tenant was made where it never was | Prometheus |
-| the alert [`CoworkExportOverdue`](metrics.md#coworkexportoverdue) | a tenant past `metrics.prometheusRule.exportMaxAgeDays` days (`7` `# default`) | Alertmanager's receivers |
+| the team's settings page, *Files and the bucket*; `last_exported_at` of `GET /api/v1/teams/{team}/attachment-consistency` | when a project of the team or the whole team was last exported, or that it never was | the team's administrators |
+| the metrics | `cowork_consistency_last_export_age_seconds` per team id: the seconds since, or since the team was made where it never was | Prometheus |
+| the alert [`CoworkExportOverdue`](metrics.md#coworkexportoverdue) | a team past `metrics.prometheusRule.exportMaxAgeDays` days (`7` `# default`) | Alertmanager's receivers |
 
 Set the days to your schedule's interval with room for a run that failed: a nightly fetch and the
 default of seven tell of a schedule that stopped within a week. What they watch is the act, not the
@@ -110,9 +110,9 @@ copy:
 - **An export is recorded before its archive is written.** A fetch whose download was cut off, or
   whose archive never reached the volume, counts as an export all the same; the CronJob's own
   failures and the archives themselves are yours to check.
-- **One project's export counts for the whole tenant**, and so does an export by a person who sees
+- **One project's export counts for the whole team**, and so does an export by a person who sees
   less than all of it — a copy without the confidential tickets or a restricted project.
-- **A ticket's Markdown or context counts not at all**: it is no copy of the tenant.
+- **A ticket's Markdown or context counts not at all**: it is no copy of the team.
 - **A restore of the database** brings the audit record back to its point in time, and with it the
   time of the last export.
 
@@ -120,21 +120,21 @@ copy:
 
 A database and a bucket restored from two points in time disagree: a file whose row came back
 without its bytes — **dangling** —, and bytes no row names — an **orphan** (D4). The check finds
-both, per tenant, and changes nothing.
+both, per team, and changes nothing.
 
 **When it runs.** One replica runs it once a day, in the hour after 03:00 UTC; and a pod that starts
 runs it when the last run, as the database records it, lies before the latest 03:00 UTC — so a new
 installation's first start runs it, and so does a start after a day without one. No value changes
 the schedule (D6). Without object storage it never runs.
 
-**What it does.** For each tenant it lists the objects under `<tenant-id>/`, reads the tenant's
+**What it does.** For each team it lists the objects under `<team-id>/`, reads the team's
 attachments, and asks the bucket again for each attachment the listing did not show. An object no
 attachment names is an orphan unless its attachment id was made within the last hour — an upload
-puts its bytes before its row commits. The result replaces the tenant's last one; the run is one
+puts its bytes before its row commits. The result replaces the team's last one; the run is one
 database transaction, under a lock that keeps the replicas from running it twice. The storage key
 needs `s3:ListBucket` for the listing ([installation.md](installation.md#object-storage)). The
 listing and the attachments are compared a thousand objects at a time, in the order of their keys,
-so what the check holds does not grow with the number of a tenant's objects; it relies on the store
+so what the check holds does not grow with the number of a team's objects; it relies on the store
 listing the keys in byte order, as S3 does, and a store that lists them otherwise fails the run —
 the job's log says `job failed` with `consistency-check` and `the comparison needs the keys in byte
 order`, and `cowork check-consistency` logs `consistency check failed` with that error and exits `1`.
@@ -146,12 +146,12 @@ kubectl -n cowork exec deploy/cowork-backend -c backend -- /app/cowork check-con
 ```
 
 It reads the container's own configuration, refuses a schema it cannot serve, and prints the run
-and every tenant, by slug and id — counts, never a file name:
+and every team, by slug and id — counts, never a file name:
 
 ```
-consistency check at 2026-10-06T09:14:03Z: 3 tenants, 1 dangling, 0 accepted as lost, 2 orphaned objects (5242880 bytes)
-tenant acme (0199a7c2-1d2e-7f00-8000-0000000000aa): 1 dangling, 0 accepted as lost, 2 orphaned objects (5242880 bytes)
-tenant globex (0199a7c2-1d2e-7f00-8000-0000000000bb): 0 dangling, 0 accepted as lost, 0 orphaned objects (0 bytes)
+consistency check at 2026-10-06T09:14:03Z: 3 teams, 1 dangling, 0 accepted as lost, 2 orphaned objects (5242880 bytes)
+team acme (0199a7c2-1d2e-7f00-8000-0000000000aa): 1 dangling, 0 accepted as lost, 2 orphaned objects (5242880 bytes)
+team globex (0199a7c2-1d2e-7f00-8000-0000000000bb): 0 dangling, 0 accepted as lost, 0 orphaned objects (0 bytes)
 ```
 
 It exits `1` when another replica runs the check at that moment — run it again a minute later. A
@@ -162,17 +162,17 @@ not due.
 
 | Where | Shows | To whom |
 |---|---|---|
-| the tenant's settings page, *Files and the bucket*; `GET /api/v1/tenants/{tenant}/attachment-consistency` | the counts, the missing files with their names and tickets, the orphans' keys, sizes and times, at most a thousand of each | the tenant's administrators |
-| `cowork check-consistency` | every tenant's counts | whoever may exec into a backend pod |
-| the log | `consistency check done` with the counts in all; `the attachments of a tenant are out of step with the bucket` at warn with the tenant's slug and counts | the operator |
-| the metrics | `cowork_consistency_dangling_attachments` and `cowork_consistency_orphaned_objects` per tenant id; the alert [`CoworkAttachmentsOutOfStep`](metrics.md#coworkattachmentsoutofstep) when they stay above zero for the restore window | Prometheus |
-| the audit record | one installation-level act `checked` of `system:consistency-check` per run, with the counts per tenant id | a database administrator; no route answers it |
+| the team's settings page, *Files and the bucket*; `GET /api/v1/teams/{team}/attachment-consistency` | the counts, the missing files with their names and tickets, the orphans' keys, sizes and times, at most a thousand of each | the team's administrators |
+| `cowork check-consistency` | every team's counts | whoever may exec into a backend pod |
+| the log | `consistency check done` with the counts in all; `the attachments of a team are out of step with the bucket` at warn with the team's slug, under `team`, and counts | the operator |
+| the metrics | `cowork_consistency_dangling_attachments` and `cowork_consistency_orphaned_objects` per team id; the alert [`CoworkAttachmentsOutOfStep`](metrics.md#coworkattachmentsoutofstep) when they stay above zero for the restore window | Prometheus |
+| the audit record | one installation-level act `checked` of `system:consistency-check` per run, with the counts per team id | a database administrator; no route answers it |
 
-**Settling it** is the tenant administrators' work, on the settings page:
+**Settling it** is the team administrators' work, on the settings page:
 
 - **A missing file** — dangling — answers its download with `404` and a detail that its bytes are
   missing. Put the bytes back under the key the list names, from an older backup of the bucket
-  (`mc cp ./bytes <store>/<bucket>/<tenant-id>/<attachment-id>`), and the next check finds it whole;
+  (`mc cp ./bytes <store>/<bucket>/<team-id>/<attachment-id>`), and the next check finds it whole;
   or have the file uploaded again and **accept the loss** of the old entry: it counts as accepted
   from then on, no longer as dangling, holds no alert, and stays listed on its ticket. A file of a
   ticket in the bin goes with its ticket at the purge.
@@ -198,7 +198,7 @@ Rehearse it on a copy before you need it: a procedure nobody has run is not a ba
    database at an older schema version is migrated forward by the pods as at an upgrade; one at a
    newer version than the image is served with a warning ([upgrade.md](upgrade.md)).
 5. **Run the check at once** with `cowork check-consistency` ([above](#the-consistency-check)).
-6. **Read its summary**: the counts per tenant. Tell each tenant's administrators that their settings
+6. **Read its summary**: the counts per team. Tell each team's administrators that their settings
    page lists what is missing and what is left over.
 7. **Settle it**: put lost bytes back or accept the loss; copy out the orphans worth keeping, then
    remove them ([settling it](#the-consistency-check)). The alert waits the restore window — a day by
@@ -217,6 +217,6 @@ ticket's thirty days are over.
   and checked by nothing in cowork.
 - Whether an export's archive is whole and kept: cowork knows when an export started and what it
   held, not whether the archive arrived ([watching the schedule](#watching-the-schedule)).
-- Objects under the prefix of a tenant the restored database does not know: the check lists the
-  prefixes of the tenants it knows only
+- Objects under the prefix of a team the restored database does not know: the check lists the
+  prefixes of the teams it knows only
   ([attachments.md H-69](../security/attachments.md#h-69)).

@@ -99,7 +99,7 @@ func (f *DB) Tenant(ctx context.Context, slug, name string) (uuid.UUID, error) {
 		 ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name
 		 RETURNING id`, slug, name).Scan(&id)
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("create tenant %s: %w", slug, err)
+		return uuid.Nil, fmt.Errorf("create team %s: %w", slug, err)
 	}
 	return id, nil
 }

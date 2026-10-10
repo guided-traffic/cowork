@@ -12,16 +12,16 @@ import { ChatTurn } from '../../models/chat-turn';
 export interface RunChatTurn$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
       body: ChatTurn
 }
 
 export function runChatTurn(http: HttpClient, rootUrl: string, params: RunChatTurn$Params, context?: HttpContext): Observable<StrictHttpResponse<string>> {
   const rb = new RequestBuilder(rootUrl, runChatTurn.PATH, 'post');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.body(params.body, 'application/json');
   }
 
@@ -35,4 +35,4 @@ export function runChatTurn(http: HttpClient, rootUrl: string, params: RunChatTu
   );
 }
 
-runChatTurn.PATH = '/api/v1/tenants/{tenant}/chat';
+runChatTurn.PATH = '/api/v1/teams/{team}/chat';

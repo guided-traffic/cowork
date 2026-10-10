@@ -12,9 +12,9 @@ import { Project } from '../../models/project';
 export interface GetProject$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -25,7 +25,7 @@ export interface GetProject$Params {
 export function getProject(http: HttpClient, rootUrl: string, params: GetProject$Params, context?: HttpContext): Observable<StrictHttpResponse<Project>> {
   const rb = new RequestBuilder(rootUrl, getProject.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
   }
 
@@ -39,4 +39,4 @@ export function getProject(http: HttpClient, rootUrl: string, params: GetProject
   );
 }
 
-getProject.PATH = '/api/v1/tenants/{tenant}/projects/{project}';
+getProject.PATH = '/api/v1/teams/{team}/projects/{project}';

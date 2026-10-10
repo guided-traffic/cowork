@@ -32,7 +32,7 @@ the members page and the person's tokens page since 2026-10-05, and the tenant's
 [ADR 0035](0035-personal-access-tokens.md) D5 takes numbered pages from the start, while the pickers
 of the UI keep reading every member)*; D4's
 markings and client helpers arrive with the generated frontend client. *(2026-10-05:)* the tenant's
-ticket list in the browser, `/t/{slug}/tickets`, reads `listTenantTickets` in numbered pages as
+ticket list in the browser, `/t/{slug}/tickets`, reads ~~`listTenantTickets`~~ `listTeamTickets` *(2026-10-10)* in numbered pages as
 the audit page does, fifty a page to begin with — the API's default. *(2026-10-04:)* D3's inbox,
 `/me/assigned` and `/me/decisions`, cursor only and merged across the person's tenants — the inbox by
 the notifications' ids, the other two ~~in the interim order of
@@ -48,6 +48,13 @@ a hash of its query as well. *(2026-10-05:)* D1's `(score, id)` for `/me/next` a
 across tenants, so every tenant's part resumes at the same place of one order — and
 `(score, ticket id, question number)` for `/me/decisions`; the position is not sealed, since a score
 is shown on the ticket, and a cursor of `/me/next` names its project narrowing as well.
+
+Amended 2026-10-10 by the owner's rename of a tenant to a team ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1): the team's ticket list is
+`listTeamTickets`. A cursor stays bound to the operation by the name it had before the rename —
+`listTenantTickets`, `listTenantTime`, `listTenantTokens`, `listTenants`, `searchTenant`,
+`searchMyTenants` — so that it pages on across replicas of both releases during a rollout or after an
+image rollback ([ADR 0028](0028-migrations-only-go-forward-no-down-files-expand-before-contract.md)
+D4); made concrete by the implementer, open to the owner's objection. No rule changes.
 
 ## Context
 

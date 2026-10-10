@@ -648,7 +648,7 @@ describe('Backlog', () => {
       await render();
 
       expect(openParams()).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         project: 'COW',
         pages: 1,
         state: undefined,
@@ -775,7 +775,7 @@ describe('Backlog', () => {
         );
 
         expect(openParams()).toEqual({
-          tenant: 'acme',
+          team: 'acme',
           project: 'COW',
           pages: 1,
           q: 'flicker',
@@ -812,7 +812,7 @@ describe('Backlog', () => {
 
         await apply(fixture, null);
 
-        expect(openParams()).toEqual({ tenant: 'acme', project: 'COW', pages: 1 });
+        expect(openParams()).toEqual({ team: 'acme', project: 'COW', pages: 1 });
         expect(bar(fixture).applied()).toBeNull();
       });
 
@@ -823,7 +823,7 @@ describe('Backlog', () => {
 
         expect(bar(fixture).leftOut()).toEqual(backlogLeftOut);
         expect(page.querySelector('[data-testid="filter-notes"]')?.textContent).toBe(
-          'project: a backlog is one project; the tenant’s ticket list applies this condition',
+          'project: a backlog is one project; the team’s ticket list applies this condition',
         );
       });
     });
@@ -1140,7 +1140,7 @@ describe('Backlog', () => {
         const { fixture, page } = await opened(since);
 
         expect(closedParams()).toEqual({
-          tenant: 'acme',
+          team: 'acme',
           project: 'COW',
           pages: 1,
           state: ['done'],
@@ -1166,7 +1166,7 @@ describe('Backlog', () => {
         await fixture.whenStable();
 
         expect(closedParams()).toEqual({
-          tenant: 'acme',
+          team: 'acme',
           project: 'COW',
           pages: 1,
           state: ['done', 'dropped'],
@@ -1200,7 +1200,7 @@ describe('Backlog', () => {
 
       await toggle(fixture);
       expect(closedParams()).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         project: 'COW',
         pages: 1,
         state: ['done', 'dropped'],

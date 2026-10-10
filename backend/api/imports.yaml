@@ -1,10 +1,10 @@
 # Import and export (docs/adr/0051): an import is a job on a project in two
 # phases — a dry run whose report a person corrects, then its execution in one
 # transaction —, and the export is its mirror, an archive of the project's or
-# the tenant's tickets in grammar v1 (docs/adr/0044 D1) with three manifests.
+# the team's tickets in grammar v1 (docs/adr/0044 D1) with three manifests.
 imports:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
   post:
     operationId: createImport
@@ -30,7 +30,7 @@ imports:
       rule of the source (docs/adr/0065 D7); no parent is guessed — a file names its own, or the
       person or their agent sets it after the import (docs/adr/0051 D2).
 
-      A writer's act of the project, as creating a ticket is: the role `member` in the tenant — a
+      A writer's act of the project, as creating a ticket is: the role `member` in the team — a
       restricted project's list may lower it — and a token's `write` scope; an agent's too
       (docs/adr/0051 D6, docs/adr/0043 D2). An import through a token, an agent's or not, assigns a
       confidential ticket to the token's own person or to nobody, the report saying why on the file
@@ -70,7 +70,7 @@ imports:
         $ref: './components/responses.yaml#/Problem'
 import:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/ImportID'
   get:
@@ -79,7 +79,7 @@ import:
     summary: An import job with its report
     description: |
       A dry run's report while it is valid, or the report of its execution (docs/adr/0051 D1). For a
-      writer of the project, an agent's token included, and of a job they made, and for the tenant's
+      writer of the project, an agent's token included, and of a job they made, and for the team's
       administrators (D6): another person's job is `404`, as are a job of another project and a dry
       run older than twenty-four hours.
     responses:
@@ -93,7 +93,7 @@ import:
         $ref: './components/responses.yaml#/Problem'
 importExecution:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
     - $ref: './components/parameters.yaml#/ImportID'
   post:
@@ -123,7 +123,7 @@ importExecution:
       nobody, with a warning. A dry run is executed at most once: a second execution is `409
       import_executed`. A correction naming no file of the job, or breaking the rules of
       `ImportCorrection`, is `400` at its pointer. The same writers as the dry run, of their own dry
-      runs, and the tenant's administrators: another person's dry run is `404`; an archived project
+      runs, and the team's administrators: another person's dry run is `404`; an archived project
       is `409 project_archived`; a dry run older than twenty-four hours is `404`.
     requestBody:
       required: true
@@ -377,7 +377,7 @@ importExecution:
         $ref: './components/responses.yaml#/Problem'
 projectExport:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
     - $ref: './components/parameters.yaml#/ProjectKey'
   get:
     operationId: exportProject
@@ -386,9 +386,9 @@ projectExport:
     description: |
       A `tar.gz` (docs/adr/0051 D4) with, for every ticket of the project the caller can see — done
       and dropped ones included, deleted ones not —, its `…/markdown` document named by its key,
-      `<tenant>/<PROJECT>-<n>.md`; and three manifests at the root:
+      `<team>/<PROJECT>-<n>.md`; and three manifests at the root:
 
-      - `manifest.json`, an `ExportManifest`: the format, the tenant, the project with its count of
+      - `manifest.json`, an `ExportManifest`: the format, the team, the project with its count of
         tickets, the time, the exporter, and the confidential tickets the caller cannot see and the
         archive therefore leaves out, as a count (docs/adr/0065 D5);
       - `links.json`, an array of `ExportLink`: every link with an end in the project whose two ends
@@ -407,28 +407,28 @@ projectExport:
         description: The archive
         headers:
           Content-Disposition:
-            description: '`attachment; filename="<tenant>-<PROJECT>-<YYYYMMDD>.tar.gz"`'
+            description: '`attachment; filename="<team>-<PROJECT>-<YYYYMMDD>.tar.gz"`'
             schema: {type: string}
         content:
           application/gzip:
             schema: {type: string, format: binary}
       default:
         $ref: './components/responses.yaml#/Problem'
-tenantExport:
+teamExport:
   parameters:
-    - $ref: './components/parameters.yaml#/TenantSlug'
+    - $ref: './components/parameters.yaml#/TeamSlug'
   get:
-    operationId: exportTenant
+    operationId: exportTeam
     tags: [imports]
-    summary: The tenant's tickets as an archive, the union over its projects
+    summary: The team's tickets as an archive, the union over its projects
     description: |
-      The export of every project of the tenant the caller can see, archived ones included, in one
+      The export of every project of the team the caller can see, archived ones included, in one
       `tar.gz` (docs/adr/0051 D4, the backup's second line of docs/adr/0059 D2): the documents of all
-      of them under `<tenant>/`, and one `manifest.json`, `links.json` and `attachments.json` over
+      of them under `<team>/`, and one `manifest.json`, `links.json` and `attachments.json` over
       all of them, each link once. A restricted project the caller cannot see is absent, without a
       count; the confidential tickets left out are counted per project and in total. Any member, an
-      agent too; a token restricted to a project is refused, as on every route of the tenant outside
-      a project. One act `exported` on the tenant, never published. A recorded read: a session's
+      agent too; a token restricted to a project is refused, as on every route of the team outside
+      a project. One act `exported` on the team, never published. A recorded read: a session's
       request with `Sec-Fetch-Site` `same-site` or `cross-site` is `403 csrf` (docs/adr/0026 D5).
     x-cowork-recorded-read: true
     responses:
@@ -436,7 +436,7 @@ tenantExport:
         description: The archive
         headers:
           Content-Disposition:
-            description: '`attachment; filename="<tenant>-<YYYYMMDD>.tar.gz"`'
+            description: '`attachment; filename="<team>-<YYYYMMDD>.tar.gz"`'
             schema: {type: string}
         content:
           application/gzip:

@@ -12,9 +12,9 @@ import { AttachmentUsage } from '../../models/attachment-usage';
 export interface GetAttachmentUsage$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
@@ -25,7 +25,7 @@ export interface GetAttachmentUsage$Params {
 export function getAttachmentUsage(http: HttpClient, rootUrl: string, params: GetAttachmentUsage$Params, context?: HttpContext): Observable<StrictHttpResponse<AttachmentUsage>> {
   const rb = new RequestBuilder(rootUrl, getAttachmentUsage.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
@@ -39,4 +39,4 @@ export function getAttachmentUsage(http: HttpClient, rootUrl: string, params: Ge
   );
 }
 
-getAttachmentUsage.PATH = '/api/v1/tenants/{tenant}/attachment-usage';
+getAttachmentUsage.PATH = '/api/v1/teams/{team}/attachment-usage';

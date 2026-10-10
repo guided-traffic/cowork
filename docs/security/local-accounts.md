@@ -5,7 +5,7 @@ administrator, how a password is stored and checked, what the login answers and 
 and locks, who may create, reset and deactivate an account, and what is recorded — as built on
 2026-10-07. What a session is once the login has made one is [sessions.md](sessions.md); what
 protects its writes is [csrf.md](csrf.md); what a token may do is [tokens.md](tokens.md); how a
-request is kept inside its tenant is [tenancy.md](tenancy.md).
+request is kept inside its team is [tenancy.md](tenancy.md).
 
 ## What an account is
 
@@ -13,7 +13,7 @@ A local account is a person with a row in `local_accounts`
 ([migration 15](../../backend/internal/store/migrations/000015_local_accounts.up.sql);
 [ADR 0033](../adr/0033-local-accounts-are-created-by-administrators-never-by-registration.md)
 D1, D2): the Argon2id hash of the password, whether it is temporary
-(`password_change_required`), where the account comes from (`origin`) and which tenant manages
+(`password_change_required`), where the account comes from (`origin`) and which team manages
 it (`managing_tenant_id`). Its identity is `local:<username>`; the username is the person's
 `users.username`, unique in the installation. A person without such a row — a fixture person, or a
 person of the identity provider, who has no username at all
@@ -23,13 +23,13 @@ with a password.
 | Origin | Made by | Managed by | Is |
 |---|---|---|---|
 | `config` | the start-up synchronisation, from `COWORK_LOCAL_ADMIN_USERNAME` and `_PASSWORD` | nobody: the Secret is its source | a global administrator, a full account |
-| `tenant` | `POST …/accounts`, by an administrator of the tenant | that tenant's administrators | whatever role the administrator granted, by a marked grant in that tenant |
+| `tenant` — the value keeps the name a team had before | `POST …/accounts`, by an administrator of the team | that team's administrators | whatever role the administrator granted, by a marked grant in that team |
 
 There is no registration and no invitation link: the creation route and the configuration are
 the only gates (D1). The `global_admin` flag is set by the start-up synchronisation, for the local
 administrator, and by the identity provider's login, for its persons in `COWORK_ADMIN_GROUP` — the
-policy on `users` refuses it to every request — and a global administrator has no role in any tenant
-until a grant gives them one: the bootstrap tenant's, the one that makes them a tenant's first
+policy on `users` refuses it to every request — and a global administrator has no role in any team
+until a grant gives them one: the bootstrap team's, the one that makes them a team's first
 administrator when they create it, or one they give themselves ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D2).
 
@@ -101,7 +101,7 @@ D2).
    deactivated one and a username that cannot be one. Neither the answer nor the time says
    whether an account exists.
 7. **The init state** ([ADR 0032](../adr/0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
-   D5): while no tenant exists, a person who is not a global administrator and whose password
+   D5): while no team exists, a person who is not a global administrator and whose password
    fitted is `403 not_initialised` and gets no session. Only after the password fitted: a wrong
    password stays `401`, so the `403` tells nothing to anyone who does not know the password.
 8. **A session** is made in a transaction of its own, as the person
@@ -208,18 +208,18 @@ lock is refused whatever its password and counts as one more failure.
 ## Who may manage which account
 
 An account is a person across the whole installation — its password and its sessions are
-nobody's tenant's — so a tenant's administrators manage the accounts **their own
-administrators created** (`managing_tenant_id`) and no others. The tenant's list
-(`GET …/accounts`) shows those; another tenant's account, a global administrator and the local
+nobody's team's — so a team's administrators manage the accounts **their own
+administrators created** (`managing_tenant_id`) and no others. The team's list
+(`GET …/accounts`) shows those; another team's account, a global administrator and the local
 administrator answer `404 not_found`, indistinguishable from a username nobody has
 (`TestAccountAdministration` compares the bodies). Without this rule an administrator of a
-tenant could reset the password of a person who is also a member of another tenant — a global
-administrator, say — log in as them and read what that tenant holds. The rule is in the
+team could reset the password of a person who is also a member of another team — a global
+administrator, say — log in as them and read what that team holds. The rule is in the
 policies of migration 15 as well as in the handlers: `app_manages_account` is true only for an
-administrator of the current tenant and an account that tenant manages, and the policies on
+administrator of the current team and an account that team manages, and the policies on
 `users`, `sessions` and `tokens` use it; those on `login_attempts` and `login_locks` use
 `app_manages_username`, the same rule by the username; and `local_accounts` holds it in its own
-condition, the managing tenant's administrators (`TestPoliciesOfThePersonsAndTheirAccounts`,
+condition, the managing team's administrators (`TestPoliciesOfThePersonsAndTheirAccounts`,
 `TestPoliciesOfTheSessions`).
 
 - **Not their own account.** An administrator may not reset their own password, unlock
@@ -227,7 +227,7 @@ condition, the managing tenant's administrators (`TestPoliciesOfThePersonsAndThe
   change the password without the current one a stolen session lacks, an unlock would lift the
   lock on guessing, and a deactivation would lock the administrator out for good. Ending their
   own sessions is allowed.
-- **Who may.** The tenant's administrators with `admin` scope, never an agent: account
+- **Who may.** The team's administrators with `admin` scope, never an agent: account
   administration is the hard-off rule "administration" ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)
   D3). A member and a viewer are `403`.
 - **Creating an account, resetting a password and unlocking an account take a browser session
@@ -248,12 +248,12 @@ condition, the managing tenant's administrators (`TestPoliciesOfThePersonsAndThe
   the grants and every act they made stay. No route reactivates a person, and the memberships
   of a deactivated person are not marked inactive: they stay as they were — ADR 0024 D5's inactive
   memberships and reactivation are not built.
-- **A deactivation is held to `last_admin` in the managing tenant.** A deactivated
-  person counts as no tenant's administrator, so the deactivation is a change of who administers
-  the tenant and is held to the rule the changes of grants and mappings are held to
+- **A deactivation is held to `last_admin` in the managing team.** A deactivated
+  person counts as no team's administrator, so the deactivation is a change of who administers
+  the team and is held to the rule the changes of grants and mappings are held to
   ([tenancy.md](tenancy.md#members-grants-and-group-mappings);
   [ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
-  D1): it takes the tenant's lock first (`LockTenant`), deactivates, and is refused with
+  D1): it takes the team's lock first (`LockTenant`), deactivates, and is refused with
   `409 last_admin` when no administrator who can log in remains — the whole act rolls back, so no
   token is revoked, no session ended and no act recorded (`DeactivateAccount`, `lastAdmin`;
   `TestADeactivationLeavesTheTenantAnAdministrator`). The administrator acting counts unless
@@ -261,10 +261,10 @@ condition, the managing tenant's administrators (`TestPoliciesOfThePersonsAndThe
   race: two administrators who deactivate each other at the same moment are decided one after the
   other, and the second, whose own account the first has just deactivated, meets `last_admin` —
   or, authenticated only after the first committed, finds its session ended
-  (`TestTwoAdministratorsCannotDeactivateEachOther`, eight rounds). The other tenants the person
+  (`TestTwoAdministratorsCannotDeactivateEachOther`, eight rounds). The other teams the person
   administers are not asked ([H-32](#h-32)).
 - **A username exists once in the installation**, so `409 username_taken` tells an
-  administrator that a name is taken, whichever tenant has it.
+  administrator that a name is taken, whichever team has it.
 
 ## The local administrator
 
@@ -288,14 +288,14 @@ migration Job after the schema step as well, under the same lock
   password change keeps their tokens, which are theirs;
 - an account that was **deactivated** because the variables went is reactivated; a revoked
   token stays revoked;
-- a **tenant administrator's account of the same name** is taken over: the configured password,
-  no session, no token, no managing tenant — the person behind the name is the operator's;
+- a **team administrator's account of the same name** is taken over: the configured password,
+  no session, no token, no managing team — the person behind the name is the operator's;
 - an account the configuration kept under **another username**, or when both variables are
   empty, is deactivated, its tokens revoked and its sessions ended — never deleted;
-- the **bootstrap tenant** (`COWORK_BOOTSTRAP_TENANT_SLUG` and `_NAME`) is created only while no
-  tenant exists, with the local administrator, when one is configured, as its first administrator
+- the **bootstrap team** (`COWORK_BOOTSTRAP_TEAM_SLUG` and `_NAME`) is created only while no
+  team exists, with the local administrator, when one is configured, as its first administrator
   by a marked grant, and `COWORK_ADMIN_GROUP`, when it is set, mapped to its `admin` role; once a
-  tenant exists the variables do nothing. They need one of the two: a tenant without an
+  team exists the variables do nothing. They need one of the two: a team without an
   administrator cannot come to exist (ADR 0032 D6, D7).
 
 A start that finds everything as configured changes nothing and records nothing
@@ -309,7 +309,7 @@ A start that finds everything as configured changes nothing and records nothing
 
 Live today, said aloud by ADR 0033 D7. A local account is its password: a phished or reused
 password is a full account until the person changes it or an administrator deactivates the
-account, and the local administrator — a global administrator, who creates tenants as every
+account, and the local administrator — a global administrator, who creates teams as every
 global administrator does — is no exception. The mitigations are the ones the record names: no public
 registration, the length rule, the lockout and the address throttle (which slow guessing, not
 phishing), and the ability to deactivate any managed account. Keep the local administrator
@@ -380,16 +380,16 @@ guesses without a second factor; `COWORK_LOGIN_MAX_FAILURES=0` switches the lock
 leaves the guesses to the throttle and to the Argon2id cost.
 
 <a id="h-19"></a>
-### H-19 — An administrator knows the temporary password, and the account stays their tenant's
+### H-19 — An administrator knows the temporary password, and the account stays their team's
 
 Live today. An administrator who creates an account or resets a password chooses a password
 only they and the person know, and can log in as the person before the person does: the
 temporary password forces a change at the next login, not before it. Every act is recorded —
 `password_reset` and `logged_in` rows — and a login that consumed the flag shows as the person
 changing their password, but nothing tells the person that someone else changed it first. The
-same administrators keep that power for as long as the account exists: the tenant that created
-an account manages it even once the person is a member of other tenants, so an administrator of
-the creating tenant can reset the password and enter the person's other tenants as them. The
+same administrators keep that power for as long as the account exists: the team that created
+an account manages it even once the person is a member of other teams, so an administrator of
+the creating team can reset the password and enter the person's other teams as them. The
 mitigation is ADR 0033 D1's: the creation is the gate, the creating administrator is
 accountable, and deactivation is final for the account. A password reset does not revoke the
 person's tokens.
@@ -411,47 +411,47 @@ the credential in plain text into the release Secret and into `helm get values`
 `localAdmin.existingSecret`.
 
 <a id="h-32"></a>
-### H-32 — Deactivating an account does not ask the other tenants it administers
+### H-32 — Deactivating an account does not ask the other teams it administers
 
-Live in every tenant one of whose administrators is a local account another tenant manages. Any
-tenant's administrator grants a role to a local account by its username
-([tenancy.md](tenancy.md#members-grants-and-group-mappings)), so an account one tenant manages may
+Live in every team one of whose administrators is a local account another team manages. Any
+team's administrator grants a role to a local account by its username
+([tenancy.md](tenancy.md#members-grants-and-group-mappings)), so an account one team manages may
 be an administrator of another — the only one there who can log in. The deactivation holds the
-managing tenant to `last_admin` under that tenant's lock
-([above](#who-may-manage-which-account)) and asks no other tenant: the managing tenant's
-administrators deactivate the account without seeing that it leaves another tenant without an
-administrator, and that tenant's own changes, which take its lock and not the managing tenant's,
+managing team to `last_admin` under that team's lock
+([above](#who-may-manage-which-account)) and asks no other team: the managing team's
+administrators deactivate the account without seeing that it leaves another team without an
+administrator, and that team's own changes, which take its lock and not the managing team's,
 count the account until the deactivation has committed. What stands in the way of the check is
-the boundary itself: the deactivation runs in the managing tenant's transaction, where row-level
-security admits neither the person's memberships in other tenants nor those tenants'
+the boundary itself: the deactivation runs in the managing team's transaction, where row-level
+security admits neither the person's memberships in other teams nor those teams'
 administrators ([tenancy.md](tenancy.md)), and reading them would open the boundary to a request of
-another tenant ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
+another team ([ADR 0021](../adr/0021-row-level-security-is-the-second-line-of-tenant-isolation.md)
 D3, D7, D8).
 
-Read from the code; no test runs it. The tenant is then where
+Read from the code; no test runs it. The team is then where
 [identity-provider.md](identity-provider.md#h-29) H-29 leaves one: without an administrator until a
 global administrator who does not hold `admin` there grants themselves `admin` and gives it one of
 its own
 ([tenancy.md](tenancy.md#a-global-administrator-without-a-role);
 `TestAStrandedTenantIsRecoveredByTheSelfGrant`), and no route reactivates the person. Mitigation:
-give every tenant an administrator
-whose account it manages itself, or a person of the identity provider, so no other tenant can
+give every team an administrator
+whose account it manages itself, or a person of the identity provider, so no other team can
 deactivate its last one.
 
-**The start-up's deactivation of the local administrator asks no tenant either.** Dormant until the
+**The start-up's deactivation of the local administrator asks no team either.** Dormant until the
 operator acts: when `COWORK_LOCAL_ADMIN_USERNAME` and `COWORK_LOCAL_ADMIN_PASSWORD` are emptied, or
 name another username, the next start deactivates the account the configuration kept — its tokens
 revoked, its sessions ended ([above](#the-local-administrator)) — as `system:bootstrap`, without a
-tenant's lock and without `last_admin` in any tenant
+team's lock and without `last_admin` in any team
 ([`bootstrap/bootstrap.go`](../../backend/internal/bootstrap/bootstrap.go) `run`, `deactivate`). Its
-memberships stay, but a deactivated person counts as no tenant's administrator, so a tenant whose
-only administrator who can log in is the local administrator — the bootstrap tenant made with it and
+memberships stay, but a deactivated person counts as no team's administrator, so a team whose
+only administrator who can log in is the local administrator — the bootstrap team made with it and
 without `COWORK_ADMIN_GROUP`, say — is left without one. Read from the code; no test runs it.
 Recovery: name the same username again, and the next start reactivates the account with its
 memberships; or the self-grant of
 [ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D2 by a global administrator — a member of `COWORK_ADMIN_GROUP`, or the local administrator under
-its new username. Mitigation: before the variables change, grant every tenant the local
+its new username. Mitigation: before the variables change, grant every team the local
 administrator administers another administrator.
 
 <a id="h-101"></a>
@@ -479,5 +479,5 @@ Mitigation: rate limits at the Ingress, which sees every client; several replica
 
 A way for a person to recover their own password without an administrator — there is no e-mail flow
 ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md)); a route that creates an
-account for no tenant or lists the accounts of other tenants for a global administrator; the
+account for no team or lists the accounts of other teams for a global administrator; the
 reactivation of a deactivated person.

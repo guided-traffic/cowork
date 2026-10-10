@@ -49,7 +49,7 @@ const (
 // after the other, and the second meets last_admin. It is taken before any
 // person's lock.
 func (w *Writer) LockTenant(ctx context.Context) error {
-	return w.lock(ctx, tenantLockNamespace, w.TenantID, "tenant membership")
+	return w.lock(ctx, tenantLockNamespace, w.TenantID, "team membership")
 }
 
 // The causes of a derivation (docs/adr/0030 D6), recorded as the reason of the
@@ -377,7 +377,7 @@ func (db *DB) CompleteOIDCLogin(ctx context.Context, in OIDCLogin) (OIDCLoginRes
 	}
 	initialised, err := t.w.TenantsExist(ctx)
 	if err != nil {
-		return OIDCLoginResult{}, fmt.Errorf("ask whether a tenant exists: %w", err)
+		return OIDCLoginResult{}, fmt.Errorf("ask whether a team exists: %w", err)
 	}
 	if refusal := refusalOf(in, found && existing.DeactivatedAt != nil, initialised); refusal.Reason != "" {
 		return t.refused(ctx, refusal, found, existing, in)

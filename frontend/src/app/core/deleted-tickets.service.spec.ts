@@ -46,7 +46,7 @@ describe('DeletedTicketsService', () => {
     http.expectOne(
       (request) =>
         request.method === 'GET' &&
-        request.url === '/api/v1/tenants/acme/deleted-tickets' &&
+        request.url === '/api/v1/teams/acme/deleted-tickets' &&
         request.params.get('cursor') === cursor,
     );
   const ticketEvent = (kind: string, key = 'acme/COW-1'): StreamEvent => ({
@@ -120,7 +120,7 @@ describe('DeletedTicketsService', () => {
     events.next(ticketEvent('transitioned'));
     events.next(ticketEvent('deleted', 'globex/COW-1'));
     await settle();
-    http.expectNone('/api/v1/tenants/acme/deleted-tickets');
+    http.expectNone('/api/v1/teams/acme/deleted-tickets');
   });
 
   it('restores a ticket into the cache and purges one by its short key', async () => {
@@ -130,7 +130,7 @@ describe('DeletedTicketsService', () => {
 
     const restored = service.restore(entry(1));
     http
-      .expectOne({ method: 'PUT', url: '/api/v1/tenants/acme/deleted-tickets/COW-1/restore' })
+      .expectOne({ method: 'PUT', url: '/api/v1/teams/acme/deleted-tickets/COW-1/restore' })
       .flush({ key: 'acme/COW-1', version: 5 } as Ticket);
     await restored;
     expect(cache.value('acme/COW-1')?.version).toBe(5);
@@ -140,7 +140,7 @@ describe('DeletedTicketsService', () => {
 
     const purged = service.purge(entry(2));
     http
-      .expectOne({ method: 'DELETE', url: '/api/v1/tenants/acme/deleted-tickets/COW-2' })
+      .expectOne({ method: 'DELETE', url: '/api/v1/teams/acme/deleted-tickets/COW-2' })
       .flush(null);
     await purged;
     await settle();

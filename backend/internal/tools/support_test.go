@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -21,27 +22,27 @@ import (
 // (docs/adr/0042 D1, D4, docs/adr/0045 D5), and nothing outside the API.
 func TestTheEscapeHatch(t *testing.T) {
 	f := newFake(t)
-	f.on("GET /api/v1/tenants/acme/projects", http.StatusOK, list(map[string]any{"key": "COW"}), "ETag", `W/"x"`)
-	f.on("POST /api/v1/tenants/acme/projects/COW/tickets/12/time-entries", http.StatusCreated, map[string]any{"id": "x"})
-	f.refuse("DELETE /api/v1/tenants/acme/projects/COW/tickets/12", http.StatusMethodNotAllowed, "method_not_allowed", "no")
+	f.on("GET /api/v1/teams/acme/projects", http.StatusOK, list(map[string]any{"key": "COW"}), "ETag", `W/"x"`)
+	f.on("POST /api/v1/teams/acme/projects/COW/tickets/12/time-entries", http.StatusCreated, map[string]any{"id": "x"})
+	f.refuse("DELETE /api/v1/teams/acme/projects/COW/tickets/12", http.StatusMethodNotAllowed, "method_not_allowed", "no")
 	s := f.session(true)
 
-	res := call(t, s, "api", `{"method": "GET", "path": "/api/v1/tenants/acme/projects?include_archived=true"}`)
+	res := call(t, s, "api", `{"method": "GET", "path": "/api/v1/teams/acme/projects?include_archived=true"}`)
 	require.False(t, res.IsError, res.Text)
-	assert.True(t, strings.HasPrefix(res.Text, "GET /api/v1/tenants/acme/projects?include_archived=true → 200 OK (ETag W/\"x\")\n\n{\"items\""), res.Text)
-	got := f.calls(http.MethodGet, "/api/v1/tenants/acme/projects")[0]
+	assert.True(t, strings.HasPrefix(res.Text, "GET /api/v1/teams/acme/projects?include_archived=true → 200 OK (ETag W/\"x\")\n\n{\"items\""), res.Text)
+	got := f.calls(http.MethodGet, "/api/v1/teams/acme/projects")[0]
 	assert.Equal(t, "include_archived=true", got.Query)
 	assert.Equal(t, fakeAgent, got.Header.Get("X-Cowork-Agent"))
 
-	res = call(t, s, "api", `{"method": "POST", "path": "/api/v1/tenants/acme/projects/COW/tickets/12/time-entries", "body": {"minutes": 5}}`)
+	res = call(t, s, "api", `{"method": "POST", "path": "/api/v1/teams/acme/projects/COW/tickets/12/time-entries", "body": {"minutes": 5}}`)
 	require.False(t, res.IsError, res.Text)
-	posted := f.calls(http.MethodPost, "/api/v1/tenants/acme/projects/COW/tickets/12/time-entries")[0]
+	posted := f.calls(http.MethodPost, "/api/v1/teams/acme/projects/COW/tickets/12/time-entries")[0]
 	_, err := uuid.Parse(posted.Header.Get("Idempotency-Key"))
 	assert.NoError(t, err)
 	assert.Equal(t, "application/json", posted.Header.Get("Content-Type"))
 	assert.JSONEq(t, `{"minutes": 5}`, posted.Body)
 
-	res = call(t, s, "api", `{"method": "DELETE", "path": "/api/v1/tenants/acme/projects/COW/tickets/12"}`)
+	res = call(t, s, "api", `{"method": "DELETE", "path": "/api/v1/teams/acme/projects/COW/tickets/12"}`)
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Text, "→ 405")
 	assert.Contains(t, res.Text, `"code":"method_not_allowed"`, "the API's JSON unchanged")
@@ -106,10 +107,11 @@ func TestReadTokenHoldsTheRequestSet(t *testing.T) {
 	f := newFake(t)
 	f.on("GET /api/v1/me/token", http.StatusOK, map[string]any{"id": "0199a3c2-1d2e-7f00-8000-000000000001", "name": "laptop",
 		"scope": "write", "agent": true, "capabilities": []any{"rank", "set-horizon"}, "created_at": "2026-10-01T00:00:00Z",
-		"expires_at": "2026-12-01T00:00:00Z", "state": "active", "restricted_project": nil,
+		"expires_at": "2026-12-01T00:00:00Z", "state": "active", "restricted_team": "acme", "restricted_project": nil,
 		"request": map[string]any{"agent": true, "agent_mark": fakeAgent, "capabilities": []any{"rank", "set-horizon"}}})
 	tok, err := f.session(false).ReadToken(context.Background())
 	require.NoError(t, err)
+	assert.Equal(t, "acme", tok.Team, "the restriction is read under the team's name")
 	assert.Equal(t, []string{"rank", "set-horizon"}, tok.Capabilities)
 	assert.True(t, tok.Can(capSetHorizon))
 	assert.Equal(t, "This agent holds set-horizon, rank.", capsLine(tok, capSetHorizon, capRank))
@@ -141,7 +143,7 @@ func TestAPIErrorMarkdown(t *testing.T) {
 func TestFileMemory(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "cowork-mcp")
 	m := FileMemory{Dir: dir}
-	key := MemoryKey{Installation: "https://cowork.example.com:8443", Tenant: "acme", Project: "COW"}
+	key := MemoryKey{Installation: "https://cowork.example.com:8443", Team: "acme", Project: "COW"}
 	_, ok, err := m.LastStart(key)
 	require.NoError(t, err)
 	assert.False(t, ok, "a missing file is no previous session")
@@ -167,7 +169,7 @@ func TestFileMemory(t *testing.T) {
 	_, ok, err = m.LastStart(key)
 	require.NoError(t, err)
 	assert.False(t, ok, "a damaged file is no previous session")
-	_, ok, _ = m.LastStart(MemoryKey{Installation: key.Installation, Tenant: "acme", Project: "OPS"})
+	_, ok, _ = m.LastStart(MemoryKey{Installation: key.Installation, Team: "acme", Project: "OPS"})
 	assert.False(t, ok, "one file per binding")
 }
 
@@ -228,18 +230,55 @@ func TestReadBindingFile(t *testing.T) {
 		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
 		return p
 	}
-	f, err := readBindingFile(write("tenant: acme\nproject: COW\npath: /services/a/\nurl: https://cowork.example.com/\n"))
+	f, err := readBindingFile(write("team: acme\nproject: COW\npath: /services/a/\nurl: https://cowork.example.com/\n"))
 	require.NoError(t, err)
-	assert.Equal(t, &BindingFile{Tenant: "acme", Project: "COW", Path: "services/a", URL: "https://cowork.example.com",
-		File: filepath.Join(dir, BindingFileName)}, f)
-	for _, bad := range []string{"tenant: acme\n", "tenant: Acme\nproject: COW\n", "tenant: acme\nproject: cow\n",
-		"tenant: acme\nproject: COW\nextra: 1\n", "tenant: acme\nproject: COW\npath: ../x\n", "[not a map"} {
+	assert.Equal(t, &BindingFile{Team: "acme", Tenant: "acme", Project: "COW", Path: "services/a", URL: "https://cowork.example.com",
+		File: filepath.Join(dir, BindingFileName)}, f, "the slug under both names, as lookup --json prints it")
+	for _, bad := range []string{"team: acme\n", "team: Acme\nproject: COW\n", "team: acme\nproject: cow\n",
+		"team: acme\nproject: COW\nextra: 1\n", "team: acme\nproject: COW\npath: ../x\n", "[not a map", "project: COW\n"} {
 		_, err := readBindingFile(write(bad))
 		assert.Error(t, err, bad)
 	}
 	f, err = readBindingFile(filepath.Join(dir, "missing.yaml"))
 	require.NoError(t, err)
 	assert.Nil(t, f)
+}
+
+// A .cowork.yaml written before the rename names its team tenant, which is
+// read for one release beside team; the two together name the same slug, or
+// the file is refused, naming both keys (docs/adr/0005 D1).
+func TestReadBindingFileUnderTheNameBefore(t *testing.T) {
+	dir := t.TempDir()
+	read := func(body string) (*BindingFile, error) {
+		p := filepath.Join(dir, BindingFileName)
+		require.NoError(t, os.WriteFile(p, []byte(body), 0o600))
+		return readBindingFile(p)
+	}
+	for _, body := range []string{"tenant: acme\nproject: COW\n", "team: acme\ntenant: acme\nproject: COW\n"} {
+		f, err := read(body)
+		require.NoError(t, err, body)
+		assert.Equal(t, "acme", f.Team, body)
+		assert.Equal(t, "acme", f.Tenant, body)
+		assert.Equal(t, "COW", f.Project, body)
+	}
+	_, err := read("team: acme\ntenant: beta\nproject: COW\n")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "team and tenant differ")
+	_, err = read("tenant: Acme\nproject: COW\n")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "team must be a team's slug")
+}
+
+// lookup --json prints a binding under the names of its fields, Tenant
+// beside Team for one release, so that a script that reads the key before
+// goes on working (docs/adr/0005 D1).
+func TestABindingAsJSON(t *testing.T) {
+	raw, err := json.Marshal(Binding{Team: "acme", Project: "COW", ProjectName: "cowork", Source: sourceRemote})
+	require.NoError(t, err)
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(raw, &got))
+	assert.Equal(t, map[string]any{"Team": "acme", "Tenant": "acme", "Project": "COW", "ProjectName": "cowork",
+		"Source": "remote", "Remote": "", "Identity": "", "Path": "", "Drift": ""}, got)
 }
 
 func TestCommitLines(t *testing.T) {

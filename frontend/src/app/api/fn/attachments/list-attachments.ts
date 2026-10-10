@@ -12,9 +12,9 @@ import { AttachmentList } from '../../models/attachment-list';
 export interface ListAttachments$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -45,7 +45,7 @@ export interface ListAttachments$Params {
 export function listAttachments(http: HttpClient, rootUrl: string, params: ListAttachments$Params, context?: HttpContext): Observable<StrictHttpResponse<AttachmentList>> {
   const rb = new RequestBuilder(rootUrl, listAttachments.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.query('cursor', params.cursor, {});
@@ -63,4 +63,4 @@ export function listAttachments(http: HttpClient, rootUrl: string, params: ListA
   );
 }
 
-listAttachments.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments';
+listAttachments.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/attachments';

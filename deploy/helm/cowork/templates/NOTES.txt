@@ -38,8 +38,16 @@ Login:    "Sign in with {{ .Values.auth.oidc.displayName }}" through the issuer 
 {{- end }}
 {{- if not (or (include "cowork.localAdminEnabled" .) (include "cowork.oidcEnabled" .)) }}
 Login:    no local administrator and no identity provider (localAdmin and auth.oidc.issuer are empty); nobody can log in until one is set
-{{- else if .Values.bootstrap.tenant.slug }}
-          creates the tenant "{{ .Values.bootstrap.tenant.slug }}" at start while none exists
+{{- else if (include "cowork.bootstrapTeam" . | fromYaml).slug }}
+          creates the team "{{ (include "cowork.bootstrapTeam" . | fromYaml).slug }}" at start while none exists
+{{- end }}
+{{- $bootstrap := .Values.bootstrap | default dict }}
+{{- $bootstrapBefore := $bootstrap.tenant | default dict }}
+{{- range $key := list "slug" "name" }}
+{{- if get $bootstrapBefore $key }}
+  NOTE: bootstrap.tenant.{{ $key }} is deprecated: bootstrap.team.{{ $key }} replaces it, and a later release stops
+  reading it (docs/adr/0005 D1).
+{{- end }}
 {{- end }}
 {{- if and (not .Values.auth.oidc.issuer) (or .Values.auth.oidc.clientId .Values.auth.oidc.existingSecret .Values.auth.oidc.allowedGroups .Values.auth.oidc.adminGroup) }}
   NOTE: auth.oidc.issuer is empty, so the login through an identity provider is off and the
@@ -69,14 +77,18 @@ Attachments: from ConfigMap {{ .Values.storage.existingConfigMap }} — the endp
 {{- else }}
 Attachments: {{ if .Values.storage.endpoint }}{{ .Values.storage.endpoint }}, bucket {{ .Values.storage.bucket }}{{ else }}no object storage; uploads are refused{{ end }}
 {{- end }}
+{{- if get (.Values.backend.config | default dict) "attachmentTenantQuota" | default 0 | int64 }}
+  NOTE: backend.config.attachmentTenantQuota is deprecated: backend.config.attachmentTeamQuota replaces it, and a
+  later release stops reading it (docs/adr/0005 D1).
+{{- end }}
 {{- if include "cowork.chatEnabled" . }}
 Chat:     on, {{ len .Values.chat.providers }} provider(s), the first the default:
 {{- range .Values.chat.providers }}
           {{ .id }} — {{ .name | default .id }}, {{ lower .kind }}, model {{ .model }}; {{ if .existingSecret }}the API key from Secret {{ .existingSecret }}{{ else }}no API key{{ end }}
 {{- end }}
-  WARNING: every provider receives what the chat reads for its person in every tenant,
+  WARNING: every provider receives what the chat reads for its person in every team,
   confidential tickets included; the list in chat.providers is the only gate. Add a hosted
-  provider only where every tenant's data may go to it (docs/security/chat.md).
+  provider only where every team's data may go to it (docs/security/chat.md).
 {{- else }}
 Chat:     off (chat.providers is empty)
 {{- end }}

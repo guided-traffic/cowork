@@ -20,7 +20,19 @@ D3 and D4, [ADR 0011](0011-a-ticket-is-a-markdown-body-plus-first-class-open-que
 [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) D2 — and D7 and D8 point there;
 the Consequences' line on ADR 0006 D3 and the References say what those records hold; by the
 owner's rule of 2026-10-02 that every amendment is made in place in the record it changes
-([docs/adr/README.md](README.md#keeping-them-current)); no rule changes).
+([docs/adr/README.md](README.md#keeping-them-current)); no rule changes). Amended 2026-10-10 by the
+owner's rename of a tenant to a team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1; D3: the argument
+of `create_project` is `team`, as [ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) D2
+holds; D4: `.cowork.yaml` names the team as `team`, the key `tenant` still read for one release —
+both present must name the same slug, else the file is refused naming both keys —, as the served
+schema says; the proposal's `team` and `teams` beside the deprecated `tenant` and `tenants`), built
+the same day ([`tools/workspace.go`](../../backend/internal/tools/workspace.go) `BindingFile`,
+[`cowork-yaml.schema.json`](../../backend/api/cowork-yaml.schema.json)); the proposal's reason
+`only-tenant` keeps its word. Made concrete by the implementer, open to the owner's objection: the
+file `create_project` offers names `tenant:` in this release, since a `cowork-mcp` of the release
+before drops a file that names `team`, and `team:` from the contract release on
+([`tools/tool_project.go`](../../backend/internal/tools/tool_project.go)).
 
 **Built** (phase 5, 2026-10-04; D7 and D8 since phase 2): D1 —
 [`domain.NormaliseRemote`](../../backend/internal/domain/repository.go) with its table test,
@@ -87,12 +99,13 @@ D1; a number appended on collision), and the repository name as the project name
 directory, normalises every remote, calls the lookup. One binding: the session is bound. None:
 the tool returns the proposal and the agent asks the person in chat — "create project
 `guided-traffic/VO` for `github.com/guided-traffic/valkey-operator`?" — and on yes calls
-`create_project(tenant, key, name, remote)`, which creates the project and binds the
+~~`create_project(tenant, key, name, remote)`~~ `create_project(team, key, name, remote)` *(2026-10-10)*, which creates the project and binds the
 repository in one recorded act. No: the session runs unbound and says so. No remote and no
 file: unbound, no proposal.
 
 **D4 — `.cowork.yaml` is optional and, when present, wins.** It is needed for a repository
-without a remote, or to bind a fork to the original's project. Its fields are `tenant`,
+without a remote, or to bind a fork to the original's project. Its fields are ~~`tenant`~~ `team`
+*(2026-10-10: `tenant` still read for one release, both naming the same slug)*,
 `project`, optional `path` (a sub-directory of a monorepo; the nearest file above the working
 directory applies) and optional `url` (the installation, for people with several). When the
 file and the server disagree, `session_start` reports the drift ([ADR 0006](0006-a-project-is-the-backlog-unit-of-a-tenant-and-owns-its-repositories.md)

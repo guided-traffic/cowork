@@ -11,7 +11,7 @@ import { Select } from 'primeng/select';
 import { Subject } from 'rxjs';
 import type { Mock } from 'vitest';
 import { provideApiConfiguration } from '../../api/api-configuration';
-import { ListTenantTickets$Params } from '../../api/fn/tickets/list-tenant-tickets';
+import { ListTeamTickets$Params } from '../../api/fn/tickets/list-team-tickets';
 import { Member, Problem, Project, SavedFilter, Ticket, TicketList } from '../../api/models';
 import { EntityCache } from '../../core/entity-cache';
 import { EventStreamService, StreamEvent } from '../../core/event-stream.service';
@@ -141,7 +141,7 @@ describe('TenantTickets', () => {
   let oversight: WritableSignal<boolean>;
   let projects: WritableSignal<Project[]>;
   let cache: EntityCache<Ticket>;
-  let request: () => ListTenantTickets$Params | undefined;
+  let request: () => ListTeamTickets$Params | undefined;
   /** The list of the service as the page sees it: signals the test sets. */
   let list: {
     value: WritableSignal<TicketPage | undefined>;
@@ -192,7 +192,7 @@ describe('TenantTickets', () => {
           provide: TicketsService,
           useValue: {
             cache,
-            tenantTickets: (params: () => ListTenantTickets$Params | undefined) => {
+            tenantTickets: (params: () => ListTeamTickets$Params | undefined) => {
               request = params;
               return list;
             },
@@ -261,7 +261,7 @@ describe('TenantTickets', () => {
       );
 
       expect(request()).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         project: ['COW'],
         state: ['filed', '!blocked'],
         severity: ['high'],
@@ -275,7 +275,7 @@ describe('TenantTickets', () => {
     it('asks for every open ticket of the tenant without a filter', async () => {
       await open();
 
-      expect(request()).toEqual({ tenant: 'acme', page: 1, per_page: 50 });
+      expect(request()).toEqual({ team: 'acme', page: 1, per_page: 50 });
     });
 
     // docs/adr/0034 D2: the tenant's work is its members'.
@@ -572,7 +572,7 @@ describe('TenantTickets', () => {
       tenant.set('globex');
       await settle(harness);
 
-      expect(request()).toMatchObject({ tenant: 'globex', page: 1 });
+      expect(request()).toMatchObject({ team: 'globex', page: 1 });
     });
   });
 
@@ -601,7 +601,7 @@ describe('TenantTickets', () => {
 
       expect(url()).toBe('/t/acme/tickets?project=OPS&state=!done&q=deploy&blocked=true');
       expect(request()).toEqual({
-        tenant: 'acme',
+        team: 'acme',
         project: ['OPS'],
         state: ['!done'],
         q: 'deploy',
@@ -638,7 +638,7 @@ describe('TenantTickets', () => {
 });
 
 describe('TenantTickets, live (docs/adr/0054)', () => {
-  const tenantUrl = '/api/v1/tenants/acme/tickets';
+  const tenantUrl = '/api/v1/teams/acme/tickets';
   let stream: Subject<StreamEvent>;
   let http: HttpTestingController;
   let harness: RouterTestingHarness;

@@ -97,7 +97,7 @@ export class TenantDashboard {
       return undefined;
     }
     const { from, to } = this.period();
-    return { tenant, project: this.filter(), from, to };
+    return { team: tenant, project: this.filter(), from, to };
   });
 
   protected readonly tiles = computed<Dashboard | undefined>(() =>

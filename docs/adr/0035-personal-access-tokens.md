@@ -113,6 +113,14 @@ Amended 2026-10-06 (the Context: the project plan it cited is consumed and delet
 [ADR 0074](0074-the-question-catalog-is-consumed-phases-become-tickets-when-they-start-in-their-own-session.md)
 D4; no rule changes).
 
+Amended 2026-10-10 by the owner's rename of a tenant to a team ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1): D5 names the list of every
+team by its operation, `listTeams`, which the rename renamed; `createTeam` is the other session-only
+operation it renamed, and each deprecated twin takes a session only as its operation does
+([ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D8). Still nineteen
+operations; no rule changes. A token's restriction is answered as `restricted_team`, and as
+`restricted_tenant` beside it for one release; a token is created restricted by `team`, or by
+`tenant` in its place.
+
 ## Context
 
 An LLM operates cowork before any UI exists (phase 2 of the project plan, which was consumed into
@@ -220,7 +228,7 @@ the agent header marks is refused all ~~thirteen~~
 ([ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)
 D7).)* *(Amended 2026-10-04 for the global administrator's view,
 [ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
-D2: ~~thirteen~~ fourteen operations — listing every tenant of the installation, `listTenants`,
+D2: ~~thirteen~~ fourteen operations — listing every tenant of the installation, ~~`listTenants`~~ `listTeams` *(2026-10-10)*,
 takes a session as well, for a reason of its own: it shows a global administrator the
 installation's clients beyond the person's memberships, and a token of theirs keeps the reach of
 those memberships, so a leaked one lists no other client. The same holds, in the request layer and

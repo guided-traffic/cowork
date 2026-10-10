@@ -138,9 +138,9 @@ func (s *Server) searchPage(hits []searchHit, size int, op, scope string) ([]sea
 	return page(s.h, hits, size, op, scope, func(h searchHit) string { return h.position().String() })
 }
 
-// SearchTenant searches the tenant's tickets (docs/adr/0025 D3–D5): ranked
+// SearchTeam searches the team's tickets (docs/adr/0025 D3–D5): ranked
 // hits with snippets, under the visibility predicates.
-func (s *Server) SearchTenant(ctx context.Context, req apigen.SearchTenantRequestObject) (apigen.SearchTenantResponseObject, error) {
+func (s *Server) SearchTeam(ctx context.Context, req apigen.SearchTeamRequestObject) (apigen.SearchTeamResponseObject, error) {
 	t := tenantFrom(ctx)
 	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
 		return nil, perr
@@ -149,6 +149,8 @@ func (s *Server) SearchTenant(ctx context.Context, req apigen.SearchTenantReques
 	if err != nil {
 		return nil, err
 	}
+	// The operation's name before the rename binds the cursor, so that a cursor
+	// pages on across replicas of both releases during a rollout (docs/adr/0028 D4).
 	const op = "searchTenant"
 	scope := t.ID.String() + "/" + queryScope(q)
 	after, err := s.searchAfter(op, scope, req.Params.Cursor)
@@ -167,24 +169,30 @@ func (s *Server) SearchTenant(ctx context.Context, req apigen.SearchTenantReques
 		return nil, err
 	}
 	hits, next := s.searchPage(hits, size, op, scope)
-	return apigen.SearchTenant200JSONResponse(searchList(hits, next)), nil
+	return apigen.SearchTeam200JSONResponse(searchList(hits, next)), nil
 }
 
-// SearchMyTenants searches every tenant of the person (docs/adr/0023 D2): one
-// read per tenant (docs/adr/0021 D5), merged by rank.
-func (s *Server) SearchMyTenants(ctx context.Context, req apigen.SearchMyTenantsRequestObject) (apigen.SearchMyTenantsResponseObject, error) {
+// SearchMyTeams searches every team of the person (docs/adr/0023 D2): one
+// read per team (docs/adr/0021 D5), merged by rank.
+func (s *Server) SearchMyTeams(ctx context.Context, req apigen.SearchMyTeamsRequestObject) (apigen.SearchMyTeamsResponseObject, error) {
 	p := principal(ctx)
 	q, err := s.searchQuery(req.Params.Q)
 	if err != nil {
 		return nil, err
 	}
+	narrow, perr := teamQuery(req.Params.Team, req.Params.Tenant) //nolint:staticcheck // SA1019: deprecated in the document, taken as team until a later release removes it
+	if perr != nil {
+		return nil, perr
+	}
+	// The operation's name before the rename binds the cursor, so that a cursor
+	// pages on across replicas of both releases during a rollout (docs/adr/0028 D4).
 	const op = "searchMyTenants"
-	scope := p.PersonID.String() + "/" + deref(req.Params.Tenant) + "/" + queryScope(q)
+	scope := p.PersonID.String() + "/" + deref(narrow) + "/" + queryScope(q)
 	after, err := s.searchAfter(op, scope, req.Params.Cursor)
 	if err != nil {
 		return nil, err
 	}
-	tenants, err := s.h.personTenants(ctx, req.Params.Tenant)
+	tenants, err := s.h.personTenants(ctx, narrow)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +209,7 @@ func (s *Server) SearchMyTenants(ctx context.Context, req apigen.SearchMyTenants
 		}
 	}
 	hits, next := s.searchPage(hits, size, op, scope)
-	return apigen.SearchMyTenants200JSONResponse(searchList(hits, next)), nil
+	return apigen.SearchMyTeams200JSONResponse(searchList(hits, next)), nil
 }
 
 func searchList(hits []searchHit, next *string) apigen.SearchHitList {
@@ -217,8 +225,9 @@ func searchList(hits []searchHit, next *string) apigen.SearchHitList {
 func searchHitView(h searchHit) apigen.SearchHit {
 	row := h.row
 	v := apigen.SearchHit{
-		Tenant: h.tenant.ref(), Key: domain.FullKey(h.tenant.slug, row.ProjectKey, row.Number), Title: row.Title,
-		Type: apigen.TicketType(row.Type), State: apigen.TicketState(row.State), FoundIn: apigen.SearchFoundIn(row.FoundIn),
+		Team: h.tenant.ref(), Key: domain.FullKey(h.tenant.slug, row.ProjectKey, row.Number), Title: row.Title,
+		Tenant: h.tenant.ref(), //nolint:staticcheck // SA1019: deprecated in the document, answered beside team until a later release removes it
+		Type:   apigen.TicketType(row.Type), State: apigen.TicketState(row.State), FoundIn: apigen.SearchFoundIn(row.FoundIn),
 		Comment: nullableOf[uuid.UUID](nil), Question: nullableOf[int](nil), Snippet: snippetParts(row.Snippet),
 	}
 	switch v.FoundIn {

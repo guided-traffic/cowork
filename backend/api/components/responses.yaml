@@ -30,7 +30,7 @@ Problem:
             title: Not found
             status: 404
             detail: no such ticket
-            instance: /api/v1/tenants/acme/projects/WEB/tickets/99
+            instance: /api/v1/teams/acme/projects/WEB/tickets/99
             code: not_found
             request_id: 01a110ac-0398-7d72-b4ee-206f685cdb1c
         validationFailed:
@@ -40,7 +40,7 @@ Problem:
             title: Validation failed
             status: 400
             detail: the request does not match the API document
-            instance: /api/v1/tenants/acme/projects/WEB/tickets
+            instance: /api/v1/teams/acme/projects/WEB/tickets
             code: validation_failed
             request_id: 01a110ac-a3c0-7d6d-a591-30264213ae84
             errors:
@@ -55,7 +55,7 @@ Problem:
             title: Validation failed
             status: 400
             detail: the request does not match the API document
-            instance: /api/v1/tenants/acme/projects/WEB/tickets
+            instance: /api/v1/teams/acme/projects/WEB/tickets
             code: validation_failed
             request_id: 01a110ad-3060-7ccd-a57f-b45a4af64719
             errors:
@@ -70,7 +70,7 @@ Problem:
             title: Precondition failed
             status: 412
             detail: the entity changed since you read it; merge and send the current ETag
-            instance: /api/v1/tenants/acme/projects/WEB/tickets/42
+            instance: /api/v1/teams/acme/projects/WEB/tickets/42
             code: precondition_failed
             request_id: 01a110ad-fb80-70f4-94a5-137ba232ac0c
             errors:

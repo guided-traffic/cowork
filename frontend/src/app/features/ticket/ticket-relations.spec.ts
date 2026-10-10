@@ -19,7 +19,7 @@ describe('address', () => {
     ['A1-7', 'A1', 7],
     ['ABCDEFGHIJ-5', 'ABCDEFGHIJ', 5],
   ])('reads %s as the project %s and the number %i', (key, project, number) => {
-    expect(address('acme', key)).toEqual({ tenant: 'acme', project, number });
+    expect(address('acme', key)).toEqual({ team: 'acme', project, number });
   });
 
   it.each([
@@ -49,8 +49,8 @@ describe('address', () => {
 });
 
 describe('TicketRelations', () => {
-  const cow12: TicketAddress = { tenant: 'acme', project: 'COW', number: 12 };
-  const base = '/api/v1/tenants/acme/projects/COW/tickets/12';
+  const cow12: TicketAddress = { team: 'acme', project: 'COW', number: 12 };
+  const base = '/api/v1/teams/acme/projects/COW/tickets/12';
   const urls = {
     comments: `${base}/comments?limit=200`,
     activity: `${base}/activity?order=desc&limit=100`,
@@ -144,18 +144,18 @@ describe('TicketRelations', () => {
       TestBed.tick();
       http.match(() => true);
 
-      relations.at.set({ tenant: 'acme', project: 'OPS', number: 3 });
+      relations.at.set({ team: 'acme', project: 'OPS', number: 3 });
       TestBed.tick();
 
       expect(http.match(() => true).map((request) => request.request.url)).toEqual([
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/comments',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/activity',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/questions',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/links',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/interest',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/attachments',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/time-entries',
-        '/api/v1/tenants/acme/projects/OPS/tickets/3/prerequisites',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/comments',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/activity',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/questions',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/links',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/interest',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/attachments',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/time-entries',
+        '/api/v1/teams/acme/projects/OPS/tickets/3/prerequisites',
       ]);
     });
 
@@ -343,7 +343,7 @@ describe('TicketRelations', () => {
 
     it('follow the ticket that is shown when it changes', () => {
       const spies = spyOnReloads();
-      relations.at.set({ tenant: 'acme', project: 'OPS', number: 3 });
+      relations.at.set({ team: 'acme', project: 'OPS', number: 3 });
 
       events.next(ticketEvent('comment.changed', 'acme/COW-12'));
       expect(reloaded(spies)).toEqual([]);

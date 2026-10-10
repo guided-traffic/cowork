@@ -31,11 +31,11 @@ export const tenantSlug = /^[a-z0-9][a-z0-9-]{1,62}$/;
   imports: [ButtonDirective, FormsModule, InputText],
   template: `
     <section class="first" aria-labelledby="first-tenant-title" data-testid="first-tenant">
-      <h1 id="first-tenant-title">Create the first tenant</h1>
+      <h1 id="first-tenant-title">Create the first team</h1>
       <p class="muted lead">
-        A tenant is one client or one organisation: every project, ticket and person of cowork
-        belongs to exactly one. You are a global administrator and are not a member of any tenant
-        yet. The tenant you create makes you its administrator.
+        A team holds its own projects and their tickets, apart from every other team of this
+        installation; a person may belong to several. You are a global administrator and are not a
+        member of any team yet. The team you create makes you its administrator.
       </p>
       <form class="card form" (ngSubmit)="create()">
         <div class="field">
@@ -110,7 +110,7 @@ export const tenantSlug = /^[a-z0-9][a-z0-9-]{1,62}$/;
             @if (creating()) {
               <i class="pi pi-spinner pi-spin"></i>
             }
-            Create tenant
+            Create team
           </button>
         </div>
       </form>

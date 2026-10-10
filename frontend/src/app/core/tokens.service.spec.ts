@@ -15,6 +15,7 @@ const token = (id: string, overrides: Partial<Token> = {}): Token => ({
   expires_at: '2026-12-30T10:00:00Z',
   last_used_on: null,
   revoked_at: null,
+  restricted_team: null,
   restricted_tenant: null,
   restricted_project: null,
   state: 'active',
@@ -78,7 +79,7 @@ describe('TokensService', () => {
     http.expectOne(
       (request) =>
         request.method === 'GET' &&
-        request.url === `/api/v1/tenants/${tenant}/projects` &&
+        request.url === `/api/v1/teams/${tenant}/projects` &&
         request.params.get('cursor') === cursor,
     );
 
@@ -414,8 +415,12 @@ describe('TokensService', () => {
   it('asks for no project to show the list: a token names its project by its key', async () => {
     page().flush({
       items: [
-        token('a', { restricted_tenant: 'acme', restricted_project: 'COW' }),
-        token('b', { restricted_tenant: 'globex' }),
+        token('a', {
+          restricted_team: 'acme',
+          restricted_tenant: 'acme',
+          restricted_project: 'COW',
+        }),
+        token('b', { restricted_team: 'globex', restricted_tenant: 'globex' }),
       ],
       next_cursor: null,
     });

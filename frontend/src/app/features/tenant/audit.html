@@ -25,9 +25,9 @@
 
   @if (tenantInfo.isAdmin()) {
     <p class="muted lead">
-      Every act recorded in this tenant, newest first: who made it — a person, an agent in their
-      name, a token —, what it did to which entity, and the fields it changed. The record is
-      append-only. The CSV holds what the filters select, up to the moment it is downloaded.
+      Every act recorded in this team, newest first: who made it — a person, an agent in their name,
+      a token —, what it did to which entity, and the fields it changed. The record is append-only.
+      The CSV holds what the filters select, up to the moment it is downloaded.
     </p>
     @if (downloadNote(); as note) {
       <p class="note" role="status" data-testid="audit-csv-note">{{ note }}</p>
@@ -146,7 +146,7 @@
     <div class="panel">
       <table class="acts" data-testid="audit-acts">
         <caption class="sr-only">
-          The acts of the tenant, newest first
+          The acts of the team, newest first
         </caption>
         <thead>
           <tr>
@@ -190,7 +190,9 @@
               </td>
               <td class="col-action" data-testid="act-action">{{ event.action }}</td>
               <td class="col-entity">
-                <span class="entity" data-testid="act-entity">{{ event.entity_type }}</span>
+                <span class="entity" data-testid="act-entity">{{
+                  shownEntityType(event.entity_type)
+                }}</span>
                 @if (event.ticket_key; as key) {
                   <a
                     class="key"
@@ -247,7 +249,7 @@
     <p-skeleton width="24rem" height="2rem" />
   } @else {
     <p class="muted" data-testid="audit-notice">
-      Only the administrators of this tenant read its audit record.
+      Only the administrators of this team read its audit record.
     </p>
   }
 </section>

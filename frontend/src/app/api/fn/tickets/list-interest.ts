@@ -12,9 +12,9 @@ import { InterestList } from '../../models/interest-list';
 export interface ListInterest$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -45,7 +45,7 @@ export interface ListInterest$Params {
 export function listInterest(http: HttpClient, rootUrl: string, params: ListInterest$Params, context?: HttpContext): Observable<StrictHttpResponse<InterestList>> {
   const rb = new RequestBuilder(rootUrl, listInterest.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.query('cursor', params.cursor, {});
@@ -63,4 +63,4 @@ export function listInterest(http: HttpClient, rootUrl: string, params: ListInte
   );
 }
 
-listInterest.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest';
+listInterest.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/interest';

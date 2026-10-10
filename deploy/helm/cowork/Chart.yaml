@@ -5,7 +5,7 @@
 # on (docs/adr/0060 D3).
 apiVersion: v2
 name: cowork
-description: Multi-tenant backlog and kanban board for people and LLM agents working across many projects
+description: A backlog and kanban board for teams of people and LLM agents working across many projects
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
@@ -17,7 +17,7 @@ keywords:
   - kanban
   - tickets
   - llm
-  - multi-tenant
+  - teams
 home: https://github.com/guided-traffic/cowork
 sources:
   - https://github.com/guided-traffic/cowork

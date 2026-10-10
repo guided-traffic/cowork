@@ -79,7 +79,8 @@ func TestTheCommandLine(t *testing.T) {
 	assert.Contains(t, stderr, `unknown command "export acme/COW"`)
 	code, _, stderr = run(t, Env{}, "export", "acme-COW", t.TempDir())
 	assert.Equal(t, 2, code)
-	assert.Contains(t, stderr, `"acme-COW" names no project`)
+	assert.Contains(t, stderr, `"acme-COW" names no project, <team>/<PROJECT> such as acme/VKO`)
+	assert.Contains(t, stderr, "Usage: cowork-mcp export <team>/<PROJECT> <dir>")
 	code, _, stderr = run(t, Env{}, "export", "acme/COW", filepath.Join(t.TempDir(), "new"))
 	assert.Equal(t, 1, code, "export without configuration ends at once")
 	assert.Contains(t, stderr, "COWORK_URL is not set")
@@ -90,6 +91,9 @@ func TestTheCommandLine(t *testing.T) {
 	assert.Equal(t, 0, code)
 	assert.Contains(t, stdout, "session-context")
 	assert.Contains(t, stdout, "model-switch")
+	assert.Contains(t, stdout, "export <team>/<PROJECT> <dir>")
+	assert.Contains(t, stdout, "import <team>/<PROJECT> <path> [--dry-run]")
+	assert.NotContains(t, strings.ToLower(stdout), "tenant", "the usage says team")
 	code, _, stderr = run(t, Env{}, "serve")
 	assert.Equal(t, 1, code, "serve without configuration ends at once")
 	assert.Contains(t, stderr, "COWORK_URL is not set")
@@ -236,7 +240,7 @@ func markedServer(t *testing.T, memory tools.Memory, projectDir string) (watch f
 			"agent": true, "capabilities": []string{}, "created_at": "2026-10-01T00:00:00Z",
 			"expires_at": time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339), "state": "active",
 			"request": map[string]any{"agent": true, "agent_mark": "claude-code/unknown/x", "capabilities": []string{}}},
-		"PUT /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest": map[string]any{},
+		"PUT /api/v1/teams/{team}/projects/{project}/tickets/{number}/interest": map[string]any{},
 	})
 	mux.HandleFunc("GET /api/v1/openapi.json", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -397,7 +401,7 @@ func TestTokenCheck(t *testing.T) {
 		"GET /api/v1/me/token": map[string]any{"id": "0199a3c2-1d2e-7f00-8000-000000000001", "name": "laptop", "scope": "write",
 			"agent": true, "capabilities": []string{"close"}, "created_at": "2026-10-01T00:00:00Z",
 			"expires_at": time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339), "state": "active",
-			"restricted_tenant": "acme", "restricted_project": "COW",
+			"restricted_team": "acme", "restricted_project": "COW",
 			"request": map[string]any{"agent": true, "agent_mark": "cowork-mcp/unknown/token-check", "capabilities": []string{"close"}}},
 		"GET /api/v1/me": map[string]any{"id": "0199a3c2-1d2e-7f00-8000-000000000002", "username": "ada", "display_name": "Ada",
 			"memberships": []any{}},
@@ -416,12 +420,95 @@ func TestTokenCheck(t *testing.T) {
 	require.NoError(t, json.Unmarshal([]byte(stdout), &report))
 	assert.Equal(t, true, report["valid"])
 	assert.Equal(t, "COW", report["project"])
+	assert.Equal(t, "acme", report["team"])
+	assert.Equal(t, "acme", report["tenant"], "the key before, the same slug, for one release (docs/adr/0005 D1)")
+
+	teamWide := fakeAPI(t, map[string]any{
+		"GET /api/v1/version": map[string]any{"version": "0.9.1", "commit": "c", "build_time": "0"},
+		"GET /api/v1/me/token": map[string]any{"id": "0199a3c2-1d2e-7f00-8000-000000000001", "name": "laptop", "scope": "read",
+			"agent": false, "capabilities": []string{}, "created_at": "2026-10-01T00:00:00Z",
+			"expires_at": time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339), "state": "active",
+			"restricted_team": "acme", "restricted_project": nil,
+			"request": map[string]any{"agent": true, "agent_mark": "cowork-mcp/unknown/token-check", "capabilities": []string{}}},
+		"GET /api/v1/me": map[string]any{"id": "0199a3c2-1d2e-7f00-8000-000000000002", "display_name": "Ada", "memberships": []any{}},
+	})
+	code, stdout, _ = run(t, Env{Lookup: configured, Doer: tools.HandlerDoer{Handler: teamWide}}, "token", "check")
+	assert.Equal(t, 0, code, stdout)
+	assert.Contains(t, stdout, "Restriction:   the team acme")
 
 	revoked := fakeAPI(t, map[string]any{"GET /api/v1/me/token": problemBody{Status: 401, Code: "token_revoked", Title: "Token revoked", Type: "t", Detail: "the token was revoked"}})
 	code, stdout, _ = run(t, Env{Lookup: configured, Doer: tools.HandlerDoer{Handler: revoked}}, "token", "check")
 	assert.Equal(t, 1, code)
 	assert.Contains(t, stdout, "does not work against https://cowork.example.com: cowork answered 401 token_revoked")
 	assert.Contains(t, stdout, "https://cowork.example.com/me/tokens")
+}
+
+// boundRepo is a repository with an origin and a binding file.
+type boundRepo struct{ file *tools.BindingFile }
+
+func (boundRepo) Remotes(context.Context) ([]tools.Remote, error) {
+	return []tools.Remote{{Name: "origin", URL: "git@github.com:acme/cowork.git"}}, nil
+}
+func (boundRepo) Path(context.Context) (string, error)                      { return "", nil }
+func (r boundRepo) BindingFile(context.Context) (*tools.BindingFile, error) { return r.file, nil }
+func (boundRepo) WorkedSince(context.Context, time.Time) (bool, error)      { return false, nil }
+
+// lookup prints the binding and the binding file with the team's slug under
+// Team and, for one release, under Tenant, the key it printed before, so that
+// a script reading lookup --json goes on working (docs/adr/0005 D1); the
+// server's lookup is passed on as the API answered it.
+func TestLookupNamesTheTeam(t *testing.T) {
+	beta := map[string]any{"slug": "beta", "name": "Beta"}
+	mux := fakeAPI(t, map[string]any{
+		"GET /api/v1/me/repositories/lookup": map[string]any{"status": "bound",
+			"remotes": []any{map[string]any{"remote": "git@github.com:acme/cowork.git", "identity": "github.com/acme/cowork"}},
+			"bindings": []any{map[string]any{"team": beta, "tenant": beta, "project": map[string]any{"key": "OPS", "name": "Ops"},
+				"identity": "github.com/acme/cowork", "path": "", "remote": "git@github.com:acme/cowork.git", "archived": false}},
+			"proposal": nil, "proposal_unavailable": nil},
+		"GET /api/v1/teams/acme/projects/COW": map[string]any{"key": "COW", "name": "cowork"},
+	})
+	file := &tools.BindingFile{Team: "acme", Tenant: "acme", Project: "COW", File: "/r/.cowork.yaml"}
+	env := Env{Lookup: configured, Doer: tools.HandlerDoer{Handler: mux}, Workspace: boundRepo{file: file}}
+	code, stdout, _ := run(t, env, "lookup")
+	assert.Equal(t, 0, code, stdout)
+	assert.Contains(t, stdout, "Binding file: /r/.cowork.yaml (acme/COW)")
+	assert.Contains(t, stdout, "Bound to acme/COW (cowork) by the file.")
+	assert.Contains(t, stdout, "Drift: the server binds github.com/acme/cowork to beta/OPS")
+
+	code, stdout, _ = run(t, env, "lookup", "--json")
+	assert.Equal(t, 0, code, stdout)
+	var report struct {
+		Bound   bool           `json:"bound"`
+		Binding map[string]any `json:"binding"`
+		File    map[string]any `json:"binding_file"`
+		Lookup  struct {
+			Bindings []map[string]any `json:"bindings"`
+		} `json:"lookup"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &report))
+	assert.True(t, report.Bound)
+	assert.Equal(t, "acme", report.Binding["Team"])
+	assert.Equal(t, "acme", report.Binding["Tenant"])
+	assert.Equal(t, "COW", report.Binding["Project"])
+	assert.Equal(t, "file", report.Binding["Source"])
+	assert.Equal(t, "acme", report.File["Team"])
+	assert.Equal(t, "acme", report.File["Tenant"])
+	assert.Equal(t, beta, report.Lookup.Bindings[0]["team"])
+	assert.Equal(t, beta, report.Lookup.Bindings[0]["tenant"])
+
+	proposed := fakeAPI(t, map[string]any{
+		"GET /api/v1/me/repositories/lookup": map[string]any{"status": "unbound",
+			"remotes":  []any{map[string]any{"remote": "git@github.com:acme/cowork.git", "identity": "github.com/acme/cowork"}},
+			"bindings": []any{}, "proposal_unavailable": nil, "proposal": map[string]any{
+				"identity": "github.com/acme/cowork", "remote": "git@github.com:acme/cowork.git", "name": "cowork",
+				"team": "acme", "tenant": "acme", "reason": "only-tenant",
+				"teams":   []any{map[string]any{"slug": "acme", "name": "Acme", "key": "COW"}},
+				"tenants": []any{map[string]any{"slug": "acme", "name": "Acme", "key": "COW"}}}},
+	})
+	code, stdout, _ = run(t, Env{Lookup: configured, Doer: tools.HandlerDoer{Handler: proposed}, Workspace: boundRepo{}}, "lookup")
+	assert.Equal(t, 0, code, stdout)
+	assert.Contains(t, stdout, `Proposal: a project "cowork" for github.com/acme/cowork; in acme as COW (the only team you may create projects in).`)
+	assert.NotContains(t, strings.ToLower(stdout), "tenant", "the person reads team")
 }
 
 func TestLookupWithoutARepository(t *testing.T) {

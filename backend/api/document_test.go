@@ -2,8 +2,10 @@ package apispec
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -32,7 +34,7 @@ var openQuery = map[string]bool{"oidcCallback": true}
 // installation's own pages by Sec-Fetch-Site (docs/adr/0026 D5 as amended
 // 2026-10-07).
 var recordedRead = map[string]bool{
-	"downloadAttachment": true, "exportTicket": true, "exportTicketContext": true, "exportProject": true, "exportTenant": true,
+	"downloadAttachment": true, "exportTicket": true, "exportTicketContext": true, "exportProject": true, "exportTeam": true,
 }
 
 // sessionOnly are the operations a personal access token cannot call: it
@@ -40,14 +42,14 @@ var recordedRead = map[string]bool{
 // docs/adr/0005 D5, docs/adr/0031 D4, docs/adr/0030 D2, D3, docs/adr/0034 D3).
 // The document says so with a single requirement, `sessionCookie`; every other
 // operation takes either credential. What a leaked token must not be able to
-// make — a token, a tenant, an account, a password the administrator knows, a
+// make — a token, a team, an account, a password the administrator knows, a
 // role, a mapping, a person's way into a restricted project — outlives its
 // revocation; what only takes access away stays open to a token. A turn of
 // the chat acts with the person's session, and so does stopping one; an agent
 // with a token has the MCP server (docs/adr/0076, docs/adr/0040). Choosing the
 // chat's capabilities gives the person's agent access, which a token does not
-// give (docs/adr/0043 D5). The list of every tenant is a global
-// administrator's view across the installation's clients, which a token of
+// give (docs/adr/0043 D5). The list of every team is a global
+// administrator's view across the installation's teams, which a token of
 // theirs does not get (docs/adr/0034 D2). Purging a deleted ticket is the one
 // irreversible act on a ticket, which a leaked token must not make either
 // (docs/adr/0024 D7 as amended 2026-10-05). Removing the orphaned objects of a
@@ -55,7 +57,7 @@ var recordedRead = map[string]bool{
 // local account undoes its lockout, which a leaked token could do between
 // guesses until the lockout held never (docs/adr/0035 D5 as amended 2026-10-07).
 var sessionOnly = map[string]bool{
-	"logout": true, "changeMyPassword": true, "createMyToken": true, "createTenant": true, "listTenants": true,
+	"logout": true, "changeMyPassword": true, "createMyToken": true, "createTeam": true, "listTeams": true,
 	"createAccount": true, "resetAccountPassword": true, "unlockAccount": true,
 	"addMember": true, "setMemberGrant": true, "createGroupMapping": true, "updateGroupMapping": true,
 	"setProjectRestriction": true, "setProjectAccess": true, "runChatTurn": true, "stopChatTurns": true,
@@ -86,6 +88,12 @@ func TestEveryOperationIsDeclaredCompletely(t *testing.T) {
 				t.Errorf("%s and %s share the operationId %s", where, other, op.OperationID)
 			}
 			ids[op.OperationID] = where
+			if isTwin(path) {
+				// A twin is declared as the path it stands for, which this loop
+				// checks; TestTheTenantPathsAreDeprecatedTwinsOfTheTeamPaths holds
+				// the twin to it.
+				continue
+			}
 
 			security := doc.Security
 			if op.Security != nil {
@@ -122,4 +130,157 @@ func TestEveryOperationIsDeclaredCompletely(t *testing.T) {
 		assert.Contains(t, ids, id, "the session-only operation %s exists", id)
 	}
 	assert.Greater(t, len(ids), 50, "the document has the phase's operations")
+}
+
+// The deprecated path family of the rename of a tenant to a team (docs/adr/0005
+// D1, docs/adr/0023 D1): tools/specbundle writes a twin under oldFamily for
+// every path under newFamily, for one release (docs/adr/0046 D7).
+const (
+	newFamily = "/api/v1/teams"
+	oldFamily = "/api/v1/tenants"
+)
+
+// renamed are the operations the rename renamed, by the operationId their twin
+// keeps — the one the release before served them under.
+var renamed = map[string]string{
+	"listTeams": "listTenants", "createTeam": "createTenant", "getTeam": "getTenant", "updateTeam": "updateTenant",
+	"exportTeam": "exportTenant", "searchTeam": "searchTenant", "listTeamTickets": "listTenantTickets",
+	"listTeamTime": "listTenantTime", "listTeamTokens": "listTenantTokens", "revokeTeamToken": "revokeTenantToken",
+}
+
+func isTwin(path string) bool {
+	return path == oldFamily || strings.HasPrefix(path, oldFamily+"/")
+}
+
+// teamPath is the path a twin stands for.
+func teamPath(twin string) string {
+	return newFamily + strings.Replace(strings.TrimPrefix(twin, oldFamily), "{tenant}", "{team}", 1)
+}
+
+// Every path under /api/v1/teams has its twin under /api/v1/tenants until the
+// release that removes the pair, and a twin is the path it stands for under the
+// name before: the same operations, each deprecated and tagged `tenants`, with
+// the same parameters but the deprecated `tenant` for `team`, the same body, the
+// same answers, the same security and the same marks — and the operationId of
+// the release before where the rename renamed it (cowork-mcp of that release
+// checks it at its start, docs/adr/0040 D5).
+func TestTheTenantPathsAreDeprecatedTwinsOfTheTeamPaths(t *testing.T) {
+	doc, err := openapi3.NewLoader().LoadFromData(Document)
+	require.NoError(t, err)
+
+	teams, twins := 0, 0
+	for _, path := range doc.Paths.InMatchingOrder() {
+		switch {
+		case path == newFamily || strings.HasPrefix(path, newFamily+"/"):
+			teams++
+			assert.NotNil(t, doc.Paths.Value(oldFamily+strings.Replace(strings.TrimPrefix(path, newFamily), "{team}", "{tenant}", 1)),
+				"%s has its deprecated twin", path)
+		case isTwin(path):
+			twins++
+			item := doc.Paths.Value(path)
+			team := doc.Paths.Value(teamPath(path))
+			require.NotNil(t, team, "the twin %s stands for a team path", path)
+			assert.Equal(t, comparable(t, team.Parameters), comparable(t, item.Parameters), "%s takes the parameters of its team path", path)
+			require.Len(t, item.Operations(), len(team.Operations()), "%s has the operations of its team path", path)
+			for method, op := range item.Operations() {
+				where := method + " " + path
+				original := team.GetOperation(strings.ToUpper(method))
+				require.NotNil(t, original, "%s stands for an operation of its team path", where)
+				assert.True(t, op.Deprecated, "%s is deprecated", where)
+				assert.Equal(t, []string{"tenants"}, op.Tags, "%s is tagged as a twin", where)
+				want := original.OperationID + "Deprecated"
+				if old, ok := renamed[original.OperationID]; ok {
+					want = old
+				}
+				assert.Equal(t, want, op.OperationID, "%s keeps the operationId of the release before", where)
+				assert.Equal(t, comparable(t, original.Parameters), comparable(t, op.Parameters), "%s takes the parameters of %s", where, original.OperationID)
+				assert.Equal(t, comparable(t, original.RequestBody), comparable(t, op.RequestBody), "%s takes the body of %s", where, original.OperationID)
+				assert.Equal(t, comparable(t, original.Responses), comparable(t, op.Responses), "%s answers as %s", where, original.OperationID)
+				assert.Equal(t, comparable(t, original.Security), comparable(t, op.Security), "%s takes the credentials of %s", where, original.OperationID)
+				assert.Equal(t, comparable(t, original.Extensions), comparable(t, op.Extensions), "%s carries the marks of %s", where, original.OperationID)
+			}
+		}
+	}
+	assert.Greater(t, teams, 70, "the team paths are in the document")
+	assert.Equal(t, teams, twins, "every team path has one twin and every twin stands for one")
+	for id := range renamed {
+		assert.Contains(t, operationIDs(doc), id, "the renamed operation %s exists", id)
+	}
+}
+
+// comparable is v as JSON, with the deprecated path parameter of a twin read as
+// the team's.
+func comparable(t *testing.T, v any) string {
+	t.Helper()
+	b, err := json.Marshal(v)
+	require.NoError(t, err)
+	return strings.ReplaceAll(string(b), "#/components/parameters/TenantSlug", "#/components/parameters/TeamSlug")
+}
+
+func operationIDs(doc *openapi3.T) []string {
+	var ids []string
+	for _, path := range doc.Paths.InMatchingOrder() {
+		for _, op := range doc.Paths.Value(path).Operations() {
+			ids = append(ids, op.OperationID)
+		}
+	}
+	return ids
+}
+
+// oldNames are the names before of the rename and the names that replace them
+// (docs/adr/0005 D1).
+var oldNames = map[string]string{"tenant": "team", "tenants": "teams", "restricted_tenant": "restricted_team"}
+
+// Every name before of the rename is deprecated, and stands beside the name
+// that replaces it, until the release that removes it (docs/adr/0046 D7): a
+// parameter `tenant` beside `team` in the same place, a property `tenant`,
+// `tenants` or `restricted_tenant` beside `team`, `teams` or `restricted_team`
+// in the same schema. Outside the twins, no path names `{tenant}`.
+func TestEveryTenantNameIsDeprecatedBesideItsTeamName(t *testing.T) {
+	doc, err := openapi3.NewLoader().LoadFromData(Document)
+	require.NoError(t, err)
+
+	for _, path := range doc.Paths.InMatchingOrder() {
+		if !isTwin(path) {
+			assert.NotContains(t, path, "{tenant}", "%s names the team, not the tenant", path)
+		}
+		item := doc.Paths.Value(path)
+		for method, op := range item.Operations() {
+			where := method + " " + path
+			params := append(openapi3.Parameters{}, item.Parameters...)
+			params = append(params, op.Parameters...)
+			for _, p := range params {
+				if p.Value == nil || p.Value.Name != "tenant" {
+					continue
+				}
+				assert.True(t, p.Value.Deprecated, "the parameter tenant of %s is deprecated", where)
+				if p.Value.In == openapi3.ParameterInQuery {
+					assert.NotNil(t, params.GetByInAndName(openapi3.ParameterInQuery, "team"), "%s takes team beside tenant", where)
+				}
+			}
+		}
+	}
+	names := make([]string, 0, len(doc.Components.Schemas))
+	for name := range doc.Components.Schemas {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		schema := doc.Components.Schemas[name].Value
+		for _, part := range append(openapi3.SchemaRefs{{Value: schema}}, schema.AllOf...) {
+			if part.Value == nil {
+				continue
+			}
+			for prop, ref := range part.Value.Properties {
+				replacement, old := oldNames[prop]
+				if !old {
+					continue
+				}
+				assert.True(t, ref.Value != nil && ref.Value.Deprecated, "%s.%s is deprecated", name, prop)
+				_, beside := part.Value.Properties[replacement]
+				assert.True(t, beside, "%s has %s beside %s", name, replacement, prop)
+			}
+		}
+		assert.NotContains(t, name, "Tenant", "the schema %s names the team, not the tenant", name)
+	}
 }

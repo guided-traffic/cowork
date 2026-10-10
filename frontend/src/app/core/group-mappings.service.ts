@@ -1,10 +1,10 @@
 import { computed, inject, Injectable, Injector, resource, ResourceRef } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Api } from '../api/api';
-import { createGroupMapping } from '../api/fn/tenants/create-group-mapping';
-import { deleteGroupMapping } from '../api/fn/tenants/delete-group-mapping';
-import { listGroupMappings } from '../api/fn/tenants/list-group-mappings';
-import { updateGroupMapping } from '../api/fn/tenants/update-group-mapping';
+import { createGroupMapping } from '../api/fn/teams/create-group-mapping';
+import { deleteGroupMapping } from '../api/fn/teams/delete-group-mapping';
+import { listGroupMappings } from '../api/fn/teams/list-group-mappings';
+import { updateGroupMapping } from '../api/fn/teams/update-group-mapping';
 import { GroupMapping, Role } from '../api/models';
 import { ConditionalPages } from './conditional';
 import { etagOf } from './entity-cache';
@@ -50,7 +50,7 @@ export class GroupMappingsService {
           const mappings: GroupMapping[] = [];
           let cursor: string | undefined;
           do {
-            const next = await page(listGroupMappings, { tenant, cursor, limit: 200 });
+            const next = await page(listGroupMappings, { team: tenant, cursor, limit: 200 });
             mappings.push(...next.items);
             cursor = next.next_cursor ?? undefined;
           } while (cursor);
@@ -81,7 +81,7 @@ export class GroupMappingsService {
   async create(group: string, role: Role, idempotencyKey: string): Promise<GroupMapping> {
     const tenant = this.session.tenant() as string;
     const mapping = await this.api.invoke(createGroupMapping, {
-      tenant,
+      team: tenant,
       'Idempotency-Key': idempotencyKey,
       body: { group, role },
     });
@@ -93,7 +93,7 @@ export class GroupMappingsService {
   async changeRole(mapping: GroupMapping, role: Role): Promise<GroupMapping> {
     const tenant = this.session.tenant() as string;
     const changed = await this.api.invoke(updateGroupMapping, {
-      tenant,
+      team: tenant,
       mapping_id: mapping.id,
       'If-Match': etagOf(mapping.version),
       body: { role },
@@ -105,7 +105,7 @@ export class GroupMappingsService {
   /** Removes a mapping: the memberships it gave go, or fall to the person's next mapped group. */
   async remove(mapping: GroupMapping): Promise<void> {
     await this.api.invoke(deleteGroupMapping, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       mapping_id: mapping.id,
     });
     this.reload(mapping);

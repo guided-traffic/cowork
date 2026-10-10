@@ -43,19 +43,19 @@ export const accessMeanings: Record<ProjectAccessRole, string> = {
 export function restrictionNotice(people: number | undefined): string {
   if (people === undefined) {
     return (
-      "Once it is restricted, only the tenant's administrators and the people on its access " +
+      "Once it is restricted, only the team's administrators and the people on its access " +
       'list see it.'
     );
   }
   if (people === 0) {
     return (
-      "Nobody is on its access list: once it is restricted, only the tenant's administrators " +
+      "Nobody is on its access list: once it is restricted, only the team's administrators " +
       'see it.'
     );
   }
   const who = people === 1 ? '1 person is' : `${people} people are`;
   return (
-    `${who} on its access list. Once it is restricted, only they and the tenant's ` +
+    `${who} on its access list. Once it is restricted, only they and the team's ` +
     'administrators see it.'
   );
 }
@@ -186,7 +186,7 @@ export class ProjectAccess {
         : {
             header: `Open ${key} to every member?`,
             message:
-              `${key} and its tickets become visible to every member of the tenant. A ` +
+              `${key} and its tickets become visible to every member of the team. A ` +
               'confidential ticket stays visible only to the administrators, its assignee and ' +
               'its reporter.',
             acceptLabel: 'Open it',
@@ -289,7 +289,7 @@ export class ProjectAccess {
   /** A person who left the tenant meanwhile is the section's message; anything else a toast. */
   private refused(error: unknown, name: string): void {
     if (this.problems.read(error).code === 'person_not_found') {
-      this.notice.set(`${name} is no longer a member of this tenant.`);
+      this.notice.set(`${name} is no longer a member of this team.`);
       refresh(this.members.members, this.injector);
       refresh(this.access.entries, this.injector);
     } else {

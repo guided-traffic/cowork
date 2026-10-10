@@ -31,22 +31,24 @@ Whoever reads a scrape learns how the installation is used, not what it holds:
 | `cowork_audit_acts_total` | acts by action and kind of actor: how many comments, logins, deletions, purges, grants … were committed, and whether people, agents or the system made them |
 | `cowork_auth_*` | logins by method and outcome, lockouts, refused tokens by reason — a guesser in the cluster can watch whether its guesses lock usernames, and an operator can watch the guessing |
 | `cowork_migrations_*` | the schema version, which tells the release within a few, and whether a migration failed |
-| `cowork_consistency_*` | per tenant, by its id, how many of its files lost their bytes and no administrator accepted the loss of, and how many objects no file names, as its latest consistency check found them — and with the series, how many tenants have a result —; and for every tenant of the installation, by its id, how long ago a project of it or the whole tenant was last exported, or how long ago it was made where it never was — so the scrape lists every tenant's id, and tells which tenants are exported on a schedule and when |
+| `cowork_consistency_*` | per team, by its id — the label `team`, and for this release `tenant` beside it, the same id —, how many of its files lost their bytes and no administrator accepted the loss of, and how many objects no file names, as its latest consistency check found them — and with the series, how many teams have a result —; and for every team of the installation, by its id, how long ago a project of it or the whole team was last exported, or how long ago it was made where it never was — so the scrape lists every team's id, and tells which teams are exported on a schedule and when |
 | `go_*`, `process_*` | the Go version, memory, goroutines, file descriptors, the start time |
 | the exporter's `nginx_*` | the frontend's connections and its request total |
 
 ## What they never carry
 
-- **No label names a person, a ticket, a key, a token or a request id**, and a tenant only on the
+- **No label names a person, a ticket, a key, a token or a request id**, and a team only on the
   consistency family's three gauges — the check's two counts and the age of the last export —, by
-  its id — never its slug, which would name a client: a unit test walks every family the backend
-  records and fails on such a label, on `tenant` outside those three, on a tenant that is no id, and
-  on another label beside it (`TestNoInstrumentCarriesAForbiddenLabel` in
+  its id — never its slug, which would name the team: a unit test walks every family the backend
+  records and fails on such a label, on `team` or `tenant` outside those three, on a team that is no
+  id, on a `tenant` that is not the `team` beside it, and on another label beside the two
+  (`TestNoInstrumentCarriesAForbiddenLabel` in
   [`metrics_test.go`](../../backend/internal/metrics/metrics_test.go)). Every other count is the
-  whole replica's, never a tenant's; those three are read from the database and are the same on
+  whole replica's, never a team's; those three are read from the database and are the same on
   every replica.
 - **No client writes a label value.** A route is the API document's pattern —
-  `/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}`, never the path sent —, a path no
+  `/api/v1/teams/{team}/projects/{project}/tickets/{number}`, never the path sent, and the team
+  path's for a request to its deprecated twin under `/api/v1/tenants` —, a path no
   route matches is `unmatched`, and a method HTTP does not define is `other`
   (`TestTheRouteLabelIsTheDocumentsPattern`, and the integration tier on the built binary). Every
   other label comes from a closed set in the code, or — an act's action, a job's name — from the
@@ -62,12 +64,12 @@ The instruments are in memory, and so are the pool's statistics. The schema's ve
 are one query of the version table, at most once every ten seconds whoever scrapes, within two
 seconds ([`internal/metrics`](../../backend/internal/metrics/metrics.go) `schemaCollector`); the
 consistency family one read-only transaction of two queries — the counts from their table, every
-tenant's last export from the audit record over a partial index of the export acts —, at most once a
+team's last export from the audit record over a partial index of the export acts —, at most once a
 minute, within two seconds (`consistencyCollector`). At most
 four scrapes are served at once, a fifth answered `503`. The series are bounded: the routes by the
 document's operations, the statuses by what the handlers answer, every other label by its set; a
 scrape's size does not grow with the data, but for the consistency family's three series per
-tenant.
+team.
 
 ## What this does not cover
 
@@ -77,12 +79,12 @@ tenant.
 Live by default, and accepted with ADR 0060 D1, D2: the listener has no authentication,
 `metrics.enabled` is `true`, and the chart ships no NetworkPolicy
 ([ADR 0001](../adr/0001-two-containers-a-go-backend-and-an-nginx-frontend-installed-by-one-helm-chart.md)
-D3). A workload anywhere in the cluster — another team's pod, a compromised one — reads the
+D3). A workload anywhere in the cluster — another application's pod, a compromised one — reads the
 installation's activity: how much of which feature is used and when, the rate of logins that fail
 and of usernames locked while it guesses passwords through the backend Service, the release by its
-schema version, the process's resources — and, per tenant id, how many of its files a restore or a
-failed removal left out of step, and how long ago it was last exported, with every tenant's id and so
-their number; a tenant's id is a UUIDv7, so it tells when the tenant was made as well. It reads no name of a tenant, a file or a ticket and gets nothing to
+schema version, the process's resources — and, per team id, how many of its files a restore or a
+failed removal left out of step, and how long ago it was last exported, with every team's id and so
+their number; a team's id is a UUIDv7, so it tells when the team was made as well. It reads no name of a team, a file or a ticket and gets nothing to
 act with: no credential, no key, no person. The listener writes no request log, so a reader of the
 port leaves no line behind. The exporter's port, when on, adds
 the frontend's connection counts. What an installation can do: admit only the monitoring namespace
@@ -98,8 +100,8 @@ Live wherever the installation scrapes the port. A scrape is plain HTTP — the 
 and the chart's `ServiceMonitor` and `PodMonitor` name no scheme of their own —, and what it carries
 lives on in the monitoring for as long as its retention: every user who may query Prometheus, every
 target it writes to remotely, the chart's Grafana dashboard, whose consistency panels show the counts
-and the time since the last export by tenant id, and the receivers of Alertmanager, since `CoworkAttachmentsOutOfStep` and
-`CoworkExportOverdue` carry the tenant id in their labels ([`prometheusrule.yaml`](../../deploy/helm/cowork/templates/prometheusrule.yaml)).
+and the time since the last export by team id, and the receivers of Alertmanager, since `CoworkAttachmentsOutOfStep` and
+`CoworkExportOverdue` carry the team's id in their labels, as `tenant` in this release ([`prometheusrule.yaml`](../../deploy/helm/cowork/templates/prometheusrule.yaml)).
 That is the activity of [H-63](#h-63), kept and passed on beyond the cluster's network. Mitigation:
 treat the monitoring as reading the installation's activity, keep its users and its remote targets to
 those who may, and put the scrape on a network path a policy of the cluster's keeps to the monitoring

@@ -6,7 +6,7 @@ import { TicketType } from '../models/ticket-type';
 export interface DashboardRecent {
 
   /**
-   * The canonical key, <tenant>/<PROJECT>-<number>
+   * The canonical key, <team>/<PROJECT>-<number>
    */
   key: string;
   state: TicketState;

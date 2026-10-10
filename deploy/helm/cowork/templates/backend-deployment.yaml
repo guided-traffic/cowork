@@ -168,14 +168,26 @@ spec:
             - name: COWORK_OIDC_DISPLAY_NAME
               value: {{ .Values.auth.oidc.displayName | quote }}
             {{- end }}
-            {{- if or .Values.bootstrap.tenant.slug .Values.bootstrap.tenant.name }}
+            {{- /*
+            The bootstrap team and the attachment quota go out under their names
+            and, with the same value, under their names before (docs/adr/0005
+            D1): rolling back is rolling the image back under this chart
+            (docs/adr/0028 D4), and the image of the release before reads only
+            the names before. The contract release stops rendering them.
+            */}}
+            {{- $bootstrap := include "cowork.bootstrapTeam" . | fromYaml }}
+            {{- if or $bootstrap.slug $bootstrap.name }}
             {{- if not (or (include "cowork.localAdminEnabled" .) (and (include "cowork.oidcEnabled" .) .Values.auth.oidc.adminGroup)) }}
-            {{- fail "bootstrap.tenant needs a first administrator (docs/adr/0032 D6, D7): set localAdmin, or auth.oidc with auth.oidc.adminGroup" }}
+            {{- fail "bootstrap.team needs a first administrator (docs/adr/0032 D6, D7): set localAdmin, or auth.oidc with auth.oidc.adminGroup" }}
             {{- end }}
+            - name: COWORK_BOOTSTRAP_TEAM_SLUG
+              value: {{ required "set bootstrap.team.slug and bootstrap.team.name together" $bootstrap.slug | quote }}
             - name: COWORK_BOOTSTRAP_TENANT_SLUG
-              value: {{ required "set bootstrap.tenant.slug and bootstrap.tenant.name together" .Values.bootstrap.tenant.slug | quote }}
+              value: {{ $bootstrap.slug | quote }}
+            - name: COWORK_BOOTSTRAP_TEAM_NAME
+              value: {{ required "set bootstrap.team.slug and bootstrap.team.name together" $bootstrap.name | quote }}
             - name: COWORK_BOOTSTRAP_TENANT_NAME
-              value: {{ required "set bootstrap.tenant.slug and bootstrap.tenant.name together" .Values.bootstrap.tenant.name | quote }}
+              value: {{ $bootstrap.name | quote }}
             {{- end }}
             - name: COWORK_MAX_JSON_BODY
               value: {{ .Values.backend.config.maxJsonBody | int64 | toString | quote }}
@@ -183,8 +195,11 @@ spec:
               value: {{ .Values.backend.config.attachmentMaxBytes | int64 | toString | quote }}
             - name: COWORK_ATTACHMENT_MAX_PER_TICKET
               value: {{ .Values.backend.config.attachmentMaxPerTicket | int64 | toString | quote }}
+            {{- $quota := include "cowork.attachmentTeamQuota" . }}
+            - name: COWORK_ATTACHMENT_TEAM_QUOTA
+              value: {{ $quota | quote }}
             - name: COWORK_ATTACHMENT_TENANT_QUOTA
-              value: {{ .Values.backend.config.attachmentTenantQuota | int64 | toString | quote }}
+              value: {{ $quota | quote }}
             - name: COWORK_MAX_IMPORT_BYTES
               value: {{ .Values.backend.config.maxImportBytes | int64 | toString | quote }}
             - name: COWORK_REQUEST_TIMEOUT

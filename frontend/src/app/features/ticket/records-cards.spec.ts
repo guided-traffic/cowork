@@ -40,7 +40,7 @@ function attachment(overrides: Partial<Attachment> = {}): Attachment {
     id: 'f-1',
     file_name: 'screenshot.png',
     content_type: 'image/png',
-    content_url: '/api/v1/tenants/acme/projects/COW/tickets/12/attachments/f-1/content',
+    content_url: '/api/v1/teams/acme/projects/COW/tickets/12/attachments/f-1/content',
     sha256: 'ab12cd34',
     size: 2048,
     uploaded_by: ada,
@@ -223,7 +223,7 @@ describe('record cards', () => {
         const link = first?.querySelector('a');
         expect(link?.textContent).toBe('screenshot.png');
         expect(link?.getAttribute('href')).toBe(
-          '/api/v1/tenants/acme/projects/COW/tickets/12/attachments/f-1/content',
+          '/api/v1/teams/acme/projects/COW/tickets/12/attachments/f-1/content',
         );
         expect(link?.getAttribute('target')).toBe('_blank');
         expect(link?.getAttribute('rel')).toBe('noopener');
@@ -936,7 +936,7 @@ describe('record cards', () => {
       const fixture = await render(AttachmentsCard);
 
       expect(el(fixture, 'attachment-f-1')?.querySelector('img')?.getAttribute('src')).toBe(
-        '/api/v1/tenants/acme/projects/COW/tickets/12/attachments/f-1/content',
+        '/api/v1/teams/acme/projects/COW/tickets/12/attachments/f-1/content',
       );
       expect(el(fixture, 'attachment-f-2')?.querySelector('img')).toBeNull();
       expect(fixture.debugElement.queryAll(By.directive(FilePreview))).toHaveLength(2);

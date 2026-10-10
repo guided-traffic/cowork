@@ -12,9 +12,9 @@ import { Attachment } from '../../models/attachment';
 export interface UploadAttachment$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -46,7 +46,7 @@ export interface UploadAttachment$Params {
 export function uploadAttachment(http: HttpClient, rootUrl: string, params: UploadAttachment$Params, context?: HttpContext): Observable<StrictHttpResponse<Attachment>> {
   const rb = new RequestBuilder(rootUrl, uploadAttachment.PATH, 'post');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.header('Idempotency-Key', params['Idempotency-Key'], {});
@@ -63,4 +63,4 @@ export function uploadAttachment(http: HttpClient, rootUrl: string, params: Uplo
   );
 }
 
-uploadAttachment.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments';
+uploadAttachment.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/attachments';

@@ -12,7 +12,7 @@
 #
 # The four users share the password dev-only-dex. What each is to cowork under make dev's
 # configuration (COWORK_OIDC_ALLOWED_GROUPS=cowork-users, COWORK_ADMIN_GROUP=cowork-admins, and
-# the demo data's group mapping team-red -> member in the tenant dev):
+# the demo data's group mapping team-red -> member in the team dev):
 #
 #   ada@example.com  cowork-admins, cowork-users  a global administrator, by the administrator group
 #   bob@example.com  cowork-users, team-red       behind the gate, a member of dev by the mapping

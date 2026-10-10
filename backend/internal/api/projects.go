@@ -49,7 +49,7 @@ func wipJSON(w *apigen.WipLimits) []byte {
 var edit = auth.Need{Role: domain.RoleMember, Scope: domain.ScopeWrite}
 
 func projectURL(t tenantScope, key string) string {
-	return "/api/v1/tenants/" + t.Slug + "/projects/" + key
+	return teamFamily + "/" + t.Slug + "/projects/" + key
 }
 
 // ListProjects lists the projects the caller can see, by key: a restricted
@@ -180,7 +180,7 @@ func insertProject(ctx context.Context, w *store.Writer, t tenantScope, body api
 		return err
 	}
 	if taken {
-		return &problem.Error{Code: problem.ProjectKeyTaken, Detail: "the tenant has a project with this key",
+		return &problem.Error{Code: problem.ProjectKeyTaken, Detail: "the team has a project with this key",
 			Errors: []problem.FieldError{{Pointer: "/key", Message: "taken"}}}
 	}
 	description := ""

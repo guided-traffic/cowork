@@ -5,9 +5,21 @@ pods and links its section of docs/operations/metrics.md at the version the
 chart installs. The consistency check's alert waits the restore window, a
 value: a restore leaves the counts above zero until it is settled
 (docs/adr/0059 D5). The export's alert fires after exportMaxAgeDays, a value:
-how often a tenant is exported is the installation's schedule (docs/adr/0059
+how often a team is exported is the installation's schedule (docs/adr/0059
 D2). A release upgraded with --reuse-values from a chart without the value
 gets its default, 7. Needs the Prometheus Operator's CRDs.
+
+The two alerts on a team aggregate by the label tenant, as the release before
+did, and name the team's id by it, while their texts say team
+(docs/adr/0005 D1). The metrics carry team beside tenant for one release, for
+the operators' own dashboards and alerts, but this chart keeps tenant: an image
+rollback under it runs the release before, whose metrics carry tenant alone,
+so only tenant keeps one alert per team through the rollback window; and an
+alert's own label team would collide with a routing label of that name —
+alertLabels, which wins, shows team as its example —, two teams' alerts would
+share one label set, and Prometheus refuses such an evaluation. The contract
+release moves these alerts to the team's label under a name no routing label
+collides with, cowork_team through label_replace, not to team.
 */}}
 {{- if $metrics.prometheusRule.enabled }}
 {{- if not (include "cowork.metricsEnabled" .) }}
@@ -18,7 +30,7 @@ gets its default, 7. Needs the Prometheus Operator's CRDs.
 {{- $exportDays = $metrics.prometheusRule.exportMaxAgeDays }}
 {{- end }}
 {{- if not (and (has (kindOf $exportDays) (list "int" "int64" "float64")) (ge (float64 $exportDays) 1.0) (eq (float64 $exportDays) (float64 (int64 $exportDays)))) }}
-{{- fail "metrics.prometheusRule.exportMaxAgeDays must be a whole number of days, 1 or more: how long a tenant may go without an export before CoworkExportOverdue fires" }}
+{{- fail "metrics.prometheusRule.exportMaxAgeDays must be a whole number of days, 1 or more: how long a team may go without an export before CoworkExportOverdue fires" }}
 {{- end }}
 {{- $exportDays = int64 $exportDays }}
 {{- $sel := printf "namespace=%q,pod=~%q" .Release.Namespace (printf "%s-.*" (include "cowork.backend.fullname" .)) }}
@@ -90,8 +102,8 @@ spec:
           labels:
             {{- include "cowork.alertLabels" (dict "root" . "severity" "warning") | nindent 12 }}
           annotations:
-            summary: The attachments of a cowork tenant are out of step with the bucket.
-            description: {{ quote `The latest consistency check of the tenant with the id {{ $labels.tenant }} in {{ $labels.namespace }} found {{ $value }} files whose bytes are missing or objects no file names, and they have stayed for longer than the restore window. Its administrators see the lists on its settings page.` }}
+            summary: The attachments of a cowork team are out of step with the bucket.
+            description: {{ quote `The latest consistency check of the team with the id {{ $labels.tenant }} in {{ $labels.namespace }} found {{ $value }} files whose bytes are missing or objects no file names, and they have stayed for longer than the restore window. Its administrators see the lists on its settings page.` }}
             runbook_url: {{ $runbook }}#coworkattachmentsoutofstep
         - alert: CoworkExportOverdue
           expr: |-
@@ -99,7 +111,7 @@ spec:
           labels:
             {{- include "cowork.alertLabels" (dict "root" . "severity" "warning") | nindent 12 }}
           annotations:
-            summary: A cowork tenant has not been exported for longer than its schedule allows.
-            description: {{ quote (printf `Neither the tenant with the id {{ $labels.tenant }} in {{ $labels.namespace }} nor a project of it has been exported for {{ $value | humanizeDuration }}, longer than %d days, or the tenant was never exported since it was made: the export, the second line of its backup, is not running.` $exportDays) }}
+            summary: A cowork team has not been exported for longer than its schedule allows.
+            description: {{ quote (printf `Neither the team with the id {{ $labels.tenant }} in {{ $labels.namespace }} nor a project of it has been exported for {{ $value | humanizeDuration }}, longer than %d days, or the team was never exported since it was made: the export, the second line of its backup, is not running.` $exportDays) }}
             runbook_url: {{ $runbook }}#coworkexportoverdue
 {{- end }}

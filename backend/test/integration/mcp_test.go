@@ -140,10 +140,15 @@ func TestTheMCPServerRunsTheWorkingDay(t *testing.T) {
 
 	start := mustCall(t, cs, "session_start", nil)
 	assert.Contains(t, start, "this repository is bound to no project")
-	assert.Contains(t, start, fmt.Sprintf("`%s/VO`", e.SlugA), "the key from the repository's name, in the person's only tenant")
+	assert.Contains(t, start, fmt.Sprintf("`%s/VO`", e.SlugA), "the key from the repository's name, in the person's only team")
+	assert.Contains(t, start, fmt.Sprintf("`create_project(team: %q, key: \"VO\"", e.SlugA))
+	assert.NotContains(t, strings.ToLower(strings.ReplaceAll(start, e.SlugA, "")), "tenant", "the agent reads team (docs/adr/0005 D1)")
 
-	created := mustCall(t, cs, "create_project", map[string]any{"tenant": e.SlugA, "key": "VO", "name": "valkey-operator", "remote": e.remote})
+	created := mustCall(t, cs, "create_project", map[string]any{"team": e.SlugA, "key": "VO", "name": "valkey-operator", "remote": e.remote})
 	assert.Contains(t, created, "Created the project "+e.SlugA+"/VO")
+	// The argument's name before is still taken for one release, as team.
+	again := mustCall(t, cs, "create_project", map[string]any{"tenant": e.SlugA, "key": "VO", "name": "valkey-operator", "remote": e.remote})
+	assert.Contains(t, again, "The repository is bound already, to "+e.SlugA+"/VO")
 	start = mustCall(t, cs, "session_start", nil)
 	assert.Contains(t, start, "# cowork: "+e.SlugA+"/VO — valkey-operator")
 	assert.Contains(t, start, "No ticket of yours is in progress")
@@ -256,28 +261,30 @@ func TestTheToolsNeverDeleteAndMissADeletedTicket(t *testing.T) {
 	e := newMCPEnv(t)
 	cs := e.serve(t, e.tk.AdminA)
 	created, err := e.s.client(t, caller{Token: e.tk.MemberA}).CreateTicketWithResponse(e.ctx, e.SlugA, "ALPHA",
-		&apigen.CreateTicketParams{}, task("Pasted into the wrong tenant"))
+		&apigen.CreateTicketParams{}, task("Pasted into the wrong team"))
 	require.NoError(t, err)
 	n := created.JSON201.Number
 	key := fmt.Sprintf("%s/ALPHA-%d", e.SlugA, n)
-	path := fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/tickets/%d", e.SlugA, n)
-
-	refused, isError := callTool(t, cs, "api", map[string]any{"method": "DELETE", "path": path})
-	assert.True(t, isError)
-	assert.Contains(t, refused, "403")
-	assert.Contains(t, refused, "hard-off: deleting, restoring or purging")
-	assert.Contains(t, mustCall(t, cs, "get_ticket", map[string]any{"key": key}), "Pasted into the wrong tenant", "nothing was deleted")
+	// The team's path and its deprecated twin, which the server answers as
+	// the team's for one release (docs/adr/0005 D1), under the same rules.
+	for _, family := range []string{"teams", "tenants"} {
+		path := fmt.Sprintf("/api/v1/%s/%s/projects/ALPHA/tickets/%d", family, e.SlugA, n)
+		refused, isError := callTool(t, cs, "api", map[string]any{"method": "DELETE", "path": path})
+		assert.True(t, isError, path)
+		assert.Contains(t, refused, "403", path)
+		assert.Contains(t, refused, "hard-off: deleting, restoring or purging", path)
+	}
+	assert.Contains(t, mustCall(t, cs, "get_ticket", map[string]any{"key": key}), "Pasted into the wrong team", "nothing was deleted")
 
 	res, err := e.s.client(t, caller{Token: e.tk.AdminA}).DeleteTicketWithResponse(e.ctx, e.SlugA, "ALPHA", n)
 	require.NoError(t, err)
 	require.Equal(t, 204, res.StatusCode(), string(res.Body))
-	var missing string
-	missing, isError = callTool(t, cs, "get_ticket", map[string]any{"key": key})
+	missing, isError := callTool(t, cs, "get_ticket", map[string]any{"key": key})
 	assert.True(t, isError)
 	assert.Contains(t, missing, "404")
-	assert.NotContains(t, missing, "Pasted into the wrong tenant")
-	assert.NotContains(t, mustCall(t, cs, "search", map[string]any{"query": "wrong tenant"}), key)
-	inBin := fmt.Sprintf("/api/v1/tenants/%s/deleted-tickets/ALPHA-%d", e.SlugA, n)
+	assert.NotContains(t, missing, "Pasted into the wrong team")
+	assert.NotContains(t, mustCall(t, cs, "search", map[string]any{"query": "wrong team"}), key)
+	inBin := fmt.Sprintf("/api/v1/teams/%s/deleted-tickets/ALPHA-%d", e.SlugA, n)
 	answer, isError := callTool(t, cs, "api", map[string]any{"method": "PUT", "path": inBin + "/restore"})
 	assert.True(t, isError)
 	assert.Contains(t, answer, "hard-off: deleting, restoring or purging", "an agent restores nothing")
@@ -309,6 +316,21 @@ func TestTheSubcommands(t *testing.T) {
 	code, stdout = e.run(t, token, "", "lookup")
 	assert.Equal(t, 0, code)
 	assert.Contains(t, stdout, "Bound to "+e.SlugA+"/ALPHA (Alpha) by the remote github.com/"+e.SlugA+"/valkey-operator.")
+	// lookup --json names the team under Team and, for one release, under
+	// Tenant, the key it printed before (docs/adr/0005 D1).
+	code, stdout = e.run(t, token, "", "lookup", "--json")
+	assert.Equal(t, 0, code)
+	var boundReport struct {
+		Binding map[string]any `json:"binding"`
+		Lookup  struct {
+			Bindings []map[string]any `json:"bindings"`
+		} `json:"lookup"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &boundReport), stdout)
+	assert.Equal(t, e.SlugA, boundReport.Binding["Team"])
+	assert.Equal(t, e.SlugA, boundReport.Binding["Tenant"])
+	require.Len(t, boundReport.Lookup.Bindings, 1)
+	assert.Equal(t, boundReport.Lookup.Bindings[0]["team"], boundReport.Lookup.Bindings[0]["tenant"])
 
 	member := e.s.client(t, caller{Token: e.tk.MemberA})
 	created, err := member.CreateTicketWithResponse(e.ctx, e.SlugA, "ALPHA", &apigen.CreateTicketParams{}, task("Hooked", func(b *apigen.TicketCreate) {
@@ -365,6 +387,21 @@ func TestTheSubcommands(t *testing.T) {
 	assert.Equal(t, 0, code, "a hook never fails the session")
 	assert.Contains(t, stdout, "make a new one on "+e.s.URL+"/me/tokens")
 	assert.NotContains(t, stdout, revoked)
+
+	// token check names the restriction's team, and --json under team and,
+	// for one release, under tenant, the key it printed before
+	// (docs/adr/0005 D1).
+	restricted, _, err := fixtures(t).Token(e.ctx, fixture.TokenSpec{UserID: e.MemberA, Agent: true, TenantID: e.A})
+	require.NoError(t, err)
+	code, stdout = e.run(t, restricted, "", "token", "check")
+	assert.Equal(t, 0, code, stdout)
+	assert.Contains(t, stdout, "Restriction:   the team "+e.SlugA)
+	code, stdout = e.run(t, restricted, "", "token", "check", "--json")
+	assert.Equal(t, 0, code, stdout)
+	var tokenReport map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &tokenReport), stdout)
+	assert.Equal(t, e.SlugA, tokenReport["team"])
+	assert.Equal(t, e.SlugA, tokenReport["tenant"])
 }
 
 // docs/adr/0070 D6: the subcommands by running the binary, as a person and
@@ -559,7 +596,7 @@ func TestTheExportSubcommand(t *testing.T) {
 	code, _ = e.run(t, e.tk.MemberA, "", "export", e.SlugA+"/ALPHA", target)
 	assert.Equal(t, 1, code, "never into a directory that is not empty")
 	code, _ = e.run(t, e.tk.MemberB, "", "export", e.SlugA+"/ALPHA", filepath.Join(t.TempDir(), "other"))
-	assert.Equal(t, 1, code, "another tenant's project is not_found")
+	assert.Equal(t, 1, code, "another team's project is not_found")
 	code, _ = e.run(t, e.tk.MemberA, "", "export", "ALPHA", filepath.Join(t.TempDir(), "usage"))
 	assert.Equal(t, 2, code)
 }

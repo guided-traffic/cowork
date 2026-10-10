@@ -191,7 +191,7 @@ export class Shell {
   );
   protected readonly searchLabel = computed(() => {
     const tenant = this.searchTenant();
-    return tenant ? `Search ${this.session.shown()?.name ?? tenant}` : 'Search all your tenants';
+    return tenant ? `Search ${this.session.shown()?.name ?? tenant}` : 'Search all your teams';
   });
 
   private readonly auth = inject(AuthService);
@@ -219,7 +219,7 @@ export class Shell {
     // The person-level stream follows the tenant the pages show; on the person-level pages, and
     // wherever no tenant is shown, it is held on the person's first tenant, so that the bell and the
     // person-level lists are live everywhere (docs/adr/0054 D1).
-    effect(() => this.stream.personal(this.session.memberships()[0]?.tenant.slug ?? null));
+    effect(() => this.stream.personal(this.session.memberships()[0]?.team.slug ?? null));
     // A temporary password allows nothing but changing it (docs/adr/0033 D4): the shell does not
     // show pages the backend would refuse, it goes to the password page first.
     effect(() => {

@@ -87,7 +87,7 @@ sub-directory, the nearest `.cowork.yaml`, and for the Stop hook `git log` and `
   the lookup, and normalises every remote to its identity, `host/path` (ADR 0066 D1).
 - **The sub-directory** of the working directory relative to the repository's root, for a
   monorepo's bindings.
-- **What a `.cowork.yaml` names**: its tenant and project, which the client reads the project by,
+- **What a `.cowork.yaml` names**: its team and project, which the client reads the project by,
   and its path, which the lookup carries ([`tools.Resolve`](../../backend/internal/tools/binding.go)).
 
 Nothing else: no file names, no contents, no commit messages. Whether the repository shows work
@@ -99,15 +99,15 @@ of cowork's into the model's context
 
 ## What the server answers about repositories
 
-The lookup searches every tenant of the person — of a token restricted to a tenant, that tenant
+The lookup searches every team of the person — of a token restricted to a team, that team
 only — and finds bindings only of projects the caller sees, through the project predicate
 ([`queries/read/repositories.sql`](../../backend/internal/store/queries/read/repositories.sql)):
 a restricted project's binding does not exist for a person off its list
-(`TestLookingUpARepository`). A proposal offers only the tenants where the caller may create a
-project, and the key it proposes is free in each: that says whether a key is taken in a tenant
+(`TestLookingUpARepository`). A proposal offers only the teams where the caller may create a
+project, and the key it proposes is free in each: that says whether a key is taken in a team
 where the caller may create projects anyway, as creating one with that key would
 ([`api/repositories.go`](../../backend/internal/api/repositories.go) `propose`). Binding a
-repository another project of the tenant holds is `409 repository_bound`, naming that project
+repository another project of the team holds is `409 repository_bound`, naming that project
 only to a caller who sees it.
 
 ## The text a model reads
@@ -133,7 +133,7 @@ environment, where other processes of the same user can read it — on Linux in
 sends no request and only checks the token's form: Claude Code exports every option of the
 plugin to each of its hook processes, and the hook command copies it into `COWORK_TOKEN`. The
 credential store keeps it at rest; the environment is the exposure while a session runs. Mitigation: an
-agent token restricted to the tenant or the project the work needs, the default lifetime, and
+agent token restricted to the team or the project the work needs, the default lifetime, and
 revocation on the token page when a machine is in doubt.
 
 <a id="h-34"></a>

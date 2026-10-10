@@ -33,16 +33,19 @@ const person = (admin = true): Me => ({
   password_change_required: false,
   memberships: [
     {
+      team: { slug: 'acme', name: 'Acme' },
       tenant: { slug: 'acme', name: 'Acme' },
       role: admin ? 'admin' : 'member',
       origins: [{ source: 'grant', role: admin ? 'admin' : 'member' }],
     },
     {
+      team: { slug: 'globex', name: 'Globex' },
       tenant: { slug: 'globex', name: 'Globex' },
       role: 'admin',
       origins: [{ source: 'grant', role: 'admin' }],
     },
     {
+      team: { slug: 'initech', name: 'Initech' },
       tenant: { slug: 'initech', name: 'Initech' },
       role: 'viewer',
       origins: [{ source: 'grant', role: 'viewer' }],
@@ -50,8 +53,8 @@ const person = (admin = true): Me => ({
   ],
 });
 
-const listUrl = '/api/v1/tenants/acme/accounts';
-const membersUrl = /^\/api\/v1\/tenants\/[^/]+\/members$/;
+const listUrl = '/api/v1/teams/acme/accounts';
+const membersUrl = /^\/api\/v1\/teams\/[^/]+\/members$/;
 
 const rejection = (promise: Promise<unknown>) =>
   promise.then(
@@ -81,7 +84,7 @@ describe('AccountsService', () => {
     http.expectOne(
       (request) =>
         request.method === 'GET' &&
-        request.url === `/api/v1/tenants/${tenant}/accounts` &&
+        request.url === `/api/v1/teams/${tenant}/accounts` &&
         request.params.get('cursor') === cursor,
     );
   /** The page that the loader asks for once the previous one was taken, which is a promise away. */
@@ -91,7 +94,7 @@ describe('AccountsService', () => {
   };
   const noLoad = (tenant = 'acme') =>
     http.expectNone(
-      (request) => request.method === 'GET' && request.url === `/api/v1/tenants/${tenant}/accounts`,
+      (request) => request.method === 'GET' && request.url === `/api/v1/teams/${tenant}/accounts`,
     );
 
   async function start(me: Me = person()) {
@@ -146,7 +149,7 @@ describe('AccountsService', () => {
       it('asks for the first page, 200 at a time, at /api/v1 without a doubled slash', async () => {
         const first = page('acme');
 
-        expect(first.request.url).toBe('/api/v1/tenants/acme/accounts');
+        expect(first.request.url).toBe('/api/v1/teams/acme/accounts');
         expect(first.request.params.get('limit')).toBe('200');
         first.flush(pageOf([], null));
         await settle();
@@ -345,7 +348,7 @@ describe('AccountsService', () => {
       });
       const membersGet = () =>
         http.expectOne(
-          (request) => request.method === 'GET' && request.url === '/api/v1/tenants/acme/members',
+          (request) => request.method === 'GET' && request.url === '/api/v1/teams/acme/members',
         );
 
       it('posts the account to the accounts of the tenant and hands back the one that was made', async () => {
@@ -417,7 +420,7 @@ describe('AccountsService', () => {
         await settle();
 
         const done = service.create(body, key);
-        write('POST', '/api/v1/tenants/globex/accounts').flush(account('sam'));
+        write('POST', '/api/v1/teams/globex/accounts').flush(account('sam'));
         await done;
 
         await flushMembers();
@@ -613,7 +616,7 @@ describe('AccountsService', () => {
         await settle();
 
         const done = run(service);
-        write(method, `/api/v1/tenants/globex/accounts/sam/${path}`).flush(null, noContent);
+        write(method, `/api/v1/teams/globex/accounts/sam/${path}`).flush(null, noContent);
         await done;
 
         await settle();

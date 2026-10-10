@@ -29,13 +29,21 @@ export interface TokenCreate {
   name: string;
 
   /**
-   * The key of the project of that tenant the token is restricted to; needs `tenant`
+   * The key of the project of that team the token is restricted to; needs `team` or the deprecated `tenant`
    */
   project?: string;
   scope: Scope;
 
   /**
-   * The slug of the tenant the token is restricted to
+   * The slug of the team the token is restricted to
+   */
+  team?: string;
+
+  /**
+   * Deprecated, replaced by `team`, which it means; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7). Beside `team` it must name the
+   * same slug (`400 validation_failed` at `/team`)
+   *
+   * @deprecated
    */
   tenant?: string;
 }

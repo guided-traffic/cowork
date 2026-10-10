@@ -45,11 +45,15 @@ variable joins the table; D3: the controller's body limit covers its upload), bu
 ([`config.go`](../../backend/internal/config/config.go), `limitBody` in
 [`validate.go`](../../backend/internal/api/validate.go), the chart's `cowork.ingressBodySize`). Fixed,
 not configured: at most 10,000 files an upload (`importer.MaxFiles`) and one import at a time per
-replica, a dry run or an execution (`importSlot` in
+replica, a dry run or an execution (~~`importSlot`~~ `slot` *(corrected 2026-10-10)* in
 [`imports.go`](../../backend/internal/api/imports.go)); both bound what one request holds in memory,
 neither is a budget, and D1 stands. Amended 2026-10-09 (D2: the body limit is the operation's, as
 the API document declares its body, and a body of a type the operation does not declare is `415`
-before it is read).
+before it is read). Amended 2026-10-10 by the owner's rename of a tenant to a team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1; D2: the quota's
+variable is `COWORK_ATTACHMENT_TEAM_QUOTA`, its name before still read for one release, as
+[ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
+D6 says; built the same day), and the name of the import's slot corrected, `slot` (no rule changes).
 
 ## Context
 
@@ -76,7 +80,7 @@ not guessed.
 |---|---|---|
 | `COWORK_MAX_JSON_BODY` | `1MiB` | `413` with a JSON error |
 | `COWORK_ATTACHMENT_MAX_BYTES` | `10MiB` ([ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md) D6) | `413` before bytes are stored |
-| `COWORK_ATTACHMENT_TENANT_QUOTA` *(added 2026-10-05)* | `0`, none (ADR 0016 D6) | `409 attachment_quota` before bytes are stored |
+| ~~`COWORK_ATTACHMENT_TENANT_QUOTA`~~ `COWORK_ATTACHMENT_TEAM_QUOTA` *(added 2026-10-05; renamed 2026-10-10, the name before read for one release)* | `0`, none (ADR 0016 D6) | `409 attachment_quota` before bytes are stored |
 | `COWORK_MAX_IMPORT_BYTES` *(added 2026-10-06)* | `50MiB` ([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D7) | `413` — an import's upload whose body, or whose files together, are larger; the dry run stores nothing |
 | `COWORK_REQUEST_TIMEOUT` | `30s` | the handler's context is cancelled; `504` with a JSON error |
 | `COWORK_MAX_PAGE_SIZE` | `200` | a larger `limit` is clamped, not refused |

@@ -74,7 +74,7 @@ describe('MembersService', () => {
   const page = (tenant: string, cursor: string | null = null) =>
     http.expectOne(
       (request) =>
-        request.url === `/api/v1/tenants/${tenant}/members` &&
+        request.url === `/api/v1/teams/${tenant}/members` &&
         request.params.get('cursor') === cursor,
     );
   /** The page that the loader asks for once the previous one was taken, which is a promise away. */
@@ -128,7 +128,7 @@ describe('MembersService', () => {
       const first = page('acme');
 
       expect(first.request.method).toBe('GET');
-      expect(first.request.url).toBe('/api/v1/tenants/acme/members');
+      expect(first.request.url).toBe('/api/v1/teams/acme/members');
       expect(first.request.params.get('limit')).toBe('200');
       first.flush(pageOf([], null));
       await settle();
@@ -215,7 +215,7 @@ describe('MembersService', () => {
       const numbered = (number: string) =>
         http.expectOne(
           (request) =>
-            request.url === '/api/v1/tenants/acme/members' &&
+            request.url === '/api/v1/teams/acme/members' &&
             request.params.get('page') === number,
         );
 
@@ -297,7 +297,7 @@ describe('MembersService', () => {
       stream.next({ name: 'membership.changed', id: 'e1', tenant: 'beta', personId: 'p9' });
       await settle();
 
-      http.expectNone((request) => request.url === '/api/v1/tenants/acme/members');
+      http.expectNone((request) => request.url === '/api/v1/teams/acme/members');
       http.expectNone('/api/v1/me');
     });
 
@@ -324,7 +324,7 @@ describe('MembersService', () => {
       stream.next({ name: 'ticket.changed', id: 'e1', key: 'acme/VKO-1', version: 2, kind: 'x' });
       await settle();
 
-      http.expectNone((request) => request.url === '/api/v1/tenants/acme/members');
+      http.expectNone((request) => request.url === '/api/v1/teams/acme/members');
     });
 
     it.each([0, 500, 503])(
@@ -359,7 +359,7 @@ describe('MembersService', () => {
   });
 
   describe('the grants (docs/adr/0030 D3)', () => {
-    const membersUrl = '/api/v1/tenants/acme/members';
+    const membersUrl = '/api/v1/teams/acme/members';
     const grantUrl = (name: string) => `${membersUrl}/${idOf(name)}/grant`;
     const write = (method: string, url: string) =>
       http.expectOne((request) => request.method === method && request.url === url);

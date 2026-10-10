@@ -13,9 +13,9 @@ import { InterestSet } from '../../models/interest-set';
 export interface SetInterest$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -32,7 +32,7 @@ export interface SetInterest$Params {
 export function setInterest(http: HttpClient, rootUrl: string, params: SetInterest$Params, context?: HttpContext): Observable<StrictHttpResponse<Interest>> {
   const rb = new RequestBuilder(rootUrl, setInterest.PATH, 'put');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.body(params.body, 'application/json');
@@ -48,4 +48,4 @@ export function setInterest(http: HttpClient, rootUrl: string, params: SetIntere
   );
 }
 
-setInterest.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest';
+setInterest.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/interest';

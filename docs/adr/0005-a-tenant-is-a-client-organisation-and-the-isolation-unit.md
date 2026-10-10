@@ -12,7 +12,7 @@ path and in row-level security, memberships (migration 2), nothing crossing the 
 and parents by composite keys), the slug immutable and the name editable.
 
 **Built** (phase 3, 2026-10-03): D5's creation — `POST /api/v1/tenants`
-([`api/tenants.go`](../../backend/internal/api/tenants.go) `CreateTenant`), and the bootstrap
+([`api/tenants.go`](../../backend/internal/api/tenants.go) ~~`CreateTenant`~~ `CreateTeam` *(2026-10-10)*), and the bootstrap
 tenant of [ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
 D6. Until the identity provider exists a global administrator is the one local administrator
 the configuration names: `users.global_admin` is set by the start-up synchronisation, by no route,
@@ -41,7 +41,41 @@ a ticket of one can need a change in the other. D1 is restated for it and names 
 one crossing, the relation between tickets of two teams, read as the other ticket's head; D6 and the
 *Consequences* lose the tenant switcher to the sidebar of
 [ADR 0023](0023-the-tenant-is-in-the-path.md) D4. The rules this replaces are marked in place.
-Nothing of the amendment is built.
+~~Nothing of the amendment is built.~~ *(2026-10-10:)* D1's expand is built, below; the contract of
+D1, D3's crossing and D6's sidebar are not.
+
+**Built** (2026-10-10): D1's expand. Every surface says team, and each name before stays readable
+for one release, deprecated, behaving as it did: the API's team family, `/api/v1/teams` and
+`/api/v1/teams/{team}/…`, the family before served as deprecated twins that the bundler writes and
+the server answers as the team paths ([ADR 0023](0023-the-tenant-is-in-the-path.md) D1,
+[ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D7); the query parameter `team`
+beside `tenant`, the properties `team`, `teams` and `restricted_team` beside the old ones,
+`group_by=team` beside `tenant`, and the schemas, operations and problem texts of a team;
+`cowork-mcp`'s tools — `create_project`'s `team`, `search`'s scope `team` — and its JSON output, the
+team under both keys ([ADR 0042](0042-twelve-workflow-tools-and-one-escape-hatch.md) D2); the
+configuration's `COWORK_BOOTSTRAP_TEAM_SLUG`, `COWORK_BOOTSTRAP_TEAM_NAME` and
+`COWORK_ATTACHMENT_TEAM_QUOTA` and the chart's `bootstrap.team.*` and
+`backend.config.attachmentTeamQuota`, the names before still read
+([ADR 0032](0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
+D6, [ADR 0016](0016-attachments-live-in-s3-compatible-storage-and-are-served-only-through-the-backend.md)
+D6); the metrics' label `team` beside `tenant`
+([ADR 0060](0060-prometheus-metrics-on-a-second-listener-with-servicemonitor-and-prometheusrule.md)
+D5); the membership event's `team` beside `tenant`
+([ADR 0054](0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
+D1); the export's manifest with `team` and `tenant`, an archive's `tenant` read for good
+([ADR 0051](0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md) D4);
+`.cowork.yaml`'s `team`
+([ADR 0066](0066-repositories-are-bound-by-their-normalised-remote-identity-creation-proposed-by-the-agent-confirmed-by-the-person.md)
+D4); the UI, whose route `/t/{slug}` keeps its path; and the documentation
+([docs/developer/api.md](../developer/api.md#deprecated-names)). What keeps the word, because one
+field cannot carry the new name beside it or because it is stored — made concrete by the
+implementer, open to the owner's objection —: the problem code
+`tenant_slug_taken`, whose title says "Team slug taken"; a repository proposal's reason
+`only-tenant`; the audit record's `entity_type` `tenant` and its payload key `tenant`; a local
+account's origin `tenant`; and the database's names — the UI labels each a team. Not built: the
+contract — the twins, the old parameters, properties, arguments, keys, variables, values and the
+metrics' old label removed —, which a later release does once no supported client reads them;
+until 1.0 no commit carries a breaking mark ([ADR 0003](0003-test-and-ci-policy.md) D9).
 
 ## Context
 
@@ -57,7 +91,7 @@ on the people who have one tenant.
 ## Decision
 
 **D1 — ~~A tenant is a client or an organisation, and it is the unit of isolation.~~** *(Amended
-2026-10-10 by the owner, not built:)* **An installation is an organisation's; a tenant is a team
+2026-10-10 by the owner, ~~not built~~ its expand built 2026-10-10, the contract outstanding:)* **An installation is an organisation's; a tenant is a team
 inside it, and it is the unit of isolation between teams.** The isolation between organisations is
 the installation. Every surface a person, an agent or an operator reads calls a tenant a **team** —
 the UI, the API's paths, parameters, properties and problem texts, `cowork-mcp` and its plugin, the

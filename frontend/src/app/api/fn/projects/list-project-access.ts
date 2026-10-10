@@ -12,9 +12,9 @@ import { ProjectAccessList } from '../../models/project-access-list';
 export interface ListProjectAccess$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -40,7 +40,7 @@ export interface ListProjectAccess$Params {
 export function listProjectAccess(http: HttpClient, rootUrl: string, params: ListProjectAccess$Params, context?: HttpContext): Observable<StrictHttpResponse<ProjectAccessList>> {
   const rb = new RequestBuilder(rootUrl, listProjectAccess.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
@@ -57,4 +57,4 @@ export function listProjectAccess(http: HttpClient, rootUrl: string, params: Lis
   );
 }
 
-listProjectAccess.PATH = '/api/v1/tenants/{tenant}/projects/{project}/access';
+listProjectAccess.PATH = '/api/v1/teams/{team}/projects/{project}/access';

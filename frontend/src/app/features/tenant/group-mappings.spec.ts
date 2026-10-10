@@ -34,6 +34,7 @@ const red = mapping('team-red');
 /** The editor's membership: administrator through a mapping only, unless a test says otherwise. */
 const mapped: Membership = {
   role: 'admin',
+  team: { slug: 'acme', name: 'Acme Corp' },
   tenant: { slug: 'acme', name: 'Acme Corp' },
   origins: [{ source: 'mapping', role: 'admin' }],
 };
@@ -260,7 +261,7 @@ describe('GroupMappings', () => {
       const fixture = await render();
 
       expect(el(fixture, 'mappings-not-admin')?.textContent?.trim()).toBe(
-        'Only the administrators of this tenant manage its group mappings.',
+        'Only the administrators of this team manage its group mappings.',
       );
       expect(el(fixture, 'mappings')).toBeNull();
       expect(el(fixture, 'new-mapping')).toBeNull();

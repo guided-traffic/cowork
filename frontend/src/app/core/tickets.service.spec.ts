@@ -97,9 +97,9 @@ const problem = (status: number) => ({
   code: status === 404 ? 'not_found' : 'internal',
 });
 
-const projectUrl = '/api/v1/tenants/acme/projects/VKO/tickets';
-const otherProjectUrl = '/api/v1/tenants/acme/projects/COW/tickets';
-const tenantUrl = '/api/v1/tenants/acme/tickets';
+const projectUrl = '/api/v1/teams/acme/projects/VKO/tickets';
+const otherProjectUrl = '/api/v1/teams/acme/projects/COW/tickets';
+const tenantUrl = '/api/v1/teams/acme/tickets';
 const ticketUrl = (key: string) => `/api/v1/tickets/${key}`;
 
 /** Answers a request the way a backend that is down or refusing does. */
@@ -121,18 +121,18 @@ const failOnDemand: HttpInterceptorFn = (request, next) =>
 @Component({ template: '' })
 class ListHost {
   readonly list = inject(TicketsService).projectTickets(() => ({
-    tenant: 'acme',
+    team: 'acme',
     project: 'COW',
   }));
 }
 
 describe('splitKey', () => {
   it('splits a canonical key into the tenant and the short key of the ticket routes', () => {
-    expect(splitKey('acme/VKO-12')).toEqual({ tenant: 'acme', key: 'VKO-12' });
+    expect(splitKey('acme/VKO-12')).toEqual({ team: 'acme', key: 'VKO-12' });
   });
 
   it('splits at the first slash only', () => {
-    expect(splitKey('acme/VKO-12/extra')).toEqual({ tenant: 'acme', key: 'VKO-12/extra' });
+    expect(splitKey('acme/VKO-12/extra')).toEqual({ team: 'acme', key: 'VKO-12/extra' });
   });
 });
 
@@ -161,12 +161,10 @@ describe('TicketsService', () => {
   const view = () => createEnvironmentInjector([], TestBed.inject(EnvironmentInjector));
   const projectList = (injector?: EnvironmentInjector) =>
     TestBed.runInInjectionContext(() =>
-      service.projectTickets(() => ({ tenant: 'acme', project: 'VKO' }), injector),
+      service.projectTickets(() => ({ team: 'acme', project: 'VKO' }), injector),
     );
   const tenantList = (injector?: EnvironmentInjector) =>
-    TestBed.runInInjectionContext(() =>
-      service.tenantTickets(() => ({ tenant: 'acme' }), injector),
-    );
+    TestBed.runInInjectionContext(() => service.tenantTickets(() => ({ team: 'acme' }), injector));
   /** Takes every open request to the url, so that a test can count them and answer them. */
   const take = (url: string): TestRequest[] => http.match((request) => request.url === url);
   const answer = async (url: string, body: object = listOf([])) => {
@@ -220,7 +218,7 @@ describe('TicketsService', () => {
     it('asks for the tickets of the project with the parameters it is given', async () => {
       const list = TestBed.runInInjectionContext(() =>
         service.projectTickets(() => ({
-          tenant: 'acme',
+          team: 'acme',
           project: 'VKO',
           state: ['filed', 'blocked'],
           limit: 50,
@@ -282,7 +280,7 @@ describe('TicketsService', () => {
       const wanted = signal<string | undefined>(undefined);
       const list = TestBed.runInInjectionContext(() =>
         service.projectTickets(() =>
-          wanted() ? { tenant: 'acme', project: wanted() as string } : undefined,
+          wanted() ? { team: 'acme', project: wanted() as string } : undefined,
         ),
       );
       await settle();
@@ -298,7 +296,7 @@ describe('TicketsService', () => {
     it('asks again when the parameters change', async () => {
       const state = signal<string[]>(['filed']);
       const list = TestBed.runInInjectionContext(() =>
-        service.projectTickets(() => ({ tenant: 'acme', project: 'VKO', state: state() })),
+        service.projectTickets(() => ({ team: 'acme', project: 'VKO', state: state() })),
       );
       await settle();
       await answer(projectUrl, listOf([ticket('acme/VKO-1')]));
@@ -332,7 +330,7 @@ describe('TicketsService', () => {
     const pagesList = (pages = signal(1), extra: object = {}) =>
       TestBed.runInInjectionContext(() =>
         service.projectTicketPages(() => ({
-          tenant: 'acme',
+          team: 'acme',
           project: 'VKO',
           pages: pages(),
           ...extra,
@@ -509,7 +507,7 @@ describe('TicketsService', () => {
       const wanted = signal(false);
       const list = TestBed.runInInjectionContext(() =>
         service.projectTicketPages(() =>
-          wanted() ? { tenant: 'acme', project: 'VKO', pages: 1 } : undefined,
+          wanted() ? { team: 'acme', project: 'VKO', pages: 1 } : undefined,
         ),
       );
       await settle();
@@ -552,7 +550,7 @@ describe('TicketsService', () => {
   describe('tenantTickets', () => {
     it('asks for the tickets across the projects of the tenant', async () => {
       const list = TestBed.runInInjectionContext(() =>
-        service.tenantTickets(() => ({ tenant: 'acme', project: ['VKO', '!COW'] })),
+        service.tenantTickets(() => ({ team: 'acme', project: ['VKO', '!COW'] })),
       );
       await settle();
 
@@ -604,7 +602,7 @@ describe('TicketsService', () => {
         projectUrl,
         () =>
           TestBed.runInInjectionContext(() =>
-            service.projectTicketPages(() => ({ tenant: 'acme', project: 'VKO', pages: 1 })),
+            service.projectTicketPages(() => ({ team: 'acme', project: 'VKO', pages: 1 })),
           ),
       ],
       ['tenantTickets', tenantUrl, () => tenantList()],
@@ -665,7 +663,7 @@ describe('TicketsService', () => {
         projectUrl,
         () =>
           TestBed.runInInjectionContext(() =>
-            service.projectTicketPages(() => ({ tenant: 'acme', project: 'VKO', pages: 1 })),
+            service.projectTicketPages(() => ({ team: 'acme', project: 'VKO', pages: 1 })),
           ),
       ],
       ['tenantTickets', tenantUrl, () => tenantList()],
@@ -695,7 +693,7 @@ describe('TicketsService', () => {
 
     it('sends the tag of each page a list follows, cursor by cursor', async () => {
       const list = TestBed.runInInjectionContext(() =>
-        service.projectTicketPages(() => ({ tenant: 'acme', project: 'VKO', pages: 2 })),
+        service.projectTicketPages(() => ({ team: 'acme', project: 'VKO', pages: 2 })),
       );
       await settle();
       http
@@ -754,7 +752,7 @@ describe('TicketsService', () => {
   });
 
   describe('openTickets', () => {
-    const url = '/api/v1/tenants/acme/projects/VKO/tickets';
+    const url = '/api/v1/teams/acme/projects/VKO/tickets';
 
     it('reads every page of the open tickets of a project, in the rank, into the cache', async () => {
       const done = service.openTickets('acme', 'VKO');
@@ -1088,7 +1086,7 @@ describe('TicketsService', () => {
       const loading = async () => {
         const owner = view();
         const list = TestBed.runInInjectionContext(() =>
-          service.projectTickets(() => ({ tenant: 'acme', project: 'COW' }), owner),
+          service.projectTickets(() => ({ team: 'acme', project: 'COW' }), owner),
         );
         await settle();
         return { owner, list, load: http.expectOne((request) => request.url === otherProjectUrl) };
@@ -1224,7 +1222,7 @@ describe('TicketsService', () => {
     it('reload a list that failed, so that it recovers when something changes', async () => {
       const owner = view();
       const failing = TestBed.runInInjectionContext(() =>
-        service.projectTickets(() => ({ tenant: 'acme', project: 'COW' }), owner),
+        service.projectTickets(() => ({ team: 'acme', project: 'COW' }), owner),
       );
       await settle();
       fail(
@@ -1779,7 +1777,7 @@ describe('TicketsService on the event stream of the backend', () => {
   it('reloads the open lists a moment after an event, and not after a comment', async () => {
     TestBed.runInInjectionContext(() =>
       service.projectTickets(
-        () => ({ tenant: 'acme', project: 'VKO' }),
+        () => ({ team: 'acme', project: 'VKO' }),
         createEnvironmentInjector([], TestBed.inject(EnvironmentInjector)),
       ),
     );
@@ -1799,7 +1797,7 @@ describe('TicketsService on the event stream of the backend', () => {
     service.cache.put(key, ticket(key, 5));
     TestBed.runInInjectionContext(() =>
       service.tenantTickets(
-        () => ({ tenant: 'acme' }),
+        () => ({ team: 'acme' }),
         createEnvironmentInjector([], TestBed.inject(EnvironmentInjector)),
       ),
     );
@@ -1819,7 +1817,7 @@ describe('TicketsService on the event stream of the backend', () => {
     await show();
     TestBed.runInInjectionContext(() =>
       service.projectTickets(
-        () => ({ tenant: 'acme', project: 'VKO' }),
+        () => ({ team: 'acme', project: 'VKO' }),
         createEnvironmentInjector([], TestBed.inject(EnvironmentInjector)),
       ),
     );
@@ -1837,7 +1835,7 @@ describe('TicketsService on the event stream of the backend', () => {
     await show();
     TestBed.runInInjectionContext(() =>
       service.projectTickets(
-        () => ({ tenant: 'acme', project: 'VKO' }),
+        () => ({ team: 'acme', project: 'VKO' }),
         createEnvironmentInjector([], TestBed.inject(EnvironmentInjector)),
       ),
     );
@@ -1865,7 +1863,7 @@ describe('TicketsService on the event stream of the backend', () => {
     await show();
     TestBed.runInInjectionContext(() =>
       service.projectTickets(
-        () => ({ tenant: 'acme', project: 'VKO' }),
+        () => ({ team: 'acme', project: 'VKO' }),
         createEnvironmentInjector([], TestBed.inject(EnvironmentInjector)),
       ),
     );

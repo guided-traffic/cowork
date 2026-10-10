@@ -32,6 +32,7 @@ const person = (admin = true): Me => ({
   password_change_required: false,
   memberships: [
     {
+      team: { slug: 'acme', name: 'Acme' },
       tenant: { slug: 'acme', name: 'Acme' },
       role: admin ? 'admin' : 'member',
       origins: [{ source: 'grant', role: admin ? 'admin' : 'member' }],
@@ -39,7 +40,7 @@ const person = (admin = true): Me => ({
   ],
 });
 
-const url = (project = 'VKO') => `/api/v1/tenants/acme/projects/${project}/access`;
+const url = (project = 'VKO') => `/api/v1/teams/acme/projects/${project}/access`;
 
 /** Fails a request: without an answer at all (status 0), or with a problem of the status. */
 const fail = (request: TestRequest, status: number) =>

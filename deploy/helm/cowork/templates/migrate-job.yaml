@@ -49,7 +49,7 @@ spec:
           # the migrations grant to and the bootstrap connects as. After the
           # schema step the run performs the bootstrap with the configuration
           # the serving container has (docs/adr/0057 D4): the local
-          # administrator, the bootstrap tenant and the identity provider's
+          # administrator, the bootstrap team and the identity provider's
           # administrator group. It never meets the provider and holds no
           # client secret, no server key and no storage key.
           env:
@@ -85,11 +85,23 @@ spec:
             - name: COWORK_ADMIN_GROUP
               value: {{ .Values.auth.oidc.adminGroup | quote }}
             {{- end }}
-            {{- if and .Values.bootstrap.tenant.slug .Values.bootstrap.tenant.name }}
+            {{- /*
+            The bootstrap team goes out under its names and, with the same value,
+            under its names before (docs/adr/0005 D1): rolling back is rolling the
+            image back under this chart (docs/adr/0028 D4), and the image of the
+            release before reads only the names before. The contract release
+            stops rendering them.
+            */}}
+            {{- $bootstrap := include "cowork.bootstrapTeam" . | fromYaml }}
+            {{- if and $bootstrap.slug $bootstrap.name }}
+            - name: COWORK_BOOTSTRAP_TEAM_SLUG
+              value: {{ $bootstrap.slug | quote }}
             - name: COWORK_BOOTSTRAP_TENANT_SLUG
-              value: {{ .Values.bootstrap.tenant.slug | quote }}
+              value: {{ $bootstrap.slug | quote }}
+            - name: COWORK_BOOTSTRAP_TEAM_NAME
+              value: {{ $bootstrap.name | quote }}
             - name: COWORK_BOOTSTRAP_TENANT_NAME
-              value: {{ .Values.bootstrap.tenant.name | quote }}
+              value: {{ $bootstrap.name | quote }}
             {{- end }}
             {{- if .Values.backend.config.baseURL }}
             - name: COWORK_BASE_URL

@@ -36,7 +36,22 @@ type personTenant struct {
 	role       domain.Role
 }
 
-func (t personTenant) ref() apigen.TenantRef { return apigen.TenantRef{Slug: t.slug, Name: t.name} }
+func (t personTenant) ref() apigen.TeamRef { return apigen.TeamRef{Slug: t.slug, Name: t.name} }
+
+// teamQuery is the team a person-level route is narrowed to: ?team=, or
+// ?tenant=, the name it had before (docs/adr/0005 D1), taken until a later
+// release removes it (docs/adr/0046 D7). The two are one narrowing, so a
+// request that names both is refused at query:tenant whatever the values, as
+// a list that names horizon and urgency is.
+func teamQuery(team, tenant *string) (*string, *problem.Error) {
+	if team != nil && tenant != nil {
+		return nil, problem.Field("query:tenant", "tenant is the deprecated name of team: send team alone")
+	}
+	if team != nil {
+		return team, nil
+	}
+	return tenant, nil
+}
 
 // scope is the tenant as the tenant's own routes hold it, for the views they
 // share.
@@ -66,7 +81,7 @@ func (h *handler) personTenants(ctx context.Context, narrow *string) ([]personTe
 		return nil, err
 	}
 	if narrow != nil && len(out) == 0 {
-		return nil, problem.New(problem.NotFound, "no such tenant")
+		return nil, problem.New(problem.NotFound, "no such team")
 	}
 	slices.SortFunc(out, func(a, b personTenant) int { return strings.Compare(a.slug, b.slug) })
 	return out, nil
@@ -103,12 +118,16 @@ type inboxRow struct {
 func (s *Server) ListMyInbox(ctx context.Context, req apigen.ListMyInboxRequestObject) (apigen.ListMyInboxResponseObject, error) {
 	p := principal(ctx)
 	const op = "listMyInbox"
-	scope := p.PersonID.String() + "/" + deref(req.Params.Tenant)
+	narrow, perr := teamQuery(req.Params.Team, req.Params.Tenant) //nolint:staticcheck // SA1019: deprecated in the document, taken as team until a later release removes it
+	if perr != nil {
+		return nil, perr
+	}
+	scope := p.PersonID.String() + "/" + deref(narrow)
 	before, err := s.uuidAfter(op, scope, req.Params.Cursor)
 	if err != nil {
 		return nil, err
 	}
-	tenants, err := s.h.personTenants(ctx, req.Params.Tenant)
+	tenants, err := s.h.personTenants(ctx, narrow)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +189,8 @@ func inboxEntryView(r inboxRow, visible map[uuid.UUID]bool) apigen.InboxEntry {
 		ExplainedByCommentID: n.ExplainedByCommentID, Refs: n.Refs, CreatedAt: n.ActAt,
 	}, visible)
 	v := apigen.InboxEntry{
-		Id: n.ID, Tenant: r.tenant.ref(), Reason: apigen.InboxReason(n.Reason), Act: act,
+		Id: n.ID, Team: r.tenant.ref(), Reason: apigen.InboxReason(n.Reason), Act: act,
+		Tenant:  r.tenant.ref(), //nolint:staticcheck // SA1019: deprecated in the document, answered beside team until a later release removes it
 		Ticket:  apigen.TicketRef{Key: domain.FullKey(slug, n.ProjectKey, n.Number), Title: n.Title, State: apigen.TicketState(n.State)},
 		Blocker: nullableOf[apigen.TicketRef](nil), Withdrawn: n.Withdrawn, Read: n.ReadAt != nil, CreatedAt: n.CreatedAt,
 	}
@@ -249,7 +269,11 @@ func (s *Server) MarkMyInboxRead(ctx context.Context, req apigen.MarkMyInboxRead
 	if perr := auth.Authorize(p, domain.RoleViewer, markRead); perr != nil {
 		return nil, perr
 	}
-	tenants, err := s.h.personTenants(ctx, req.Params.Tenant)
+	narrow, perr := teamQuery(req.Params.Team, req.Params.Tenant) //nolint:staticcheck // SA1019: deprecated in the document, taken as team until a later release removes it
+	if perr != nil {
+		return nil, perr
+	}
+	tenants, err := s.h.personTenants(ctx, narrow)
 	if err != nil {
 		return nil, err
 	}

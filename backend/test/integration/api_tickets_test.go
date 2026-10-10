@@ -95,10 +95,10 @@ func (e ticketEnv) titles(t *testing.T, c caller, path, query string) []string {
 	return out
 }
 
-func (e ticketEnv) tenantTickets() string { return "/api/v1/tenants/" + e.SlugA + "/tickets" }
+func (e ticketEnv) tenantTickets() string { return "/api/v1/teams/" + e.SlugA + "/tickets" }
 
 func (e ticketEnv) projectTickets(project string) string {
-	return "/api/v1/tenants/" + e.SlugA + "/projects/" + project + "/tickets"
+	return "/api/v1/teams/" + e.SlugA + "/projects/" + project + "/tickets"
 }
 
 // docs/adr/0007 D4, docs/adr/0022 D2: numbers are consecutive per project and
@@ -115,7 +115,7 @@ func TestFilingTickets(t *testing.T) {
 	tk := *first.JSON201
 	assert.Equal(t, 1, tk.Number)
 	assert.Equal(t, e.SlugA+"/ALPHA-1", tk.Key)
-	assert.Equal(t, "/api/v1/tenants/"+e.SlugA+"/projects/ALPHA/tickets/1", *first.Headers201.Location)
+	assert.Equal(t, "/api/v1/teams/"+e.SlugA+"/projects/ALPHA/tickets/1", *first.Headers201.Location)
 	assert.Equal(t, `"1"`, *first.Headers201.ETag)
 	assert.Equal(t, apigen.TicketStateFiled, tk.State)
 	assert.Equal(t, apigen.HorizonLater, tk.Horizon, "a ticket nobody placed is later (docs/adr/0010 D3)")
@@ -394,11 +394,11 @@ func TestTicketPaging(t *testing.T) {
 	}
 	assert.Equal(t, []string{"t1", "t2", "t3", "t4", "t5"}, seen)
 
-	newest, err := cl.ListTenantTicketsWithResponse(e.ctx, e.SlugA, &apigen.ListTenantTicketsParams{Limit: ptr(2)})
+	newest, err := cl.ListTeamTicketsWithResponse(e.ctx, e.SlugA, &apigen.ListTeamTicketsParams{Limit: ptr(2)})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, newest.StatusCode())
 	assert.Equal(t, "t5", newest.JSON200.Items[0].Title)
-	next, err := cl.ListTenantTicketsWithResponse(e.ctx, e.SlugA, &apigen.ListTenantTicketsParams{Limit: ptr(2), Cursor: ptr(newest.JSON200.NextCursor.MustGet())})
+	next, err := cl.ListTeamTicketsWithResponse(e.ctx, e.SlugA, &apigen.ListTeamTicketsParams{Limit: ptr(2), Cursor: ptr(newest.JSON200.NextCursor.MustGet())})
 	require.NoError(t, err)
 	assert.Equal(t, "t3", next.JSON200.Items[0].Title)
 	foreign := e.s.do(t, member, http.MethodGet, e.projectTickets("ALPHA")+"?cursor="+url.QueryEscape(newest.JSON200.NextCursor.MustGet()), nil)

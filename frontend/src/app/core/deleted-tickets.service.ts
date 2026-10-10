@@ -41,7 +41,7 @@ export class DeletedTicketsService {
           const items: DeletedTicket[] = [];
           let cursor: string | undefined;
           do {
-            const next = await page(listDeletedTickets, { tenant, cursor, limit: 200 });
+            const next = await page(listDeletedTickets, { team: tenant, cursor, limit: 200 });
             items.push(...next.items);
             cursor = next.next_cursor ?? undefined;
           } while (cursor);
@@ -61,7 +61,7 @@ export class DeletedTicketsService {
   /** Brings a ticket back as it was; its answer goes into the ticket cache. */
   async restore(entry: DeletedTicket): Promise<Ticket> {
     const ticket = await this.api.invoke(restoreTicket, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       key: `${entry.project}-${entry.number}`,
     });
     this.tickets.cache.put(ticket.key, ticket);
@@ -72,7 +72,7 @@ export class DeletedTicketsService {
   /** Removes a deleted ticket for good (docs/adr/0024 D2); nothing brings it back. */
   async purge(entry: DeletedTicket): Promise<void> {
     await this.api.invoke(purgeTicket, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       key: `${entry.project}-${entry.number}`,
     });
     refresh(this.bin, this.injector);

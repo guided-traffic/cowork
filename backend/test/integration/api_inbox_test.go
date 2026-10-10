@@ -23,13 +23,13 @@ import (
 
 // ticketPath is a ticket's route in a tenant.
 func ticketPath(slug, project string, number int) string {
-	return "/api/v1/tenants/" + slug + "/projects/" + project + "/tickets/" + strconv.Itoa(number)
+	return "/api/v1/teams/" + slug + "/projects/" + project + "/tickets/" + strconv.Itoa(number)
 }
 
 // fileIn files a ticket as c in the tenant's project and requires the 201.
 func (e ticketEnv) fileIn(t *testing.T, c caller, slug, project string, body apigen.TicketCreate) apigen.Ticket {
 	t.Helper()
-	res := e.s.do(t, c, http.MethodPost, "/api/v1/tenants/"+slug+"/projects/"+project+"/tickets", body)
+	res := e.s.do(t, c, http.MethodPost, "/api/v1/teams/"+slug+"/projects/"+project+"/tickets", body)
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	return decode[apigen.Ticket](t, res)
 }
@@ -76,7 +76,7 @@ func TestTheEventsOfTheInboxTellTheirRecipients(t *testing.T) {
 	inbox := e.inbox(t, member, "")
 	require.Equal(t, []string{"assigned"}, reasonsAbout(inbox, tk.Key))
 	entry := inbox.Items[0]
-	assert.Equal(t, apigen.TenantRef{Slug: e.SlugA, Name: "Tenant A"}, entry.Tenant)
+	assert.Equal(t, apigen.TeamRef{Slug: e.SlugA, Name: "Team A"}, entry.Team)
 	assert.Equal(t, apigen.AuditActionCreated, entry.Act.Action, "rendered from the filing")
 	assert.Equal(t, "assigned at filing", entry.Ticket.Title)
 	assert.False(t, entry.Read)
@@ -148,9 +148,9 @@ func TestTheInboxIsThePersonsAcrossTheirTenants(t *testing.T) {
 	require.Len(t, all.Items, 2)
 	assert.Equal(t, 2, all.Unread)
 	assert.Equal(t, inB.Key, all.Items[0].Ticket.Key, "newest first, across tenants")
-	assert.Equal(t, e.SlugB, all.Items[0].Tenant.Slug)
+	assert.Equal(t, e.SlugB, all.Items[0].Team.Slug)
 	assert.Equal(t, inA.Key, all.Items[1].Ticket.Key)
-	assert.Equal(t, e.SlugA, all.Items[1].Tenant.Slug)
+	assert.Equal(t, e.SlugA, all.Items[1].Team.Slug)
 	assert.Empty(t, e.inbox(t, caller{Token: e.tk.MemberA}, "").Items, "another person's notifications")
 
 	narrowed := e.inbox(t, both, "?tenant="+e.SlugA)
@@ -255,7 +255,7 @@ func TestMarkingNotificationsRead(t *testing.T) {
 	assert.Equal(t, 2, reads(), "one act, in the one tenant where something changed")
 	now := e.inbox(t, both, "")
 	assert.False(t, now.Items[0].Read)
-	assert.Equal(t, e.SlugB, now.Items[0].Tenant.Slug)
+	assert.Equal(t, e.SlugB, now.Items[0].Team.Slug)
 	assert.Equal(t, 1, now.Unread)
 	res = e.s.do(t, both, http.MethodPut, "/api/v1/me/inbox/read?tenant="+e.SlugB, map[string]any{"through": now.Items[0].Id})
 	require.Equal(t, http.StatusOK, res.StatusCode)
@@ -356,7 +356,7 @@ func TestTheInboxPolicyHoldsAPersonToTheirOwn(t *testing.T) {
 // openMeStream subscribes c to the person-level stream on the tenant.
 func (e ticketEnv) openMeStream(t *testing.T, c caller, slug string) *stream {
 	t.Helper()
-	return e.openStreamAt(t, e.s, c, "/api/v1/tenants/"+slug+"/events?me=true", "")
+	return e.openStreamAt(t, e.s, c, "/api/v1/teams/"+slug+"/events?me=true", "")
 }
 
 // unreadOf reads an inbox.changed's count.
@@ -467,16 +467,17 @@ func TestThePersonLevelStream(t *testing.T) {
 	adminBToken, _, err := f.Token(e.ctx, fixture.TokenSpec{UserID: adminB, Scope: "admin"})
 	require.NoError(t, err)
 	e.send(t, caller{Token: adminBToken}, http.StatusNoContent, http.MethodDelete,
-		"/api/v1/tenants/"+e.SlugB+"/members/"+e.Both.String()+"/grant", nil)
+		"/api/v1/teams/"+e.SlugB+"/members/"+e.Both.String()+"/grant", nil)
 	_, m = me.until(t, func(m sse) bool { return m.Event == "membership.changed" })
-	assert.JSONEq(t, `{"tenant":"`+e.SlugB+`","person_id":"`+e.Both.String()+`"}`, m.Data)
+	assert.JSONEq(t, `{"team":"`+e.SlugB+`","tenant":"`+e.SlugB+`","person_id":"`+e.Both.String()+`"}`, m.Data,
+		"tenant repeats team for one release (docs/adr/0005 D1)")
 	e.send(t, memberB, http.StatusOK, http.MethodPatch, b1Path+"/questions/1", map[string]any{"question": "after leaving?"}, "If-Match", `"1"`)
 	// Nor a later act of B that names the person: the removal of an access
 	// entry they left behind.
 	require.NoError(t, f.Exec(e.ctx, "INSERT INTO project_access (tenant_id, project_id, user_id, role) SELECT tenant_id, id, $2, 'member' FROM projects WHERE tenant_id = $1 AND key = 'BETA'",
 		e.B, e.Both))
 	e.send(t, caller{Token: adminBToken}, http.StatusNoContent, http.MethodDelete,
-		"/api/v1/tenants/"+e.SlugB+"/projects/BETA/access/"+e.Both.String(), nil)
+		"/api/v1/teams/"+e.SlugB+"/projects/BETA/access/"+e.Both.String(), nil)
 	a2 := e.fileIn(t, admin, e.SlugA, "ALPHA", task("a2", func(b *apigen.TicketCreate) { b.Assignee = &e.Both }))
 	before, sentinel = me.until(t, func(m sse) bool { return m.Event == "ticket.changed" })
 	assert.Equal(t, a2.Key, eventKey(t, sentinel))
@@ -504,12 +505,12 @@ func TestAPersonLevelStreamRefiltersAndKeepsItsPersonsEvents(t *testing.T) {
 	e := newTicketEnv(t)
 	srv := newAPI(t, func(o *api.Options) { o.Heartbeat = time.Hour })
 	admin, memberB, both := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
-	me := e.openStreamAt(t, srv, both, "/api/v1/tenants/"+e.SlugA+"/events?me=true", "")
+	me := e.openStreamAt(t, srv, both, "/api/v1/teams/"+e.SlugA+"/events?me=true", "")
 	first, ok := me.next(t, 5*time.Second)
 	require.True(t, ok)
 	assert.Equal(t, 0, unreadOf(t, first))
 
-	res := srv.do(t, admin, http.MethodPost, "/api/v1/tenants/"+e.SlugA+"/projects", map[string]any{"key": "LATE", "name": "Late"})
+	res := srv.do(t, admin, http.MethodPost, "/api/v1/teams/"+e.SlugA+"/projects", map[string]any{"key": "LATE", "name": "Late"})
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	start := time.Now()
 	late := e.fileIn(t, admin, e.SlugA, "LATE", task("late", func(b *apigen.TicketCreate) { b.Assignee = &e.Both }))
@@ -547,7 +548,7 @@ func TestThePersonLevelStreamSpansThePersonsTenants(t *testing.T) {
 	require.NoError(t, f.Exec(e.ctx, "UPDATE projects SET restricted = true WHERE id = $1", hidden))
 	require.NoError(t, f.Exec(e.ctx, "INSERT INTO project_access (tenant_id, project_id, user_id, role) VALUES ($1, $2, $3, 'member')",
 		e.B, hidden, e.MemberB))
-	path := "/api/v1/tenants/" + e.SlugA + "/events?me=true"
+	path := "/api/v1/teams/" + e.SlugA + "/events?me=true"
 	me := e.openStreamAt(t, srv, both, path, "")
 	_, _ = me.until(t, func(m sse) bool { return m.Event == "inbox.changed" })
 
@@ -585,7 +586,7 @@ func TestThePersonLevelStreamSpansThePersonsTenants(t *testing.T) {
 	assert.Equal(t, missed.Key, eventKey(t, m), "the replay merges the person's tenants")
 
 	// Granted a role in a tenant C, the person's stream follows C at once.
-	c, err := f.Tenant(e.ctx, uniqueSlug("tenant-c"), "Tenant C")
+	c, err := f.Tenant(e.ctx, uniqueSlug("team-c"), "Team C")
 	require.NoError(t, err)
 	slugC := scalar[string](t, `SELECT slug FROM tenants WHERE id = $1`, c)
 	_, err = f.Project(e.ctx, c, "GAMMA", "Gamma")
@@ -598,12 +599,12 @@ func TestThePersonLevelStreamSpansThePersonsTenants(t *testing.T) {
 	require.NoError(t, err)
 	browser := srv.browser(t)
 	browser.mustLogin(usernameOf(t, adminC), testPassword)
-	res := browser.request(http.MethodPost, "/api/v1/tenants/"+slugC+"/members", map[string]string{"person": usernameOf(t, e.Both), "role": "member"})
+	res := browser.request(http.MethodPost, "/api/v1/teams/"+slugC+"/members", map[string]string{"person": usernameOf(t, e.Both), "role": "member"})
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	_, m = again.until(t, func(m sse) bool { return m.Event == "membership.changed" })
-	assert.JSONEq(t, `{"tenant":"`+slugC+`","person_id":"`+e.Both.String()+`"}`, m.Data, "the person hears their grant")
+	assert.JSONEq(t, `{"team":"`+slugC+`","tenant":"`+slugC+`","person_id":"`+e.Both.String()+`"}`, m.Data, "the person hears their grant")
 	start = time.Now()
-	res = srv.do(t, caller{Token: adminCToken}, http.MethodPost, "/api/v1/tenants/"+slugC+"/projects/GAMMA/tickets", task("in C"))
+	res = srv.do(t, caller{Token: adminCToken}, http.MethodPost, "/api/v1/teams/"+slugC+"/projects/GAMMA/tickets", task("in C"))
 	require.Equal(t, http.StatusCreated, res.StatusCode)
 	inC := decode[apigen.Ticket](t, res)
 	_, m = again.until(t, func(m sse) bool { return m.Event == "ticket.changed" })
@@ -619,7 +620,7 @@ func TestTheHeartbeatChecksEveryMembershipOfThePersonLevelStream(t *testing.T) {
 	f := fixtures(t)
 	srv := newAPI(t, func(o *api.Options) { o.Heartbeat = 100 * time.Millisecond })
 	admin, memberB, both := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
-	me := e.openStreamAt(t, srv, both, "/api/v1/tenants/"+e.SlugA+"/events?me=true", "")
+	me := e.openStreamAt(t, srv, both, "/api/v1/teams/"+e.SlugA+"/events?me=true", "")
 	beats := func(n int) {
 		t.Helper()
 		for seen := 0; seen < n; {
@@ -635,7 +636,7 @@ func TestTheHeartbeatChecksEveryMembershipOfThePersonLevelStream(t *testing.T) {
 	}
 
 	require.NoError(t, f.Exec(e.ctx, "DELETE FROM memberships WHERE tenant_id = $1 AND user_id = $2", e.B, e.Both))
-	c, err := f.Tenant(e.ctx, uniqueSlug("tenant-c"), "Tenant C")
+	c, err := f.Tenant(e.ctx, uniqueSlug("team-c"), "Team C")
 	require.NoError(t, err)
 	_, err = f.Project(e.ctx, c, "GAMMA", "Gamma")
 	require.NoError(t, err)

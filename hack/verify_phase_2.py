@@ -1,5 +1,5 @@
 """The API half of hack/verify-phase-2.sh: an agent creates a project, files two
-tickets, asks a question, links the tickets and moves one, then the tenant's
+tickets, asks a question, links the tickets and moves one, then the team's
 audit view must show each act with the seeded person, the token, the agent
 mark and the token's capabilities. The first failed assertion stops it."""
 
@@ -9,7 +9,7 @@ import time
 import urllib.request
 import uuid
 
-base, token, tenant = sys.argv[1], sys.argv[2], sys.argv[3]
+base, token, team = sys.argv[1], sys.argv[2], sys.argv[3]
 agent = f"verify-phase-2/script/{int(time.time())}"
 
 
@@ -46,7 +46,7 @@ check(len(tokens) == 1, "the seeded person holds the one seeded token")
 seeded = tokens[0]
 check(seeded["agent"], "the seeded token is an agent token")
 
-t = f"/api/v1/tenants/{tenant}"
+t = f"/api/v1/teams/{team}"
 key = "V" + uuid.uuid4().hex[:6].upper()
 call("POST", f"{t}/projects", {"key": key, "name": "Verification"}, keyed=True)
 first = call("POST", f"{t}/projects/{key}/tickets",

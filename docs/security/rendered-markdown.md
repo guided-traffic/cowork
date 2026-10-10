@@ -12,7 +12,7 @@ the same text can make a model do is [chat.md](chat.md#h-38). How the rendering 
 
 ## Three lines
 
-A text is written by one person or agent and read by another, of the same tenant, who may be an
+A text is written by one person or agent and read by another, of the same team, who may be an
 administrator; whatever it holds is foreign input to the reader's session.
 
 ```
@@ -90,7 +90,7 @@ predicate ([`api/rendered.go`](../../backend/internal/api/rendered.go) `imagesOf
 an SVG, another ticket's attachment, an address elsewhere — becomes a link to its address with the
 image's text, which nothing loads until a person follows it; a `data:` or a `javascript:` image keeps
 its text alone, and so does an image inside a link. An image shown is a download: the browser fetches it with the reader's
-session, and every `200` is recorded as `downloaded` in the tenant's audit record — the
+session, and every `200` is recorded as `downloaded` in the team's audit record — the
 reader's opening of a text with an image is in the record their administrators read, as a preview's
 is ([attachments.md](attachments.md#delivery-makes-the-browser-treat-the-bytes-as-data)).
 
@@ -103,7 +103,7 @@ the installation — but one written `//host/…`, which has no scheme either, l
 cookie (`SameSite=Lax` admits it), and a `GET` changes no ticket, member or setting: every write of a
 session is another method and must pass the CSRF check ([csrf.md](csrf.md)). A `GET` of the API that a
 link names is read with the reader's rights, and five reads record an act in the reader's name — an
-attachment's bytes, a ticket's Markdown export and its context, a project's and a tenant's export —:
+attachment's bytes, a ticket's Markdown export and its context, a project's and a team's export —:
 a link in a text of the installation is `same-origin` and is served, as an inline image of rendered
 Markdown is ([csrf.md](csrf.md#the-reads-that-record-an-act); what a browser without
 `Sec-Fetch-Site` leaves open is [csrf.md](csrf.md#h-22) H-22).

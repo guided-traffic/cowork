@@ -27,7 +27,7 @@ test(
     const admin = await sessionContext(baseURL, adminState);
     try {
       const session = new Session(admin);
-      await session.ensureTenant(slug, `Dashboard ${slug}`);
+      await session.ensureTeam(slug, `Dashboard ${slug}`);
       const seed = await Seed.create(baseURL, seedToken(), slug);
       try {
         await seed.project('OPEN', 'Open to all');

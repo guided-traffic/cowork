@@ -5,5 +5,8 @@
   "ignoreUnusedModels": false,
   "skipJsonSuffix": true,
   "endOfLineStyle": "lf",
-  "silent": true
+  "silent": true,
+  "excludeTags": [
+    "tenants"
+  ]
 }

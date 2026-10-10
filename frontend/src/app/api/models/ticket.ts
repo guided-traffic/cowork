@@ -21,7 +21,7 @@ export interface Ticket {
   body: string;
 
   /**
-   * Visible to the tenant's administrators, the assignee and the reporter only (docs/adr/0065)
+   * Visible to the team's administrators, the assignee and the reporter only (docs/adr/0065)
    */
   confidential: boolean;
   created_at: string;
@@ -48,7 +48,7 @@ export interface Ticket {
   id: string;
 
   /**
-   * The canonical key, <tenant>/<PROJECT>-<number> (docs/adr/0007 D2)
+   * The canonical key, <team>/<PROJECT>-<number> (docs/adr/0007 D2)
    */
   key: string;
   number: number;

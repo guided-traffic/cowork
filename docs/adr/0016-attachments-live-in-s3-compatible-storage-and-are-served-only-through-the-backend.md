@@ -37,6 +37,18 @@ Amended 2026-10-06 (D7 and the References: they say that
 rule in place instead of claiming to amend it, by the owner's rule that every amendment is made in place
 in the record it changes; no rule changes).
 
+Amended 2026-10-10 by the owner's rename of a tenant to a team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1): D6, the quota's
+variable is `COWORK_ATTACHMENT_TEAM_QUOTA`, in the chart `backend.config.attachmentTeamQuota`. The
+names before, `COWORK_ATTACHMENT_TENANT_QUOTA` and `attachmentTenantQuota`, are still read for one
+release: the variable alone with a warning in the log that names its replacement; the two set to
+different values are a configuration error, and the two values a failed render, naming both. Made
+concrete by the implementer the same day, open to the owner's objection: the variable beside the
+new one at the same value is read without a warning, because the chart renders both, so that an
+image rolled back to the release before, which reads the name before alone, keeps the quota. Built the same day
+([`config.go`](../../backend/internal/config/config.go) `renamedVariables`, the chart's
+`cowork.attachmentTeamQuota`); the removal of the names before is a later release's.
+
 **Partly built** (phase 2, 2026-10-02): D1–D6 and D8 — [`internal/storage`](../../backend/internal/storage/)
 over `minio-go`, the `attachments` table (migration 14), upload, list, metadata and download
 under the ticket's path. ~~D6's per-tenant quota is neither enforced nor reported~~ *(built
@@ -52,7 +64,7 @@ raster attachment — an image of its own URL, inline by D5, never an SVG — ea
 recorded download.
 
 **Built** (phase 3, 2026-10-05): D6's per-tenant quota as amended that day —
-`COWORK_ATTACHMENT_TENANT_QUOTA`, the check under the tenant's lock
+~~`COWORK_ATTACHMENT_TENANT_QUOTA`~~ `COWORK_ATTACHMENT_TEAM_QUOTA` *(2026-10-10)*, the check under the tenant's lock
 ([`api/attachments.go`](../../backend/internal/api/attachments.go) `lockQuota`, `withinQuota`),
 `409 attachment_quota`, the usage at `GET /api/v1/tenants/{tenant}/attachment-usage` and on the
 tenant's settings page in the browser.
@@ -124,7 +136,8 @@ uploads in flight share a budget of 64 MiB, because the backend has no writable 
 count is checked under a per-ticket lock, so simultaneous uploads cannot pass it together. A
 maximum of `0` switches the per-file limit off ([ADR 0039](0039-no-request-budgets-size-and-time-limits-instead-configurable-and-switchable.md)
 D2); one upload at a time is then read whole, whatever its size.)* *(Amended 2026-10-05: the
-per-tenant quota refuses as the other limits do. `COWORK_ATTACHMENT_TENANT_QUOTA` is the bytes one
+per-tenant quota refuses as the other limits do. ~~`COWORK_ATTACHMENT_TENANT_QUOTA`~~
+`COWORK_ATTACHMENT_TEAM_QUOTA` *(2026-10-10)* is the bytes one
 tenant's attachments hold together, a size such as `10GiB`; `0` sets none and is the default —
 no figure suits every installation, one tenant's has the bucket as its bound, and an upgrade must
 not start refusing uploads that worked before; an installation of several tenants sets it. Where it

@@ -30,7 +30,7 @@ setting fails, on purpose. `cowork serve` then calls `DB.CheckRuntimeRole` on it
 refuses a dirty or a pending schema and warns about one that is ahead.
 
 A migration file runs as one statement string over the simple protocol, so PostgreSQL runs it
-as one transaction. A migration that rewrites rows runs as the owner with no tenant set, and
+as one transaction. A migration that rewrites rows runs as the owner with no `app.tenant_id` set, and
 the forced policy hides every row from it: `000017_ticket_rank` and `000019_progress_stages`
 lift the force on `tickets` for their backfills and restore it later in the file
 ([ADR 0021] D1). A new enum value cannot be used in the transaction that adds it, so
@@ -47,7 +47,7 @@ on the columns a route may change — table-wide only on `ticket_counters`, `ide
 and `login_locks` — and `DELETE` only on `ticket_links`, `ticket_interest`,
 `project_repositories`, `idempotency_keys`, `sessions`, `login_attempts`, `login_locks`,
 `memberships`, `group_mappings`, `project_access`, `saved_filters` — to its owner, and a shared one
-to an administrator of the tenant, by a restrictive policy —, `notifications` — to its retention job and the purge alone — and `consistency_acceptances` — to the consistency check's job alone ([below](#the-consistency-checks-tables)) —, and, since migration 32,
+to an administrator of the team, by a restrictive policy —, `notifications` — to its retention job and the purge alone — and `consistency_acceptances` — to the consistency check's job alone ([below](#the-consistency-checks-tables)) —, and, since migration 32,
 on `tickets`, `questions`, `comments`, `comment_revisions`, `attachments`, `time_entries` and
 `time_entry_revisions`, which restrictive policies hold to the purge of a deleted ticket
 ([below](#deletion-and-the-purge)) — and, since migration 41, on `github_webhook_secrets`,
@@ -55,16 +55,16 @@ on `tickets`, `questions`, `comments`, `comment_revisions`, `attachments`, `time
 ticket's `ticket_pull_requests` still runs ([below](#github-webhooks-tables)). `audit_events` gets `SELECT, INSERT` and
 nothing else — append-only is a grant ([ADR 0026] D3). `users`, `tenants`, `memberships` and
 `tokens` are inserted by routes — a person by an account's creation, the bootstrap or a first login
-through the identity provider, a tenant by its creation, a grant by an administrator or the
+through the identity provider, a team by its creation, a grant by an administrator or the
 bootstrap, a mapped membership by the identity provider, a token by its person — and each insert
 has a policy that names who may (migrations 15, 20, 22), with the columns a grant lists
 (`global_admin` is the bootstrap's and the identity provider's alone: the policy refuses it to a
-request); the application makes the ids of the persons, tenants, memberships and mappings it
+request); the application makes the ids of the persons, teams, memberships and mappings it
 inserts (`uuid.NewV7`), because an
 `INSERT … RETURNING` would have to pass the read policy of a row its writer has no membership of
 yet. Migrations 20 to 22 add the identity provider's columns of `users` and `sessions` with their
 grants, `group_mappings`, and the writes of `memberships`, `project_access` and
-`projects.restricted`; the tests and `make dev-seed` write persons, tenants, grants and tokens over
+`projects.restricted`; the tests and `make dev-seed` write persons, teams, grants and tokens over
 the administrative connection too ([testing.md](testing.md#fixtures-of-the-integration-tier)).
 
 ## The wrappers
@@ -74,11 +74,11 @@ inside one of these, and nothing else hands out a connection.
 
 | Wrapper | Transaction | Bound to | Hands `fn` |
 |---|---|---|---|
-| `DB.InTenant(ctx, tenantID, fn)` | read-only | the tenant and the caller's person | `*Reader` |
-| `DB.InTenantSnapshot(ctx, tenantID, fn)` | read-only, `REPEATABLE READ`: every read sees one snapshot — the export, which counts first and then reads a page at a time | the tenant and the caller's person | `*Reader` |
-| `DB.Installation(ctx, fn)` | read-only | no tenant: only the person-scoped policies admit rows | `*Reader` |
-| `DB.Mutate(ctx, tenantID, fn)` | read-write; `uuid.Nil` for an installation-level act | the tenant and the caller | `*Writer` |
-| `DB.RunJob(ctx, name, lockKey, fn)` | read-write, under the job's lock | no tenant, a system actor | `*Writer` |
+| `DB.InTenant(ctx, tenantID, fn)` | read-only | the team and the caller's person | `*Reader` |
+| `DB.InTenantSnapshot(ctx, tenantID, fn)` | read-only, `REPEATABLE READ`: every read sees one snapshot — the export, which counts first and then reads a page at a time | the team and the caller's person | `*Reader` |
+| `DB.Installation(ctx, fn)` | read-only | no team: only the person-scoped policies admit rows | `*Reader` |
+| `DB.Mutate(ctx, tenantID, fn)` | read-write; `uuid.Nil` for an installation-level act | the team and the caller | `*Writer` |
+| `DB.RunJob(ctx, name, lockKey, fn)` | read-write, under the job's lock | no team, a system actor | `*Writer` |
 
 A `Reader` ([`tx.go`](../../backend/internal/store/tx.go)) embeds the generated read queries
 (`readq`), carries `TenantID` and `UserID`, and adds `ListTickets` and `CountTickets`, its count under the same predicates. A `Writer` embeds a `Reader`
@@ -100,8 +100,8 @@ last-used date and the idle clock, bookkeeping and not acts, [ADR 0035] D2,
 provider's ([below](#the-identity-providers-transactions)), `FindPerson` (the person lookup of a
 member's addition, which sets `app.person_lookup`), `CheckRuntimeRole`, `SchemaState`, `Ping`, and
 `Listen`; and `jobRead` — a read-only transaction that names a job and no
-tenant, through which `LastConsistencyCheck` and a scrape read the consistency check's results of
-every tenant, and the scrape every tenant's last export ([below](#the-consistency-checks-tables)).
+team, through which `LastConsistencyCheck` and a scrape read the consistency check's results of
+every team, and the scrape every team's last export ([below](#the-consistency-checks-tables)).
 
 `Open` registers `timestamptz` to scan in UTC and a tracer that logs a query slower than
 `DefaultSlowQuery` (500 ms) by its sqlc name, never its arguments, and counts a statement that
@@ -116,18 +116,22 @@ comes only from `LookupToken`.
 ## The settings the policies read
 
 `setContext` writes transaction-local settings (`set_config(…, true)`) at the start of every
-wrapper's transaction; an empty value leaves a setting unset.
+wrapper's transaction; an empty value leaves a setting unset. A team is stored as a tenant, and the
+database keeps the word — the setting `app.tenant_id`, the column `tenant_id`, the table `tenants`,
+the policies `tenant_isolation` and the functions `app_tenant_id()` and `app_is_tenant_admin()` —, as
+does the Go that hands it on (`InTenant`, `tenantID`, `Writer.LockTenant`;
+[ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1).
 
 | Setting | Written from | Read by |
 |---|---|---|
-| `app.tenant_id` | the wrapper's tenant | `app_tenant_id()`: every `tenant_isolation` policy, the policies of `tenants`, `memberships`, `users`, `audit_events`, the visibility functions |
-| `app.user_id` | `Caller.UserID` | `app_user_id()`: the person's own user row, memberships, tenants, tokens, idempotency keys and installation-level audit rows; the visibility functions |
+| `app.tenant_id` | the wrapper's team | `app_tenant_id()`: every `tenant_isolation` policy, the policies of `tenants`, `memberships`, `users`, `audit_events`, the visibility functions |
+| `app.user_id` | `Caller.UserID` | `app_user_id()`: the person's own user row, memberships, teams, tokens, idempotency keys and installation-level audit rows; the visibility functions |
 | `app.restricted_project_id` | `Caller.RestrictedProjectID` | `app_restricted_project_id()` in `app_project_visible` |
-| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`); `consistency-check` for its job, and for the read-only transactions of `jobRead` that read its results across the tenants — the schedule's and a scrape's | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30, 32, 41, 42, 43 and 46 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry`, `ticket-purge`, `github-webhook`, `github-delivery-expiry`, `consistency-check` and `import-expiry` for the rows those system actors keep (`app_job()`) — the two of migration 41 named by no code since GitHub's webhook was removed ([below](#github-webhooks-tables)) |
+| `app.job` | `RunJob`'s name; `login` for the login's own transactions; `identity-provider` for the identity provider's, and for the derivation inside an administrator's change of a mapping; `ticket-purge` for the purge job and for the purge's part of an administrator's request (`Writer.PurgeTicket`); `consistency-check` for its job, and for the read-only transactions of `jobRead` that read its results across the teams — the schedule's and a scrape's | the `idempotency_keys` policy admits every row in a transaction named `idempotency-expiry`; the policies of migrations 15, 16, 20–22, 30, 32, 41, 42, 43 and 46 name `login`, `bootstrap`, `session-expiry`, `login-expiry`, `identity-provider`, `notification-expiry`, `ticket-purge`, `github-webhook`, `github-delivery-expiry`, `consistency-check` and `import-expiry` for the rows those system actors keep (`app_job()`) — the two of migration 41 named by no code since GitHub's webhook was removed ([below](#github-webhooks-tables)) |
 | `app.token_hash` | `LookupToken`, the hex SHA-256 of the presented token | the `tokens` policy admits exactly that row |
 | `app.session_hash` | `LookupSession`, and `Caller.SessionHash` in every transaction of a session's request: the hex SHA-256 of the presented cookie; in the identity provider's transactions the session a login replaces or a refresh holds | `app_session_hash()`: the `sessions` policies admit exactly that row — to read it, to end it |
-| `app.person_lookup` | `FindPerson` only: the address or username an administrator adds a member by | `app_person_lookup()`: the `users` policy admits the persons it names to an administrator of the current tenant, and no other person of the installation (migration 20) |
-| `app.saved_filter_id` | `Writer.UnshareAnothersFilter` only, for its one statement: the saved filter a tenant administrator unshares | `app_saved_filter_id()`: the read policy of `saved_filters` admits that filter, unshared, to an administrator of the current tenant (migration 39) — PostgreSQL holds an update's new row to the read policy |
+| `app.person_lookup` | `FindPerson` only: the address or username an administrator adds a member by | `app_person_lookup()`: the `users` policy admits the persons it names to an administrator of the current team, and no other person of the installation (migration 20) |
+| `app.saved_filter_id` | `Writer.UnshareAnothersFilter` only, for its one statement: the saved filter a team administrator unshares | `app_saved_filter_id()`: the read policy of `saved_filters` admits that filter, unshared, to an administrator of the current team (migration 39) — PostgreSQL holds an update's new row to the read policy |
 
 A transaction-local setting reads `''`, not `NULL`, on a pooled connection after its
 transaction ended, and a bare `''::uuid` raises. Every policy therefore reads a setting through
@@ -142,30 +146,30 @@ grant; every table outside the named list carries `tenant_id` and the canonical
 `tenant_isolation` policy (`USING` and `WITH CHECK` on `tenant_id = app_tenant_id()`). The named
 list — `tenants`, `users`, `memberships`, `tokens`, `idempotency_keys`, `audit_events`,
 `local_accounts`, `sessions`, `login_attempts`, `login_locks` — has policies of its own, because
-those rows are read across tenants by their person or have no tenant ([ADR 0021] D6). The
+those rows are read across teams by their person or have no `tenant_id` ([ADR 0021] D6). The
 policies of the last four, and the new write policies on the others, use five more functions
 (migration 15) — and `app_person_lookup()` since migration 20: `app_job()` and `app_session_hash()`, which read the settings,
 `app_is_global_admin()`, and `app_manages_account(user)` and `app_manages_username(name)` — the
-current person is an administrator of the current tenant **and the account is one that tenant
+current person is an administrator of the current team **and the account is one that team
 manages** (`local_accounts.managing_tenant_id`). That last rule is where an account, which
-belongs to the whole installation, meets a tenant: see
+belongs to the whole installation, meets a team: see
 [docs/security/local-accounts.md](../security/local-accounts.md). `TestEveryTableHasItsPolicyAndGrant` checks all of it on the migration
 files, without a database; application queries still filter by `tenant_id` as well
 ([ADR 0021] D4).
 
 `group_mappings` carries `tenant_id` and the canonical policy, and three more: the identity
-provider reads every tenant's mappings, the bootstrap inserts the administrator group's, and
+provider reads every team's mappings, the bootstrap inserts the administrator group's, and
 **restrictive** policies (`AS RESTRICTIVE`) hold every write to an administrator of the current
-tenant — an insert and an update to one who is a global administrator as well
+team — an insert and an update to one who is a global administrator as well
 (`app_is_tenant_admin() AND app_is_global_admin()`, the handler's `mapsGroups` in the data layer,
 [ADR 0030] D7), a delete to any (the bootstrap's insert excepted, which names no person). `tenants`
 admits every row to a global administrator and `memberships` their own marked grant in any role, and
-the change of its role in the tenant's transaction,
+the change of its role in the team's transaction,
 ([migration 26](../../backend/internal/store/migrations/000026_global_admin_self_grant.up.sql),
-[ADR 0034] D2): the list of every tenant and the boundary's admission of a global administrator
-without a role read the tenant in an `Installation` transaction; inside the tenant's transaction no
+[ADR 0034] D2): the list of every team and the boundary's admission of a global administrator
+without a role read the team in an `Installation` transaction; inside the team's transaction no
 policy tells them from a member, and the operations they reach are the boundary's list
-([api.md](api.md#the-tenant-boundary)). A
+([api.md](api.md#the-team-boundary)). A
 restrictive policy is ANDed with the permissive ones instead of ORed: it narrows what any other
 policy admits, so a later permissive policy cannot widen who writes a mapping. `project_access` has
 three restrictive policies on `app_is_tenant_admin()` alone (migrations
@@ -176,23 +180,23 @@ three restrictive policies on `app_is_tenant_admin()` alone (migrations
 policy, and restrictive ones that hold reading and marking to the notification's own person
 (`user_id = app_user_id()`) — the writer of an act inserts notifications for others, and a forgotten
 `user_id` filter must not show one person another's inbox (`TestTheInboxPolicyHoldsAPersonToTheirOwn`)
-— and deleting to the job `notification-expiry`, which a permissive policy admits past the tenant
+— and deleting to the job `notification-expiry`, which a permissive policy admits past the team
 ([migration 30](../../backend/internal/store/migrations/000030_notifications.up.sql)); migration
 32 admits the purge's delete of the notifications of a deleted ticket beside it. `tokens` admits an
-administrator of the current tenant, since
+administrator of the current team, since
 [migration 35](../../backend/internal/store/migrations/000035_tenant_tokens.up.sql), every token of
-a member of the tenant that is unrestricted or restricted to it — to read and to revoke, the rows of
-the tenant's token list (`app_tenant_reaches_token`, `ListTenantTokens`) — and no token restricted
-to another tenant; the queries name the same rows. On
+a member of the team that is unrestricted or restricted to it — to read and to revoke, the rows of
+the team's token list (`app_tenant_reaches_token`, `ListTenantTokens`) — and no token restricted
+to another team; the queries name the same rows. On
 `memberships` the writes are split by source instead: a grant is inserted, changed and removed by
-an administrator of its tenant, a mapped membership only in a transaction named
+an administrator of its team, a mapped membership only in a transaction named
 `identity-provider`. `saved_filters` carries `tenant_id` and the canonical policy, and restrictive
 ones that hold reading to the filter's owner or a shared filter, and inserting, changing and
 deleting to its owner (`owner_id = app_user_id()`,
 [migration 33](../../backend/internal/store/migrations/000033_saved_filters.up.sql);
 `TestTheSavedFilterPoliciesHoldAPersonToTheirOwn`) — and since
 [migration 39](../../backend/internal/store/migrations/000039_saved_filters_moderated_by_administrators.up.sql)
-to an administrator of the current tenant (`app_is_tenant_admin()`) changing another person's
+to an administrator of the current team (`app_is_tenant_admin()`) changing another person's
 shared filter into one that is not shared, deleting it, and reading it back unshared while
 `app.saved_filter_id` names it — and the trigger `saved_filters_moderation_guard` refuses
 (SQLSTATE `42501`) any other change of a filter that is not the caller's own, its name or its
@@ -201,12 +205,12 @@ name `shared` as the policies do, and the unshare runs only through `Writer.Unsh
 ([`store/filters.go`](../../backend/internal/store/filters.go)), which names the filter
 (`TestTheSavedFilterPoliciesAdmitAnAdministratorToASharedFilter`). `import_jobs` carries `tenant_id`
 and the canonical policy, restrictive ones that admit reading to the job's maker
-(`created_by = app_user_id()`), an administrator of the current tenant (`app_is_tenant_admin()`),
+(`created_by = app_user_id()`), an administrator of the current team (`app_is_tenant_admin()`),
 the job `import-expiry` and the purge (`ticket-purge`), inserting to the maker in their own name and
 the administrator, and changing to the maker, the administrator and the purge — which takes a purged
 ticket's file out of its job's report —, and a restrictive delete that admits only the expiry job and
-only a dry run; the expiry job's own permissive read and delete reach the dry runs of every tenant
-with no tenant set
+only a dry run; the expiry job's own permissive read and delete reach the dry runs of every team
+with no `app.tenant_id` set
 ([migration 43](../../backend/internal/store/migrations/000043_import_jobs.up.sql), the maker since
 [migration 45](../../backend/internal/store/migrations/000045_import_jobs_of_their_writer.up.sql);
 `TestTheImportJobPoliciesAdmitItsMakerAndTheAdministrators`). A dry run holds the content of the
@@ -284,10 +288,10 @@ Three functions carry the restriction and the confidential flag into every query
 
 | Function | Migration | True when |
 |---|---|---|
-| `app_project_visible(project)` | `000007_visibility` | the token is not restricted to another project; and the project is unrestricted, or the person is a tenant administrator or on its `project_access` list |
-| `app_ticket_visible(project, confidential, assignee, reporter)` | `000008_tickets` | the project is visible; and the ticket is not confidential, or the person is a tenant administrator, its assignee or its reporter |
-| `app_time_visible(person)` | `000013_time_entries` | the entry is the person's own, or the person is a tenant administrator, or a member while the tenant shows time to members |
-| `person_sees_ticket(tenant, ticket, person)` | `000030_notifications` | whether *another* person — not the caller — sees a ticket: a member of the tenant; the project unrestricted, or the person an administrator or on its list; the ticket not confidential, or the person an administrator, its assignee or its reporter. `CanSeeTicket` (the person a question is asked of) and `NoticeRecipients` (whom an act tells) read through it; the caller's token restriction does not narrow it |
+| `app_project_visible(project)` | `000007_visibility` | the token is not restricted to another project; and the project is unrestricted, or the person is a team administrator or on its `project_access` list |
+| `app_ticket_visible(project, confidential, assignee, reporter)` | `000008_tickets` | the project is visible; and the ticket is not confidential, or the person is a team administrator, its assignee or its reporter |
+| `app_time_visible(person)` | `000013_time_entries` | the entry is the person's own, or the person is a team administrator, or a member while the team shows time to members |
+| `person_sees_ticket(tenant, ticket, person)` | `000030_notifications` | whether *another* person — not the caller — sees a ticket: a member of the team; the project unrestricted, or the person an administrator or on its list; the ticket not confidential, or the person an administrator, its assignee or its reporter. `CanSeeTicket` (the person a question is asked of) and `NoticeRecipients` (whom an act tells) read through it; the caller's token restriction does not narrow it |
 
 **The lint.** `TestEveryReadOfProjectsAndTicketsCarriesTheVisibilityPredicate` in
 [`queries_test.go`](../../backend/internal/store/queries_test.go) splits every file under
@@ -306,10 +310,10 @@ the one on the ticket the query reads.
 | `ParentChainContains`, `BlocksPathExists` | integrity walks that answer yes or no |
 | `CanSeeProject` | whether *another* person sees a project: the assignee |
 | `ListWatchers` | whom an act tells: the watchers of a ticket, each then held to their own sight of it by `NoticeRecipients` ([notifications](#notifications)) |
-| `ProjectKeyTaken` | a key's existence, unique in the tenant whether or not the caller sees its project |
-| `GetRepositoryBinding` | a binding's existence: a repository and sub-directory are unique in the tenant whether or not the caller sees the project that holds them; the handler names the project only when the caller sees it. The other queries of `project_repositories` join `projects` and call `app_project_visible` |
-| `TenantAttachmentUsage` | the bytes of every attachment of the tenant, for the quota and its administrators: a file counts whether or not the caller sees its ticket; it reads no ticket, and names it anyway |
-| `ListCheckedAttachments` | the consistency check's list of the missing files, every one of the tenant whose bytes are missing, for the tenant's administrators, who see every ticket; read by the job, which has no person |
+| `ProjectKeyTaken` | a key's existence, unique in the team whether or not the caller sees its project |
+| `GetRepositoryBinding` | a binding's existence: a repository and sub-directory are unique in the team whether or not the caller sees the project that holds them; the handler names the project only when the caller sees it. The other queries of `project_repositories` join `projects` and call `app_project_visible` |
+| `TenantAttachmentUsage` | the bytes of every attachment of the team, for the quota and its administrators: a file counts whether or not the caller sees its ticket; it reads no ticket, and names it anyway |
+| `ListCheckedAttachments` | the consistency check's list of the missing files, every one of the team whose bytes are missing, for the team's administrators, who see every ticket; read by the job, which has no person |
 | `LastRank`, `ListUnrankedTickets`, `GetTicketRank`, `NextRankedTicket`, `PreviousRankedTicket`, `ListRankKeys` | the rank keys of the project a write hands a key out in: a new key lies between keys that exist, hidden tickets' included, so none is handed out twice, and a rebalancing spreads every key, so every ticket keeps its place ([domain.md](domain.md#rank)) |
 | `GetScoreInputs` | the inputs of the score of a ticket the caller read through the predicate in this transaction, read again after the write that changed one ([domain.md](domain.md#the-score)) |
 | `ImportNumbersTaken` | a number's existence in the project an import goes into, unique whether or not the caller sees the ticket that holds it — a deleted one's included, also exempt from the deletion filter ([import-and-export.md](import-and-export.md#the-dry-run)) |
@@ -322,8 +326,8 @@ calls the predicate in each; `ListTicketImages`, the raster attachments a render
 
 The SQL functions `ticket_ancestor_or_self`, `blocks_path_exists`, `ticket_derived_progress`
 (the implementation stage, kept for the release before the stages), `ticket_derived_stage` and
-`person_sees_ticket` read the tenant's tickets past the predicate for the same reasons; row-level security still
-holds them to the tenant. Since migration 32, `ticket_derived_stage` leaves a deleted child out and
+`person_sees_ticket` read the team's tickets past the predicate for the same reasons; row-level security still
+holds them to the team. Since migration 32, `ticket_derived_stage` leaves a deleted child out and
 `person_sees_ticket` answers no for a deleted ticket; the two integrity walks still step over
 deleted tickets, so that a restoration can never close a cycle.
 
@@ -368,13 +372,13 @@ enters the SQL text; only the integer `LIMIT` and `OFFSET` are formatted in. The
 | progress filters | on the implementation stage the ticket shows: derived while it has children, else its own |
 | `DoneAfter` | `t.done_at > …`, the tickets done after a time; like the opened and updated bounds it excludes the bound ([ADR 0049] D1) |
 | `Query` | `search @@ plainto_tsquery('cowork_simple', …)` ([ADR 0025]) |
-| `TicketOrder` | `ByRank` for a project's list — `ORDER BY rankedKey NULLS LAST, t.number`, `rankedKey` the key of an open ticket and none for a done or dropped one, whatever its column holds: the ranked by their key, then the unranked by number —, `NewestFirst` (id descending) for the tenant's, and `ByScore` for a tenant's part of a person-level list — `ORDER BY t.score_key DESC, t.id` ([domain.md](domain.md#the-score)); `Position` writes a row's cursor position, the id, `<key>.<number>` (`RankPosition`) with an empty key for an unranked ticket, which the API seals, or `<score key>/<id>` (`ScorePosition`), which it does not ([api.md](api.md#paging)) |
+| `TicketOrder` | `ByRank` for a project's list — `ORDER BY rankedKey NULLS LAST, t.number`, `rankedKey` the key of an open ticket and none for a done or dropped one, whatever its column holds: the ranked by their key, then the unranked by number —, `NewestFirst` (id descending) for the team's, and `ByScore` for a team's part of a person-level list — `ORDER BY t.score_key DESC, t.id` ([domain.md](domain.md#the-score)); `Position` writes a row's cursor position, the id, `<key>.<number>` (`RankPosition`) with an empty key for an unranked ticket, which the API seals, or `<score key>/<id>` (`ScorePosition`), which it does not ([api.md](api.md#paging)) |
 | `TicketPage` | after a cursor position with `LIMIT` one above the page, or a numbered page with `LIMIT`/`OFFSET` and a `count(*)` total |
 
 ## The dashboard's queries
 
 [`queries/read/dashboard.sql`](../../backend/internal/store/queries/read/dashboard.sql) holds the
-ten reads of the tenant's dashboard ([api.md](api.md#the-dashboard)), which the handler runs in one
+ten reads of the team's dashboard ([api.md](api.md#the-dashboard)), which the handler runs in one
 `InTenant` transaction. Each reads `tickets` once and calls `app_ticket_visible` on it with the
 deletion filter `t.deleted_at IS NULL` beside it — the two lints above hold them to that like any
 query, and none is exempt — and says so in a `-- visibility:` line; the time adds
@@ -398,8 +402,8 @@ restored ([`api_dashboard_test.go`](../../backend/test/integration/api_dashboard
   'UTC')`, a Monday; the median is `percentile_cont(0.5)` over the seconds from `opened_at` to
   `done_at`, `0` with no ticket, which the handler answers as `null` by the count beside it.
 - **No migration and no index** came with them: the indexes there are cover their filters —
-  `tickets_by_state`, `time_entries_by_day`, `audit_by_ticket` — and each tile reads the tenant's
-  visible tickets anew. Their plans and their time over a large tenant have not been measured.
+  `tickets_by_state`, `time_entries_by_day`, `audit_by_ticket` — and each tile reads the team's
+  visible tickets anew. Their plans and their time over a large team have not been measured.
 
 ## Advisory locks
 
@@ -410,24 +414,24 @@ outlive its work on an idle pooled connection ([ADR 0027] D5).
 |---|---|---|---|
 | `0x636f776b` | `cowk` | `RunJob`, `pg_try_advisory_xact_lock(ns, lockKey)` | one replica per job |
 | `0x636f7770` | `cowp` | `Writer.LockParents(projectID)` | re-parentings in a project, before the parent cycle walk |
-| `0x636f7762` | `cowb` | `Writer.LockBlocks()` | new `blocks` links in the tenant, before the cycle walk |
+| `0x636f7762` | `cowb` | `Writer.LockBlocks()` | new `blocks` links in the team, before the cycle walk |
 | `0x636f7771` | `cowq` | `Writer.LockQuestions(ticketID)` | question numbers of a ticket |
 | `0x636f7761` | `cowa` | `Writer.LockAttachments(ticketID)` | uploads to a ticket, before the per-ticket count |
-| `0x636f7775` | `cowu` | `Writer.LockAttachmentQuota()`, where `COWORK_ATTACHMENT_TENANT_QUOTA` is set, before the ticket's attachment lock | the tenant's uploads, before the sum against its quota |
+| `0x636f7775` | `cowu` | `Writer.LockAttachmentQuota()`, where `COWORK_ATTACHMENT_TEAM_QUOTA` is set, before the ticket's attachment lock | the team's uploads, before the sum against its quota |
 | `0x636f7769` | `cowi` | the identity provider's transactions, and `RederiveGroup` per person in an administrator's change of a mapping | what the identity provider decides about one person: a login, a refresh's answer, a token's gate check, a mapping's derivation |
 | `0x636f7772` | `cowr` | `DB.ReserveLoginAttempt`, `pg_advisory_xact_lock(ns, hashtext(encode(address, 'hex')))` | the attempts to prove a password of one client address, before the throttle's count ([the login](#the-login-and-the-sessions)) |
-| `0x636f7774` | `cowt` | `Writer.LockTenant()`, first in an administrator's change of a grant (`PUT`, `DELETE …/grant`) or of a mapping (create, change, remove) and in the deactivation of an account (`PUT …/accounts/{username}/deactivation`) | the changes of who administers the tenant, before the `last_admin` check: the second of two concurrent changes sees the first committed |
+| `0x636f7774` | `cowt` | `Writer.LockTenant()`, first in an administrator's change of a grant (`PUT`, `DELETE …/grant`) or of a mapping (create, change, remove) and in the deactivation of an account (`PUT …/accounts/{username}/deactivation`) | the changes of who administers the team, before the `last_admin` check: the second of two concurrent changes sees the first committed |
 
 The writer locks are `pg_advisory_xact_lock(ns, hashtext(id::text))`
 ([`jobs.go`](../../backend/internal/store/jobs.go)). The check that follows a lock is a new
 statement and sees every write committed before the lock was granted, so two concurrent writes
 cannot pass the check together. golang-migrate takes a single `bigint` key; the two-key space
-never meets it. A transaction that takes a tenant's lock and persons' locks takes the tenant's first
-and the persons' in the order of their ids; none takes a tenant's lock after a person's, so the two
-cannot deadlock. A transaction takes the lock of its own tenant and of no other, so the tenants'
+never meets it. A transaction that takes a team's lock and persons' locks takes the team's first
+and the persons' in the order of their ids; none takes a team's lock after a person's, so the two
+cannot deadlock. A transaction takes the lock of its own team and of no other, so the teams'
 locks need no order among themselves. Two orderings are row locks, not advisory: the
 `ticket_counters` row and the
-tenant row the time lock is read from `FOR SHARE` (`TimeLockedUntil`). The counter row is the
+team row the time lock is read from `FOR SHARE` (`TimeLockedUntil`). The counter row is the
 project's number lock and its rank lock in one: a filing updates it (`NextTicketNumber`), a move
 and a return from done or dropped — a reopen, a withdrawal of a done by hand, a lower stage that
 reopens — lock it `FOR UPDATE` (`LockProjectRank`) before they read a key, and each of them takes
@@ -474,7 +478,7 @@ verified — a change of the password updates that row, so it waits for the shar
 it —, ends the session the login presented,
 inserts the new one and records `logged_in` as the person, whose `Caller` carries the replaced
 cookie's hash; logout, the password change, the account routes and the creation of a token and a
-tenant are handlers' `Mutate` calls like any other. The session's timestamps and the login's
+team are handlers' `Mutate` calls like any other. The session's timestamps and the login's
 windows come from the backend's clock (`Options.Now`) passed in as parameters, not from `now()`,
 so a test moves one clock.
 
@@ -487,27 +491,27 @@ read-write transaction whose settings name the job `identity-provider`, the requ
 hash and the session hash a login replaces or a refresh holds; `forPerson` names the person in
 `app.user_id` — which admits the person's sessions and memberships — and takes the advisory lock
 `cowi` of the person before anything is read that the decision depends on. The acts are written
-through the same `Writer.flush` as `Mutate`'s, tenant by tenant: `flushIn` sets `app.tenant_id` for
-the rows of one tenant and clears it again, because a decision about one person writes rows in
-every tenant whose mappings it touches.
+through the same `Writer.flush` as `Mutate`'s, team by team: `flushIn` sets `app.tenant_id` for
+the rows of one team and clears it again, because a decision about one person writes rows in
+every team whose mappings it touches.
 
 | Function | Decides | Writes |
 |---|---|---|
-| `CompleteOIDCLogin` | a verified login: the gate, deactivated, the init state | a refusal (`login_refused`, and for a known, active person outside the gate their groups with the gate's stamp and the administrator flag cleared, and the end of their sessions — no memberships, which stay as they were); or the person kept or made, the memberships derived in every tenant (`deriveEverywhere`), the session — with its groups and sealed refresh token — and the person's own `logged_in`, as the person |
+| `CompleteOIDCLogin` | a verified login: the gate, deactivated, the init state | a refusal (`login_refused`, and for a known, active person outside the gate their groups with the gate's stamp and the administrator flag cleared, and the end of their sessions — no memberships, which stay as they were); or the person kept or made, the memberships derived in every team (`deriveEverywhere`), the session — with its groups and sealed refresh token — and the person's own `logged_in`, as the person |
 | `ClaimSessionRefresh` | whether this request refreshes the session: one short transaction **as the person**, no job, that moves `refresh_retry_at` thirty seconds ahead where the refresh is due and nobody holds it (`ClaimSessionRefresh` in `sessions.sql`), and returns the sealed refresh token | the lease only; no act. The API then asks the issuer with no transaction open |
 | `ApplySessionRefresh` | the issuer's answer, under the person's lock and the session's row `FOR UPDATE`, only while `refresh_retry_at` is still the claimed lease | read: the session's groups, and the person's (`keepSnapshot`) unless their `oidc_groups_at` is newer than the read, the memberships while the gate admits them; judged — nothing was read: the session's row only (`SetSessionGroups`); outside the gate: the end of every session of the person; refused: the end of this session; unreachable: the retry time and a rotated refresh token (`DeferSessionRefresh`) |
 | `EndProviderSessions` | nothing to decide: the person is not the configured issuer's | the end of every session of the person, `revoked` with the cause `gate` |
 | `CheckTokenGate` | a token's person against the gate, on their stored issuer and groups | nothing when outside; when admitted, the check's stamp, the administrator flag and the memberships |
 
 Two more pieces run inside an administrator's `Mutate`. `RederiveGroup(group, issuer)` — after a
-mapping is made, changed or removed, under the tenant's lock the handler took first — names the job
+mapping is made, changed or removed, under the team's lock the handler took first — names the job
 `identity-provider` in the administrator's transaction, finds every person of the configured issuer
 whose stored groups hold the group (`ListPersonsInGroup`, ordered by id), takes each one's lock in
 that order, reads the person again under it and passes over one who is deactivated, of another
 issuer, or has no gate stamp (`GetPersonForDerivation`), brings the others' mapped membership in the
-transaction's tenant in line, records each change as an `Event` with
+transaction's team in line, records each change as an `Event` with
 `System: system:identity-provider`, and names the job no more. `FindPerson` is a read-only
-transaction of the administrator's, in their tenant, that names the address or username in
+transaction of the administrator's, in their team, that names the address or username in
 `app.person_lookup` and looks an address up among the configured issuer's persons only — one the
 issuer marked verified, or, with `PersonLookup.EmailTrusted` (`COWORK_OIDC_EMAIL_TRUSTED`), one it
 said nothing about.
@@ -516,7 +520,7 @@ The mapped memberships themselves are written by `applyMapped` only — insert, 
 delete, by the row's id — and a grant is never among them: the policies of
 [migration 22](../../backend/internal/store/migrations/000022_membership_administration.up.sql) admit
 the writes of a `mapping` row to the job `identity-provider` alone, and those of a `grant` row to an
-administrator of its tenant alone. What the identity provider may write of `users` is its own
+administrator of its team alone. What the identity provider may write of `users` is its own
 persons — `oidc_issuer` set, no username — never a local account
 ([migration 20](../../backend/internal/store/migrations/000020_identity_provider.up.sql)).
 
@@ -538,17 +542,17 @@ attempts older than the lockout window and the locks of the `window` mode that e
 `expired` act on `login_attempts`) and the notification expiry, key `5` (`ExpireNotifications`: the
 notifications read more than `ReadRetention`, ninety days, ago, an `expired` act on `notifications`;
 an unread one stays) and the ticket purge, key `6` (`PurgeDeletedTickets`,
-[below](#deletion-and-the-purge)), which works in the tenants: it writes each tenant's
-acts there through `Writer.inTenant`, which binds the job's transaction to the tenant for the work
+[below](#deletion-and-the-purge)), which works in the teams: it writes each team's
+acts there through `Writer.inTenant`, which binds the job's transaction to the team for the work
 and its acts and unbinds it after; `RunJob` commits when acts were written that way, too. The
 consistency check, key `8` (`CheckConsistency`, `system:consistency-check`,
-[below](#the-consistency-checks-tables)), works in the tenants the same way, and records one
+[below](#the-consistency-checks-tables)), works in the teams the same way, and records one
 installation-level act after them; it is not hourly: `runJobs` asks every hour whether it is due
 (`LastConsistencyCheck`, `ConsistencyCheckDue` — no result yet, or the last run before the latest
 03:00 UTC) and runs it then, and never without object storage. Each job holds a key of its own; a
 unit test reads every `RunJob` call of the backend and refuses a key two jobs share. Key `7` was
 the expiry of GitHub's deliveries, removed with the webhook; no job takes it. The import expiry, key `9` (`ExpireImportJobs`, [`store/imports.go`](../../backend/internal/store/imports.go)),
-deletes the dry runs past their twenty-four hours in every tenant with the files they hold and
+deletes the dry runs past their twenty-four hours in every team with the files they hold and
 records one `expired` act on `import_jobs` when it removed any; an executed job stays.
 `runJobs` in [`main.go`](../../backend/cmd/cowork/main.go)
 runs them at start and then every hour, on every replica; each lock lets one of them work. Its log
@@ -561,7 +565,7 @@ too — key `4`, `system:bootstrap` — run once at start, and retried until the
 
 ## Deletion and the purge
 
-A ticket is deleted into its tenant's bin and purged from it ([ADR 0024] D1–D3, D7;
+A ticket is deleted into its team's bin and purged from it ([ADR 0024] D1–D3, D7;
 [migration 32](../../backend/internal/store/migrations/000032_ticket_deletion.up.sql),
 [`store/deletion.go`](../../backend/internal/store/deletion.go),
 [`queries/*/deletion.sql`](../../backend/internal/store/queries/write/deletion.sql)):
@@ -592,52 +596,52 @@ A ticket is deleted into its tenant's bin and purged from it ([ADR 0024] D1–D3
   outside the purge — a forgotten `WHERE` included — removes nothing, and the purge removes nothing
   of a live ticket; `ticket_links` and `ticket_interest` keep the deletes their own routes make. The
   notifications' restrictive read and delete policies admit the purge for a deleted ticket's
-  notifications. The job finds the due tickets of every tenant through `tickets_purge_due`, a
-  permissive read of the deleted tickets in a transaction named `ticket-purge` **with no tenant
-  set** — a request always has one, so its purge never widens what it reads.
+  notifications. The job finds the due tickets of every team through `tickets_purge_due`, a
+  permissive read of the deleted tickets in a transaction named `ticket-purge` **with no
+  `app.tenant_id` set** — a request always has one, so its purge never widens what it reads.
 - **The audit rows** keep the key, the actor and the act; their `before`, `after`, `reason` and
   `note` are emptied ([ADR 0026] D3) by `purge_ticket_audit(ticket)`, a `SECURITY DEFINER` function
   owned by the owner role — the runtime role may not update an audit row — executable by the runtime
   role alone, with its `search_path` fixed to the schema and `pg_temp` last
   (`TestEverySecurityDefinerFunctionIsFencedIn`). It refuses outside the purge and for a ticket that
   is not deleted, and the policy `audit_purge` admits its update to the owner role in the purge of
-  the current tenant only. The act of the purge is written by the wrapper in the same transaction,
+  the current team only. The act of the purge is written by the wrapper in the same transaction,
   so both commit or neither does.
 - **The job** (`PurgeDeletedTickets`, key `6`, `system:ticket-purge`) purges up to 200 tickets
-  deleted longer than `PurgeAfter`, thirty days, ago, tenant by tenant; `runJobs` removes their
+  deleted longer than `PurgeAfter`, thirty days, ago, team by team; `runJobs` removes their
   objects and logs each key.
 
 ## The consistency check's tables
 
 [Migration 42](../../backend/internal/store/migrations/000042_attachment_consistency.up.sql) keeps
-the check of [ADR 0059] D4 ([storage.md](storage.md#the-consistency-check)) in two tenant-bound
+the check of [ADR 0059] D4 ([storage.md](storage.md#the-consistency-check)) in two team-bound
 tables under the canonical policy, with restrictive ones beside it:
 
 | Table | Holds | Read by | Written by |
 |---|---|---|---|
-| `consistency_checks` | one row per tenant, its latest result: the id the confirmations name, the counts, the two lists as JSON, an administrator's confirmed removal | the tenant's administrators and the job; across the tenants, in a transaction named `consistency-check` with no tenant set (`consistency_checks_counts`, the counts a scrape reads) | the job inserts and replaces the row (`SaveConsistencyCheck`, an upsert under a new id); an administrator updates the counts and the lists (`RecordOrphanRemoval`, `RecordDanglingAcceptance`) |
-| `consistency_acceptances` | an administrator's acceptance that an attachment's bytes are lost; a foreign key to `attachments` with `ON DELETE CASCADE`, so the purge's delete of the row takes it along | the tenant's administrators and the job | an administrator inserts, as themselves (`accepted_by = app_user_id()`); the job deletes those of whole attachments |
+| `consistency_checks` | one row per team, its latest result: the id the confirmations name, the counts, the two lists as JSON, an administrator's confirmed removal | the team's administrators and the job; across the teams, in a transaction named `consistency-check` with no team set (`consistency_checks_counts`, the counts a scrape reads) | the job inserts and replaces the row (`SaveConsistencyCheck`, an upsert under a new id); an administrator updates the counts and the lists (`RecordOrphanRemoval`, `RecordDanglingAcceptance`) |
+| `consistency_acceptances` | an administrator's acceptance that an attachment's bytes are lost; a foreign key to `attachments` with `ON DELETE CASCADE`, so the purge's delete of the row takes it along | the team's administrators and the job | an administrator inserts, as themselves (`accepted_by = app_user_id()`); the job deletes those of whole attachments |
 
-The job reads every tenant with no tenant set: migration 42 adds `consistency-check` to the jobs
+The job reads every team with no `app.tenant_id` set: migration 42 adds `consistency-check` to the jobs
 `tenants_read` admits. A member's transaction reads neither table, whatever its query says. The
 grants: `SELECT, INSERT` and `UPDATE` of the result's columns on `consistency_checks`, no `DELETE`;
 `SELECT, INSERT, DELETE` on `consistency_acceptances`.
 
-Beside the results a scrape reads every tenant's last export from the audit record
+Beside the results a scrape reads every team's last export from the audit record
 (`ListLastExports`, [metrics.md](metrics.md#the-consistency-family)):
 [migration 46](../../backend/internal/store/migrations/000046_last_export_read_at_a_scrape.up.sql)
 adds the permissive policy `audit_exports_read`, which admits a transaction named
-`consistency-check` with no tenant set to the rows of `audit_events` whose action is `exported` on
+`consistency-check` with no `app.tenant_id` set to the rows of `audit_events` whose action is `exported` on
 the entity `project` or `tenant`, and to no other row, and the partial index
 `audit_exports_by_tenant` on `(tenant_id, created_at)` over the same rows, so the latest export of a
-tenant is one step of an index the size of its exports. The tenant's administrators read their
-tenant's latest one beside the check (`LastTenantExport`) in the tenant's own transaction, under
+team is one step of an index the size of its exports. The team's administrators read their
+team's latest one beside the check (`LastTenantExport`) in the team's own transaction, under
 `audit_read`.
 
 ## Notifications
 
 The inbox of [ADR 0020] is rows, written by the act that causes them in its transaction and
-referencing its audit row (D3): `notifications` (migration 30) holds the tenant, the person, the
+referencing its audit row (D3): `notifications` (migration 30) holds the team, the person, the
 ticket the notification is about, the audit row and the reason, and `read_at`. The handler that
 records an act names whom it tells in `Event.Notices`; `Writer.deliver`
 ([`store/inbox.go`](../../backend/internal/store/inbox.go)), called by `writeEvents` after the audit
@@ -666,7 +670,7 @@ recipient, and `deliver` publishes an `inbox` notification per person whose inbo
 ([events.md](events.md#publication)). A withdrawal of a question tells nobody: only its asker may
 withdraw it.
 
-The inbox is read per tenant through `ListInbox`, `CountUnread` and `FindNotification`
+The inbox is read per team through `ListInbox`, `CountUnread` and `FindNotification`
 ([`queries/read/inbox.sql`](../../backend/internal/store/queries/read/inbox.sql)), each with the
 predicate on both tickets, so a notification of a ticket the person no longer sees counts nowhere,
 and each leaves out a notification of the reason `merged`, which GitHub's webhook of a release up to
@@ -676,7 +680,7 @@ person's act `read`.
 ## Publication
 
 `Writer.publish` ([`notify.go`](../../backend/internal/store/notify.go)) runs for every act
-written — by `Mutate`, by a job in a tenant and by the identity provider's transactions alike — that belongs to a tenant
+written — by `Mutate`, by a job in a team and by the identity provider's transactions alike — that belongs to a team
 and carries an `Event.Membership`, carries an `Event.NewProject` or an `Event.ProjectRank`, or names
 a ticket, except the actions `downloaded` and `exported`, the entity `time_entry`, and an act marked
 `Event.Quiet`, which `writeEvents` in [`tx.go`](../../backend/internal/store/tx.go) skips. The sort of

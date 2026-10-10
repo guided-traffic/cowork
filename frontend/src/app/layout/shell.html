@@ -13,9 +13,9 @@
         optionValue="slug"
         [ngModel]="session.tenant()"
         (ngModelChange)="switchTenant($event)"
-        placeholder="Choose a tenant"
+        placeholder="Choose a team"
         size="small"
-        ariaLabel="Tenant"
+        ariaLabel="Team"
         data-testid="tenant-switch"
       />
     } @else if (session.shown(); as shown) {

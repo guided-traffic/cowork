@@ -44,7 +44,7 @@ What every change in this repository follows.
   the `audit_action` enum (migration `000005`) and of the document's `AuditAction` schema.
 - **Audit row ids are made in Go** (`uuid.NewV7` in `Writer.writeEvents`), never read back with
   `RETURNING`: an installation-level row of a system actor would not pass the read policy. The ids
-  of a person, a tenant and a membership are made in Go too, for the same reason: the person who
+  of a person, a team and a membership are made in Go too, for the same reason: the person who
   creates the row does not yet pass its read policy.
 - **A secret has one way out.** A password, a session cookie, a token and a hash are in no log
   line, no audit row, no error text and no response — except the answer that creates the token,

@@ -8,20 +8,20 @@ tree on 2026-10-05.
 ## Projects, keys and the counter
 
 A project's key matches `^[A-Z][A-Z0-9]{1,9}$`: upper case, 2 to 10 characters, no hyphen, so
-the last hyphen of a ticket key ends it ([ADR 0007] D1). Keys are unique in the tenant for good:
+the last hyphen of a ticket key ends it ([ADR 0007] D1). Keys are unique in the team for good:
 `ProjectKeyTaken` looks past the visibility predicate, and a taken key is
 `409 project_key_taken`. A project is archived, never deleted (`archiveProject`, an
 administration act); an archived project stays readable, leaves the project list unless
 `include_archived`, and refuses new tickets with `409 project_archived` ([ADR 0006] D4).
 
-A ticket's key is `<tenant-slug>/<PROJECT>-<number>`, the short form `<PROJECT>-<number>`
+A ticket's key is `<team-slug>/<PROJECT>-<number>`, the short form `<PROJECT>-<number>`
 ([ADR 0007]). Only the number is stored. Creating a project inserts its `ticket_counters` row in
 the same act; filing a ticket takes the next number with `UPDATE ticket_counters … RETURNING`
 in the filing's own `Mutate`, so the row lock orders concurrent filings and a filing that rolls
 back hands its number out again ([ADR 0022] D2). [`domain.ParseTicketKey`](../../backend/internal/domain/ticket.go)
 reads both forms, splits at the last hyphen and refuses a number that is not positive, has a
 leading zero or exceeds `int32`; the path's `{number}` stops at 2147483647 as well. Every answer
-carries the full key (`domain.FullKey`). `GET /api/v1/tickets/{tenant}/{key}` resolves a short
+carries the full key (`domain.FullKey`). `GET /api/v1/tickets/{team}/{key}` resolves a short
 key in one path segment to the same body and `ETag` as the ticket's own route.
 
 ## Repositories
@@ -43,31 +43,32 @@ and [`api/repositories.go`](../../backend/internal/api/repositories.go):
   HTTP(S) URL loses its user information, another URL its password, and a URL `url.Parse` refuses
   everything between its `://` and the last `@` of its authority, which ends at the first `/`, `?`
   or `#` — such a remote is kept, cut, so it is still shown, and it binds once it parses). The
-  identity and the sub-directory are unique in the tenant: a repository is in at most one project
-  of a tenant ([ADR 0066] D6). Across tenants nothing holds it to one; the lookup reports several.
+  identity and the sub-directory are unique in the team: a repository is in at most one project
+  of a team ([ADR 0066] D6). Across teams nothing holds it to one; the lookup reports several.
 - **Binding and unbinding** (`POST`, `DELETE …/projects/{project}/repositories`) are the act of
-  creating a project (`creating`): an administrator, or a member while the tenant lets members
+  creating a project (`creating`): an administrator, or a member while the team lets members
   create projects, judged by the role in the project; `write`; an agent with `create-project`
   ([ADR 0043] D4). Binding is idempotent over the identity and the sub-directory — `201` for a
   new binding, `200` for one the project holds, its remote updated to the form given —, and one
-  another project of the tenant holds is `409 repository_bound`, naming that project only to a
+  another project of the team holds is `409 repository_bound`, naming that project only to a
   caller who sees it. Unbinding answers `204` also when the binding is gone. The acts are
   `linked`, `updated` and `unlinked` on the entity `repository`.
 - **Creating a project for a repository** (`POST …/projects` with `repository`,
   [ADR 0066] D3, D5): the project, its counter and the binding in one act, `created` with the
-  repository in its `after`. When a project of the tenant binds the repository already the
+  repository in its `after`. When a project of the team binds the repository already the
   answer is `200` with that project and nothing is created — `409 repository_bound` when the
   caller cannot see it.
 - **The lookup** (`GET /api/v1/me/repositories/lookup`, D2) normalises every remote, keeps
-  their order, and reads each of the person's tenants — a token's restriction narrows them — for
+  their order, and reads each of the person's teams — a token's restriction narrows them — for
   the bindings of projects the caller sees. The first remote with a binding whose sub-directory
   covers the working directory's (`PathCovers`) decides, the most specific sub-directory
   first: one binding is `bound`, several `ambiguous`. With none, the proposal comes from the
-  first remote with an identity: the tenants where the caller may create a project — none for
-  a project-restricted token — narrowed to the only one (`only-tenant`), else to the one that
+  first remote with an identity: the teams where the caller may create a project — none for
+  a project-restricted token — narrowed to the only one (`only-tenant`, a value that keeps the name
+  before, [api.md](api.md#deprecated-names)), else to the one that
   binds repositories under the same owner, the identity without its last segment (`remote-owner`;
   several of them, or none, are the list to `choose` from); the repository's name as the name;
-  and per tenant a key free there — `ProposeProjectKey`, the initials of the parts a hyphen, an
+  and per team a key free there — `ProposeProjectKey`, the initials of the parts a hyphen, an
   underscore or a dot divides (`valkey-operator` is `VO`), else the first three letters, then
   `KeyCandidate` with 2, 3, … appended until `ProjectKeyTaken` says free.
 
@@ -95,16 +96,16 @@ Two predicates decide it, in the data layer ([ADR 0034] D3, D4; [ADR 0065] D4); 
 stream applies the confidential rule once more in Go, to each event it holds
 (`events.Filter`, [events.md](events.md)):
 
-- **The project.** An unrestricted project is visible to everyone in the tenant; a restricted
-  one to the tenant's administrators, and to the people on its list (`project_access`) with at
+- **The project.** An unrestricted project is visible to everyone in the team; a restricted
+  one to the team's administrators, and to the people on its list (`project_access`) with at
   most the role of their entry. A token restricted to one project sees that project only
   ([ADR 0035] D3).
-- **The ticket.** A confidential ticket is visible, inside a visible project, to the tenant's
+- **The ticket.** A confidential ticket is visible, inside a visible project, to the team's
   administrators, its assignee and its reporter only.
 
 What a reader may not see does not exist for them: its routes answer `404`, lists, links and
 the event stream leave it out, and an act that names it is shown without its payload
-([ADR 0065] D5). A deleted ticket is the same for everybody, its tenant's administrators included,
+([ADR 0065] D5). A deleted ticket is the same for everybody, its team's administrators included,
 everywhere but the bin ([deletion](#deletion-the-bin-and-the-purge)). The SQL is
 [data-access.md](data-access.md#visibility-in-sql).
 
@@ -123,7 +124,7 @@ see it.
 `live` and `boundary` set the confidential flag: on filing, and on a change *to* one of them from
 another class while the flag is down ([ADR 0065] D2). A class that merely stays `live` does not
 set again what an administrator lifted; nothing lifts the flag automatically (D3).
-`PUT …/confidential` is a tenant administrator's act with admin scope, never an agent's (D6),
+`PUT …/confidential` is a team administrator's act with admin scope, never an agent's (D6),
 and lifting needs a reason (D3). The acts are `confidential_set` (with the class as reason when it
 is automatic) and `confidential_lifted`.
 
@@ -184,7 +185,7 @@ decision blocked — into horizons set by nobody, so no ticket moved when the de
 
 ## Links
 
-Four types, directed, inside one tenant and across its projects ([ADR 0012]):
+Four types, directed, inside one team and across its projects ([ADR 0012]):
 `PUT …/links/{type}/{other}` makes the ticket in the path the source and `other` (a short key)
 the target; `GET …/links` lists both directions, each read from the ticket's side
 (`LinkType.Name`):
@@ -198,7 +199,7 @@ the target; `GET …/links` lists both directions, each read from the ticket's s
 
 No link to the ticket itself, one link per type and direction (table constraints);
 `relates-to` is stored once with the smaller id as source. A new `blocks` link takes the
-tenant's lock (`LockBlocks`) and refuses a cycle (`blocks_path_exists`) with
+team's lock (`LockBlocks`) and refuses a cycle (`blocks_path_exists`) with
 `409 link_cycle`. Both ends are read through the predicate — an end the caller cannot see is
 `404` — and a listed link whose other end the caller cannot see is absent. A link is an act on
 both tickets (`linked`, `unlinked`, each with the other ticket in `Refs`). An existing link is
@@ -408,9 +409,9 @@ A question belongs to a ticket and has a number there, taken under the ticket's 
 
 | Act | Who |
 |---|---|
-| ask | a member; `asked_of`, when set, must be a member who can see the ticket (`CanSeeTicket`); without it the question is open in the tenant |
+| ask | a member; `asked_of`, when set, must be a member who can see the ticket (`CanSeeTicket`); without it the question is open in the team |
 | edit (`If-Match`) | the asker, while it is open |
-| answer | the person asked, or any member when it is open in the tenant; a person changes their own answer, with `If-Match` |
+| answer | the person asked, or any member when it is open in the team; a person changes their own answer, with `If-Match` |
 | answer as an agent | needs `record-answer`; the answer stays its person's, `recorded_by_agent` is set, and an agent changes only an answer an agent recorded ([ADR 0066] D8) |
 | answer through a token | the token is `answered_by_token`, an agent's or the person's own; every answer sets or clears it, so a changed answer carries its own ([ADR 0036] D6) |
 | withdraw | the asker; an agent only what an agent asked |
@@ -427,12 +428,12 @@ A withdrawn question takes no answer; an answered or withdrawn one no edit.
 - **Edits** keep the previous text in `comment_revisions`. **Withdrawal** keeps the entry and
   hides its text: `body` is `null` in every answer and the revision list is empty. Nothing is
   deleted. A person changes their own comments and those their agents wrote; an agent only those
-  an agent of the same person wrote; a tenant administrator withdraws any comment and edits none
+  an agent of the same person wrote; a team administrator withdraws any comment and edits none
   (D3, D4).
 - **Comment texts never enter the audit record**, which cannot forget: `commented`, `edited`
   and `withdrawn` carry no text.
 - **Mentions** are a list of person ids beside the text, `comments.mentions` (migration 36,
-  [ADR 0015] D5): `checkMentions` admits each like a question's `asked_of` — a member of the tenant
+  [ADR 0015] D5): `checkMentions` admits each like a question's `asked_of` — a member of the team
   who sees the ticket (`CanSeeTicket`) — and refuses the first that is not at `/mentions/<i>`; the
   API reads no text, so a name typed without the list mentions nobody. A new comment's act tells the
   persons it mentions `mentioned` before it tells the watchers `commented`, and one act tells a
@@ -526,12 +527,12 @@ The stages move the state ([ADR 0009] D5), decided by the pure
 - Only the author corrects (`If-Match`; the previous values go to `time_entry_revisions`) or
   voids an entry; nothing is deleted. A voided entry counts in no sum and takes no correction;
   voiding it again changes nothing.
-- A tenant administrator closes a period by moving `time_locked_until` (`PATCH` on the tenant,
+- A team administrator closes a period by moving `time_locked_until` (`PATCH` on the team,
   recorded as `locked`). A write on a day on or before it — for a correction the old and the new
   day — is `409 period_locked`; the lock is read `FOR SHARE`, so a concurrent move waits.
 - Who sees an entry is `app_time_visible` next to the ticket's predicate
   ([data-access.md](data-access.md#visibility-in-sql)); a ticket's list carries the visible sum
-  (`total_minutes`), the tenant's list and the report (by ticket, project, person or tenant) answer
+  (`total_minutes`), the team's list and the report (by ticket, project, person or team) answer
   JSON or CSV.
 - Time entries appear neither in a ticket's activity nor on the event stream; an entry and each
   revision carry the token they came through ([who made an act](#who-made-an-act)), which is where
@@ -548,7 +549,7 @@ is written (`actAgent`, `actToken`):
 |---|---|---|
 | `tickets`, the filing | `reporter_token_id`, `reporter_token_name`, beside `reporter_agent` | `Ticket.reporter_agent`, `Ticket.reporter_token` |
 | `ticket_interest`, the stake as last set | `token_id`, `token_name`, beside `agent` | `Interest.agent`, `Interest.token` |
-| `audit_events` | `token_id`, `token_name` | `Activity.token`; the tenant's audit view `token_name` |
+| `audit_events` | `token_id`, `token_name` | `Activity.token`; the team's audit view `token_name` |
 | `comments`, `comment_revisions` | `token_id`, `token_name` | `Comment.token`, `CommentRevision.token` |
 | `attachments` | `token_id`, `token_name` | `Attachment.token` |
 | `questions` | `asked_by_token_id`, `asked_by_token_name`; `answered_by_token_id`, `answered_by_token_name` | `Question.asked_by_token`, `Question.answered_by_token` |
@@ -582,8 +583,8 @@ store's side are [data-access.md](data-access.md#notifications).
 [ADR 0024] D1–D3, D7; [`api/deletion.go`](../../backend/internal/api/deletion.go), the store's side
 [data-access.md](data-access.md#deletion-and-the-purge):
 
-- **Who.** Deleting, restoring and purging are a tenant administrator's acts with `admin` scope —
-  the tenant role, not a project's — and never an agent's: the hard-off rule `deleting, restoring
+- **Who.** Deleting, restoring and purging are a team administrator's acts with `admin` scope —
+  the team role, not a project's — and never an agent's: the hard-off rule `deleting, restoring
   or purging` refuses an agent-marked request with `403 agent_forbidden` (ADR 0043 D3). The purge
   takes a browser session besides: the document declares `purgeTicket` with the session cookie
   alone, so a token — an administrator's `admin` token included — is `403 session_required`
@@ -610,7 +611,7 @@ store's side are [data-access.md](data-access.md#notifications).
 
 ## Not built
 
-The deletion of a project and of a tenant ([ADR 0024] D4, D6) is not built. No route creates
+The deletion of a project and of a team ([ADR 0024] D4, D6) is not built. No route creates
 memberships, entries on a restricted
 project's list or tokens; the tests and `make dev-seed` write them over the administrative
 connection ([testing.md](testing.md#fixtures-of-the-integration-tier)).

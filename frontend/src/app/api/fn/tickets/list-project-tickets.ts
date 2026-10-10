@@ -12,9 +12,9 @@ import { TicketList } from '../../models/ticket-list';
 export interface ListProjectTickets$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -114,7 +114,7 @@ export interface ListProjectTickets$Params {
 export function listProjectTickets(http: HttpClient, rootUrl: string, params: ListProjectTickets$Params, context?: HttpContext): Observable<StrictHttpResponse<TicketList>> {
   const rb = new RequestBuilder(rootUrl, listProjectTickets.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.query('state', params.state, {"style":"form","explode":true});
     rb.query('type', params.type, {"style":"form","explode":true});
@@ -154,4 +154,4 @@ export function listProjectTickets(http: HttpClient, rootUrl: string, params: Li
   );
 }
 
-listProjectTickets.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets';
+listProjectTickets.PATH = '/api/v1/teams/{team}/projects/{project}/tickets';

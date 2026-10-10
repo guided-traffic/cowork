@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -49,10 +50,43 @@ type Tool struct {
 	// test holds each to the API document (docs/adr/0042 D6).
 	Operations []string
 
-	limits   func(Token) string
+	limits func(Token) string
+	// renamed are the arguments the tool still takes under their names
+	// before, for one release (docs/adr/0005 D1): each is taken as its name
+	// now before the schema holds the arguments, and refused beside it when
+	// the two differ.
+	renamed  []renamedArgument
 	schema   *jsonschema.Schema
 	resolved *jsonschema.Resolved
 	run      func(ctx context.Context, s *Session, args json.RawMessage) (string, error)
+}
+
+// renamedArgument is an argument under its name now and its name before.
+type renamedArgument struct{ now, before string }
+
+// rename takes the arguments given under their names before as their names
+// now, and reports whether it changed one; an argument given under both names
+// must say the same under both.
+func (t Tool) rename(instance any) (bool, error) {
+	args, ok := instance.(map[string]any)
+	if !ok {
+		return false, nil
+	}
+	changed := false
+	for _, r := range t.renamed {
+		before, given := args[r.before]
+		if !given {
+			continue
+		}
+		if now, both := args[r.now]; both && !reflect.DeepEqual(now, before) {
+			return false, usage("%s and %s differ: %s is the name before of %s, taken for one release; give %s alone",
+				r.now, r.before, r.before, r.now, r.now)
+		}
+		args[r.now] = before
+		delete(args, r.before)
+		changed = true
+	}
+	return changed, nil
 }
 
 // Schema is the JSON Schema (draft 2020-12) of the tool's input, an object.
@@ -96,6 +130,9 @@ func (t Tool) Valid(args json.RawMessage) bool {
 	if json.Unmarshal(args, &instance) != nil {
 		return false
 	}
+	if _, err := t.rename(instance); err != nil {
+		return false
+	}
 	return t.resolved.Validate(instance) == nil
 }
 
@@ -110,8 +147,17 @@ func (t Tool) Call(ctx context.Context, s *Session, args json.RawMessage) Result
 	if err := json.Unmarshal(args, &instance); err != nil {
 		return Result{Text: "The arguments are not JSON: " + err.Error(), IsError: true}
 	}
+	renamed, err := t.rename(instance)
+	if err != nil {
+		return Result{Text: failure(err), IsError: true}
+	}
 	if err := t.resolved.Validate(instance); err != nil {
 		return Result{Text: "The arguments do not match the tool's schema: " + err.Error(), IsError: true}
+	}
+	if renamed {
+		if args, err = json.Marshal(instance); err != nil {
+			return Result{Text: failure(fmt.Errorf("encode the arguments: %w", err)), IsError: true}
+		}
 	}
 	if t.Surface != Terminal {
 		// A tool that reads the working directory resolves the binding itself.

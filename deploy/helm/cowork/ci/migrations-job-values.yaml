@@ -2,8 +2,13 @@
 # bootstrap in a Helm hook Job. Every credential the Job reads comes from a
 # Secret that exists before the release — the runtime role's URL, the owner
 # role as the components of a Secret with no URL key and no ConfigMap, the
-# local administrator — and the bootstrap tenant maps the administrator group
-# of an identity provider, whose client secret the Job is not given.
+# local administrator — and the bootstrap team maps the administrator group
+# of an identity provider, whose client secret the Job is not given. The
+# bootstrap team and the attachment quota keep the values' names before,
+# bootstrap.tenant and attachmentTenantQuota, which the chart reads for one
+# release (docs/adr/0005 D1): they must render as COWORK_BOOTSTRAP_TEAM_SLUG,
+# COWORK_BOOTSTRAP_TEAM_NAME and COWORK_ATTACHMENT_TEAM_QUOTA, each beside its
+# name before with the same value, which an image rollback reads.
 migrations:
   mode: job
 database:
@@ -33,5 +38,6 @@ imagePullSecrets:
 backend:
   config:
     baseURL: https://cowork.example.com
+    attachmentTenantQuota: 5368709120
   nodeSelector:
     kubernetes.io/os: linux

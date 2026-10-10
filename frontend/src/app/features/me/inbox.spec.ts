@@ -64,7 +64,9 @@ function entry(id: string, key: string, overrides: Partial<InboxEntry> = {}): In
   const [tenant] = key.split('/');
   return {
     id,
-    tenant: { slug: tenant, name: tenant === 'acme' ? 'Acme Corp' : 'Globex' },
+    team: { slug: tenant, name: tenant === 'acme' ? 'Acme Corp' : 'Globex' },
+    // The deprecated name of team, which the page never shows (docs/adr/0005 D1).
+    tenant: { slug: tenant, name: 'not shown' },
     ticket: { key, title: `Title of ${key}`, state: 'analysed' },
     reason: 'commented',
     act: act(),
@@ -90,7 +92,7 @@ describe('groupByTicket', () => {
       ['acme/COW-1', ['n3', 'n1'], 1],
       ['globex/OPS-4', ['n2'], 0],
     ]);
-    expect(groups[1].tenant.name).toBe('Globex');
+    expect(groups[1].team.name).toBe('Globex');
   });
 });
 

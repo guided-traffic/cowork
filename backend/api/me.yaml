@@ -1,9 +1,9 @@
-# The calling person, across tenants (docs/adr/0023 D2).
+# The calling person, across teams (docs/adr/0023 D2).
 me:
   get:
     operationId: getMe
     tags: [me]
-    summary: The calling person and their tenants
+    summary: The calling person and their teams
     responses:
       '200':
         description: The person
@@ -52,8 +52,8 @@ tokens:
       the token got (D4). An agent token has at most `write` scope
       (docs/adr/0036 D5), carries capabilities and nothing else does, and gets
       every capability when `capabilities` is left out; an empty list is no
-      capability, the baseline only (docs/adr/0043 D4). A tenant
-      restriction needs a tenant the person belongs to, a project restriction a
+      capability, the baseline only (docs/adr/0043 D4). A team
+      restriction needs a team the person belongs to, a project restriction a
       project of it the person sees; either, if not, is `validation_failed`
       without saying which of the two it was.
 
@@ -75,7 +75,7 @@ tokens:
             name: Claude Code on the laptop
             scope: write
             agent: true
-            tenant: acme
+            team: acme
             project: WEB
             lifetime_days: 90
     responses:
@@ -155,7 +155,7 @@ chat:
     summary: Choose the capabilities the person gives the chat in the UI
     description: |
       Only the person, in a browser session: what the chat may do is access to the person's
-      tenants, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
+      teams, which a token does not give (`403 session_required`, docs/adr/0035 D5), and a session
       the agent header marks — the chat itself among them — is `403 agent_forbidden`. The set
       replaces the one before, from the chat's next request on, a running turn's included; an empty
       set leaves the chat the baseline (docs/adr/0043 D4). No `If-Match`: the person is the only
@@ -217,26 +217,27 @@ inbox:
   get:
     operationId: listMyInbox
     tags: [me]
-    summary: The person's notifications across their tenants, newest first
+    summary: The person's notifications across their teams, newest first
     description: |
-      One inbox per person, a union over the tenants they belong to — one read per tenant, never one
+      One inbox per person, a union over the teams they belong to — one read per team, never one
       query across them (docs/adr/0020 D1, docs/adr/0021 D5). A notification is written by the act
       that caused it, for the events of docs/adr/0020 D2: a ticket assigned to the person, a
       question asked of them, a question they asked answered, a state change of — or a comment on —
       a ticket they watch (docs/adr/0013 D6: a stake, the assignee, the reporter, an open question
       asked by or of them), a ticket that blocks one they watch reaching `done` or `dropped`, and an
       `urgent` stake on a ticket assigned to them. Their own acts and their agents' tell them
-      nothing. Each entry names its tenant beside the ticket and renders from the act (D3): the
+      nothing. Each entry names its team beside the ticket and renders from the act (D3): the
       ticket as it is now, the act as the ticket's activity shows it — without its payload where
       it names a ticket the person cannot see — and whether the comment or question it is on has
-      been withdrawn since. A notification of a ticket the person no longer sees, or of a tenant
+      been withdrawn since. A notification of a ticket the person no longer sees, or of a team
       they left, is absent and counts nowhere (docs/adr/0065 D5).
 
-      `unread` counts the person's unread notifications in the tenants the request reaches. A
-      token restricted to a tenant reads that tenant's, one restricted to a project that project's
+      `unread` counts the person's unread notifications in the teams the request reaches. A
+      token restricted to a team reads that team's, one restricted to a project that project's
       (docs/adr/0035 D3). Cursor paging only; the cursor holds the place, so a notification that
       arrives while the person reads shifts nothing (docs/adr/0048 D3).
     parameters:
+      - $ref: './components/parameters.yaml#/MeTeam'
       - $ref: './components/parameters.yaml#/MeTenant'
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
@@ -262,10 +263,11 @@ inboxRead:
     summary: Mark the person's notifications read, up to one they saw
     description: |
       "Mark all read" (docs/adr/0020 D6): every unread notification of the person up to and
-      including `through`, in the tenants the request reaches; one that arrived after it stays
-      unread. One act `read` per tenant where something changed; none where nothing did. Needs
+      including `through`, in the teams the request reaches; one that arrived after it stays
+      unread. One act `read` per team where something changed; none where nothing did. Needs
       `write` scope. Read notifications are kept ninety days, unread ones until they are read.
     parameters:
+      - $ref: './components/parameters.yaml#/MeTeam'
       - $ref: './components/parameters.yaml#/MeTenant'
     requestBody:
       required: true
@@ -312,18 +314,19 @@ next:
   get:
     operationId: listMyNext
     tags: [me]
-    summary: What the person could take up next, across their tenants
+    summary: What the person could take up next, across their teams
     description: |
       "Next for me" (docs/adr/0018 D3 as amended 2026-10-05): every ticket that is neither `done` nor
-      `dropped` and is assigned to the person or to nobody, in the projects they see of every tenant
-      they belong to, each with its tenant and its place in its project's rank — one read per tenant
-      (docs/adr/0021 D5), under the same predicate as the tenant's own lists. Another person's ticket
+      `dropped` and is assigned to the person or to nobody, in the projects they see of every team
+      they belong to, each with its team and its place in its project's rank — one read per team
+      (docs/adr/0021 D5), under the same predicate as the team's own lists. Another person's ticket
       is not in it. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without one
       last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
       (docs/adr/0048 D3); the cursor carries the score's key and the id. `project` narrows to one
-      project of the tenant `tenant` names. A token restricted to a tenant reads that tenant, one
+      project of the team `team` names. A token restricted to a team reads that team, one
       restricted to a project that project (docs/adr/0035 D3).
     parameters:
+      - $ref: './components/parameters.yaml#/MeTeam'
       - $ref: './components/parameters.yaml#/MeTenant'
       - $ref: './components/parameters.yaml#/MeProject'
       - $ref: './components/parameters.yaml#/Cursor'
@@ -347,16 +350,17 @@ assigned:
   get:
     operationId: listMyAssigned
     tags: [me]
-    summary: The open tickets assigned to the person, across their tenants
+    summary: The open tickets assigned to the person, across their teams
     description: |
       "Assigned to me" (docs/adr/0018 D3): every ticket that is neither `done` nor `dropped` and is
-      assigned to the person, in every tenant they belong to, each with its tenant and its place in
-      its project's rank — one read per tenant (docs/adr/0021 D5), under the same predicate as the
-      tenant's own lists. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without
+      assigned to the person, in every team they belong to, each with its team and its place in
+      its project's rank — one read per team (docs/adr/0021 D5), under the same predicate as the
+      team's own lists. Ordered by the score (docs/adr/0014 D5) — highest first, a ticket without
       one last — then by the ticket's id; the place is the secondary indicator. Cursor paging only
-      (docs/adr/0048 D3). A token restricted to a tenant reads that tenant, one restricted to a
+      (docs/adr/0048 D3). A token restricted to a team reads that team, one restricted to a
       project that project (docs/adr/0035 D3).
     parameters:
+      - $ref: './components/parameters.yaml#/MeTeam'
       - $ref: './components/parameters.yaml#/MeTenant'
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
@@ -379,15 +383,16 @@ decisions:
   get:
     operationId: listMyDecisions
     tags: [me]
-    summary: The open decisions of the person, across their tenants
+    summary: The open decisions of the person, across their teams
     description: |
       "Open decisions" (docs/adr/0018 D3): the open questions asked of the person and those open in
-      their tenants — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its
-      tenant and its ticket; one read per tenant (docs/adr/0021 D5). Ordered by the score of the
+      their teams — asked of nobody (docs/adr/0011 D2) —, on tickets they see, each with its
+      team and its ticket; one read per team (docs/adr/0021 D5). Ordered by the score of the
       ticket (docs/adr/0014 D5) — a `done` or `dropped` ticket, which has none, after the scored ones
       — then by the ticket's id and the question's number. Cursor paging only (docs/adr/0048 D3). A
       restricted token reads as on `GET /api/v1/me/assigned`.
     parameters:
+      - $ref: './components/parameters.yaml#/MeTeam'
       - $ref: './components/parameters.yaml#/MeTenant'
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'

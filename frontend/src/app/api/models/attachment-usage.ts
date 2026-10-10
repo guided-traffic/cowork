@@ -3,22 +3,22 @@
 
 
 /**
- * What the tenant's attachments hold against its quota (docs/adr/0016 D6)
+ * What the team's attachments hold against its quota (docs/adr/0016 D6)
  */
 export interface AttachmentUsage {
 
   /**
-   * How many attachments the tenant holds
+   * How many attachments the team holds
    */
   attachments: number;
 
   /**
-   * COWORK_ATTACHMENT_TENANT_QUOTA; null where the installation sets no quota
+   * COWORK_ATTACHMENT_TEAM_QUOTA; null where the installation sets no quota
    */
   quota_bytes: (number | null);
 
   /**
-   * The sizes of every attachment of the tenant, summed
+   * The sizes of every attachment of the team, summed
    */
   used_bytes: number;
 }

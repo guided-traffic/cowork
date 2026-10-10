@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface UnlockAccount$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * A local account's username (docs/adr/0033 D2)
@@ -24,7 +24,7 @@ export interface UnlockAccount$Params {
 export function unlockAccount(http: HttpClient, rootUrl: string, params: UnlockAccount$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, unlockAccount.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('username', params.username, {});
   }
 
@@ -38,4 +38,4 @@ export function unlockAccount(http: HttpClient, rootUrl: string, params: UnlockA
   );
 }
 
-unlockAccount.PATH = '/api/v1/tenants/{tenant}/accounts/{username}/lockout';
+unlockAccount.PATH = '/api/v1/teams/{team}/accounts/{username}/lockout';

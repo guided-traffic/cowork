@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface UnbindRepository$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -29,7 +29,7 @@ export interface UnbindRepository$Params {
 export function unbindRepository(http: HttpClient, rootUrl: string, params: UnbindRepository$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, unbindRepository.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('repository', params.repository, {});
   }
@@ -44,4 +44,4 @@ export function unbindRepository(http: HttpClient, rootUrl: string, params: Unbi
   );
 }
 
-unbindRepository.PATH = '/api/v1/tenants/{tenant}/projects/{project}/repositories/{repository}';
+unbindRepository.PATH = '/api/v1/teams/{team}/projects/{project}/repositories/{repository}';

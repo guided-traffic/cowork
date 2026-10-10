@@ -75,7 +75,7 @@ D6): name it for its use, `claude on my laptop`, not for what others must not re
 | Agent token | yes | Every request is an agent's whatever the client sends, and the record says so ([ADR 0036](../adr/0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md)). `cowork-mcp` marks its requests as an agent's in any case, so a plain token works too — and then holds every capability |
 | Scope | `write` | An agent token has at most `write`; `read` makes the session a reader that cannot record its work |
 | Capabilities | **full** for your own work, **assisted** where a person keeps `decide`, `close`, `rank`, `create-project` and `record-answer` | They are fixed with the token ([ADR 0043](../adr/0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md)); the tool descriptions tell Claude which ones this token holds, and `finish_work` stops at review without `close` |
-| Restriction | a tenant, or a project where the work is one project | A leaked token then reaches no more than that. A project-restricted token cannot create a project, so a session in an unbound repository gets no proposal |
+| Restriction | a team, or a project where the work is one project | A leaked token then reaches no more than that. A project-restricted token cannot create a project, so a session in an unbound repository gets no proposal |
 | Lifetime | the default, 90 days | `last used` on the token page shows a forgotten one |
 
 Check it before anything else — the first step of every troubleshooting
@@ -167,7 +167,7 @@ Residual risks). Use the plugin or this block, not both: the hooks would run twi
 | When | What happens |
 |---|---|
 | The session starts | `session-context` reads the git remotes of the working directory and a `.cowork.yaml`, asks the installation which project binds the repository, and prints the block Claude reads before the first prompt: the binding, the active ticket — assigned to you and `in-progress` — with its context, or the top of "next for me" in the bound project — your open tickets and the unassigned ones, by score, without those in progress, blocked or waiting on a prerequisite —, and what happened since the last session. In a directory without a remote and without a binding file it prints nothing. A failure is one line naming the cause and the token page; the session is never blocked |
-| An unbound repository | The block carries a proposal — tenant, key, name — and Claude asks you; on your yes it calls `create_project`, which creates the project and binds the repository in one act |
+| An unbound repository | The block carries a proposal — team, key, name — and Claude asks you; on your yes it calls `create_project`, which creates the project and binds the repository in one act |
 | During the work | The 16 tools of [README.md, the tools](../../README.md#cli-cowork-mcp); `session_start` refreshes the block. Each act carries the agent mark `claude-code/<model>/<id>` — the session's model, which the `SessionStart` hook hands the MCP server, `unknown` while none is recorded — shown in the UI with the agent icon, the whole mark in its tooltip |
 | The model changes | `/model`, an automatic fallback, `opusplan` entering or leaving plan mode, or the model Claude Code restores on a resume: `model-switch` records the new model, and the MCP server names it in the mark of its next act. It prints nothing, so a switch adds nothing to Claude's context. A switch inside a subagent is not recorded |
 | Claude stops | `session-end` reminds you — a message in the transcript, never a block — when a ticket of yours is in progress, the repository shows work since the session started (a commit, or a file changed after it), and nothing was recorded on the ticket since |
@@ -217,7 +217,7 @@ D1). A project's repositories are listed and changed in the API
 (`…/projects/{project}/repositories`), and a session proposes the binding when none exists.
 
 **The `CLAUDE.md` block** ([ADR 0069](../adr/0069-rules-stay-in-git-work-moves-to-cowork.md)
-D4): three lines that tell a session where the work lives, with the tenant and the key filled
+D4): three lines that tell a session where the work lives, with the team and the key filled
 in:
 
 ```markdown
@@ -236,11 +236,19 @@ D4). The nearest file at or above the working directory applies. Its schema is s
 
 ```yaml
 # yaml-language-server: $schema=https://cowork.example.com/api/v1/schemas/cowork-yaml.json
-tenant: acme                        # example
+tenant: acme                        # example; team: once every machine has moved, below
 project: APP                        # example
 # path: services/api                # example: the monorepo sub-directory it binds; default the file's own directory
 # url: https://cowork.example.com   # example: the installation it belongs to, for people with several
 ```
+
+In this release the file names its team under `tenant`, the key every `cowork-mcp` in use reads,
+and that is the file `create_project` offers. The key's new name is `team`: a `cowork-mcp` of this
+release reads either, and both together only when they name the same slug. A `cowork-mcp` of 0.14
+knows no `team`: it ignores a file that names it — with `tenant` beside it or without — and says so in
+the session block, binding by the remote if it can. So keep `tenant:` alone until every machine that
+works in the repository runs a `cowork-mcp` of this release, then switch to `team:`, before the later
+release that stops reading `tenant` ([upgrade.md](upgrade.md#the-release-that-calls-a-tenant-a-team)).
 
 A fork that has the original as a second remote (`upstream`) needs no file: the lookup tries
 every remote, `origin` first, and binds by the first one with a binding.
@@ -252,6 +260,7 @@ every remote, `origin` first, and binds by the first one with a binding.
 | No block at the start of a session | `cowork-mcp lookup` in the repository says what the binding is and why; `claude --debug` shows the hook's run |
 | `cowork: the token in COWORK_TOKEN does not work …` | `cowork-mcp token check`; make a new token on the token page |
 | `… runs cowork X, another major version …` | Install the `cowork-mcp` of the installation's release |
+| `… whose API lacks listTeamTickets, which this cowork-mcp … calls …` | The installation runs a release before the one that calls a tenant a team, 0.14 or older: install the `cowork-mcp` of the installation's release, or upgrade the installation first |
 | The MCP server is `failed` in `/mcp` | The two variables reach it: `COWORK_URL` set, the token of the form `cwk_…`; its message is in Claude Code's MCP log |
 | The mark keeps the old model after `/model` | `claude --version` is 2.1.251 or later, and `claude plugin list` names no hook file that failed to load; `claude --debug` shows the `PostModelSwitch` hook's run and the one line it writes to standard error when the switch is not recorded |
 | A tool answers `403 agent_forbidden` | The token lacks the capability, or the act is a person's; the answer names which. It is the API's no, not a failure |

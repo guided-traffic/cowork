@@ -77,7 +77,7 @@ const lists: Record<MyList, { title: string; lead: string; empty: string; op: ty
       <div class="panel">
         @for (item of items(); track item.ticket.key) {
           <div class="row" [attr.data-testid]="list() + '-' + item.ticket.key">
-            <span class="tenant" data-testid="tenant">{{ item.tenant.name }}</span>
+            <span class="tenant" data-testid="tenant">{{ item.team.name }}</span>
             <a class="ticket" [routerLink]="route(item.ticket.key)">
               <app-type [value]="item.ticket.type" />
               <span class="ticket-key tabular">{{ shortKey(item.ticket.key) }}</span>

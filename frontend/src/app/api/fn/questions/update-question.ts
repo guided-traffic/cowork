@@ -13,9 +13,9 @@ import { QuestionPatch } from '../../models/question-patch';
 export interface UpdateQuestion$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -43,7 +43,7 @@ export interface UpdateQuestion$Params {
 export function updateQuestion(http: HttpClient, rootUrl: string, params: UpdateQuestion$Params, context?: HttpContext): Observable<StrictHttpResponse<Question>> {
   const rb = new RequestBuilder(rootUrl, updateQuestion.PATH, 'patch');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('question', params.question, {});
@@ -61,4 +61,4 @@ export function updateQuestion(http: HttpClient, rootUrl: string, params: Update
   );
 }
 
-updateQuestion.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}';
+updateQuestion.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/questions/{question}';

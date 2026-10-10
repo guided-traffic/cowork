@@ -41,7 +41,7 @@ const fail = (request: TestRequest, status: number) =>
 
 /** The key a form holds for its content (docs/adr/0045 D3). */
 const formKey = '0199aaaa-0000-7000-8000-00000000f0f0';
-const listUrl = '/api/v1/tenants/acme/projects';
+const listUrl = '/api/v1/teams/acme/projects';
 
 const rejection = (promise: Promise<unknown>) =>
   promise.then(
@@ -71,7 +71,7 @@ describe('ProjectsService', () => {
   const page = (tenant: string, cursor: string | null = null) =>
     http.expectOne(
       (request) =>
-        request.url === `/api/v1/tenants/${tenant}/projects` &&
+        request.url === `/api/v1/teams/${tenant}/projects` &&
         request.params.get('cursor') === cursor,
     );
   /** The page that the loader asks for once the previous one was taken, which is a promise away. */
@@ -125,7 +125,7 @@ describe('ProjectsService', () => {
       const first = page('acme');
 
       expect(first.request.method).toBe('GET');
-      expect(first.request.url).toBe('/api/v1/tenants/acme/projects');
+      expect(first.request.url).toBe('/api/v1/teams/acme/projects');
       expect(first.request.params.get('limit')).toBe('200');
       expect(first.request.params.has('include_archived')).toBe(false);
       first.flush(pageOf([], null));
@@ -329,7 +329,7 @@ describe('ProjectsService', () => {
         await settle();
 
         const done = service.create(body, formKey);
-        write('POST', '/api/v1/tenants/globex/projects').flush(project('COW'));
+        write('POST', '/api/v1/teams/globex/projects').flush(project('COW'));
         await done;
 
         await settle();

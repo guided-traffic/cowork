@@ -84,7 +84,7 @@ describe('SelfGrant', () => {
     expect(host(fixture).querySelector('h2')?.textContent).toBe('You have no role in Acme Corp');
     const text = host(fixture).querySelector('p')?.textContent ?? '';
     expect(text).toContain('members, group mappings and settings, and none of its projects');
-    expect(text).toContain('the tenant sees the grant in its audit record');
+    expect(text).toContain('the team sees the grant in its audit record');
     expect(host(fixture).querySelector('[data-testid="grant-yourself"]')?.textContent?.trim()).toBe(
       'Grant yourself a role',
     );
@@ -186,6 +186,7 @@ describe('SelfGrant', () => {
   it('says the role held, offers the roles above it, and raises the grant to the one picked', async () => {
     membership.set({
       role: 'viewer',
+      team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'acme', name: 'Acme Corp' },
       origins: [{ source: 'mapping', role: 'viewer' }],
     });
@@ -210,6 +211,7 @@ describe('SelfGrant', () => {
   it('offers a member admin alone', async () => {
     membership.set({
       role: 'member',
+      team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'acme', name: 'Acme Corp' },
       origins: [{ source: 'grant', role: 'member' }],
     });

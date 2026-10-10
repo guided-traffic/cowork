@@ -151,7 +151,7 @@ describe('signInOnUnauthorised', () => {
   it('does so for any API address, with or without a query string', async () => {
     await router.navigateByUrl('/t/acme');
 
-    await answered('/api/v1/tenants/acme/tickets?state=filed', 401);
+    await answered('/api/v1/teams/acme/tickets?state=filed', 401);
 
     expect(navigate).toHaveBeenCalledWith(['/login'], { queryParams: { return: '/t/acme' } });
   });

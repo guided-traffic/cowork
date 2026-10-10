@@ -54,8 +54,8 @@ function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Tick
 }
 
 const key = 'acme/VKO-12';
-const createUrl = '/api/v1/tenants/acme/projects/VKO/tickets';
-const route = '/api/v1/tenants/acme/projects/VKO/tickets/12';
+const createUrl = '/api/v1/teams/acme/projects/VKO/tickets';
+const route = '/api/v1/teams/acme/projects/VKO/tickets/12';
 const transitionUrl = `${route}/transitions`;
 const rankUrl = `${route}/rank`;
 const horizonUrl = `${route}/horizon`;
@@ -79,11 +79,11 @@ const failed = (status: number, statusText: string) => ({ status, statusText });
 
 describe('routeOf', () => {
   it('turns a canonical key into the address of the ticket routes', () => {
-    expect(routeOf('acme/VKO-12')).toEqual({ tenant: 'acme', project: 'VKO', number: 12 });
+    expect(routeOf('acme/VKO-12')).toEqual({ team: 'acme', project: 'VKO', number: 12 });
   });
 
   it('takes the number after the last dash, so that a project key may hold dashes', () => {
-    expect(routeOf('acme/MY-APP-7')).toEqual({ tenant: 'acme', project: 'MY-APP', number: 7 });
+    expect(routeOf('acme/MY-APP-7')).toEqual({ team: 'acme', project: 'MY-APP', number: 7 });
   });
 
   it('makes the number a number', () => {
@@ -272,7 +272,7 @@ describe('TicketActions', () => {
 
       request('/api/v1/tickets/acme/vko-12').flush(ticket(key, 3));
       await settle();
-      const sent = request('/api/v1/tenants/acme/projects/vko/tickets/12');
+      const sent = request('/api/v1/teams/acme/projects/vko/tickets/12');
       expect(sent.request.headers.get('If-Match')).toBe('"3"');
       sent.flush(ticket(key, 4));
       await done;
@@ -474,7 +474,7 @@ describe('TicketActions', () => {
 
       const done = actions.sortByScore('acme', 'VKO');
 
-      const sent = request('/api/v1/tenants/acme/projects/VKO/rank');
+      const sent = request('/api/v1/teams/acme/projects/VKO/rank');
       expect(sent.request.method).toBe('PUT');
       expect(sent.request.body).toEqual({ by: 'score' });
       expect(sent.request.headers.has('If-Match')).toBe(false);
@@ -488,7 +488,7 @@ describe('TicketActions', () => {
       const reload = vi.spyOn(tickets, 'reloadLists');
       const outcome = rejection(actions.sortByScore('acme', 'VKO'));
 
-      request('/api/v1/tenants/acme/projects/VKO/rank').flush(
+      request('/api/v1/teams/acme/projects/VKO/rank').flush(
         problem(403, { code: 'agent_forbidden' }),
         failed(403, 'Forbidden'),
       );

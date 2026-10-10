@@ -13,7 +13,7 @@ import { ButtonDirective } from 'primeng/button';
 import { Skeleton } from 'primeng/skeleton';
 import { Api } from '../../api/api';
 import { listMyInbox } from '../../api/fn/me/list-my-inbox';
-import { InboxEntry, TenantRef, TicketRef } from '../../api/models';
+import { InboxEntry, TeamRef, TicketRef } from '../../api/models';
 import { ConditionalPages } from '../../core/conditional';
 import { followPages, InboxService, personPageSize, PersonPages } from '../../core/inbox.service';
 import { ProblemService } from '../../core/problem.service';
@@ -28,7 +28,7 @@ import { reloadOn, shortKey, ticketRoute } from './person-list';
 /** The notifications of one ticket, newest first (docs/adr/0020 D1). */
 export interface InboxGroup {
   ticket: TicketRef;
-  tenant: TenantRef;
+  team: TeamRef;
   entries: InboxEntry[];
   unread: number;
 }
@@ -39,7 +39,7 @@ export function groupByTicket(entries: InboxEntry[]): InboxGroup[] {
   for (const entry of entries) {
     let group = groups.get(entry.ticket.key);
     if (!group) {
-      group = { ticket: entry.ticket, tenant: entry.tenant, entries: [], unread: 0 };
+      group = { ticket: entry.ticket, team: entry.team, entries: [], unread: 0 };
       groups.set(entry.ticket.key, group);
     }
     group.entries.push(entry);

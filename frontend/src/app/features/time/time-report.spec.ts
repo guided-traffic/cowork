@@ -10,7 +10,7 @@ import { SessionService } from '../../core/session.service';
 import { Clock } from '../../shared/time';
 import { monthStart, TimeReport } from './time-report';
 
-const base = '/api/v1/tenants/acme/time-report';
+const base = '/api/v1/teams/acme/time-report';
 
 /** An instant by the clock on the wall of whoever runs the test: the page counts days that way. */
 const local = (year: number, month: number, day: number, hour = 12, minute = 0) =>
@@ -137,7 +137,7 @@ describe('TimeReport', () => {
       await answer(fixture, `${base}?from=2026-10-01&to=2026-10-02&group_by=project`, report([]));
     });
 
-    it.each(['ticket', 'person', 'tenant'] as const)(
+    it.each(['ticket', 'person', 'team'] as const)(
       'asks again when it is grouped by %s',
       async (group) => {
         const fixture = render();
@@ -162,7 +162,7 @@ describe('TimeReport', () => {
 
       const group = fixture.debugElement.query(By.css('[data-testid="report-group"]'))
         .componentInstance as { options(): string[] };
-      expect(group.options()).toEqual(['project', 'ticket', 'person', 'tenant']);
+      expect(group.options()).toEqual(['project', 'ticket', 'person', 'team']);
     });
   });
 

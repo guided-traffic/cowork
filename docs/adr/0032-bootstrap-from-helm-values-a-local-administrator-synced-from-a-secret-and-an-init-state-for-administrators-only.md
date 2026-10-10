@@ -12,7 +12,12 @@ provider yet) and 2026-10-04 (D1: every view names a local account by its plain 
 administrator group in the init state; D6: the bootstrap tenant needs the local administrator or an
 administrator group, whose mapping is seeded), and 2026-10-07 by the owner's answer recorded in
 [ADR 0033](0033-local-accounts-are-created-by-administrators-never-by-registration.md) D4 (D2: a
-changed password also revokes the account's tokens; built 2026-10-09). Date: 2026-10-01. Decided by the owner as the answer to the catalog question "how do
+changed password also revokes the account's tokens; built 2026-10-09), and 2026-10-10 by the
+owner's rename of a tenant to a team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1; D6: the
+variables `COWORK_BOOTSTRAP_TEAM_SLUG` and `COWORK_BOOTSTRAP_TEAM_NAME` and the chart's
+`bootstrap.team.slug` and `.name`, the names before read for one release; built the same day).
+Date: 2026-10-01. Decided by the owner as the answer to the catalog question "how do
 the first administrator and the first tenant come to exist?", reshaped by the owner's
 requirements: no command-line step — pure Helm values must yield a usable installation — and
 a local administrator account that exists without OIDC and is kept in step with a Kubernetes
@@ -35,6 +40,18 @@ provider's login ([`store/identity.go`](../../backend/internal/store/identity.go
 `CompleteOIDCLogin`), and the group mapping D6 seeds
 ([`bootstrap.go`](../../backend/internal/bootstrap/bootstrap.go) `keepTenant`); the configuration and
 the chart take a bootstrap tenant with the administrator group alone.
+
+**Built** (2026-10-10): D6's variables and values under the team's names. `COWORK_BOOTSTRAP_TENANT_SLUG`
+and `COWORK_BOOTSTRAP_TENANT_NAME` are still read for one release: alone with a warning in the log
+that names the variable replacing each, and set to a different value a configuration error naming
+both ([`config.go`](../../backend/internal/config/config.go) `renamedVariables`); the chart reads
+`bootstrap.tenant.*` where `bootstrap.team.*` leaves a value empty and fails to render the two set to
+different values (`cowork.bootstrapTeam`). Made concrete by the implementer the same day, open to the
+owner's objection: the chart renders the variables under both names with the same value — in the pod
+and in the migration Job —, so that an image rolled back to the release before, which reads the
+names before alone, keeps the bootstrap team, and the backend reads a name before beside its
+replacement at the same value without a warning. The removal of the names before is a later
+release's.
 
 ## Context
 
@@ -118,8 +135,10 @@ the gate but hold no `COWORK_ADMIN_GROUP` is sent back to the login page with `n
 recorded as `login_refused`, and makes no person; the members of the administrator group are global
 administrators and log in, and create the first tenant as the local administrator does.)*
 
-**D6 — An optional bootstrap tenant from values.** `COWORK_BOOTSTRAP_TENANT_SLUG` and
-`COWORK_BOOTSTRAP_TENANT_NAME` (chart: `bootstrap.tenant.slug`, `.name`). When set and no
+**D6 — An optional bootstrap tenant from values.** ~~`COWORK_BOOTSTRAP_TENANT_SLUG` and
+`COWORK_BOOTSTRAP_TENANT_NAME` (chart: `bootstrap.tenant.slug`, `.name`)~~ *(2026-10-10:)*
+`COWORK_BOOTSTRAP_TEAM_SLUG` and `COWORK_BOOTSTRAP_TEAM_NAME` (chart: `bootstrap.team.slug`,
+`.name`), the names before read for one release. When set and no
 tenant exists, the start creates the tenant (slug validated by ADR 0005 D4), seeds one group
 mapping `COWORK_ADMIN_GROUP → (tenant, admin)` (ADR 0030 D2) when an administrator group is
 configured, and gives the local administrator a marked manual grant as `admin` of it

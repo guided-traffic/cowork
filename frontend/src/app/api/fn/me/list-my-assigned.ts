@@ -12,8 +12,18 @@ import { MyTicketList } from '../../models/my-ticket-list';
 export interface ListMyAssigned$Params {
 
 /**
- * Narrows a person-level list to one of the person's tenants (docs/adr/0023 D2); a slug that names
- * none of them is `404 not_found`, whether or not the tenant exists
+ * Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
+ * none of them is `404 not_found`, whether or not the team exists. Not together with the
+ * deprecated `tenant` (`400 validation_failed`)
+ */
+  team?: string;
+
+/**
+ * Deprecated: replaced by `team`, which it means, kept in /api/v1 for one release and removed in a
+ * later one (docs/adr/0005 D1, docs/adr/0046 D7). Not together with `team`
+ * (`400 validation_failed`)
+ *
+ * @deprecated
  */
   tenant?: string;
 
@@ -36,6 +46,7 @@ export interface ListMyAssigned$Params {
 export function listMyAssigned(http: HttpClient, rootUrl: string, params?: ListMyAssigned$Params, context?: HttpContext): Observable<StrictHttpResponse<MyTicketList>> {
   const rb = new RequestBuilder(rootUrl, listMyAssigned.PATH, 'get');
   if (params) {
+    rb.query('team', params.team, {});
     rb.query('tenant', params.tenant, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});

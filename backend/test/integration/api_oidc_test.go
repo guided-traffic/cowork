@@ -117,13 +117,13 @@ func TestLoginThroughDex(t *testing.T) {
 
 	admin := s.browser(t)
 	admin.mustLogin(d.adminSID, testPassword)
-	added := admin.request(http.MethodPost, "/api/v1/tenants/dev/members", map[string]string{"person": "CYD@example.com", "role": "viewer"})
+	added := admin.request(http.MethodPost, "/api/v1/teams/dev/members", map[string]string{"person": "CYD@example.com", "role": "viewer"})
 	require.Equal(t, http.StatusCreated, added.StatusCode)
 	member := decode[apigen.Member](t, added)
 	assert.Equal(t, []apigen.MembershipOrigin{{Source: apigen.MembershipSourceGrant, Role: apigen.RoleViewer}}, member.Origins)
 	assert.Equal(t, apigen.RoleViewer, decode[apigen.Me](t, cyd.get("/api/v1/me")).Memberships[0].Role)
 
-	both := admin.request(http.MethodPut, "/api/v1/tenants/dev/members/"+bobID.String()+"/grant", map[string]string{"role": "admin"})
+	both := admin.request(http.MethodPut, "/api/v1/teams/dev/members/"+bobID.String()+"/grant", map[string]string{"role": "admin"})
 	require.Equal(t, http.StatusOK, both.StatusCode)
 	view := decode[apigen.Member](t, both)
 	assert.Equal(t, apigen.RoleAdmin, view.Role, "the higher of the mapped and the granted role")
@@ -167,7 +167,7 @@ func TestInitStateThroughDex(t *testing.T) {
 	ada := s.browser(t)
 	require.Equal(t, "/", ada.oidcLogin("ada@example.com", "/").Header.Get("Location"))
 	assert.True(t, decode[apigen.Me](t, ada.get("/api/v1/me")).GlobalAdmin)
-	created := ada.request(http.MethodPost, "/api/v1/tenants", map[string]string{"slug": "first", "name": "First"})
+	created := ada.request(http.MethodPost, "/api/v1/teams", map[string]string{"slug": "first", "name": "First"})
 	require.Equal(t, http.StatusCreated, created.StatusCode, "the administrator group makes the first tenant")
 
 	assert.Equal(t, "/", s.browser(t).oidcLogin("bob@example.com", "/").Header.Get("Location"), "initialised")
@@ -224,7 +224,7 @@ func TestLeavingTheAllowList(t *testing.T) {
 	clockB.Advance(16 * time.Minute)
 	b := newAPI(t, withLogin, d.iso.option, withIdentity(provider, []string{"cowork-admins"}, "cowork-admins"), withClock(clockB))
 	assertProblem(t, b.do(t, caller{Token: token}, http.MethodGet, "/api/v1/me", nil), http.StatusUnauthorized, "not_allowed")
-	assertProblem(t, b.do(t, caller{Token: token}, http.MethodGet, "/api/v1/tenants/dev/projects", nil), http.StatusUnauthorized, "not_allowed")
+	assertProblem(t, b.do(t, caller{Token: token}, http.MethodGet, "/api/v1/teams/dev/projects", nil), http.StatusUnauthorized, "not_allowed")
 	onB := &browser{t: t, s: b, Cookie: bob.Cookie}
 	assertProblem(t, onB.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
 	assertProblem(t, bob.get("/api/v1/me"), http.StatusUnauthorized, "unauthenticated")
@@ -287,11 +287,11 @@ func TestRolesFromTheIdentityProviderHold(t *testing.T) {
 
 	cyd := s.browser(t)
 	require.Equal(t, http.StatusSeeOther, cyd.oidcLogin("cyd@example.com", "/").StatusCode)
-	write := cyd.request(http.MethodPost, "/api/v1/tenants/users/projects/OPEN/tickets",
+	write := cyd.request(http.MethodPost, "/api/v1/teams/users/projects/OPEN/tickets",
 		map[string]any{"type": "task", "title": "x", "severity": "low", "security": "none", "effort": "S"})
 	assertProblem(t, write, http.StatusForbidden, "forbidden")
-	assert.Equal(t, http.StatusOK, cyd.get("/api/v1/tenants/users/projects").StatusCode, "a viewer reads")
-	assertProblem(t, cyd.get("/api/v1/tenants/dev/projects"), http.StatusNotFound, "not_found")
+	assert.Equal(t, http.StatusOK, cyd.get("/api/v1/teams/users/projects").StatusCode, "a viewer reads")
+	assertProblem(t, cyd.get("/api/v1/teams/dev/projects"), http.StatusNotFound, "not_found")
 
 	bob := s.browser(t)
 	require.Equal(t, http.StatusSeeOther, bob.oidcLogin("bob@example.com", "/").StatusCode)
@@ -299,20 +299,20 @@ func TestRolesFromTheIdentityProviderHold(t *testing.T) {
 	require.NoError(t, f.QueryRow(ctx, `SELECT id FROM users WHERE username = 'root'`).Scan(&reporter))
 	_, _, err = f.Ticket(ctx, d.tenant, secret, reporter, "a secret plan")
 	require.NoError(t, err)
-	list := decode[apigen.ProjectList](t, bob.get("/api/v1/tenants/dev/projects"))
+	list := decode[apigen.ProjectList](t, bob.get("/api/v1/teams/dev/projects"))
 	for _, p := range list.Items {
 		assert.NotEqual(t, "SECRET", p.Key, "not in the list")
 	}
-	assertProblem(t, bob.get("/api/v1/tenants/dev/projects/SECRET"), http.StatusNotFound, "not_found")
-	assertProblem(t, bob.get("/api/v1/tenants/dev/projects/SECRET/tickets"), http.StatusNotFound, "not_found")
-	hits := decode[apigen.TicketList](t, bob.get("/api/v1/tenants/dev/tickets?q=secret"))
+	assertProblem(t, bob.get("/api/v1/teams/dev/projects/SECRET"), http.StatusNotFound, "not_found")
+	assertProblem(t, bob.get("/api/v1/teams/dev/projects/SECRET/tickets"), http.StatusNotFound, "not_found")
+	hits := decode[apigen.TicketList](t, bob.get("/api/v1/teams/dev/tickets?q=secret"))
 	assert.Empty(t, hits.Items, "not in a search")
 
 	admin := s.browser(t)
 	admin.mustLogin(d.adminSID, testPassword)
 	bobID := d.bob(t)
-	entry := admin.request(http.MethodPut, "/api/v1/tenants/dev/projects/SECRET/access/"+bobID.String(), map[string]string{"role": "viewer"})
+	entry := admin.request(http.MethodPut, "/api/v1/teams/dev/projects/SECRET/access/"+bobID.String(), map[string]string{"role": "viewer"})
 	require.Equal(t, http.StatusOK, entry.StatusCode)
-	assert.Equal(t, http.StatusOK, bob.get("/api/v1/tenants/dev/projects/SECRET").StatusCode, "on the list, the project is there")
-	assert.Len(t, decode[apigen.TicketList](t, bob.get("/api/v1/tenants/dev/tickets?q=secret")).Items, 1)
+	assert.Equal(t, http.StatusOK, bob.get("/api/v1/teams/dev/projects/SECRET").StatusCode, "on the list, the project is there")
+	assert.Len(t, decode[apigen.TicketList](t, bob.get("/api/v1/teams/dev/tickets?q=secret")).Items, 1)
 }

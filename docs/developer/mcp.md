@@ -41,7 +41,7 @@ database driver, the object storage client or the API's handlers.
 | Package, file | Responsibility |
 |---|---|
 | [`tools/tools.go`](../../backend/internal/tools/tools.go) | `Tool` (name, description, surface, operations, schema, run), `define[In]` — the schema inferred from the input type — and `Define`, the same for a host's own tools, `Catalogue(surfaces…)`, `Operations`, `Valid`, `Call` (validation, the binding resolved once, then the run, every failure a `Result` with `IsError`), `Usage` |
-| [`tools/session.go`](../../backend/internal/tools/session.go) | `Session` — the API client, the installation, `Memory`, `Workspace`, the clock and the key maker, the `Person` and the `Tenants` a host may name —, `Binding` with `Bind`, `BindTenant` and `bindOnce`, `Token` with `Can`, `ReadToken`, `Assume`, `Me`, `AgentHeader`, `Editor` (bearer token, agent header, user agent) |
+| [`tools/session.go`](../../backend/internal/tools/session.go) | `Session` — the API client, the installation, `Memory`, `Workspace`, the clock and the key maker, the `Person` and the `Teams` a host may name —, `Binding` with `Bind`, `BindTeam` and `bindOnce`, `Token` with `Can`, `ReadToken`, `Assume`, `Me`, `AgentHeader`, `Editor` (bearer token, agent header, user agent) |
 | [`tools/client.go`](../../backend/internal/tools/client.go) | `check` and `APIError` (the API's problem, rendered with its code and the refusal note), `Retrying` (a transport failure retried where a repetition cannot act twice), `HandlerDoer` (a request served by an `http.Handler` in the same process) |
 | [`tools/binding.go`](../../backend/internal/tools/binding.go) | `Resolve`: the binding file, the remotes, the lookup, the drift, the session's binding |
 | [`tools/start.go`](../../backend/internal/tools/start.go) | `Start`, the procedure of `session_start` and the SessionStart hook: the unbound block with the proposal, or the bound block — the active ticket's context or the candidates, what happened since, each act's line naming its person `via <agent>` or `through the token <name>` (`actLine`) — within `MaxBlock` |
@@ -50,7 +50,7 @@ database driver, the object storage client or the API's handlers.
 | [`tools/memory.go`](../../backend/internal/tools/memory.go) | `Memory`, `InMemory`, `FileMemory` under the user's cache directory: one file per installation and binding for the time of the last start, one per project directory for the model the SessionStart hook read or the PostModelSwitch hook named (`SetModel`, `Model`) |
 | [`tools/workspace.go`](../../backend/internal/tools/workspace.go) | `Workspace`, `GitWorkspace` (git remote, rev-parse, log, status), `BindingFile` and its reading and checking |
 | [`tools/keys.go`](../../backend/internal/tools/keys.go), [`query.go`](../../backend/internal/tools/query.go), [`limits.go`](../../backend/internal/tools/limits.go) | Keys resolved against the binding, the commit strings of ADR 0068; the list and read helpers; the capability line of a description |
-| `tools/tool_*.go` | The tools: `tool_tickets.go` (get_ticket, search — over the ticket lists' `q` filter, not the ranked search routes ([search.md](search.md#the-q-filter-and-the-mcp-tool)) —, file_ticket, record_state, comment, link, watch, place_ticket), `tool_flow.go` (transition, set_progress, finish_work), `tool_questions.go` (open_question, record_answer, and `person`, which resolves a person named as `me`, a username, a display name or an id through the tenant's member list — `open_question`'s `asked_of` and `comment`'s `mentions`), `tool_project.go` (session_start, create_project), `tool_api.go` (api) |
+| `tools/tool_*.go` | The tools: `tool_tickets.go` (get_ticket, search — over the ticket lists' `q` filter, not the ranked search routes ([search.md](search.md#the-q-filter-and-the-mcp-tool)) —, file_ticket, record_state, comment, link, watch, place_ticket), `tool_flow.go` (transition, set_progress, finish_work), `tool_questions.go` (open_question, record_answer, and `person`, which resolves a person named as `me`, a username, a display name or an id through the team's member list — `open_question`'s `asked_of` and `comment`'s `mentions`), `tool_project.go` (session_start, create_project), `tool_api.go` (api) |
 | [`mcpserver/server.go`](../../backend/internal/mcpserver/server.go) | `New(Options)`: the server, its `Instructions`, each tool with its schema, its described limits and its annotations; a handler that learns the client's name, asks `Ready` and runs the tool |
 | [`mcpcli/cli.go`](../../backend/internal/mcpcli/cli.go), [`config.go`](../../backend/internal/mcpcli/config.go), [`commands.go`](../../backend/internal/mcpcli/commands.go) | `Run` and the command table; the configuration from `COWORK_URL`, `COWORK_TOKEN`, `CLAUDE_PROJECT_DIR`; `serve` with its readiness; the hooks' input and output; `token check`, `lookup`; `export` in [`export.go`](../../backend/internal/mcpcli/export.go); `import` in [`import.go`](../../backend/internal/mcpcli/import.go) |
 | [`cmd/cowork-mcp/main.go`](../../backend/cmd/cowork-mcp/main.go) | The linker's variables, the signal context, standard input for a hook when it is not a terminal |
@@ -98,7 +98,13 @@ func watchTool() Tool {
   ticket has moved on since (`TestPreconditionsTheCallerRead`). Nothing is retried on an answer.
 - **`Operations`** lists every `operationId` the run calls. The start-up check refuses an
   installation whose document lacks one, and `TestEveryOperationOfAToolIsInTheDocument` holds
-  them to this repository's document (ADR 0042 D6).
+  them to this repository's document (ADR 0042 D6). The generated client knows the team paths
+  only, the deprecated twins being left out of it, so the tools call `/api/v1/teams/…`; a
+  `cowork-mcp` of the release before calls the twins under `/api/v1/tenants/…` and finds every
+  operationId it declares, which the twins keep where the rename renamed one
+  ([api.md](api.md#deprecated-names)). The other way round fails: this release's `cowork-mcp`
+  declares `listTeamTickets`, which a server of the release before does not serve, so it refuses to
+  start against one — the server is upgraded first.
 - **`limits`** — `limitsOf(text, capabilities…)` — is the part of the description that names
   the agent rules the tool can run into; `Describe(token)` appends which of the capabilities the
   agent holds — "This agent holds …; lacks …" —, the token's, read once at start (ADR 0043 D6), or
@@ -107,10 +113,17 @@ func watchTool() Tool {
 - **`Surface`**: `Anywhere` for a tool that takes everything as arguments, `Terminal` for one
   that reads the working directory — today `session_start` alone. A host without a working
   directory takes `Catalogue(tools.Anywhere)`.
+- **`renamed`** lists an argument the tool still takes under its name before, for one release:
+  `Call` moves it to its name now before the schema validates the arguments, and an argument given
+  under both names with different values is a usage error (`rename`). `create_project` takes `team`,
+  or `tenant` in its place, which its schema marks deprecated. A value renamed stays in the
+  argument's enum instead: `search`'s `scope` takes `team`, and still `tenant` (`scopeTenant`), read
+  as `team` ([api.md](api.md#deprecated-names);
+  `TestCreateProjectUnderTheNameBefore`).
 
 Short keys, `COW-12`, resolve against the session's binding; without one the tool asks for the
 full key. A host that knows the binding — a page that shows a project — sets it with
-`Session.Bind`, or `Session.BindTenant` for a tenant without a project. A session that runs in a
+`Session.Bind`, or `Session.BindTeam` for a team without a project. A session that runs in a
 working directory and has no binding resolves it once, before its first tool call (`bindOnce` in
 `Call`), so a short key works without `session_start` once the SessionStart hook said the session is
 bound (`TestAToolCallBindsTheSessionOnce`); a failed or empty resolution is not tried again.
@@ -120,7 +133,13 @@ bound (`TestAToolCallBindsTheSessionOnce`); a failed or empty resolution is not 
 `Start` is one function with two callers, the hook and the tool (ADR 0067 D1):
 
 1. `Resolve` reads the nearest `.cowork.yaml` (`GitWorkspace.BindingFile`, from the working
-   directory up to the repository's root; a file naming another installation is ignored), the
+   directory up to the repository's root; a file naming another installation is ignored; its team
+   under `team`, or under `tenant`, the key before, read for one release — both must name the same
+   slug, `TestReadBindingFileUnderTheNameBefore`. A `cowork-mcp` of the release before reads the file
+   strictly, `KnownFields`, and ignores with a note a file that names `team` at all, alone or beside
+   `tenant`, so a repository keeps `tenant` alone in it until every machine that works in it runs
+   this release's; for the same reason `create_project` offers the file with `tenant:` in this
+   release, and the contract release offers `team:`), the
    remotes (`git remote -v`, the fetch URLs, `origin` first, credentials removed), and the
    working directory's sub-directory, and asks `GET /api/v1/me/repositories/lookup`. A file
    binds when its project is found, and a server binding of another project is reported as
@@ -130,7 +149,7 @@ bound (`TestAToolCallBindsTheSessionOnce`); a failed or empty resolution is not 
 3. Bound: the person's tickets `in-progress` in the project, in rank order. The first is active:
    its `/context` with five comments and ten acts, cut to the budget, then the commit strings and
    its page. None: the top five of "next for me" in the bound project — `GET /api/v1/me/next` with
-   the binding's `tenant` and `project`, a page of 25, the person's open tickets and the unassigned
+   the binding's team and project as `team` and `project`, a page of 25, the person's open tickets and the unassigned
    ones by score ([ADR 0014](../adr/0014-rank-is-the-decision-score-is-the-warning.md) D5) — passing
    over those in progress, blocked or waiting on an open prerequisite, each with its score and its
    place in its horizon of the backlog (`candidatesSection`).
@@ -157,9 +176,9 @@ transport in place of the real ones.
 | `session-context` | Reads the hook's JSON on standard input (`session_id`, `cwd`, `source`, `model`), records the `model` for the server of the project directory ([below](#the-agent-mark)), prints the block on standard output, which Claude Code adds to the context; an unconfigured client or an unbound directory prints nothing; a failure prints one line naming the cause and the token page. Always exits 0, within a budget of 4.5 s |
 | `session-end` | Prints `{"systemMessage": "cowork: …"}` when `Remind` has a line — a message to the person, which neither blocks nor continues the turn — and nothing otherwise, also on every error. Always exits 0 |
 | `model-switch` | Reads the hook's JSON on standard input (`to_model`, `agent_id`) and records `to_model` for the server of the project directory ([below](#the-agent-mark)), as `session-context` records the `model`; an input with an `agent_id` — a subagent's switch — or without `to_model` records nothing, nor does an unconfigured client or one without `CLAUDE_PROJECT_DIR`. Talks to no installation. Prints nothing on standard output, which Claude Code adds to the model's context after a switch; a malformed variable or a failed write is one line on standard error, which Claude Code keeps in its debug log. Always exits 0 |
-| `token check`, `lookup` | Results on standard output, `--json` for the structured form, exit 1 on an error |
-| `export <tenant>/<PROJECT> <dir>` | Exit 2 on a malformed argument; refuses a target that is a file or a non-empty directory before it asks (exit 1); fetches the project export and unpacks it through a root at the directory — regular files only, only the names an export of the project holds, `O_EXCL`; on POSIX systems directories `0700` and files `0600`, on Windows the directory's access list —, printing the count of documents and of the confidential tickets left out ([import-and-export.md](import-and-export.md#cowork-mcp-export)); its requests carry `cowork-mcp/unknown/export` |
-| `import <tenant>/<PROJECT> <path> [--dry-run]` | `--dry-run` anywhere among the arguments (`command.flag`, taken out before the count); exit 2 on a malformed argument; reads the path before it asks (exit 1): a directory packed as a `tar.gz` of its Markdown files and an export's two manifests (`packDir`), a file as it is; the dry run through `createImportWithBody`, its report printed, then — without `--dry-run` — `executeImport` without corrections and its report printed (`writeImport`) ([import-and-export.md](import-and-export.md#cowork-mcp-import)); its requests carry `cowork-mcp/unknown/import`, an agent's |
+| `token check`, `lookup` | Results on standard output, `--json` for the structured form, exit 1 on an error. The JSON names the team under its name and, for one release, under the name before beside it, the same slug: `token check --json` as `team` and `tenant`, `lookup --json` a binding as `Team` and `Tenant` (`Binding.MarshalJSON`) |
+| `export <team>/<PROJECT> <dir>` | Exit 2 on a malformed argument; refuses a target that is a file or a non-empty directory before it asks (exit 1); fetches the project export and unpacks it through a root at the directory — regular files only, only the names an export of the project holds, `O_EXCL`; on POSIX systems directories `0700` and files `0600`, on Windows the directory's access list —, printing the count of documents and of the confidential tickets left out ([import-and-export.md](import-and-export.md#cowork-mcp-export)); its requests carry `cowork-mcp/unknown/export` |
+| `import <team>/<PROJECT> <path> [--dry-run]` | `--dry-run` anywhere among the arguments (`command.flag`, taken out before the count); exit 2 on a malformed argument; reads the path before it asks (exit 1): a directory packed as a `tar.gz` of its Markdown files and an export's two manifests (`packDir`), a file as it is; the dry run through `createImportWithBody`, its report printed, then — without `--dry-run` — `executeImport` without corrections and its report printed (`writeImport`) ([import-and-export.md](import-and-export.md#cowork-mcp-import)); its requests carry `cowork-mcp/unknown/import`, an agent's |
 
 ### The agent mark
 
@@ -225,9 +244,9 @@ boundary, validation, the agent rules, the audit — with a request editor that 
 session cookie and the chat's agent header, `chat/<model>/<conversation>`. It takes
 `tools.Catalogue(tools.Anywhere)` without `api`, adds three page tools of its own through
 `tools.Define`, offers each only once its `offered` names it, and runs every call at once;
-`Session.Bind` or `BindTenant` for the page; no memory; `Assume` instead of `ReadToken`, the mark and
+`Session.Bind` or `BindTeam` for the page; no memory; `Assume` instead of `ReadToken`, the mark and
 the person's chat capabilities being known, which `Describe` puts into the descriptions; `Person` for
-`open_question`'s `me`; `Tenants` to keep a search of every tenant in the turn's. A tool added to the
+`open_question`'s `me`; `Teams` to keep a search of every team in the turn's. A tool added to the
 catalogue is not offered by the chat until `offered` names it
 ([chat.md](chat.md#adding-a-tool-to-the-chat)).
 

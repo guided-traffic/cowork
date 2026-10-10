@@ -8,58 +8,59 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/domain"
 )
 
-// ticketRef is a ticket a tool names, its tenant resolved.
+// ticketRef is a ticket a tool names, its team resolved; Tenant holds the
+// team's slug, as domain.TicketKey does.
 type ticketRef struct {
 	Tenant, Project string
 	Number          int32
 }
 
-// Full is the canonical key, tenant/PROJECT-n (docs/adr/0007 D2).
+// Full is the canonical key, team/PROJECT-n (docs/adr/0007 D2).
 func (r ticketRef) Full() string { return domain.FullKey(r.Tenant, r.Project, r.Number) }
 
 // Short is PROJECT-n.
 func (r ticketRef) Short() string { return domain.ShortKey(r.Project, r.Number) }
 
-// resolveKey reads a ticket key: a full one, or a short one in the tenant the
+// resolveKey reads a ticket key: a full one, or a short one in the team the
 // session is bound to (docs/adr/0007 D3).
 func (s *Session) resolveKey(raw string) (ticketRef, error) {
 	raw = strings.TrimSpace(raw)
 	k, err := domain.ParseTicketKey(raw)
 	if err != nil {
-		return ticketRef{}, usage("%q is not a ticket key: write tenant/PROJECT-n, or PROJECT-n in a session bound to a project", raw)
+		return ticketRef{}, usage("%q is not a ticket key: write team/PROJECT-n, or PROJECT-n in a session bound to a project", raw)
 	}
 	if k.Tenant == "" {
 		b := s.Binding()
 		if b == nil {
-			return ticketRef{}, usage("%q is a short key, and this session is bound to no project: write the full key, tenant/%s", raw, raw)
+			return ticketRef{}, usage("%q is a short key, and this session is bound to no project: write the full key, team/%s", raw, raw)
 		}
-		k.Tenant = b.Tenant
+		k.Tenant = b.Team
 	}
 	return ticketRef{Tenant: k.Tenant, Project: k.Project, Number: k.Number}, nil
 }
 
-// resolveProject reads a project: tenant/KEY, a key in the bound tenant, or
-// the bound project when none is named.
-func (s *Session) resolveProject(raw string) (tenant, project string, err error) {
+// resolveProject reads a project: team/KEY, a key in the bound team, or the
+// bound project when none is named.
+func (s *Session) resolveProject(raw string) (team, project string, err error) {
 	raw = strings.TrimSpace(raw)
 	b := s.Binding()
 	switch {
 	case raw == "" && b != nil && b.Project != "":
-		return b.Tenant, b.Project, nil
+		return b.Team, b.Project, nil
 	case raw == "" && b != nil:
-		return "", "", usage("name the project: its key in the tenant %s, or tenant/KEY", b.Tenant)
+		return "", "", usage("name the project: its key in the team %s, or team/KEY", b.Team)
 	case raw == "":
-		return "", "", usage("this session is bound to no project: name one, tenant/KEY")
+		return "", "", usage("this session is bound to no project: name one, team/KEY")
 	}
 	t, p, full := strings.Cut(raw, "/")
 	if !full {
 		if b == nil {
-			return "", "", usage("%q needs its tenant, tenant/%s: this session is bound to no project", raw, raw)
+			return "", "", usage("%q needs its team, team/%s: this session is bound to no project", raw, raw)
 		}
-		t, p = b.Tenant, raw
+		t, p = b.Team, raw
 	}
 	if !domain.ValidTenantSlug(t) || !domain.ValidProjectKey(p) {
-		return "", "", usage("%q is not a project: write tenant/KEY, the key upper case", raw)
+		return "", "", usage("%q is not a project: write team/KEY, the key upper case", raw)
 	}
 	return t, p, nil
 }

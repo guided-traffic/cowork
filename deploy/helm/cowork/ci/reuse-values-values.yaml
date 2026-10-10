@@ -1,6 +1,7 @@
 # The values of a release upgraded with `helm upgrade --reuse-values` from a
-# release before the metrics and the database's authority: no metrics block,
-# no frontend.metrics block and no database.tls block
+# release before the metrics, the database's authority and the team's names:
+# no metrics block, no frontend.metrics block, no database.tls block, no
+# bootstrap.team block and no backend.config.attachmentTeamQuota
 # (docs/operations/installation.md#upgrade). The chart must render as with its
 # defaults; the template target renders this file like every other.
 database:
@@ -13,3 +14,8 @@ session:
 metrics: null
 frontend:
   metrics: null
+bootstrap:
+  team: null
+backend:
+  config:
+    attachmentTeamQuota: null

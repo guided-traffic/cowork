@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface TimeReport$Csv$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The first day of the period, inclusive
@@ -34,13 +34,19 @@ export interface TimeReport$Csv$Params {
  * A person id, or me
  */
   person?: string;
-  group_by?: 'ticket' | 'project' | 'person' | 'tenant';
+
+/**
+ * What the report sums by. `team` sums the whole team in one row, keyed `team`; `tenant` is its
+ * deprecated name, kept in /api/v1 for one release, which keys the row `tenant` as before
+ * (docs/adr/0005 D1, docs/adr/0046 D7)
+ */
+  group_by?: 'ticket' | 'project' | 'person' | 'team' | 'tenant';
 }
 
 export function timeReport$Csv(http: HttpClient, rootUrl: string, params: TimeReport$Csv$Params, context?: HttpContext): Observable<StrictHttpResponse<string>> {
   const rb = new RequestBuilder(rootUrl, timeReport$Csv.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.query('from', params.from, {});
     rb.query('to', params.to, {});
     rb.query('project', params.project, {});
@@ -58,4 +64,4 @@ export function timeReport$Csv(http: HttpClient, rootUrl: string, params: TimeRe
   );
 }
 
-timeReport$Csv.PATH = '/api/v1/tenants/{tenant}/time-report';
+timeReport$Csv.PATH = '/api/v1/teams/{team}/time-report';

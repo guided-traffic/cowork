@@ -5,7 +5,7 @@ import { Person } from '../models/person';
 import { ProjectAccessRole } from '../models/project-access-role';
 
 /**
- * A person on a project's access list; their role in the project is the lower of their tenant role and the entry's (docs/adr/0034 D3)
+ * A person on a project's access list; their role in the project is the lower of their team role and the entry's (docs/adr/0034 D3)
  */
 export interface ProjectAccessEntry {
   created_at: string;
@@ -13,7 +13,7 @@ export interface ProjectAccessEntry {
   /**
    * The address the identity provider asserted at the person's last login, which tells two
    * persons of one name apart; null for a person without one, such as a local account. The
-   * access list is the tenant's administrators' to read.
+   * access list is the team's administrators' to read.
    */
   email: (string | null);
   person: Person;

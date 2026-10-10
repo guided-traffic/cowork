@@ -21,7 +21,7 @@ import { roles } from './roles';
 /** What the confirmation says of the grant, the tenant and the role named in it. */
 export function selfGrantQuestion(tenant: string, role: Role): string {
   return (
-    `You will hold the role ${role} in ${tenant}. The grant is recorded in the tenant's audit ` +
+    `You will hold the role ${role} in ${tenant}. The grant is recorded in the team's audit ` +
     'record with you as its actor, and its members see it in the member list.'
   );
 }
@@ -50,15 +50,15 @@ export function selfGrantQuestion(tenant: string, role: Role): string {
         @if (held(); as role) {
           <h2 id="self-grant-title">You hold the role {{ role }} in {{ name() }}</h2>
           <p class="muted">
-            As a global administrator you may raise your own grant here, to administer this tenant
-            or to do more of its work: the tenant sees the change in its audit record.
+            As a global administrator you may raise your own grant here, to administer this team or
+            to do more of its work: the team sees the change in its audit record.
           </p>
         } @else {
           <h2 id="self-grant-title">You have no role in {{ name() }}</h2>
           <p class="muted">
-            As a global administrator you see this tenant's members, group mappings and settings,
-            and none of its projects, tickets or time. To work in it or administer it, grant
-            yourself a role: the tenant sees the grant in its audit record.
+            As a global administrator you see this team's members, group mappings and settings, and
+            none of its projects, tickets or time. To work in it or administer it, grant yourself a
+            role: the team sees the grant in its audit record.
           </p>
         }
       </div>

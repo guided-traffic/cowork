@@ -22,7 +22,7 @@ func (e ticketEnv) assigned(t *testing.T, c caller, query string) ([]string, api
 	l := decode[apigen.MyTicketList](t, res)
 	keys := make([]string, 0, len(l.Items))
 	for _, it := range l.Items {
-		assert.Equal(t, it.Tenant.Slug+"/", it.Ticket.Key[:len(it.Tenant.Slug)+1], "the tenant beside the key is the key's")
+		assert.Equal(t, it.Team.Slug+"/", it.Ticket.Key[:len(it.Team.Slug)+1], "the tenant beside the key is the key's")
 		keys = append(keys, it.Ticket.Key)
 	}
 	return keys, l
@@ -97,8 +97,8 @@ func TestAssignedToMeAcrossTenants(t *testing.T) {
 	want := []string{inB.Key, second.Key, first.Key, inGamma.Key}
 	keys, list := e.assigned(t, both, "")
 	assert.Equal(t, want, keys, "by score: 9, 6, 4, 2")
-	assert.Equal(t, apigen.TenantRef{Slug: e.SlugB, Name: "Tenant B"}, list.Items[0].Tenant)
-	assert.Equal(t, apigen.TenantRef{Slug: e.SlugA, Name: "Tenant A"}, list.Items[3].Tenant)
+	assert.Equal(t, apigen.TeamRef{Slug: e.SlugB, Name: "Team B"}, list.Items[0].Team)
+	assert.Equal(t, apigen.TeamRef{Slug: e.SlugA, Name: "Team A"}, list.Items[3].Team)
 	assert.Equal(t, "second", list.Items[1].Ticket.Title, "the whole ticket")
 	assert.Equal(t, []int{1, 2, 1, 1}, []int{list.Items[0].Place, list.Items[1].Place, list.Items[2].Place, list.Items[3].Place},
 		"the place in the project's rank beside the score: the first stands before the second")
@@ -163,7 +163,7 @@ func TestOpenDecisionsAcrossTenants(t *testing.T) {
 	want := []string{second.Key + " Q2", first.Key + " Q1", first.Key + " Q3", inB.Key + " Q1"}
 	got, list := e.decisions(t, both, "")
 	assert.Equal(t, want, got, "by the score of the ticket: 6, 4, 2")
-	assert.Equal(t, e.SlugB, list.Items[3].Tenant.Slug)
+	assert.Equal(t, e.SlugB, list.Items[3].Team.Slug)
 	assert.Equal(t, "open in B", list.Items[3].Question.Question)
 	assert.Equal(t, apigen.QuestionStatusOpen, list.Items[0].Question.Status)
 

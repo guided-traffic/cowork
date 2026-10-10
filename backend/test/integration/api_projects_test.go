@@ -34,7 +34,7 @@ func TestCreatingProjects(t *testing.T) {
 
 	res := create(caller{Token: tk.MemberA}, "MEM", false)
 	require.Equal(t, http.StatusCreated, res.StatusCode(), string(res.Body))
-	assert.Equal(t, "/api/v1/tenants/"+w.SlugA+"/projects/MEM", *res.Headers201.Location)
+	assert.Equal(t, "/api/v1/teams/"+w.SlugA+"/projects/MEM", *res.Headers201.Location)
 	assert.Equal(t, `"1"`, *res.Headers201.ETag)
 
 	res = create(caller{Token: tk.MemberA}, "MEM", false)
@@ -154,7 +154,7 @@ func TestUpdatingAndArchivingProjects(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, edited.StatusCode(), "an agent edits a project without create-project: the baseline by the owner's decision (docs/adr/0043 D2)")
 
-	agentArchive := s.do(t, caller{Token: tk.AdminAWrite, Agent: "claude-code/opus/s1"}, http.MethodPut, "/api/v1/tenants/"+w.SlugA+"/projects/ALPHA/archive", nil)
+	agentArchive := s.do(t, caller{Token: tk.AdminAWrite, Agent: "claude-code/opus/s1"}, http.MethodPut, "/api/v1/teams/"+w.SlugA+"/projects/ALPHA/archive", nil)
 	assertProblem(t, agentArchive, http.StatusForbidden, "insufficient_scope")
 
 	archived, err := admin.ArchiveProjectWithResponse(ctx, w.SlugA, "ALPHA")
@@ -204,14 +204,14 @@ func TestProjectVisibility(t *testing.T) {
 	assert.Equal(t, []string{"ALPHA"}, keys(caller{Token: tk.MemberA}), "off the list: hidden")
 	assert.Equal(t, []string{"ALPHA", "SECRET"}, keys(caller{Token: tk.ViewerA}), "on the list: shown")
 	assert.Equal(t, []string{"ALPHA", "SECRET"}, keys(caller{Token: tk.AdminA}), "administrators see every project")
-	assertProblem(t, s.do(t, caller{Token: tk.MemberA}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/projects/SECRET", nil), http.StatusNotFound, "not_found")
+	assertProblem(t, s.do(t, caller{Token: tk.MemberA}, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/projects/SECRET", nil), http.StatusNotFound, "not_found")
 
 	projectToken, _, err := f.Token(ctx, fixture.TokenSpec{UserID: w.AdminA, TenantID: w.A, ProjectID: secret, Scope: "admin"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"SECRET"}, keys(caller{Token: projectToken}))
-	assertProblem(t, s.do(t, caller{Token: projectToken}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/projects/ALPHA", nil), http.StatusNotFound, "not_found")
-	assertProblem(t, s.do(t, caller{Token: projectToken}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/members", nil), http.StatusNotFound, "not_found")
-	assertProblem(t, s.do(t, caller{Token: projectToken}, http.MethodGet, "/api/v1/tenants/"+w.SlugA, nil), http.StatusNotFound, "not_found")
+	assertProblem(t, s.do(t, caller{Token: projectToken}, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/projects/ALPHA", nil), http.StatusNotFound, "not_found")
+	assertProblem(t, s.do(t, caller{Token: projectToken}, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/members", nil), http.StatusNotFound, "not_found")
+	assertProblem(t, s.do(t, caller{Token: projectToken}, http.MethodGet, "/api/v1/teams/"+w.SlugA, nil), http.StatusNotFound, "not_found")
 
 	_, inside, err := f.Ticket(ctx, w.A, secret, w.AdminA, "Inside")
 	require.NoError(t, err)

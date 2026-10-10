@@ -17,7 +17,7 @@ import { SessionService } from './session.service';
 
 /** What a dashboard is read for: the tenant, the `project` filter as the address holds it, the period. */
 export interface DashboardQuery {
-  tenant: string;
+  team: string;
   project: string[];
   from: string;
   to: string;

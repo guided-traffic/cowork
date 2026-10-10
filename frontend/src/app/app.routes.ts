@@ -112,10 +112,10 @@ export const routes: Routes = [
             loadComponent: () =>
               import('./features/ticket/ticket-detail').then((m) => m.TicketDetail),
           },
-          // The tenant's search, what the search box does inside a tenant (docs/adr/0018 D7).
+          // The team's search, what the search box does inside a team (docs/adr/0018 D7).
           {
             path: 'search',
-            data: { scope: 'tenant' },
+            data: { scope: 'team' },
             loadComponent: () => import('./features/search/search').then((m) => m.SearchResults),
           },
           {

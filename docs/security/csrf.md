@@ -24,7 +24,7 @@ in the pipeline):
    that is no URL, and an `Origin` that differs while a `Referer` matches — the `Origin` wins.
 2. The header `X-Requested-With: cowork` is present with exactly that value.
 
-Either missing or wrong is `403` with the code `csrf`, answered before the tenant boundary and
+Either missing or wrong is `403` with the code `csrf`, answered before the team boundary and
 before any handler. `COWORK_BASE_URL` is read as an origin: the scheme and host lower-cased, and
 a port that is the scheme's default (`443` for `https`) dropped, as a browser writes the
 `Origin` header; a URL with a path, a query, a fragment or a user is refused at start
@@ -52,7 +52,7 @@ Reads still work.
 Five routes record an act on a read, as data leaving the system must be recorded
 ([ADR 0026](../adr/0026-one-append-only-audit-table-written-by-the-request-layer.md) D5): an
 attachment's bytes (`downloaded`), a ticket's Markdown export and its context document, and the
-project's and the tenant's export (each `exported`, [import-and-export.md](import-and-export.md)).
+project's and the team's export (each `exported`, [import-and-export.md](import-and-export.md)).
 The API document marks each `x-cowork-recorded-read`, and the unit test over the document holds the
 mark to these five. A request authenticated by the session cookie for one of them is held to the
 page it comes from by `Sec-Fetch-Site`, the header a browser sets on every request and no script of

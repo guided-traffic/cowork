@@ -96,10 +96,10 @@ func TestBookingTime(t *testing.T) {
 	gone := e.s.do(t, member, http.MethodPatch, e.entryPath(tk, entry.Id), map[string]any{"minutes": 5}, "If-Match", `"3"`)
 	assertProblem(t, gone, http.StatusConflict, "state_conflict")
 
-	tenant, err := e.s.client(t, caller{Token: e.tk.AdminA}).GetTenantWithResponse(e.ctx, e.SlugA)
+	tenant, err := e.s.client(t, caller{Token: e.tk.AdminA}).GetTeamWithResponse(e.ctx, e.SlugA)
 	require.NoError(t, err)
 	tetag := tenant.HTTPResponse.Header.Get("ETag")
-	lock := e.s.do(t, caller{Token: e.tk.AdminA}, http.MethodPatch, "/api/v1/tenants/"+e.SlugA, map[string]any{"time_locked_until": "2026-09-01"}, "If-Match", tetag)
+	lock := e.s.do(t, caller{Token: e.tk.AdminA}, http.MethodPatch, "/api/v1/teams/"+e.SlugA, map[string]any{"time_locked_until": "2026-09-01"}, "If-Match", tetag)
 	require.Equal(t, http.StatusOK, lock.StatusCode)
 	locked := e.book(t, member, tk, 10, "2026-09-01")
 	require.Equal(t, http.StatusConflict, locked.StatusCode())
@@ -141,7 +141,7 @@ func TestTimeVisibility(t *testing.T) {
 	}))
 	require.Equal(t, http.StatusCreated, e.book(t, member, secret, 45, "2026-09-12").StatusCode())
 	report := func(c caller, query string) apigen.TimeReport {
-		res := e.s.do(t, c, http.MethodGet, "/api/v1/tenants/"+e.SlugA+"/time-report?"+query, nil)
+		res := e.s.do(t, c, http.MethodGet, "/api/v1/teams/"+e.SlugA+"/time-report?"+query, nil)
 		require.Equal(t, http.StatusOK, res.StatusCode)
 		var r apigen.TimeReport
 		require.NoError(t, json.NewDecoder(res.Body).Decode(&r))
@@ -158,7 +158,7 @@ func TestTimeVisibility(t *testing.T) {
 	assert.Equal(t, 75, report(admin, "group_by=project&project=ALPHA&from=2026-09-11").TotalMinutes)
 	assert.Equal(t, 105, report(admin, "group_by=tenant&person="+e.MemberA.String()).TotalMinutes)
 
-	csvRes := e.s.do(t, admin, http.MethodGet, "/api/v1/tenants/"+e.SlugA+"/time-entries", nil, "Accept", "text/csv")
+	csvRes := e.s.do(t, admin, http.MethodGet, "/api/v1/teams/"+e.SlugA+"/time-entries", nil, "Accept", "text/csv")
 	require.Equal(t, http.StatusOK, csvRes.StatusCode)
 	raw, err := io.ReadAll(csvRes.Body)
 	require.NoError(t, err)
@@ -167,11 +167,11 @@ func TestTimeVisibility(t *testing.T) {
 	assert.True(t, strings.HasPrefix(lines[0], "id,ticket,day,minutes"))
 	assert.Contains(t, string(raw), ",2026-09-12,45,")
 
-	paged, err := e.s.client(t, admin).ListTenantTimeWithResponse(e.ctx, e.SlugA, &apigen.ListTenantTimeParams{Page: ptr(1), PerPage: ptr(apigen.ListTenantTimeParamsPerPage(25))})
+	paged, err := e.s.client(t, admin).ListTeamTimeWithResponse(e.ctx, e.SlugA, &apigen.ListTeamTimeParams{Page: ptr(1), PerPage: ptr(apigen.ListTeamTimeParamsPerPage(25))})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, paged.StatusCode(), string(paged.Body))
 	assert.Equal(t, 3, *paged.JSON200.Total)
-	mine, err := e.s.client(t, admin).ListTenantTimeWithResponse(e.ctx, e.SlugA, &apigen.ListTenantTimeParams{Person: ptr("me")})
+	mine, err := e.s.client(t, admin).ListTeamTimeWithResponse(e.ctx, e.SlugA, &apigen.ListTeamTimeParams{Person: ptr("me")})
 	require.NoError(t, err)
 	assert.Empty(t, mine.JSON200.Items)
 	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberB}, http.MethodGet, fmt.Sprintf("%s/%d/time-entries", e.projectTickets("ALPHA"), tk.Number), nil),

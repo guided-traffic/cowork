@@ -11,18 +11,22 @@ import { foundIn, hitFragment, SearchResults, SearchScope } from './search';
 
 const acme: Membership = {
   role: 'member',
+  team: { name: 'Acme Corp', slug: 'acme' },
   tenant: { name: 'Acme Corp', slug: 'acme' },
   origins: [{ source: 'grant', role: 'member' }],
 };
 const globex: Membership = {
   role: 'member',
+  team: { name: 'Globex', slug: 'globex' },
   tenant: { name: 'Globex', slug: 'globex' },
   origins: [{ source: 'grant', role: 'member' }],
 };
 
 function hit(overrides: Partial<SearchHit> = {}): SearchHit {
   return {
-    tenant: { slug: 'acme', name: 'Acme Corp' },
+    team: { slug: 'acme', name: 'Acme Corp' },
+    // The deprecated name of team, which the page never shows (docs/adr/0005 D1).
+    tenant: { slug: 'acme', name: 'not shown' },
     key: 'acme/COW-12',
     title: 'The gate fails',
     type: 'bug',
@@ -79,7 +83,7 @@ describe('SearchResults', () => {
             memberships,
             shown: computed(() =>
               memberships()
-                .map((m) => m.tenant)
+                .map((m) => m.team)
                 .find((t) => t.slug === tenant()),
             ),
           },
@@ -105,10 +109,10 @@ describe('SearchResults', () => {
   const el = (fixture: ComponentFixture<SearchResults>) => fixture.nativeElement as HTMLElement;
 
   it("searches the tenant the pages show and links each hit, the snippet's found words marked as text", async () => {
-    const fixture = await render(' gate ', 'tenant');
+    const fixture = await render(' gate ', 'team');
 
     http
-      .expectOne('/api/v1/tenants/acme/search?q=gate&limit=50')
+      .expectOne('/api/v1/teams/acme/search?q=gate&limit=50')
       .flush(
         page([
           hit(),
@@ -139,8 +143,8 @@ describe('SearchResults', () => {
 
   it("offers every tenant's search where the person has more than one", async () => {
     memberships.set([acme, globex]);
-    const fixture = await render('gate', 'tenant');
-    http.expectOne('/api/v1/tenants/acme/search?q=gate&limit=50').flush(page([]));
+    const fixture = await render('gate', 'team');
+    http.expectOne('/api/v1/teams/acme/search?q=gate&limit=50').flush(page([]));
     await settle(fixture);
 
     const everywhere = el(fixture).querySelector('[data-testid="search-everywhere"]');
@@ -153,11 +157,18 @@ describe('SearchResults', () => {
   it('searches every tenant of the person, each hit beside its tenant, a page more on request', async () => {
     const fixture = await render('gate', 'me');
 
-    http
-      .expectOne('/api/v1/me/search?q=gate&limit=50')
-      .flush(
-        page([hit({ tenant: { slug: 'globex', name: 'Globex' }, key: 'globex/OPS-1' })], 'next-1'),
-      );
+    http.expectOne('/api/v1/me/search?q=gate&limit=50').flush(
+      page(
+        [
+          hit({
+            team: { slug: 'globex', name: 'Globex' },
+            tenant: { slug: 'globex', name: 'not shown' },
+            key: 'globex/OPS-1',
+          }),
+        ],
+        'next-1',
+      ),
+    );
     await settle(fixture);
     expect(el(fixture).querySelector('[data-testid="tenant"]')?.textContent).toBe('Globex');
 

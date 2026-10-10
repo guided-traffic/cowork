@@ -34,7 +34,7 @@ var origin = []Remote{{Name: "origin", URL: "git@github.com:acme/cowork.git"}}
 
 func boundLookup() map[string]any {
 	return map[string]any{"status": "bound", "remotes": []any{map[string]any{"remote": origin[0].URL, "identity": "github.com/acme/cowork"}},
-		"bindings": []any{map[string]any{"tenant": map[string]any{"slug": "acme", "name": "Acme"},
+		"bindings": []any{map[string]any{"team": map[string]any{"slug": "acme", "name": "Acme"},
 			"project": map[string]any{"key": "COW", "name": "cowork"}, "identity": "github.com/acme/cowork", "path": "",
 			"remote": origin[0].URL, "archived": false}}, "proposal": nil, "proposal_unavailable": nil}
 }
@@ -52,7 +52,7 @@ func startSession(f *fakeAPI, ws Workspace) *Session {
 func TestStartBoundWithAnActiveTicket(t *testing.T) {
 	f := newFake(t)
 	f.on("GET /api/v1/me/repositories/lookup", http.StatusOK, boundLookup())
-	f.on("GET /api/v1/tenants/acme/projects/COW/tickets", http.StatusOK, list(
+	f.on("GET /api/v1/teams/acme/projects/COW/tickets", http.StatusOK, list(
 		ticket("acme/COW-12", "in-progress", func(m map[string]any) { m["title"] = "Guard the gate" }),
 		ticket("acme/COW-14", "in-progress")))
 	f.text("GET "+ticketPath+"/context", "<!-- cowork: context of acme/COW-12 -->\nTHE CONTEXT\n")
@@ -65,11 +65,11 @@ func TestStartBoundWithAnActiveTicket(t *testing.T) {
 			"actor": map[string]any{"id": samID, "display_name": "Sam"}, "actor_system": nil, "agent": nil, "action": "edited",
 			"entity_type": "comment", "entity_id": nil, "before": nil, "after": nil, "reason": nil, "note": nil,
 			"explained_by_comment": nil, "redacted": false}))
-	f.on("GET /api/v1/tenants/acme/projects/COW/tickets/14/activity", http.StatusOK, list(
+	f.on("GET /api/v1/teams/acme/projects/COW/tickets/14/activity", http.StatusOK, list(
 		map[string]any{"id": "0199a3c2-1d2e-7f00-8000-0000000000e4", "at": "2026-10-04T07:00:00Z",
 			"actor": map[string]any{"id": samID, "display_name": "Sam"}, "agent": "claude-code/opus/x", "action": "transitioned",
 			"before": map[string]any{"state": "decided"}, "after": map[string]any{"state": "in-progress"}, "redacted": false}))
-	f.on("GET /api/v1/tenants/acme/tickets", http.StatusOK, list(ticket("acme/COW-20", "review", func(m map[string]any) { m["title"] = "Other" })))
+	f.on("GET /api/v1/teams/acme/tickets", http.StatusOK, list(ticket("acme/COW-20", "review", func(m map[string]any) { m["title"] = "Other" })))
 	s := startSession(f, fakeWorkspace{remotes: origin, path: "backend"})
 
 	block, silent, err := Start(context.Background(), s, StartOptions{Record: true})
@@ -91,22 +91,22 @@ func TestStartBoundWithAnActiveTicket(t *testing.T) {
 	ctxQuery, _ := url.ParseQuery(f.calls(http.MethodGet, ticketPath+"/context")[0].Query)
 	assert.Equal(t, "5", ctxQuery.Get("comments"))
 	assert.Equal(t, "10", ctxQuery.Get("activity"))
-	listQuery, _ := url.ParseQuery(f.calls(http.MethodGet, "/api/v1/tenants/acme/projects/COW/tickets")[0].Query)
+	listQuery, _ := url.ParseQuery(f.calls(http.MethodGet, "/api/v1/teams/acme/projects/COW/tickets")[0].Query)
 	assert.Equal(t, []string{"in-progress"}, listQuery["state"])
 	assert.Equal(t, []string{"me"}, listQuery["assignee"])
 
 	// The memory now holds this start; the next one shows what happened since.
-	at, ok, err := s.Memory.LastStart(MemoryKey{Installation: s.Installation, Tenant: "acme", Project: "COW"})
+	at, ok, err := s.Memory.LastStart(MemoryKey{Installation: s.Installation, Team: "acme", Project: "COW"})
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.NoError(t, s.Memory.SetLastStart(MemoryKey{Installation: s.Installation, Tenant: "acme", Project: "COW"}, at.Add(-24*time.Hour)))
+	require.NoError(t, s.Memory.SetLastStart(MemoryKey{Installation: s.Installation, Team: "acme", Project: "COW"}, at.Add(-24*time.Hour)))
 	block, _, err = Start(context.Background(), s, StartOptions{Record: false})
 	require.NoError(t, err)
 	assert.Contains(t, block, "## Since your last session (2026-10-03 09:00 UTC)")
 	assert.Contains(t, block, "- acme/COW-12: one act, under Recent activity above", "the active ticket's acts are in its context")
 	assert.Contains(t, block, "- 2026-10-04 07:00 UTC acme/COW-14 — Sam via claude-code/opus/x transitioned decided → in-progress")
 	assert.Contains(t, block, "- acme/COW-20 — Other (review), changed")
-	changed, _ := url.ParseQuery(f.calls(http.MethodGet, "/api/v1/tenants/acme/tickets")[0].Query)
+	changed, _ := url.ParseQuery(f.calls(http.MethodGet, "/api/v1/teams/acme/tickets")[0].Query)
 	assert.Equal(t, []string{"COW"}, changed["project"])
 	assert.Equal(t, "2026-10-03T09:00:00Z", changed.Get("updated_after"))
 }
@@ -115,7 +115,7 @@ func TestStartBoundWithAnActiveTicket(t *testing.T) {
 func TestStartKeepsTheBlockBounded(t *testing.T) {
 	f := newFake(t)
 	f.on("GET /api/v1/me/repositories/lookup", http.StatusOK, boundLookup())
-	f.on("GET /api/v1/tenants/acme/projects/COW/tickets", http.StatusOK, list(ticket("acme/COW-12", "in-progress")))
+	f.on("GET /api/v1/teams/acme/projects/COW/tickets", http.StatusOK, list(ticket("acme/COW-12", "in-progress")))
 	f.text("GET "+ticketPath+"/context", strings.Repeat("a long line of the ticket's body\n", 1000))
 	block, _, err := Start(context.Background(), startSession(f, fakeWorkspace{remotes: origin}), StartOptions{})
 	require.NoError(t, err)
@@ -129,9 +129,9 @@ func TestStartKeepsTheBlockBounded(t *testing.T) {
 func TestStartShowsCandidates(t *testing.T) {
 	f := newFake(t)
 	f.on("GET /api/v1/me/repositories/lookup", http.StatusOK, boundLookup())
-	f.on("GET /api/v1/tenants/acme/projects/COW/tickets", http.StatusOK, list())
+	f.on("GET /api/v1/teams/acme/projects/COW/tickets", http.StatusOK, list())
 	item := func(key, state string, score any, waiting int) map[string]any {
-		return map[string]any{"tenant": map[string]any{"slug": "acme", "name": "Acme"}, "place": 2,
+		return map[string]any{"team": map[string]any{"slug": "acme", "name": "Acme"}, "place": 2,
 			"ticket": map[string]any{"key": key, "title": "Title of " + key, "state": state, "effort": "M", "assignee": nil,
 				"horizon": "next", "score": score, "open_prerequisites": waiting}}
 	}
@@ -154,7 +154,8 @@ func TestStartShowsCandidates(t *testing.T) {
 	calls := f.calls(http.MethodGet, "/api/v1/me/next")
 	require.Len(t, calls, 1)
 	q, _ := url.ParseQuery(calls[0].Query)
-	assert.Equal(t, "acme", q.Get("tenant"))
+	assert.Equal(t, "acme", q.Get("team"))
+	assert.False(t, q.Has("tenant"), "the parameter's name before goes nowhere beside it: the pair is 400")
 	assert.Equal(t, "COW", q.Get("project"))
 	assert.Equal(t, "25", q.Get("limit"))
 }
@@ -167,21 +168,22 @@ func TestStartUnbound(t *testing.T) {
 		"remotes":  []any{map[string]any{"remote": "git@github.com:acme/valkey-operator.git", "identity": "github.com/acme/valkey-operator"}},
 		"bindings": []any{}, "proposal_unavailable": nil, "proposal": map[string]any{
 			"identity": "github.com/acme/valkey-operator", "remote": "git@github.com:acme/valkey-operator.git", "name": "valkey-operator",
-			"tenant": "acme", "reason": "only-tenant", "tenants": []any{map[string]any{"slug": "acme", "name": "Acme", "key": "VO"}}}})
+			"team": "acme", "reason": "only-tenant", "teams": []any{map[string]any{"slug": "acme", "name": "Acme", "key": "VO"}}}})
 	block, silent, err := Start(context.Background(), startSession(f, fakeWorkspace{remotes: []Remote{{Name: "origin",
 		URL: "git@github.com:acme/valkey-operator.git"}}}), StartOptions{Record: true})
 	require.NoError(t, err)
 	assert.False(t, silent)
 	assert.Contains(t, block, "# cowork: this repository is bound to no project")
 	assert.Contains(t, block, "> Create the project `acme/VO` (\"valkey-operator\") for `github.com/acme/valkey-operator`?")
-	assert.Contains(t, block, `create_project(tenant: "acme", key: "VO", name: "valkey-operator", remote: "git@github.com:acme/valkey-operator.git")`)
+	assert.Contains(t, block, `create_project(team: "acme", key: "VO", name: "valkey-operator", remote: "git@github.com:acme/valkey-operator.git")`)
+	assert.NotContains(t, strings.ToLower(block), "tenant", "the session reads team")
 
 	g := newFake(t)
 	g.on("GET /api/v1/me/repositories/lookup", http.StatusOK, map[string]any{"status": "ambiguous", "remotes": []any{},
 		"bindings": []any{
-			map[string]any{"tenant": map[string]any{"slug": "acme", "name": "Acme"}, "project": map[string]any{"key": "COW", "name": "c"},
+			map[string]any{"team": map[string]any{"slug": "acme", "name": "Acme"}, "project": map[string]any{"key": "COW", "name": "c"},
 				"identity": "github.com/acme/cowork", "path": "", "remote": "x", "archived": false},
-			map[string]any{"tenant": map[string]any{"slug": "beta", "name": "Beta"}, "project": map[string]any{"key": "OPS", "name": "o"},
+			map[string]any{"team": map[string]any{"slug": "beta", "name": "Beta"}, "project": map[string]any{"key": "OPS", "name": "o"},
 				"identity": "github.com/acme/cowork", "path": "", "remote": "x", "archived": false}},
 		"proposal": nil, "proposal_unavailable": nil})
 	block, _, err = Start(context.Background(), startSession(g, fakeWorkspace{remotes: origin}), StartOptions{})
@@ -202,10 +204,10 @@ func TestStartUnbound(t *testing.T) {
 func TestStartWithABindingFile(t *testing.T) {
 	f := newFake(t)
 	f.on("GET /api/v1/me/repositories/lookup", http.StatusOK, boundLookup())
-	f.on("GET /api/v1/tenants/acme/projects/UP", http.StatusOK, map[string]any{"key": "UP", "name": "Upstream"})
-	f.on("GET /api/v1/tenants/acme/projects/UP/tickets", http.StatusOK, list())
+	f.on("GET /api/v1/teams/acme/projects/UP", http.StatusOK, map[string]any{"key": "UP", "name": "Upstream"})
+	f.on("GET /api/v1/teams/acme/projects/UP/tickets", http.StatusOK, list())
 	f.on("GET /api/v1/me/next", http.StatusOK, list())
-	s := startSession(f, fakeWorkspace{remotes: origin, file: &BindingFile{Tenant: "acme", Project: "UP", File: "/r/.cowork.yaml"}})
+	s := startSession(f, fakeWorkspace{remotes: origin, file: &BindingFile{Team: "acme", Project: "UP", File: "/r/.cowork.yaml"}})
 	block, _, err := Start(context.Background(), s, StartOptions{})
 	require.NoError(t, err)
 	assert.Contains(t, block, "# cowork: acme/UP — Upstream")
@@ -213,15 +215,15 @@ func TestStartWithABindingFile(t *testing.T) {
 	assert.Contains(t, block, "> Drift: the server binds github.com/acme/cowork to acme/COW, /r/.cowork.yaml binds acme/UP; the file wins")
 	assert.Equal(t, "acme/UP", s.Binding().Key())
 
-	other := startSession(f, fakeWorkspace{remotes: origin, file: &BindingFile{Tenant: "acme", Project: "UP", File: "/r/.cowork.yaml",
+	other := startSession(f, fakeWorkspace{remotes: origin, file: &BindingFile{Team: "acme", Project: "UP", File: "/r/.cowork.yaml",
 		URL: "https://elsewhere.example.com"}})
 	_, err = Resolve(context.Background(), other)
 	require.NoError(t, err)
 	assert.Equal(t, "acme/COW", other.Binding().Key(), "a file of another installation is ignored")
 
 	missing := newFake(t)
-	missing.refuse("GET /api/v1/tenants/acme/projects/GONE", http.StatusNotFound, "not_found", "no such project")
-	s = startSession(missing, fakeWorkspace{file: &BindingFile{Tenant: "acme", Project: "GONE", File: "/r/.cowork.yaml"}})
+	missing.refuse("GET /api/v1/teams/acme/projects/GONE", http.StatusNotFound, "not_found", "no such project")
+	s = startSession(missing, fakeWorkspace{file: &BindingFile{Team: "acme", Project: "GONE", File: "/r/.cowork.yaml"}})
 	block, _, err = Start(context.Background(), s, StartOptions{})
 	require.NoError(t, err)
 	assert.Contains(t, block, "a project that does not exist or that you cannot see")
@@ -232,25 +234,72 @@ func TestStartWithABindingFile(t *testing.T) {
 // binds the session.
 func TestCreateProject(t *testing.T) {
 	f := newFake(t)
-	f.on("POST /api/v1/tenants/acme/projects", http.StatusCreated, map[string]any{"key": "VO", "name": "valkey-operator"})
+	f.on("POST /api/v1/teams/acme/projects", http.StatusCreated, map[string]any{"key": "VO", "name": "valkey-operator"})
 	s := f.session(false)
-	res := call(t, s, "create_project", `{"tenant": "acme", "key": "VO", "name": "valkey-operator", "remote": "git@github.com:acme/valkey-operator.git"}`)
+	res := call(t, s, "create_project", `{"team": "acme", "key": "VO", "name": "valkey-operator", "remote": "git@github.com:acme/valkey-operator.git"}`)
 	require.False(t, res.IsError, res.Text)
 	assert.Contains(t, res.Text, "Created the project acme/VO (valkey-operator)")
-	assert.Contains(t, res.Text, "tenant: acme\nproject: VO")
-	body := decodeBody(t, f.calls(http.MethodPost, "/api/v1/tenants/acme/projects")[0])
+	assert.Contains(t, res.Text, "```yaml\ntenant: acme\nproject: VO\n```",
+		"the .cowork.yaml it offers names the team under the key every cowork-mcp of the rollback window reads")
+	assert.NotContains(t, res.Text, "\nteam: ", "the release before refuses a file that names team")
+	body := decodeBody(t, f.calls(http.MethodPost, "/api/v1/teams/acme/projects")[0])
 	assert.Equal(t, map[string]any{"remote": "git@github.com:acme/valkey-operator.git"}, body["repository"])
-	assert.NotEmpty(t, f.calls(http.MethodPost, "/api/v1/tenants/acme/projects")[0].Header.Get("Idempotency-Key"))
+	assert.NotEmpty(t, f.calls(http.MethodPost, "/api/v1/teams/acme/projects")[0].Header.Get("Idempotency-Key"))
 	assert.Equal(t, "acme/VO", s.Binding().Key())
 
 	g := newFake(t)
-	g.on("POST /api/v1/tenants/acme/projects", http.StatusOK, map[string]any{"key": "VO", "name": "valkey-operator"})
-	res = call(t, g.session(false), "create_project", `{"tenant": "acme", "key": "VO2", "name": "x", "remote": "git@github.com:acme/valkey-operator.git"}`)
+	g.on("POST /api/v1/teams/acme/projects", http.StatusOK, map[string]any{"key": "VO", "name": "valkey-operator"})
+	res = call(t, g.session(false), "create_project", `{"team": "acme", "key": "VO2", "name": "x", "remote": "git@github.com:acme/valkey-operator.git"}`)
 	require.False(t, res.IsError, res.Text)
 	assert.Contains(t, res.Text, "bound already, to acme/VO")
 
-	res = call(t, g.session(false), "create_project", `{"tenant": "acme", "key": "vo", "name": "x", "remote": "r"}`)
+	res = call(t, g.session(false), "create_project", `{"team": "acme", "key": "vo", "name": "x", "remote": "r"}`)
 	assert.True(t, res.IsError, "the key's pattern")
+}
+
+// create_project takes team, required in the schema the agent reads, and
+// still takes tenant, its name before, in its place for one release; the two
+// together must name the same team (docs/adr/0005 D1).
+func TestCreateProjectUnderTheNameBefore(t *testing.T) {
+	var tool Tool
+	for _, c := range Catalogue() {
+		if c.Name == "create_project" {
+			tool = c
+		}
+	}
+	var schema struct {
+		Required   []string                  `json:"required"`
+		Properties map[string]map[string]any `json:"properties"`
+	}
+	require.NoError(t, json.Unmarshal(tool.Schema(), &schema))
+	assert.Contains(t, schema.Required, "team")
+	assert.NotContains(t, schema.Required, "tenant")
+	assert.Equal(t, true, schema.Properties["tenant"]["deprecated"])
+	assert.Equal(t, schema.Properties["team"]["pattern"], schema.Properties["tenant"]["pattern"])
+
+	const rest = `"key": "VO", "name": "valkey-operator", "remote": "git@github.com:acme/valkey-operator.git"`
+	for _, args := range []string{`{"tenant": "acme", ` + rest + `}`, `{"team": "acme", "tenant": "acme", ` + rest + `}`} {
+		f := newFake(t)
+		f.on("POST /api/v1/teams/acme/projects", http.StatusCreated, map[string]any{"key": "VO", "name": "valkey-operator"})
+		assert.True(t, tool.Valid(json.RawMessage(args)), args)
+		res := call(t, f.session(false), "create_project", args)
+		require.False(t, res.IsError, "%s: %s", args, res.Text)
+		assert.Contains(t, res.Text, "Created the project acme/VO (valkey-operator)", args)
+		assert.Len(t, f.calls(http.MethodPost, "/api/v1/teams/acme/projects"), 1, args)
+	}
+
+	f := newFake(t)
+	args := `{"team": "acme", "tenant": "beta", ` + rest + `}`
+	assert.False(t, tool.Valid(json.RawMessage(args)))
+	res := call(t, f.session(false), "create_project", args)
+	assert.True(t, res.IsError)
+	assert.Equal(t, "team and tenant differ: tenant is the name before of team, taken for one release; give team alone", res.Text)
+	assert.Empty(t, f.writes(), "nothing reached the API")
+
+	res = call(t, f.session(false), "create_project", `{"tenant": "Acme", `+rest+`}`)
+	assert.True(t, res.IsError, "the name before is held to the team's pattern")
+	assert.Contains(t, res.Text, "team")
+	assert.Empty(t, f.writes())
 }
 
 // docs/adr/0067 D4: a hint when a ticket of the person is in progress, the
@@ -260,13 +309,13 @@ func TestRemind(t *testing.T) {
 	setup := func(actor string) *Session {
 		f := newFake(t)
 		f.on("GET /api/v1/me/repositories/lookup", http.StatusOK, boundLookup())
-		f.on("GET /api/v1/tenants/acme/projects/COW/tickets", http.StatusOK, list(ticket("acme/COW-12", "in-progress")))
+		f.on("GET /api/v1/teams/acme/projects/COW/tickets", http.StatusOK, list(ticket("acme/COW-12", "in-progress")))
 		f.on("GET /api/v1/me", http.StatusOK, map[string]any{"id": adaID, "display_name": "Ada", "memberships": []any{}})
 		f.on("GET "+ticketPath+"/activity", http.StatusOK, list(map[string]any{"id": "0199a3c2-1d2e-7f00-8000-0000000000e3",
 			"at": "2026-10-04T08:30:00Z", "actor": map[string]any{"id": actor, "display_name": "x"}, "action": "commented",
 			"entity_type": "comment", "redacted": false}))
 		s := startSession(f, fakeWorkspace{remotes: origin, worked: true})
-		require.NoError(t, s.Memory.SetLastStart(MemoryKey{Installation: s.Installation, Tenant: "acme", Project: "COW"},
+		require.NoError(t, s.Memory.SetLastStart(MemoryKey{Installation: s.Installation, Team: "acme", Project: "COW"},
 			time.Date(2026, 10, 4, 8, 0, 0, 0, time.UTC)))
 		return s
 	}
@@ -317,7 +366,7 @@ func TestAToolCallBindsTheSessionOnce(t *testing.T) {
 	g := newFake(t)
 	g.on("GET /api/v1/me/repositories/lookup", http.StatusOK, map[string]any{"status": "unbound",
 		"remotes": []any{map[string]any{"remote": origin[0].URL, "identity": "github.com/acme/cowork"}}, "bindings": []any{},
-		"proposal": nil, "proposal_unavailable": "no tenant"})
+		"proposal": nil, "proposal_unavailable": "no team"})
 	u := startSession(g, fakeWorkspace{remotes: origin})
 	for range 2 {
 		res := call(t, u, "comment", `{"key": "COW-12", "text": "Seen."}`)

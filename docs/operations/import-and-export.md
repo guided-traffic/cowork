@@ -20,16 +20,16 @@ leaves such a file out (ADR 0064 D1, D3).
 
 ## Before you import
 
-- **Who.** Whoever may create a ticket in the project: the role `member` in the tenant — on a
+- **Who.** Whoever may create a ticket in the project: the role `member` in the team — on a
   restricted project, a place on its list as a member —, through a token the `write` scope; an
   agent's token too ([ADR 0051](../adr/0051-import-is-a-server-side-two-phase-atomic-job-export-is-its-mirror.md)
-  D6). A job — its dry run, its report, its execution — is the person's who made it, and the tenant's
+  D6). A job — its dry run, its report, its execution — is the person's who made it, and the team's
   administrators'; another person gets `404` for it. An import through a token — an agent's or
   not — assigns a confidential ticket only to the token's own person, so it leaves such a ticket
   unassigned where its file names somebody else, and the report says so; the import page, a browser
   session, assigns as the file says.
 - **Where.** The project exists, is not archived, and is the one the tickets belong to: an import
-  goes into one project, and keeps the numbers of its files — `117-….md` becomes `<tenant>/<PROJECT>-117`.
+  goes into one project, and keeps the numbers of its files — `117-….md` becomes `<team>/<PROJECT>-117`.
   A number the project already holds is a conflict, so a repository's tickets go into a project of
   their own or into one whose numbers do not overlap.
 - **How much.** `COWORK_MAX_IMPORT_BYTES` (`backend.config.maxImportBytes`, 50 MiB `# default`)
@@ -43,10 +43,10 @@ leaves such a file out (ADR 0064 D1, D3).
 ## In the browser
 
 **Import.** On the project's board or backlog, the upload icon of its header, *Import tickets*, opens
-`/t/<tenant>/p/<KEY>/imports` — a member or an administrator of the tenant sees it, for a project
+`/t/<team>/p/<KEY>/imports` — a member or an administrator of the team sees it, for a project
 that is not archived. Drop the files onto the page or choose them — a `tar.gz` or a `zip` of the directory, or
 the Markdown files themselves —, and *Start the dry run*. Its report opens at an address of its own,
-`/t/<tenant>/p/<KEY>/imports/<id>`, which a reload or a bookmark keeps for the dry run's twenty-four
+`/t/<team>/p/<KEY>/imports/<id>`, which a reload or a bookmark keeps for the dry run's twenty-four
 hours:
 
 - the summary counts the files by outcome, and says how many tickets would be open and confidential
@@ -65,8 +65,8 @@ execution started again. Done, the page counts what it created and leads to the 
 run past its day says so and offers a new one.
 
 **Export.** The download icon of a project's header, *Export the tickets*, saves the project's archive
-under the name the server gives it, for anybody who reads the project; a tenant's settings have
-*Export the tenant* for its administrators. Beside each the page says how many tickets the archive
+under the name the server gives it, for anybody who reads the project; a team's settings have
+*Export the team* for its administrators. Beside each the page says how many tickets the archive
 holds and how many confidential tickets it leaves out because its reader cannot read them. The
 archive is the one the API answers ([Exporting](#exporting)).
 
@@ -109,7 +109,7 @@ imports nothing:
 ```bash
 curl -sS -X POST -H "Authorization: Bearer $COWORK_TOKEN" \
   -F file=@tickets.tar.gz \
-  https://cowork.example.com/api/v1/tenants/acme/projects/VKO/imports   # example host, tenant and project
+  https://cowork.example.com/api/v1/teams/acme/projects/VKO/imports     # example host, team and project
 ```
 
 The answer is `201` with the job and its report; `Location` names the job, and
@@ -159,7 +159,7 @@ cat > corrections.json <<'EOF'                                         # example
 EOF
 curl -sS -X POST -H "Authorization: Bearer $COWORK_TOKEN" -H "Content-Type: application/json" \
   --data @corrections.json \
-  https://cowork.example.com/api/v1/tenants/acme/projects/VKO/imports/0199a3c2-…/execution   # example
+  https://cowork.example.com/api/v1/teams/acme/projects/VKO/imports/0199a3c2-…/execution     # example
 ```
 
 The execution analyses the files again with the corrections and writes, in one transaction, every
@@ -196,9 +196,9 @@ that reader may read:
 
 ```bash
 curl -sS -f -H "Authorization: Bearer $COWORK_TOKEN" -o vko.tar.gz \
-  https://cowork.example.com/api/v1/tenants/acme/projects/VKO/export     # example
+  https://cowork.example.com/api/v1/teams/acme/projects/VKO/export       # example
 curl -sS -f -H "Authorization: Bearer $COWORK_TOKEN" -OJ \
-  https://cowork.example.com/api/v1/tenants/acme/export                  # example: the whole tenant
+  https://cowork.example.com/api/v1/teams/acme/export                    # example: the whole team
 ```
 
 Or, on a person's machine with [`cowork-mcp`](claude-code.md) configured, unpacked into a new or
@@ -215,11 +215,11 @@ there, not into a directory other accounts may read.
 The archive holds `manifest.json` — the projects, the counts, who exported it and when, and how
 many confidential tickets it leaves out because its reader cannot read them —, `links.json` with
 every link whose two ends the reader sees, `attachments.json` with the attachments' names, types,
-sizes and paths, and each ticket as its Markdown document at `<tenant>/<PROJECT>-<n>.md`, done and
-dropped ones included. A tenant export holds every project its reader sees, archived ones too.
-Each export is recorded as `exported` on the project or the tenant, in the tenant's audit view. The
+sizes and paths, and each ticket as its Markdown document at `<team>/<PROJECT>-<n>.md`, done and
+dropped ones included. A team export holds every project its reader sees, archived ones too.
+Each export is recorded as `exported` on the project or the team, in the team's audit view. The
 archive is streamed as it is read, a page of tickets at a time, one export at a time per replica —
-another waits for it —, and must be written within the request timeout; a tenant too large for that
+another waits for it —, and must be written within the request timeout; a team too large for that
 is exported project by project. A transfer cut off in the middle is an export that failed: fetch it
 again.
 
@@ -228,14 +228,14 @@ again.
 cowork makes no backups: the database's and the bucket's are their operators'
 ([ADR 0059](../adr/0059-backups-belong-to-the-operators-cowork-provides-the-export-and-makes-a-restores-inconsistency-visible.md)).
 The export is a second line beside them, readable without cowork, which the installation fetches on
-its own schedule. Give it a token of its own: `read` scope, restricted to the tenant, named for the
+its own schedule. Give it a token of its own: `read` scope, restricted to the team, named for the
 job — in the browser's token page, or `POST /api/v1/me/tokens` from a session with
-`{"name": "nightly export", "scope": "read", "tenant": "acme"}` (`# example`). A token expires
+`{"name": "nightly export", "scope": "read", "team": "acme"}` (`# example`). A token expires
 after its lifetime (`COWORK_TOKEN_MAX_LIFETIME` at the most): renew it before then. A read token of a
-tenant administrator exports every confidential ticket of the tenant; one of a member exports what
+team administrator exports every confidential ticket of the team; one of a member exports what
 that member reads, and counts the rest.
 
-A CronJob that fetches the tenant export every night — an illustration, not a maintained
+A CronJob that fetches the team export every night — an illustration, not a maintained
 manifest:
 
 ```yaml
@@ -272,7 +272,7 @@ spec:
                 - >-
                   curl --fail-with-body -sS -H "Authorization: Bearer $COWORK_TOKEN"
                   -o "/backup/acme-$(date -u +%Y%m%d).tar.gz"
-                  https://cowork.example.com/api/v1/tenants/acme/export
+                  https://cowork.example.com/api/v1/teams/acme/export
               volumeMounts:
                 - {name: backup, mountPath: /backup}
           volumes:
@@ -284,15 +284,17 @@ It calls the installation's own address, so the token travels over TLS; the back
 inside the cluster answers plain HTTP. Keep the archives as the backups they are: they hold the
 tickets' text, the persons' identities and, for an administrator's token, the confidential tickets
 ([docs/security/import-and-export.md, H-75](../security/import-and-export.md#h-75)). Rotation and
-retention are the volume's, or whatever stores the files further. The tenant's settings page shows
+retention are the volume's, or whatever stores the files further. The team's settings page shows
 its administrators when it was last exported, and the chart's alert `CoworkExportOverdue` fires when
 that lies too far back ([backups.md](backups.md#watching-the-schedule)).
 
 **Restoring tickets from an export.** The import reads an export's documents and its links
 manifest, so a project comes back through it, with its numbers, states, questions and the links
 among its tickets — into a project that holds none of its numbers, a new installation's or a new
-project. An import is a job on one project: from a tenant export, pack each project's documents
-with the two manifests and import them one project at a time.
+project. An import is a job on one project: from a team export, pack each project's documents
+with the two manifests and import them one project at a time. The manifest names its team as
+`team` and, for the importers of 0.14, as `tenant` beside it; an archive of a release before names
+it as `tenant` alone, and the import reads it so for good.
 
 ```bash
 tar xzf acme-20261006.tar.gz                                            # example
@@ -320,5 +322,5 @@ conflict is no refusal: the execution leaves it out, and the report says why.
 | `409 project_archived` | the project is archived | import into another project |
 | `409 import_executed` | the dry run was executed already | read the job: its report is what was created |
 | `404` for a job | it is another person's, another project's, or a dry run past its twenty-four hours | make a new dry run of your own |
-| `403 forbidden` | the role is below `member` in the tenant, or the project's list makes it so | ask a tenant administrator for the role |
+| `403 forbidden` | the role is below `member` in the team, or the project's list makes it so | ask a team administrator for the role |
 | `403 insufficient_scope` | the token's scope is `read` | import with a `write` token |

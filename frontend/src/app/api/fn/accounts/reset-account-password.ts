@@ -12,9 +12,9 @@ import { AccountPasswordReset } from '../../models/account-password-reset';
 export interface ResetAccountPassword$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * A local account's username (docs/adr/0033 D2)
@@ -26,7 +26,7 @@ export interface ResetAccountPassword$Params {
 export function resetAccountPassword(http: HttpClient, rootUrl: string, params: ResetAccountPassword$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, resetAccountPassword.PATH, 'put');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('username', params.username, {});
     rb.body(params.body, 'application/json');
   }
@@ -41,4 +41,4 @@ export function resetAccountPassword(http: HttpClient, rootUrl: string, params: 
   );
 }
 
-resetAccountPassword.PATH = '/api/v1/tenants/{tenant}/accounts/{username}/password';
+resetAccountPassword.PATH = '/api/v1/teams/{team}/accounts/{username}/password';

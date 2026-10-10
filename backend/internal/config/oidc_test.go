@@ -149,17 +149,17 @@ func TestTheClientIsRequiredByServeAlone(t *testing.T) {
 	assert.NoError(t, none.RequireClient(), "without a provider there is no client to require")
 }
 
-// docs/adr/0032 D6 (amended): the bootstrap tenant needs somebody to administer
+// docs/adr/0032 D6 (amended): the bootstrap team needs somebody to administer
 // it — the local administrator or the administrator group.
-func TestLoadBootstrapTenantWithTheAdministratorGroup(t *testing.T) {
-	tenant := map[string]string{EnvBootstrapTenantSlug: "acme", EnvBootstrapTenantName: "Acme"}
+func TestLoadBootstrapTeamWithTheAdministratorGroup(t *testing.T) {
+	team := map[string]string{EnvBootstrapTeamSlug: "acme", EnvBootstrapTeamName: "Acme"}
 	cfg, err := Load(envOf(oidcEnv(map[string]string{EnvAdminGroup: "cowork-admins",
-		EnvBootstrapTenantSlug: "acme", EnvBootstrapTenantName: "Acme"})))
+		EnvBootstrapTeamSlug: "acme", EnvBootstrapTeamName: "Acme"})))
 	require.NoError(t, err)
-	assert.Equal(t, "acme", cfg.BootstrapTenantSlug)
+	assert.Equal(t, "acme", cfg.BootstrapTeamSlug)
 	assert.Empty(t, cfg.LocalAdminUsername)
 
-	_, err = Load(envOf(oidcEnv(tenant)))
+	_, err = Load(envOf(oidcEnv(team)))
 	require.Error(t, err, "a provider without an administrator group administers nothing")
 	assert.Contains(t, err.Error(), EnvAdminGroup)
 }

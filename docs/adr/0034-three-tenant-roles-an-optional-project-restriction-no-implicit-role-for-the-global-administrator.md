@@ -61,13 +61,18 @@ built: D2's parts named above.
 **Built** (2026-10-04): D2's view of a tenant without a role, the list of every tenant and the
 grant to themselves — the request layer's admission (`oversees` and `overseen` in
 [`api/tenant.go`](../../backend/internal/api/tenant.go)), `GET /api/v1/tenants`
-([`api/tenants.go`](../../backend/internal/api/tenants.go) `ListTenants`), the grant
+([`api/tenants.go`](../../backend/internal/api/tenants.go) ~~`ListTenants`~~ `ListTeams` *(2026-10-10)*), the grant
 ([`api/members.go`](../../backend/internal/api/members.go) `grantSelf`), the policies of
 [migration 26](../../backend/internal/store/migrations/000026_global_admin_self_grant.up.sql), and
 the UI's offer above a tenant's pages — and, the same day, the raise of a global administrator's own
 grant where they hold a role below `admin` (`ownGrant`, `setOwnGrant`; the UI's offer on the members
 page). Still not built: the reading of installation-level audit rows
 and the deletion of a tenant.
+
+Amended 2026-10-10 by the owner's rename of a tenant to a team ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1): the Status and D2 name the
+handler and the operation the rename renamed, `ListTeams` and `getTeam`; the request layer's
+admission names `getTeam`, and a request to the deprecated twin of `getTenant` is answered as it.
+No rule changes.
 
 ## Context
 
@@ -124,7 +129,7 @@ mapping's change, the deactivation of an account another tenant manages
 ([docs/security/identity-provider.md](../security/identity-provider.md) H-29,
 [docs/security/local-accounts.md](../security/local-accounts.md) H-32). The reach is a browser
 session's that no agent header marks: the request layer admits a global administrator without a
-role in the tenant to `getTenant`, `listMembers` — without the addresses, which are the tenant's
+role in the tenant to ~~`getTenant`~~ `getTeam` *(2026-10-10)*, `listMembers` — without the addresses, which are the tenant's
 administrators' (D7) — and `listGroupMappings`, and to `setMemberGrant` on their own person, and
 answers every other route of the tenant the `404` an unknown tenant gets; a token of theirs keeps
 the reach of the person's memberships, so a leaked one gains nothing by it, and an agent — the chat

@@ -33,6 +33,9 @@ func TestTheRouteLabelIsTheDocumentsPattern(t *testing.T) {
 		done(rec.Code)
 		return rec.Code
 	}
+	assert.Equal(t, http.StatusUnauthorized, send(http.MethodGet, "/api/v1/teams/acme/projects/COW/tickets/42"))
+	// A twin under the family before is recorded by its team path's pattern
+	// (docs/adr/0023 D1).
 	assert.Equal(t, http.StatusUnauthorized, send(http.MethodGet, "/api/v1/tenants/acme/projects/COW/tickets/42"))
 	assert.Equal(t, http.StatusUnauthorized, send(http.MethodPost, "/api/v1/tenants/acme/projects/COW/tickets/42/comments",
 		"Authorization", "Bearer not-a-token"))
@@ -42,14 +45,20 @@ func TestTheRouteLabelIsTheDocumentsPattern(t *testing.T) {
 
 	samples, err := m.Samples()
 	require.NoError(t, err)
-	for _, c := range []struct{ route, method, status string }{
-		{"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", "GET", "401"},
-		{"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments", "POST", "401"},
-		{"/api/v1/version", "GET", "200"},
-		{"/auth/callback", "GET", "303"},
-		{metrics.Unmatched, "GET", "404"},
+	for _, c := range []struct {
+		route, method, status string
+		count                 float64
+	}{
+		{"/api/v1/teams/{team}/projects/{project}/tickets/{number}", "GET", "401", 2},
+		{"/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments", "POST", "401", 1},
+		{"/api/v1/version", "GET", "200", 1},
+		{"/auth/callback", "GET", "303", 1},
+		{metrics.Unmatched, "GET", "404", 1},
 	} {
-		assert.Equal(t, 1.0, metrics.Sum(samples, "cowork_http_requests_total", "route", c.route, "method", c.method, "status", c.status), c)
+		assert.Equal(t, c.count, metrics.Sum(samples, "cowork_http_requests_total", "route", c.route, "method", c.method, "status", c.status), c)
+	}
+	for _, s := range samples {
+		assert.NotContains(t, s.Labels["route"], "{tenant}", "a twin is recorded by its team path's pattern")
 	}
 	for _, s := range samples {
 		route := s.Labels["route"]

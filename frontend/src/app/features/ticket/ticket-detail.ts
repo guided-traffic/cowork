@@ -144,7 +144,7 @@ export class TicketDetail {
   protected readonly at = computed(() => address(this.session.tenant(), this.key()));
   protected readonly fullKey = computed(() => {
     const at = this.at();
-    return at ? `${at.tenant}/${at.project}-${at.number}` : undefined;
+    return at ? `${at.team}/${at.project}-${at.number}` : undefined;
   });
   private readonly loading = this.tickets.ticket(() => this.fullKey());
   protected readonly ticket = computed(() => {

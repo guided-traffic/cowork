@@ -41,11 +41,11 @@ export class StaleWrite extends Error {
 /** Where a move puts a ticket: directly after, or directly before, another ticket of its project. */
 export type RankPlacement = { after: number } | { before: number };
 
-/** `acme/VKO-12` → the address a ticket's own routes take. */
-export function routeOf(key: string): { tenant: string; project: string; number: number } {
-  const { tenant, key: short } = splitKey(key);
+/** `acme/VKO-12` → the address a ticket's own routes take, named as the API names it. */
+export function routeOf(key: string): { team: string; project: string; number: number } {
+  const { team, key: short } = splitKey(key);
   const dash = short.lastIndexOf('-');
-  return { tenant, project: short.slice(0, dash), number: Number(short.slice(dash + 1)) };
+  return { team, project: short.slice(0, dash), number: Number(short.slice(dash + 1)) };
 }
 
 /** The fields of a patch that it changes; what only explains or qualifies the act is left out. */
@@ -78,7 +78,7 @@ export class TicketActions {
     idempotencyKey: string,
   ): Promise<Ticket> {
     const ticket = await this.api.invoke(createTicket, {
-      tenant,
+      team: tenant,
       project,
       'Idempotency-Key': idempotencyKey,
       body,
@@ -162,7 +162,7 @@ export class TicketActions {
    */
   async sortByScore(tenant: string, project: string): Promise<number> {
     const sorted = await this.api.invoke(sortProjectRank, {
-      tenant,
+      team: tenant,
       project,
       body: { by: 'score' },
     });

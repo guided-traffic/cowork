@@ -12,8 +12,8 @@ import { RouterLink } from '@angular/router';
 import { ButtonDirective } from 'primeng/button';
 import { Skeleton } from 'primeng/skeleton';
 import { Api } from '../../api/api';
-import { searchMyTenants } from '../../api/fn/search/search-my-tenants';
-import { searchTenant } from '../../api/fn/search/search-tenant';
+import { searchMyTeams } from '../../api/fn/search/search-my-teams';
+import { searchTeam } from '../../api/fn/search/search-team';
 import { SearchHit } from '../../api/models';
 import { followPages, personPageSize, PersonPages } from '../../core/inbox.service';
 import { ProblemService } from '../../core/problem.service';
@@ -22,8 +22,8 @@ import { StateBadge, TypeIcon } from '../../shared/badges';
 import { count } from '../../shared/time';
 import { shortKey, ticketRoute } from '../me/person-list';
 
-/** Where a search looks: the tenant the pages show, or every tenant of the person. */
-export type SearchScope = 'tenant' | 'me';
+/** Where a search looks: the team the pages show, or every team of the person. */
+export type SearchScope = 'team' | 'me';
 
 /** Where a hit was found, as the page says it (docs/adr/0025 D5). */
 export function foundIn(hit: SearchHit): string {
@@ -91,7 +91,7 @@ export function hitFragment(hit: SearchHit): string | undefined {
             routerLink="/me/search"
             [queryParams]="{ q: query() }"
             data-testid="search-everywhere"
-            >Search all your tenants</a
+            >Search all your teams</a
           >
         }
       </header>
@@ -111,7 +111,7 @@ export function hitFragment(hit: SearchHit): string | undefined {
             >
               <span class="line">
                 @if (scope() === 'me') {
-                  <span class="tenant" data-testid="tenant">{{ hit.tenant.name }}</span>
+                  <span class="tenant" data-testid="tenant">{{ hit.team.name }}</span>
                 }
                 <app-type [value]="hit.type" />
                 <span class="ticket-key tabular">{{ shortKey(hit.key) }}</span>
@@ -215,7 +215,7 @@ export class SearchResults {
   protected readonly query = computed(() => (this.q() ?? '').trim());
   /** The tenant searched, for the tenant's search. */
   private readonly tenant = computed(() =>
-    this.scope() === 'tenant' ? this.session.tenant() : null,
+    this.scope() === 'team' ? this.session.tenant() : null,
   );
   /** How many pages are shown; another query or another tenant starts at one again. */
   protected readonly pages = linkedSignal({
@@ -227,7 +227,7 @@ export class SearchResults {
     params: () => {
       const q = this.query();
       const tenant = this.tenant();
-      if (!q || (this.scope() === 'tenant' && !tenant)) {
+      if (!q || (this.scope() === 'team' && !tenant)) {
         return undefined;
       }
       return { q, tenant, pages: this.pages() };
@@ -235,8 +235,8 @@ export class SearchResults {
     loader: ({ params: { q, tenant, pages } }) =>
       followPages(pages, (cursor) =>
         tenant
-          ? this.api.invoke(searchTenant, { tenant, q, cursor, limit: personPageSize })
-          : this.api.invoke(searchMyTenants, { q, cursor, limit: personPageSize }),
+          ? this.api.invoke(searchTeam, { team: tenant, q, cursor, limit: personPageSize })
+          : this.api.invoke(searchMyTeams, { q, cursor, limit: personPageSize }),
       ),
   });
 
@@ -252,13 +252,13 @@ export class SearchResults {
   });
   protected readonly where = computed(() => {
     if (this.scope() === 'me') {
-      return 'in all your tenants';
+      return 'in all your teams';
     }
-    return `in ${this.session.shown()?.name ?? this.tenant() ?? 'this tenant'}`;
+    return `in ${this.session.shown()?.name ?? this.tenant() ?? 'this team'}`;
   });
   /** The tenant's search offers the person's other tenants where they have some. */
   protected readonly widens = computed(
-    () => this.scope() === 'tenant' && this.session.memberships().length > 1,
+    () => this.scope() === 'team' && this.session.memberships().length > 1,
   );
   protected readonly failure = computed(() => {
     const error = this.list.error();

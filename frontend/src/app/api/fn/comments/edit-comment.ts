@@ -13,9 +13,9 @@ import { CommentWrite } from '../../models/comment-write';
 export interface EditComment$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -43,7 +43,7 @@ export interface EditComment$Params {
 export function editComment(http: HttpClient, rootUrl: string, params: EditComment$Params, context?: HttpContext): Observable<StrictHttpResponse<Comment>> {
   const rb = new RequestBuilder(rootUrl, editComment.PATH, 'patch');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('comment', params.comment, {});
@@ -61,4 +61,4 @@ export function editComment(http: HttpClient, rootUrl: string, params: EditComme
   );
 }
 
-editComment.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}';
+editComment.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments/{comment}';

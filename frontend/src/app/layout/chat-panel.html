@@ -169,7 +169,7 @@
           }
           @if (entry.refused !== undefined) {
             <p class="refused" data-testid="chat-tool-refused">
-              Not opened: {{ entry.refused }} is not a ticket, a backlog or a board of this tenant.
+              Not opened: {{ entry.refused }} is not a ticket, a backlog or a board of this team.
             </p>
           }
         </div>
@@ -218,9 +218,9 @@
   } @empty {
     <div class="empty" data-testid="chat-empty">
       <p>
-        Ask in your own words. The assistant works in this tenant as your agent: it searches and
-        reads tickets, files them, comments, moves them on, and opens a ticket, a backlog or a board
-        for you.
+        Ask in your own words. The assistant works in this team as your agent: it searches and reads
+        tickets, files them, comments, moves them on, and opens a ticket, a backlog or a board for
+        you.
       </p>
       <p>
         Every act runs at once and shows in the activity as the assistant's; Stop ends a turn at

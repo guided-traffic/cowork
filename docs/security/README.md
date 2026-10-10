@@ -21,7 +21,7 @@ and an index here would be a second place to keep current. The file names are th
 | How to report a vulnerability | [SECURITY.md](../../SECURITY.md) at the root |
 
 A page here is written for somebody who has to judge whether cowork is safe enough for their
-data — the owner of a tenant, a cluster administrator, an auditor, a contributor changing
+data — the owner of a team, a cluster administrator, an auditor, a contributor changing
 something security-relevant. It names files and functions where that makes a claim checkable,
 the way a developer page does, and it therefore goes stale when the tree moves: **whoever
 changes the behaviour updates the page in the same change.**

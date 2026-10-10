@@ -74,10 +74,10 @@ func newWorld(t *testing.T) world {
 	f := fixtures(t)
 	var w world
 	var err error
-	w.SlugA, w.SlugB = uniqueSlug("tenant-a"), uniqueSlug("tenant-b")
-	w.A, err = f.Tenant(ctx, w.SlugA, "Tenant A")
+	w.SlugA, w.SlugB = uniqueSlug("team-a"), uniqueSlug("team-b")
+	w.A, err = f.Tenant(ctx, w.SlugA, "Team A")
 	require.NoError(t, err)
-	w.B, err = f.Tenant(ctx, w.SlugB, "Tenant B")
+	w.B, err = f.Tenant(ctx, w.SlugB, "Team B")
 	require.NoError(t, err)
 
 	person := func(role string) uuid.UUID {

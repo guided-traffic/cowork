@@ -5,7 +5,7 @@ import { provideApiConfiguration } from '../api/api-configuration';
 import { AuditList } from '../api/models';
 import { AuditService, csvRowLimit } from './audit.service';
 
-const url = '/api/v1/tenants/acme/audit';
+const url = '/api/v1/teams/acme/audit';
 const header = 'id,created_at,actor_user_id\n';
 
 const listOf = (total: number): AuditList => ({
@@ -41,7 +41,7 @@ describe('AuditService', () => {
     it('asks for a numbered page with the filters, an action repeated (docs/adr/0048 D2, docs/adr/0049)', async () => {
       const done = audit.page(
         {
-          tenant: 'acme',
+          team: 'acme',
           actor: 'p1',
           token: 't1',
           action: ['created', 'transitioned'],
@@ -83,7 +83,7 @@ describe('AuditService', () => {
     };
 
     it('ends the period at the server clock, reads every page of a hundred and keeps the header once', async () => {
-      const done = audit.csv({ tenant: 'acme', entity_type: 'ticket' });
+      const done = audit.csv({ team: 'acme', entity_type: 'ticket' });
 
       const counted = http.expectOne((request) => request.url === url);
       expect(counted.request.params.get('page')).toBe('1');
@@ -108,7 +108,7 @@ describe('AuditService', () => {
     });
 
     it('keeps the end the filters name when it is earlier than the server clock', async () => {
-      const done = audit.csv({ tenant: 'acme', to: '2026-10-02T00:00:00.000Z' });
+      const done = audit.csv({ team: 'acme', to: '2026-10-02T00:00:00.000Z' });
 
       http
         .expectOne((request) => request.url === url)
@@ -121,7 +121,7 @@ describe('AuditService', () => {
     });
 
     it('is the header alone when nothing matches', async () => {
-      const done = audit.csv({ tenant: 'acme' });
+      const done = audit.csv({ team: 'acme' });
 
       http.expectOne((request) => request.url === url).flush(listOf(0));
       (await csvPage(1)).flush(header);
@@ -130,7 +130,7 @@ describe('AuditService', () => {
     });
 
     it(`stops at the newest ${csvRowLimit} rows, where the numbered pages end (docs/adr/0048 D2)`, async () => {
-      const done = audit.csv({ tenant: 'acme' });
+      const done = audit.csv({ team: 'acme' });
 
       http
         .expectOne((request) => request.url === url)

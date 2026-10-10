@@ -17,7 +17,7 @@ export interface DanglingAttachment {
   size: number;
 
   /**
-   * The key of its ticket, tenant/PROJECT-number
+   * The key of its ticket, team/PROJECT-number
    */
   ticket: string;
 

@@ -3,7 +3,7 @@
 
 import { Activity } from '../models/activity';
 import { InboxReason } from '../models/inbox-reason';
-import { TenantRef } from '../models/tenant-ref';
+import { TeamRef } from '../models/team-ref';
 import { TicketRef } from '../models/ticket-ref';
 export interface InboxEntry {
   act: Activity;
@@ -16,7 +16,14 @@ export interface InboxEntry {
   id: string;
   read: boolean;
   reason: InboxReason;
-  tenant: TenantRef;
+  team: TeamRef;
+
+  /**
+   * Deprecated, replaced by `team`, which it repeats; kept in /api/v1 for one release and removed in a later one (docs/adr/0005 D1, docs/adr/0046 D7)
+   *
+   * @deprecated
+   */
+  tenant: TeamRef;
   ticket: TicketRef;
 
   /**

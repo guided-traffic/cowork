@@ -17,17 +17,18 @@ import (
 	"github.com/guided-traffic/cowork/backend/test/fixture"
 )
 
-// docs/adr/0016 D6 as amended 2026-10-05: a tenant's attachments hold at most
-// COWORK_ATTACHMENT_TENANT_QUOTA bytes together. An upload beyond it is refused
-// before anything is stored, every attachment of the tenant counts — a
-// confidential ticket's the uploader cannot see too — and one tenant's usage
-// never counts against, nor shows to, another.
-func TestTheTenantAttachmentQuota(t *testing.T) {
+// docs/adr/0016 D6 as amended 2026-10-05: a team's attachments hold at most
+// COWORK_ATTACHMENT_TEAM_QUOTA bytes together. An upload beyond it is refused
+// before anything is stored, every attachment of the team counts — a
+// confidential ticket's the uploader cannot see too — and one team's usage
+// never counts against, nor shows to, another. The variable's name before is
+// held by the configuration's tests.
+func TestTheTeamAttachmentQuota(t *testing.T) {
 	ctx := context.Background()
 	w := newWorld(t)
 	tk := issueTokens(t, w)
 	quota := int64(200)
-	e := ticketEnv{world: w, tk: tk, ctx: ctx, s: newAPI(t, func(o *api.Options) { o.AttachmentTenantQuota = quota })}
+	e := ticketEnv{world: w, tk: tk, ctx: ctx, s: newAPI(t, func(o *api.Options) { o.AttachmentTeamQuota = quota })}
 	f := fixtures(t)
 	member, admin := caller{Token: tk.MemberA}, caller{Token: tk.AdminA}
 
@@ -81,7 +82,7 @@ func TestTheTenantAttachmentQuota(t *testing.T) {
 	notAdmin, err := e.s.client(t, member).GetAttachmentUsageWithResponse(ctx, w.SlugA, &apigen.GetAttachmentUsageParams{})
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusForbidden, notAdmin.StatusCode(), "the sum counts files a member may not see")
-	assertProblem(t, e.s.do(t, caller{Token: adminBToken}, http.MethodGet, "/api/v1/tenants/"+w.SlugA+"/attachment-usage", nil),
+	assertProblem(t, e.s.do(t, caller{Token: adminBToken}, http.MethodGet, "/api/v1/teams/"+w.SlugA+"/attachment-usage", nil),
 		http.StatusNotFound, "not_found")
 
 	// Without a quota the usage says so and nothing is refused for it.
@@ -97,7 +98,7 @@ func TestSimultaneousUploadsKeepTheTenantQuota(t *testing.T) {
 	w := newWorld(t)
 	tk := issueTokens(t, w)
 	e := ticketEnv{world: w, tk: tk, ctx: context.Background(),
-		s: newAPI(t, func(o *api.Options) { o.AttachmentTenantQuota = int64(3 * len(pngBytes)) })}
+		s: newAPI(t, func(o *api.Options) { o.AttachmentTeamQuota = int64(3 * len(pngBytes)) })}
 	member := caller{Token: tk.MemberA}
 	sends := make([]func() int, 8)
 	for i := range sends {
@@ -137,7 +138,7 @@ func TestADeletedTicketsFilesCountAgainstTheQuotaUntilThePurge(t *testing.T) {
 	names := withAccounts(t, w)
 	tk := issueTokens(t, w)
 	e := ticketEnv{world: w, tk: tk, ctx: ctx,
-		s: newAPI(t, withLogin, func(o *api.Options) { o.AttachmentTenantQuota = int64(2 * len(pngBytes)) })}
+		s: newAPI(t, withLogin, func(o *api.Options) { o.AttachmentTeamQuota = int64(2 * len(pngBytes)) })}
 	session := e.s.browser(t)
 	session.mustLogin(names["adminA"], testPassword)
 	member, admin := caller{Token: tk.MemberA}, caller{Token: tk.AdminA}
@@ -167,7 +168,7 @@ func TestADeletedTicketsFilesCountAgainstTheQuotaUntilThePurge(t *testing.T) {
 func TestTheAttachmentUsageAnswersAWeakETag(t *testing.T) {
 	e := newTicketEnv(t)
 	admin, member := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberA}
-	usage := "/api/v1/tenants/" + e.SlugA + "/attachment-usage"
+	usage := "/api/v1/teams/" + e.SlugA + "/attachment-usage"
 	first := e.s.do(t, admin, http.MethodGet, usage, nil)
 	require.Equal(t, http.StatusOK, first.StatusCode)
 	tag := first.Header.Get("ETag")

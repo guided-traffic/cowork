@@ -205,7 +205,7 @@ func (r *frontReader) id(p pair, v string) {
 func (r *frontReader) key(p pair, v string) {
 	k, err := domain.ParseTicketKey(v)
 	if err != nil || k.Tenant == "" {
-		r.f.fail(p.key, p.line, "key: %q is not a full key, <tenant>/<PROJECT>-<number>", v)
+		r.f.fail(p.key, p.line, "key: %q is not a full key, <team>/<PROJECT>-<number>", v)
 		return
 	}
 	r.f.Key = k

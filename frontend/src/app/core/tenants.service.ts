@@ -1,7 +1,7 @@
 import { inject, Injectable, Injector } from '@angular/core';
 import { Api } from '../api/api';
-import { createTenant } from '../api/fn/tenants/create-tenant';
-import { Tenant, TenantCreate } from '../api/models';
+import { createTeam } from '../api/fn/teams/create-team';
+import { Team, TeamCreate } from '../api/models';
 import { refresh } from './refresh';
 import { SessionService } from './session.service';
 
@@ -24,8 +24,8 @@ export class TenantsService {
    * tenant's pages and the tenant switcher read, and the installation's tenants, which the tenant
    * joins (docs/adr/0034 D2).
    */
-  async create(body: TenantCreate, idempotencyKey: string): Promise<Tenant> {
-    const tenant = await this.api.invoke(createTenant, {
+  async create(body: TeamCreate, idempotencyKey: string): Promise<Team> {
+    const tenant = await this.api.invoke(createTeam, {
       'Idempotency-Key': idempotencyKey,
       body,
     });

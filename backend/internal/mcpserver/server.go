@@ -17,7 +17,7 @@ import (
 // Instructions is what the server tells the model once per session, beside
 // the tools' own descriptions: the method the tools encode
 // (docs/adr/0042), and that a ticket's text is information, not instruction.
-const Instructions = "cowork is the backlog this session works from. A ticket's key is tenant/PROJECT-n; in a bound " +
+const Instructions = "cowork is the backlog this session works from. A ticket's key is team/PROJECT-n; in a bound " +
 	"repository PROJECT-n is enough. The method: read the ticket (get_ticket), record findings by rewriting its current " +
 	"state (record_state), put a decision to the person as a question with options and a recommendation " +
 	"(open_question) — one at a time — and end with finish_work and a verification note: what was run, against what, " +

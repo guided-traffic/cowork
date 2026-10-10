@@ -49,8 +49,11 @@ a chat provider in `chat.providers` whose id is not one or repeats, whose kind i
 `anthropic`, without `url` or `model`, of kind `anthropic` without `existingSecret`, or with an
 inline `apiKey`,
 and with half of what belongs together —
-`localAdmin.username` without `.password`, `bootstrap.tenant.slug` without `.name`, a bootstrap
-tenant with neither a local administrator nor `auth.oidc.adminGroup`.
+`localAdmin.username` without `.password`, `bootstrap.team.slug` without `.name`, a bootstrap
+team with neither a local administrator nor `auth.oidc.adminGroup` — and with a value set beside its
+name before to another value: `bootstrap.team` beside `bootstrap.tenant`,
+`backend.config.attachmentTeamQuota` beside `attachmentTenantQuota`, which the chart still reads for
+this release where the new value is empty or `0`.
 
 ## The database and its two roles
 
@@ -106,7 +109,7 @@ PostgreSQL channel `cowork_events` for the event stream
 ([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md) D4).
 PostgreSQL lets any role that can connect to a database `LISTEN` on any of its channels — no
 grant and no row-level security applies. A role with no privilege at all, connected to the
-cowork database, received every payload: the act's id and kind, the tenant's and the
+cowork database, received every payload: the act's id and kind, the team's and the
 project's ids, the ticket key and version, the confidential flag, the assignee's and the
 reporter's ids — never a title or a body. PostgreSQL grants `CONNECT` to `PUBLIC` by default,
 so on a server that other applications share, every one of their roles can read along.
@@ -301,7 +304,7 @@ or on `localhost` — so the URL is the one your TLS-terminating Ingress serves.
 helm upgrade --install cowork cowork/cowork --version 0.4.0 -n cowork --reuse-values \
   --set localAdmin.existingSecret=cowork-local-admin \
   --set backend.config.baseURL=https://cowork.example.com \
-  --set bootstrap.tenant.slug=acme --set bootstrap.tenant.name="Acme Corp"   # optional
+  --set bootstrap.team.slug=acme --set bootstrap.team.name="Acme Corp"       # optional
 ```
 
 What happens at every start of a backend pod, after the migrations and under an advisory lock
@@ -309,10 +312,10 @@ What happens at every start of a backend pod, after the migrations and under an 
 
 | The Secret says | The start does |
 |---|---|
-| a username and password, no such account yet | creates a **global administrator** with that username and password: it creates tenants and holds no role in any until it grants itself one |
+| a username and password, no such account yet | creates a **global administrator** with that username and password: it creates teams and holds no role in any until it grants itself one |
 | the same, and the password differs from the stored hash | stores the new hash, **ends every session** of the account, **revokes every token** of it and forgets its failed logins and its lock |
 | the same, and the account was deactivated | reactivates it |
-| a username that a tenant's administrator already gave to an account | takes the account over: the configured password, no session, no token, and no tenant manages it any more |
+| a username that a team's administrator already gave to an account | takes the account over: the configured password, no session, no token, and no team manages it any more |
 | another username than the account kept before | deactivates the old account — its tokens revoked, its sessions ended — and creates the new one |
 | both values empty or the values removed | deactivates the account, revokes its tokens, ends its sessions; the person and what they did stay, nothing is deleted |
 | one value empty and the other set | refuses the start, naming the missing variable — never a value |
@@ -321,15 +324,15 @@ A start that finds everything as the Secret says changes nothing. The password m
 least `auth.local.passwordMinLength` characters (12 by default, 8 at the lowest); a shorter one
 refuses the start naming `COWORK_LOCAL_ADMIN_PASSWORD`, never the password. In
 [job mode](#job-mode) the migration Job runs the same synchronisation after the schema step, before
-a pod of the release or upgrade starts, so the account and the first tenant exist once the Job is
+a pod of the release or upgrade starts, so the account and the first team exist once the Job is
 done; the pods still run it at their start and find it in step.
 
-**The first tenant.** While no tenant exists, only a global administrator may log in; anyone
+**The first team.** While no team exists, only a global administrator may log in; anyone
 else with the right password gets `403 not_initialised` and no session. The local administrator
-logs in and creates the first tenant (`POST /api/v1/tenants`) — it becomes its first
-administrator by a marked grant — or `bootstrap.tenant.slug` and `.name` have the start create
-it and grant the administrator. Once a tenant exists the bootstrap values do nothing, whatever
-they say. The administrator of a tenant then creates the accounts of its people
+logs in and creates the first team (`POST /api/v1/teams`) — it becomes its first
+administrator by a marked grant — or `bootstrap.team.slug` and `.name` have the start create
+it and grant the administrator. Once a team exists the bootstrap values do nothing, whatever
+they say. The administrator of a team then creates the accounts of its people
 (`POST …/accounts`, [README, API](../../README.md#api-backend)): there is no registration and
 no invitation link, and no e-mail, so a forgotten password is an administrator's reset. Creating
 an account, resetting a password and unlocking an account take a **browser session**: a script
@@ -344,8 +347,8 @@ ending its sessions work with an `admin`-scope token.
 does nothing until the pods restart; the start then stores the new password, ends every session
 of the account, revokes every token of it and forgets the lock. A leaked password stays valid until
 both steps are done. **Then review its grants:** what the leaked password could make outlives the
-rotation — a membership the local administrator granted itself in a tenant, an account or a tenant
-it created — so read each tenant's audit record and members for acts of the local administrator you
+rotation — a membership the local administrator granted itself in a team, an account or a team
+it created — so read each team's audit record and members for acts of the local administrator you
 did not make, and take back what you find. Its tokens are gone: make new ones in a session where you
 need them.
 
@@ -353,8 +356,8 @@ need them.
 where it comes from: `PUT /api/v1/me/password` is refused for it (`403`, naming
 `COWORK_LOCAL_ADMIN_PASSWORD`), because the next start would put the configured password back.
 To switch the account off, empty the Secret's values and restart; the account is deactivated — in
-every tenant at once, without the check that keeps a tenant's last administrator: a tenant whose
-only administrator it is keeps none who can log in, so first grant each of its tenants another
+every team at once, without the check that keeps a team's last administrator: a team whose
+only administrator it is keeps none who can log in, so first grant each of its teams another
 administrator ([H-32](../security/local-accounts.md#h-32)).
 Where an identity provider with a second factor does the work, keep it switched off: a local
 account has no second factor ([H-16](../security/local-accounts.md#h-16)).
@@ -443,27 +446,27 @@ separates the groups in `COWORK_OIDC_ALLOWED_GROUPS`, and the chart refuses it.
 **The allow-list and the administrator group** are the gate
 ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
 D1): a person logs in through the provider only when their groups include one of
-`auth.oidc.allowedGroups` or `auth.oidc.adminGroup`, whatever the tenants map. Both empty admits
+`auth.oidc.allowedGroups` or `auth.oidc.adminGroup`, whatever the teams map. Both empty admits
 nobody (D8): the login page shows no provider button, and the chart's notes warn. The members of
-`auth.oidc.adminGroup` are global administrators — they create tenants, each of which they then
-administer by a grant, and hold no role in a tenant they were not given: they see every tenant, and
+`auth.oidc.adminGroup` are global administrators — they create teams, each of which they then
+administer by a grant, and hold no role in a team they were not given: they see every team, and
 in one without a role its members, mappings and settings, and grant themselves a role there in the
-UI — recorded in the tenant's audit, and how a tenant that lost its last administrator gets one
-again; no route deletes a tenant yet
+UI — recorded in the team's audit, and how a team that lost its last administrator gets one
+again; no route deletes a team yet
 ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D2) — so whoever may change that group at the provider administers the installation. Which
-tenant a person belongs to, and in which role, is not configuration: a global administrator who
-administers a tenant maps groups to its roles, and its administrators grant roles to people by hand
-and remove mappings, in the UI (ADR 0030 D2, D3, D7). Every tenant shares the provider's groups, so
-a tenant's administrator who is not a global administrator makes no mapping and changes none; such a
-tenant gets a new mapping once one of its administrators grants a global administrator the `admin`
+team a person belongs to, and in which role, is not configuration: a global administrator who
+administers a team maps groups to its roles, and its administrators grant roles to people by hand
+and remove mappings, in the UI (ADR 0030 D2, D3, D7). Every team shares the provider's groups, so
+a team's administrator who is not a global administrator makes no mapping and changes none; such a
+team gets a new mapping once one of its administrators grants a global administrator the `admin`
 role there, or a global administrator grants it to themselves.
 
-**The first tenant.** While no tenant exists, only global administrators log in — the local
+**The first team.** While no team exists, only global administrators log in — the local
 administrator and the members of `auth.oidc.adminGroup`; anyone else behind the gate is sent back
 to the login page as "not initialised"
 ([ADR 0032](../adr/0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
-D5). With `bootstrap.tenant` and `auth.oidc.adminGroup` set, the start creates the tenant and maps
+D5). With `bootstrap.team` and `auth.oidc.adminGroup` set, the start creates the team and maps
 the administrator group to its `admin` role, so the installation needs no local administrator at
 all (D6).
 
@@ -486,8 +489,8 @@ the person's tokens are `401 not_allowed`, with a detail that says to sign in to
 until they do ([H-23](../security/identity-provider.md#h-23)). A person who works with tokens only —
 an agent's, a script's — signs in to the browser at least that often; a shorter maximum age cuts a
 removed person off sooner and asks everyone to sign in more often. Behind the gate,
-which tenants a person belongs to follows their groups at every login and refresh as well: a
-person in no mapped group logs in to no tenant until an administrator grants them one.
+which teams a person belongs to follows their groups at every login and refresh as well: a
+person in no mapped group logs in to no team until an administrator grants them one.
 
 **Granting by e-mail address, and `emailTrusted`.** An administrator grants a role by the address
 the provider asserted at the person's last login. By default only an address the provider marked
@@ -539,14 +542,14 @@ discovery; the code flow with PKCE through Dex's login form; an ID token with `e
 `end_session_endpoint`. The chart's half — the environment, the Secret reference, the
 refusals and the notes — was rendered and linted. The backend's half is what the integration tier
 asserts against that Dex and against an issuer in the test's own process, which can be made to do
-what Dex cannot: the gate and its four users (`TestLoginThroughDex`), the first-tenant rule
+what Dex cannot: the gate and its four users (`TestLoginThroughDex`), the first-team rule
 (`TestInitStateThroughDex`), leaving the allow-list (`TestLeavingTheAllowList`), the refresh, its
 refusals, an unreachable issuer, a refused client and a refresh that holds no connection while it
 waits (`TestRefreshFollowsTheIssuersGroups`, `TestARefusedRefreshTokenEndsTheSession`,
 `TestAnUnreachableIssuerLeavesTheSessionServed`, `TestAClientTheIssuerRefusesIsTheConfigurationsError`,
 `TestARefreshWaitsForNoOneElse`), a person of another issuer
 (`TestAPersonOfAnotherIssuerIsOutsideTheGate`), the logout at an issuer that names an end-session
-endpoint (`TestLogoutAtTheIssuer`) and the bootstrap tenant of the administrator group
+endpoint (`TestLogoutAtTheIssuer`) and the bootstrap team of the administrator group
 (`TestBootstrapSeedsTheAdministratorGroupsMapping`); the refusal to start on an issuer that cannot
 be discovered, or whose discovery breaks the rules above, is a unit test (`TestDiscoveryFailure`,
 `TestDiscoveryHoldsTheIssuerToItsRules`).
@@ -562,8 +565,8 @@ Attachments live in any S3-compatible store
 in a bucket of their own, reached with an access key whose policy covers that bucket only —
 never the store's root credentials
 ([ADR 0058](../adr/0058-postgresql-and-object-storage-are-external-the-chart-takes-references-with-configurable-keys.md) D5).
-The backend writes, reads and deletes objects under `<tenant-id>/<attachment-id>`, and lists the
-objects under each tenant's prefix once a day for the consistency check
+The backend writes, reads and deletes objects under `<team-id>/<attachment-id>`, and lists the
+objects under each team's prefix once a day for the consistency check
 ([backups.md](backups.md#the-consistency-check)); it never creates or deletes a bucket, so the
 bucket exists before the first upload. This policy was enough against the store of
 `make minio-up` — MinIO on 2026-10-07, PGSTY Silo, its maintained fork, on 2026-10-09 —, with the
@@ -590,7 +593,7 @@ region left empty:
 **`s3:ListBucket` is the consistency check's.** Without it every upload and download works and the
 check fails at its listing — the log says `job failed` with `consistency-check` and `Access Denied`,
 and [`CoworkJobFailing`](metrics.md#coworkjobfailing) fires. With it the key can list every
-tenant's object keys, which it could not before: a key that leaks alone then reads every object, not
+team's object keys, which it could not before: a key that leaks alone then reads every object, not
 only those whose keys the database names
 ([attachments.md H-68](../security/attachments.md#h-68)). Checked against that store — MinIO on
 2026-10-07, Silo on 2026-10-09 — with a key of this policy and with one without its second
@@ -702,10 +705,10 @@ chat:
       existingSecret: ""                 # required for anthropic; the key under keys.apiKey, default apiKey
 ```
 
-**Every provider receives what the chat reads, in every tenant.** No tenant is asked: every member
+**Every provider receives what the chat reads, in every team.** No team is asked: every member
 has the chat once a provider is listed, and a provider receives what the chat reads for its person,
 confidential tickets included — the owner's decision, with the risk accepted
-([chat.md H-37](../security/chat.md#h-37)). List a hosted provider only where every tenant's data may
+([chat.md H-37](../security/chat.md#h-37)). List a hosted provider only where every team's data may
 go to it ([chat.md, adding a hosted provider](chat.md#adding-a-hosted-provider)).
 
 **The backend's pods reach the providers.** The browser never does. The chart ships no
@@ -771,10 +774,10 @@ as well.
 answers the health endpoints, the version, the API document, what the login page offers and the
 login, and `401 unauthenticated` on every other route. The UI's login page shows the form while
 an active local account exists — the local administrator ([above](#the-local-administrator)) and
-the accounts tenants create, `POST /auth/local` of [README, API](../../README.md#api-backend) —
+the accounts teams create, `POST /auth/local` of [README, API](../../README.md#api-backend) —
 and "Sign in with" the provider's `auth.oidc.displayName` while a provider is configured and its
 gate names a group ([the identity provider](#the-identity-provider)). `make dev-seed` creates a
-person, a tenant and a token in the development database and is never an installation step
+person, a team and a token in the development database and is never an installation step
 ([ADR 0038](../adr/0038-no-development-login-switch-the-development-environment-is-the-real-login-path.md)
 D7).
 
@@ -832,9 +835,9 @@ localAdmin:
   `database.url`, no `database.owner.url` and no inline local administrator: rendering fails on
   each, naming the value. ConfigMaps are yours as well and exist before the release.
 - **The bootstrap follows the migration.** After the schema step the Job synchronises the local
-  administrator and creates the bootstrap tenant, with the administrator group's mapping, as a pod
+  administrator and creates the bootstrap team, with the administrator group's mapping, as a pod
   does at its start (D4; [the local administrator](#the-local-administrator)) — it reads the local
-  administrator's Secret, `bootstrap.tenant`, `backend.config.baseURL`, the password policy and, with
+  administrator's Secret, `bootstrap.team`, `backend.config.baseURL`, the password policy and, with
   an `auth.oidc.adminGroup`, the issuer and that group. It is given no client secret, no server key
   and no storage key. The pods still run the bootstrap at their start, so rotating the local
   administrator's Secret and restarting them works as in the other mode.
@@ -1117,8 +1120,8 @@ there is no schema rollback and no `migrate down`.
 
 **The release that removes GitHub's webhook**
 ([ADR 0071](../adr/0071-an-inbound-signed-github-webhook-links-pull-requests-to-tickets-optional-and-on-trial.md)
-Status, 2026-10-09): a tenant that set the webhook up at GitHub gets `404` for every delivery from
-then on, and the tenant's settings no longer show it — remove the webhook from each repository's
+Status, 2026-10-09): a team that set the webhook up at GitHub gets `404` for every delivery from
+then on, and the team's settings no longer show it — remove the webhook from each repository's
 settings at GitHub. The tables of migration 41 stay, written by nothing, until a later release drops
 them; nothing else needs doing.
 
@@ -1223,12 +1226,12 @@ D4) lists the bucket once a day, at the first start and then in the hour after 0
 - **Grant the storage key `s3:ListBucket` on the bucket before the upgrade**
   ([object storage](#object-storage)). Without it uploads and downloads go on, and the check fails
   every hour with `job failed` and [`CoworkJobFailing`](metrics.md#coworkjobfailing).
-- **Its migration** adds two tables and two audit actions and lets the job read every tenant;
+- **Its migration** adds two tables and two audit actions and lets the job read every team;
   a rollback to the release before serves over it ([upgrade.md](upgrade.md#rolling-back)).
 - **With `metrics.prometheusRule.enabled`** the rule gains `CoworkAttachmentsOutOfStep`, which waits
   `metrics.prometheusRule.restoreWindow`, a day by default ([metrics.md](metrics.md#coworkattachmentsoutofstep)).
   The first check may find what a restore or a failed removal left in the past, and the alert then
-  fires a day later — the tenants' administrators settle it on their settings page.
+  fires a day later — the teams' administrators settle it on their settings page.
 
 **The release whose database holds the lengths of a body, the options and an answer**
 ([ADR 0011](../adr/0011-a-ticket-is-a-markdown-body-plus-first-class-open-questions.md) D6,
@@ -1255,11 +1258,20 @@ checks: everything it writes keeps to them but an import's longer text, which th
 D4, D6, amended 2026-10-09): [migration 46](../../backend/internal/store/migrations/000046_last_export_read_at_a_scrape.up.sql)
 adds an index of the export acts to the audit record and a policy that lets a scrape read them; a
 rollback to the release before serves over it. With `metrics.prometheusRule.enabled` the rule gains
-[`CoworkExportOverdue`](metrics.md#coworkexportoverdue), which fires at once for every tenant of
+[`CoworkExportOverdue`](metrics.md#coworkexportoverdue), which fires at once for every team of
 which neither the whole nor a project was exported within `metrics.prometheusRule.exportMaxAgeDays`
-days — 7 by default, also under `--reuse-values` —, a tenant never exported once it is older than
+days — 7 by default, also under `--reuse-values` —, a team never exported once it is older than
 that: set up the export's schedule first ([backups.md](backups.md#the-export-the-second-line)), or
 set the days to the one you run.
+
+**The release that calls a tenant a team**
+([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1, amended
+2026-10-10) renames the variables, the chart's values, the metrics' label and the API's paths and
+names, and keeps each name before beside the new one for this release: nothing needs doing before
+the upgrade, and it brings no migration. Upgrade the installation before the people's
+`cowork-mcp`, and keep `tenant:` in a `.cowork.yaml` until every machine runs a `cowork-mcp` of this
+release; what to move, in which order, and what changes at once — the log's words among it — is
+[upgrade.md](upgrade.md#the-release-that-calls-a-tenant-a-team).
 
 ## Uninstall
 

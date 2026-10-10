@@ -38,7 +38,7 @@ export class AttachmentConsistencyService {
     params: () => this.administered(),
     loader: ({ params: tenant }) =>
       keepShown(this.latest, () =>
-        this.conditional.load((fetch) => fetch(getAttachmentConsistency, { tenant })),
+        this.conditional.load((fetch) => fetch(getAttachmentConsistency, { team: tenant })),
       ),
   });
 
@@ -66,7 +66,7 @@ export class AttachmentConsistencyService {
    */
   async acceptLoss(check: string): Promise<DanglingAcceptance> {
     const done = await this.api.invoke(acceptDanglingAttachments, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       body: { check_id: check },
     });
     refresh(this.latest, this.injector);
@@ -79,7 +79,7 @@ export class AttachmentConsistencyService {
    */
   async removeOrphans(check: string): Promise<OrphanRemoval> {
     const done = await this.api.invoke(removeOrphanedObjects, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       body: { check_id: check },
     });
     refresh(this.latest, this.injector);

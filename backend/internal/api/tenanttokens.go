@@ -17,16 +17,18 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/store/writeq"
 )
 
-// ListTenantTokens lists the tokens that can act in the tenant for its
+// ListTeamTokens lists the tokens that can act in the team for its
 // administrators (docs/adr/0035 D5 as amended 2026-10-05): every token of a
-// member that is unrestricted or restricted to this tenant, newest first, by
+// member that is unrestricted or restricted to this team, newest first, by
 // cursor or numbered pages (docs/adr/0048 D2). Metadata only; a token
-// restricted to another tenant is not in it.
-func (s *Server) ListTenantTokens(ctx context.Context, req apigen.ListTenantTokensRequestObject) (apigen.ListTenantTokensResponseObject, error) {
+// restricted to another team is not in it.
+func (s *Server) ListTeamTokens(ctx context.Context, req apigen.ListTeamTokensRequestObject) (apigen.ListTeamTokensResponseObject, error) {
 	t := tenantFrom(ctx)
 	if perr := auth.Authorize(principal(ctx), t.Role, adminRead); perr != nil {
 		return nil, perr
 	}
+	// The operation's name before the rename binds the cursor, so that a cursor
+	// pages on across replicas of both releases during a rollout (docs/adr/0028 D4).
 	const op = "listTenantTokens"
 	scope := t.ID.String()
 	q := req.Params
@@ -69,9 +71,9 @@ func (s *Server) ListTenantTokens(ctx context.Context, req apigen.ListTenantToke
 	// is the caller's page, so the state of a token that expired since moves it.
 	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
 	if unchanged {
-		return apigen.ListTenantTokens304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+		return apigen.ListTeamTokens304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
 	}
-	return apigen.ListTenantTokens200JSONResponse{Body: out, Headers: apigen.ListTenantTokens200ResponseHeaders{ETag: &tag}}, nil
+	return apigen.ListTeamTokens200JSONResponse{Body: out, Headers: apigen.ListTeamTokens200ResponseHeaders{ETag: &tag}}, nil
 }
 
 // memberTokenView is a token as the tenant's administrators see it: its
@@ -88,24 +90,25 @@ func memberTokenView(t tenantScope, row readq.ListTenantTokensRow, now time.Time
 		Id: row.ID, Name: row.Name, Person: personView(row.UserID, row.Username, &row.DisplayName),
 		Scope: apigen.Scope(row.Scope), Agent: row.Agent, Capabilities: capabilitiesView(row.Capabilities), CreatedAt: row.CreatedAt,
 		ExpiresAt: row.ExpiresAt, State: state, RevokedAt: nullableOf(row.RevokedAt),
-		RestrictedTenant: nullableOf[string](nil), RestrictedProject: nullableOf(row.RestrictedProjectKey),
+		RestrictedTeam: nullableOf[string](nil), RestrictedProject: nullableOf(row.RestrictedProjectKey),
 		LastUsedOn: nullableOf[openapi_types.Date](nil),
 	}
 	if row.RestrictedTenantID != nil {
-		v.RestrictedTenant = nullableOf(&t.Slug)
+		v.RestrictedTeam = nullableOf(&t.Slug)
 	}
+	v.RestrictedTenant = v.RestrictedTeam //nolint:staticcheck // SA1019: deprecated in the document, answered beside restricted_team until a later release removes it
 	if row.LastUsedOn != nil {
 		v.LastUsedOn = nullableOf(&openapi_types.Date{Time: *row.LastUsedOn})
 	}
 	return v
 }
 
-// RevokeTenantToken revokes a member's token that can act in the tenant: an
-// administrator's act, immediate and recorded in the tenant's audit
-// (docs/adr/0035 D5, D6, D9). An unrestricted token ends in every tenant of
-// its person. A token the tenant's list does not show is "no such", whether or
+// RevokeTeamToken revokes a member's token that can act in the team: an
+// administrator's act, immediate and recorded in the team's audit
+// (docs/adr/0035 D5, D6, D9). An unrestricted token ends in every team of
+// its person. A token the team's list does not show is "no such", whether or
 // not it exists; revoking a revoked one changes nothing.
-func (s *Server) RevokeTenantToken(ctx context.Context, req apigen.RevokeTenantTokenRequestObject) (apigen.RevokeTenantTokenResponseObject, error) {
+func (s *Server) RevokeTeamToken(ctx context.Context, req apigen.RevokeTeamTokenRequestObject) (apigen.RevokeTeamTokenResponseObject, error) {
 	t, p := tenantFrom(ctx), principal(ctx)
 	if perr := auth.Authorize(p, t.Role, administer); perr != nil {
 		return nil, perr
@@ -136,5 +139,5 @@ func (s *Server) RevokeTenantToken(ctx context.Context, req apigen.RevokeTenantT
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.RevokeTenantToken204Response{}, nil
+	return apigen.RevokeTeamToken204Response{}, nil
 }

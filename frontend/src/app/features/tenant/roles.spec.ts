@@ -59,7 +59,7 @@ describe('the origins of a membership', () => {
 
   it('say of a local account that the person signs in with a username and a password, wherever it was made', () => {
     expect(originMeanings.local).toContain('a username and a password of their own');
-    expect(originMeanings.local).not.toContain('this tenant');
+    expect(originMeanings.local).not.toContain('this team');
     expect(originMeanings.local).not.toContain('Accounts');
   });
 });

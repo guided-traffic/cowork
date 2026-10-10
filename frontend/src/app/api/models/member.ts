@@ -12,7 +12,7 @@ export interface Member {
 
   /**
    * The address the identity provider asserted at the person's last login, which tells two
-   * persons of one name apart: for the tenant's administrators; null for anyone else, and for a
+   * persons of one name apart: for the team's administrators; null for anyone else, and for a
    * person without one, such as a local account
    */
   email: (string | null);

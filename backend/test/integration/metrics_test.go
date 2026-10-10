@@ -60,7 +60,7 @@ func TestServeAnswersAScrapeOnItsMetricsListener(t *testing.T) {
 	apiAddr, metricsAddr := freeAddress(t), freeAddress(t)
 	server := startServe(t, bin, iso.RuntimeURL, apiAddr, metricsAddr)
 
-	ticket := fmt.Sprintf("http://%s/api/v1/tenants/metrics/projects/OBS/tickets/%d", apiAddr, number)
+	ticket := fmt.Sprintf("http://%s/api/v1/teams/metrics/projects/OBS/tickets/%d", apiAddr, number)
 	assert.Equal(t, http.StatusOK, send(t, http.MethodGet, ticket, own, ""))
 	assert.Equal(t, http.StatusCreated, send(t, http.MethodPost, ticket+"/comments", own, `{"body":"by hand"}`))
 	assert.Equal(t, http.StatusCreated, send(t, http.MethodPost, ticket+"/comments", agent, `{"body":"by an agent"}`,
@@ -75,15 +75,15 @@ func TestServeAnswersAScrapeOnItsMetricsListener(t *testing.T) {
 	samples := scrape(t, metricsAddr)
 
 	for _, c := range []struct{ route, method, status string }{
-		{"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", "GET", "200"},
-		{"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments", "POST", "201"},
-		{"/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", "GET", "401"},
+		{"/api/v1/teams/{team}/projects/{project}/tickets/{number}", "GET", "200"},
+		{"/api/v1/teams/{team}/projects/{project}/tickets/{number}/comments", "POST", "201"},
+		{"/api/v1/teams/{team}/projects/{project}/tickets/{number}", "GET", "401"},
 		{"/healthz", "GET", "200"},
 		{metrics.Unmatched, "GET", "404"},
 	} {
 		assert.GreaterOrEqual(t, metrics.Sum(samples, "cowork_http_requests_total", "route", c.route, "method", c.method, "status", c.status), 1.0, c)
 	}
-	assert.True(t, metrics.Has(samples, "cowork_http_request_duration_seconds_bucket", "route", "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", "le", "+Inf"))
+	assert.True(t, metrics.Has(samples, "cowork_http_request_duration_seconds_bucket", "route", "/api/v1/teams/{team}/projects/{project}/tickets/{number}", "le", "+Inf"))
 	assert.Equal(t, 1.0, metrics.Sum(samples, "cowork_audit_acts_total", "action", "commented", "actor", "person"))
 	assert.Equal(t, 1.0, metrics.Sum(samples, "cowork_audit_acts_total", "action", "commented", "actor", "agent"))
 	assert.Equal(t, 1.0, metrics.Sum(samples, "cowork_auth_token_refusals_total", "reason", "unknown"))

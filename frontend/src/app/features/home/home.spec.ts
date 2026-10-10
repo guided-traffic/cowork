@@ -6,7 +6,7 @@ import { provideRouter, Router } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
 import { provideApiConfiguration } from '../../api/api-configuration';
-import { Me, Membership, Problem, Tenant } from '../../api/models';
+import { Me, Membership, Problem, Team } from '../../api/models';
 import { OpenableTenant, SessionService } from '../../core/session.service';
 import { TenantsService } from '../../core/tenants.service';
 import { MyTickets } from '../me/my-tickets';
@@ -27,11 +27,13 @@ function stubMyTickets(): void {
 
 const acme: Membership = {
   role: 'admin',
+  team: { name: 'Acme Corp', slug: 'acme' },
   tenant: { name: 'Acme Corp', slug: 'acme' },
   origins: [{ source: 'grant', role: 'admin' }],
 };
 const globex: Membership = {
   role: 'member',
+  team: { name: 'Globex', slug: 'globex' },
   tenant: { name: 'Globex', slug: 'globex' },
   origins: [{ source: 'grant', role: 'member' }],
 };
@@ -78,7 +80,7 @@ describe('Home', () => {
         person: signal<Me | undefined>(undefined),
         memberships,
         tenants: computed(() => [
-          ...memberships().map(({ tenant, role }) => ({ ...tenant, role })),
+          ...memberships().map(({ team, role }) => ({ ...team, role })),
           ...roleless(),
         ]),
         installation: { isLoading: signal(false), hasValue: signal(true) },
@@ -137,7 +139,7 @@ describe('Home', () => {
       const page = await render();
 
       expect(page.querySelector('.tenant')).toBeNull();
-      expect(page.textContent).toContain('You are not a member of any tenant yet.');
+      expect(page.textContent).toContain('You are not a member of any team yet.');
     });
 
     describe('a global administrator who is in no tenant', () => {
@@ -148,10 +150,10 @@ describe('Home', () => {
 
         expect(page.querySelector('app-first-tenant')).not.toBeNull();
         expect(page.querySelector('[data-testid="first-tenant"] h1')?.textContent).toBe(
-          'Create the first tenant',
+          'Create the first team',
         );
-        expect(page.textContent).not.toContain('You are not a member of any tenant yet.');
-        expect(page.querySelector('h1')?.textContent).toBe('Create the first tenant');
+        expect(page.textContent).not.toContain('You are not a member of any team yet.');
+        expect(page.querySelector('h1')?.textContent).toBe('Create the first team');
         expect(page.querySelector('.tenants')).toBeNull();
         expect(navigate).not.toHaveBeenCalled();
       });
@@ -202,7 +204,7 @@ describe('Home', () => {
 
         expect(page.querySelector('app-first-tenant')).toBeNull();
         expect(page.querySelector('app-my-tickets')).toBeNull();
-        expect(page.querySelector('h1')?.textContent).toBe('Your tenants');
+        expect(page.querySelector('h1')?.textContent).toBe('Your teams');
         const first = page.querySelector('[data-testid="tenant-acme"]');
         expect(first?.querySelector('.name')?.textContent).toBe('Acme Corp');
         const other = page.querySelector('[data-testid="tenant-initech"]');
@@ -229,7 +231,7 @@ describe('Home', () => {
 
         expect(page.querySelector('app-first-tenant')).toBeNull();
         expect(page.querySelector('p-skeleton')).not.toBeNull();
-        expect(page.textContent).not.toContain('You are not a member of any tenant yet.');
+        expect(page.textContent).not.toContain('You are not a member of any team yet.');
       });
     });
 
@@ -239,7 +241,7 @@ describe('Home', () => {
       const page = await render();
 
       expect(page.querySelector('app-first-tenant')).toBeNull();
-      expect(page.textContent).toContain('You are not a member of any tenant yet.');
+      expect(page.textContent).toContain('You are not a member of any team yet.');
     });
 
     it('shows the signed-out notice with the way to the login when the API answers 401', async () => {
@@ -334,7 +336,7 @@ describe('Home', () => {
       http.expectOne('/api/v1/me').flush(person(true));
       // A global administrator's session lists the installation's tenants: there are none.
       const listed = (request: { method: string; url: string }) =>
-        request.method === 'GET' && request.url === '/api/v1/tenants';
+        request.method === 'GET' && request.url === '/api/v1/teams';
       await new Promise((resolve) => setTimeout(resolve));
       TestBed.tick();
       http.expectOne(listed).flush({ items: [], next_cursor: null });
@@ -342,7 +344,7 @@ describe('Home', () => {
       fixture.detectChanges();
       const page = fixture.nativeElement as HTMLElement;
       expect(page.querySelector('[data-testid="first-tenant"] h1')?.textContent).toBe(
-        'Create the first tenant',
+        'Create the first team',
       );
 
       const type = (testId: string, value: string) => {
@@ -355,9 +357,9 @@ describe('Home', () => {
       type('first-tenant-name', 'Acme Corp');
       page.querySelector('form')?.dispatchEvent(new Event('submit', { cancelable: true }));
       const created = http.expectOne((request) => request.method === 'POST');
-      expect(created.request.url).toBe('/api/v1/tenants');
+      expect(created.request.url).toBe('/api/v1/teams');
       expect(created.request.body).toEqual({ slug: 'acme', name: 'Acme Corp' });
-      const tenant: Tenant = {
+      const tenant: Team = {
         slug: 'acme',
         name: 'Acme Corp',
         version: 1,

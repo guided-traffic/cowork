@@ -7,7 +7,7 @@ export interface InboxList {
   next_cursor: (string | null);
 
   /**
-   * The person's unread notifications in the tenants the request reaches
+   * The person's unread notifications in the teams the request reaches
    */
   unread: number;
 }

@@ -77,8 +77,8 @@ func TestTenantAdministratorsSeeAndRevokeTheTokensThatCanActInTheTenant(t *testi
 	assert.NotContains(t, raw, "outsider-of-a", "nor a token of a person who is no member")
 	assert.NotContains(t, raw, outsiderID.String())
 	assert.NotContains(t, raw, "cwk_", "no secret")
-	assert.True(t, seen["both-everywhere"].RestrictedTenant.IsNull(), "an unrestricted token says so")
-	slug, err := seen["both-in-a"].RestrictedTenant.Get()
+	assert.True(t, seen["both-everywhere"].RestrictedTeam.IsNull(), "an unrestricted token says so")
+	slug, err := seen["both-in-a"].RestrictedTeam.Get()
 	require.NoError(t, err)
 	assert.Equal(t, a.SlugA, slug)
 	key, err := seen["both-alpha"].RestrictedProject.Get()
@@ -87,7 +87,7 @@ func TestTenantAdministratorsSeeAndRevokeTheTokensThatCanActInTheTenant(t *testi
 	assert.Equal(t, alphaID, seen["both-alpha"].Id)
 
 	// Tenant B's administrator sees B's share of the same person's tokens.
-	rawB, seenB := tenantTokens(t, a.s.do(t, caller{Token: adminBToken}, http.MethodGet, "/api/v1/tenants/"+a.SlugB+"/tokens?limit=200", nil))
+	rawB, seenB := tenantTokens(t, a.s.do(t, caller{Token: adminBToken}, http.MethodGet, "/api/v1/teams/"+a.SlugB+"/tokens?limit=200", nil))
 	assert.Contains(t, seenB, "both-everywhere")
 	assert.Contains(t, seenB, "secret-name-of-b")
 	assert.Contains(t, seenB, "outsider-of-a")
@@ -117,7 +117,7 @@ func TestTenantAdministratorsSeeAndRevokeTheTokensThatCanActInTheTenant(t *testi
 	assertProblem(t, revoke(caller{Token: readToken}, inAID), http.StatusForbidden, "insufficient_scope")
 	assertProblem(t, revoke(caller{Token: a.token, Agent: "claude-code/opus/1"}, inAID), http.StatusForbidden, "agent_forbidden")
 	assertProblem(t, revoke(caller{Token: a.tokenOf(t, a.MemberA)}, inAID), http.StatusForbidden, "forbidden")
-	assert.Equal(t, http.StatusOK, a.s.do(t, caller{Token: inB}, http.MethodGet, "/api/v1/tenants/"+a.SlugB+"/projects", nil).StatusCode,
+	assert.Equal(t, http.StatusOK, a.s.do(t, caller{Token: inB}, http.MethodGet, "/api/v1/teams/"+a.SlugB+"/projects", nil).StatusCode,
 		"the token of another tenant is untouched")
 
 	require.Equal(t, http.StatusNoContent, revoke(adminToken, inAID).StatusCode, "only takes access away: a token may")
@@ -129,7 +129,7 @@ func TestTenantAdministratorsSeeAndRevokeTheTokensThatCanActInTheTenant(t *testi
 
 	res = a.admin.request(http.MethodDelete, a.path("/tokens/"+everywhereID.String()), nil)
 	require.Equal(t, http.StatusNoContent, res.StatusCode, "in a session too")
-	assertProblem(t, a.s.do(t, caller{Token: everywhere}, http.MethodGet, "/api/v1/tenants/"+a.SlugB+"/projects", nil),
+	assertProblem(t, a.s.do(t, caller{Token: everywhere}, http.MethodGet, "/api/v1/teams/"+a.SlugB+"/projects", nil),
 		http.StatusUnauthorized, "token_revoked")
 	assert.Equal(t, "true", scalar[string](t, `SELECT after->>'unrestricted' FROM audit_events
 		WHERE tenant_id = $1 AND entity_id = $2 AND action = 'revoked'`, a.A, everywhereID), "the record says it reached beyond the tenant")

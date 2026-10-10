@@ -74,11 +74,11 @@ interface Choice {
             [iconOnly]="true"
             [disabled]="busy()"
             [pTooltip]="
-              f.shared ? 'Shared with the tenant: stop sharing it' : 'Share it with the tenant'
+              f.shared ? 'Shared with the team: stop sharing it' : 'Share it with the team'
             "
             [showDelay]="400"
             [attr.aria-label]="
-              f.shared ? 'Stop sharing ' + f.name : 'Share ' + f.name + ' with the tenant'
+              f.shared ? 'Stop sharing ' + f.name : 'Share ' + f.name + ' with the team'
             "
             [attr.aria-pressed]="f.shared"
             data-testid="share-filter"
@@ -113,7 +113,7 @@ interface Choice {
               severity="secondary"
               [iconOnly]="true"
               [disabled]="busy()"
-              [pTooltip]="'Stop sharing it with the tenant — it stays ' + ownerName(f) + '’s'"
+              [pTooltip]="'Stop sharing it with the team — it stays ' + ownerName(f) + '’s'"
               [showDelay]="400"
               [attr.aria-label]="'Stop sharing ' + f.name + ' of ' + ownerName(f)"
               data-testid="unshare-filter"
@@ -189,7 +189,7 @@ interface Choice {
             (ngModelChange)="shared.set($event)"
             data-testid="filter-shared"
           />
-          <span>Share with the tenant — every member sees it, with you as its owner</span>
+          <span>Share with the team — every member sees it, with you as its owner</span>
         </label>
         <div class="actions">
           <button
@@ -375,7 +375,7 @@ export class SavedFilters {
         severity: 'success',
         summary: 'Filter saved',
         detail: filter.shared
-          ? `${filter.name} is shared with the tenant.`
+          ? `${filter.name} is shared with the team.`
           : `${filter.name} is yours.`,
         life: 3000,
       });

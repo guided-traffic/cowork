@@ -297,7 +297,7 @@ func mayChangeComment(p auth.Principal, tc ticketCtx, c readq.GetCommentForWrite
 		// administrator's act with admin scope (docs/adr/0035 D3).
 		return auth.Authorize(p, tc.role, auth.Need{Role: domain.RoleAdmin, Scope: domain.ScopeAdmin})
 	default:
-		return problem.New(problem.Forbidden, "only the author changes a comment; a tenant administrator withdraws it")
+		return problem.New(problem.Forbidden, "only the author changes a comment; a team administrator withdraws it")
 	}
 	return nil
 }

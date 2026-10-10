@@ -40,7 +40,7 @@ export interface Question {
   asked_by_token: (TokenMark | null);
 
   /**
-   * The person asked; null for a question open in the tenant
+   * The person asked; null for a question open in the team
    */
   asked_of: (Person | null);
   created_at: string;

@@ -13,9 +13,9 @@ import { LinkType } from '../../models/link-type';
 export interface LinkTickets$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -41,7 +41,7 @@ export interface LinkTickets$Params {
 export function linkTickets(http: HttpClient, rootUrl: string, params: LinkTickets$Params, context?: HttpContext): Observable<StrictHttpResponse<Link>> {
   const rb = new RequestBuilder(rootUrl, linkTickets.PATH, 'put');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('type', params.type, {});
@@ -58,4 +58,4 @@ export function linkTickets(http: HttpClient, rootUrl: string, params: LinkTicke
   );
 }
 
-linkTickets.PATH = '/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}';
+linkTickets.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}';

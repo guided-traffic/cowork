@@ -180,7 +180,7 @@ var (
 // visibility predicates read the person from the same settings.
 func (db *DB) InTenant(ctx context.Context, tenantID uuid.UUID, fn func(r *Reader) error) error {
 	if tenantID == uuid.Nil {
-		return errors.New("store: InTenant without a tenant")
+		return errors.New("store: InTenant without a team")
 	}
 	return db.read(ctx, tenantID, "", fn)
 }
@@ -190,7 +190,7 @@ func (db *DB) InTenant(ctx context.Context, tenantID uuid.UUID, fn func(r *Reade
 // what it counted a page at a time — the export (docs/adr/0051 D4).
 func (db *DB) InTenantSnapshot(ctx context.Context, tenantID uuid.UUID, fn func(r *Reader) error) error {
 	if tenantID == uuid.Nil {
-		return errors.New("store: InTenantSnapshot without a tenant")
+		return errors.New("store: InTenantSnapshot without a team")
 	}
 	return db.read(ctx, tenantID, pgx.RepeatableRead, fn)
 }
@@ -412,7 +412,7 @@ func (w *Writer) flush(ctx context.Context, tenantID uuid.UUID, caller Caller) e
 // the job's, and binds it to no tenant again (docs/adr/0021 D3, D4).
 func (w *Writer) inTenant(ctx context.Context, tenantID uuid.UUID, fn func() error) error {
 	if _, err := w.tx.Exec(ctx, "SELECT set_config('app.tenant_id', $1, true)", tenantID.String()); err != nil {
-		return fmt.Errorf("bind the job to its tenant: %w", err)
+		return fmt.Errorf("bind the job to its team: %w", err)
 	}
 	w.TenantID = tenantID
 	if err := fn(); err != nil {
@@ -423,7 +423,7 @@ func (w *Writer) inTenant(ctx context.Context, tenantID uuid.UUID, fn func() err
 	}
 	w.TenantID = uuid.Nil
 	if _, err := w.tx.Exec(ctx, "SELECT set_config('app.tenant_id', '', true)"); err != nil {
-		return fmt.Errorf("release the job from its tenant: %w", err)
+		return fmt.Errorf("release the job from its team: %w", err)
 	}
 	return nil
 }

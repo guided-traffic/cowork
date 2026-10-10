@@ -13,7 +13,7 @@ test(
   async ({ page, seed, project }) => {
     const other = uniqueKey();
     await seed.project(other);
-    const filed = await seed.file(project, { title: 'Across the tenant', horizon: 'now' });
+    const filed = await seed.file(project, { title: 'Across the team', horizon: 'now' });
     await seed.transition(project, filed.number, 'filed', 'analysed');
     const neighbour = await seed.file(other, { title: 'In the other row', horizon: 'now' });
     const key = keyOf(project, filed.number);

@@ -211,7 +211,7 @@ func TestLockoutStaysUntilAnAdministratorUnlocks(t *testing.T) {
 
 	admin := s.browser(t)
 	admin.mustLogin(names["adminA"], testPassword)
-	accounts := admin.get("/api/v1/tenants/" + w.SlugA + "/accounts")
+	accounts := admin.get("/api/v1/teams/" + w.SlugA + "/accounts")
 	require.Equal(t, http.StatusOK, accounts.StatusCode)
 	var locked bool
 	for _, a := range decode[apigen.AccountList](t, accounts).Items {
@@ -221,12 +221,12 @@ func TestLockoutStaysUntilAnAdministratorUnlocks(t *testing.T) {
 	}
 	assert.True(t, locked, "the administrator sees the lock")
 
-	require.Equal(t, http.StatusNoContent, admin.request(http.MethodDelete, "/api/v1/tenants/"+w.SlugA+"/accounts/"+known+"/lockout", nil).StatusCode)
+	require.Equal(t, http.StatusNoContent, admin.request(http.MethodDelete, "/api/v1/teams/"+w.SlugA+"/accounts/"+known+"/lockout", nil).StatusCode)
 	require.Equal(t, http.StatusOK, b.login(known, testPassword).StatusCode)
 	assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE action = 'unlocked' AND entity_id = $1 AND actor_user_id = $2 AND tenant_id = $3`,
 		w.MemberA, w.AdminA, w.A))
 	// Unlocking what is not locked changes nothing and records nothing.
-	require.Equal(t, http.StatusNoContent, admin.request(http.MethodDelete, "/api/v1/tenants/"+w.SlugA+"/accounts/"+known+"/lockout", nil).StatusCode)
+	require.Equal(t, http.StatusNoContent, admin.request(http.MethodDelete, "/api/v1/teams/"+w.SlugA+"/accounts/"+known+"/lockout", nil).StatusCode)
 	assert.EqualValues(t, 1, scalar[int64](t, `SELECT count(*) FROM audit_events WHERE action = 'unlocked' AND entity_id = $1`, w.MemberA))
 }
 
@@ -468,9 +468,9 @@ func TestInitStateAdmitsGlobalAdministratorsOnly(t *testing.T) {
 	assert.True(t, me.GlobalAdmin)
 	assert.Empty(t, me.Memberships, "the create-the-first-tenant page")
 
-	created := admin.request(http.MethodPost, "/api/v1/tenants", map[string]string{"slug": "first", "name": "First"})
+	created := admin.request(http.MethodPost, "/api/v1/teams", map[string]string{"slug": "first", "name": "First"})
 	require.Equal(t, http.StatusCreated, created.StatusCode)
-	assert.Equal(t, "/api/v1/tenants/first", created.Header.Get("Location"))
+	assert.Equal(t, "/api/v1/teams/first", created.Header.Get("Location"))
 	me = decode[apigen.Me](t, admin.get("/api/v1/me"))
 	require.Len(t, me.Memberships, 1)
 	assert.Equal(t, apigen.RoleAdmin, me.Memberships[0].Role, "the creator is its first administrator (docs/adr/0032 D7)")
@@ -608,7 +608,7 @@ func TestEveryRequestButARefusedWriteMovesTheIdleClock(t *testing.T) {
 	// session lives on until its absolute limit.
 	for range 10 {
 		c.Advance(time.Hour)
-		stream := b.get("/api/v1/tenants/" + w.SlugA + "/events")
+		stream := b.get("/api/v1/teams/" + w.SlugA + "/events")
 		require.Equal(t, http.StatusOK, stream.StatusCode)
 		require.NoError(t, stream.Body.Close())
 		assert.WithinDuration(t, c.Now(), seen(), time.Millisecond, "the event stream's connection")

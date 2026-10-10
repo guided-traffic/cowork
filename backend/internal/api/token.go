@@ -48,7 +48,8 @@ func (s *Server) GetMyToken(ctx context.Context, _ apigen.GetMyTokenRequestObjec
 	listed := tokenView(tok, s.h.opts.Now(), keys)
 	out := apigen.GetMyToken200JSONResponse{
 		Id: listed.Id, Name: listed.Name, Scope: listed.Scope, Agent: listed.Agent, Capabilities: listed.Capabilities,
-		RestrictedTenant: listed.RestrictedTenant, RestrictedProject: listed.RestrictedProject,
+		RestrictedTeam: listed.RestrictedTeam, RestrictedProject: listed.RestrictedProject,
+		RestrictedTenant:    listed.RestrictedTenant,    //nolint:staticcheck // SA1019: deprecated in the document, answered beside restricted_team until a later release removes it
 		RestrictedProjectId: listed.RestrictedProjectId, //nolint:staticcheck // SA1019: deprecated in the document, kept in /api/v1 for the clients that read it
 		CreatedAt:           listed.CreatedAt, ExpiresAt: listed.ExpiresAt, LastUsedOn: listed.LastUsedOn,
 		RevokedAt: listed.RevokedAt, State: listed.State,

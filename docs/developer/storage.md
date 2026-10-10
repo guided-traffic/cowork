@@ -28,7 +28,7 @@ the bytes leave only through the backend, so nothing signs a URL (D4).
 | `Delete(ctx, key)` | removes the object; a missing one is no error |
 | `List(ctx, prefix)` | every object whose key begins with the prefix — current versions only — with its size and last change (`Object`), handed on one at a time in the order the store lists them, the byte order of the keys for S3, and none kept; a listing the store refuses or whose context ends ends with the error; takes `s3:ListBucket`, the consistency check's alone |
 | `Exists(ctx, key)` | whether the bucket holds the object, a `HEAD` |
-| `ParseKey(tenantID, key)` | the attachment id a key names under the tenant's prefix, when the key is exactly what `Key` writes; any other key names none |
+| `ParseKey(tenantID, key)` | the attachment id a key names under the team's prefix, when the key is exactly what `Key` writes; any other key names none |
 | `EnsureBucket(ctx)` | creates the bucket; only the tests call it — the operator provides the bucket ([ADR 0058] D5) |
 
 Endpoint, bucket and both keys come together or not at all (`config.Load`). Without them
@@ -40,7 +40,7 @@ Endpoint, bucket and both keys come together or not at all (`config.Load`). With
 `UploadAttachment` in [`attachments.go`](../../backend/internal/api/attachments.go), a
 `multipart/form-data` `POST` with one `file` part and an optional `comment_id`:
 
-1. No storage: `501`. Then the tenant-level authorization: a member with write scope, an agent
+1. No storage: `501`. Then the team-level authorization: a member with write scope, an agent
    needs `upload`.
 2. A slot of the upload semaphore. Uploads are buffered in memory — the chart gives the backend
    256 MiB and no writable disk — so `uploadBudget` (64 MiB) divided by
@@ -53,13 +53,13 @@ Endpoint, bucket and both keys come together or not at all (`config.Load`). With
    naming what was detected. The name is sanitised and given an extension of the detected type.
 5. The idempotency fingerprint covers the file's SHA-256, the name and the comment, keyed like
    every fingerprint ([api.md](api.md)).
-6. In `Mutate`: the ticket through the predicate; where `COWORK_ATTACHMENT_TENANT_QUOTA` is set,
-   the tenant's quota lock (`Writer.LockAttachmentQuota`, `lockQuota`), first, so the tenant's
+6. In `Mutate`: the ticket through the predicate; where `COWORK_ATTACHMENT_TEAM_QUOTA` is set,
+   the team's quota lock (`Writer.LockAttachmentQuota`, `lockQuota`), first, so the team's
    uploads check the quota one after the other; the ticket's attachment lock
    (`Writer.LockAttachments`), so simultaneous uploads to it count one after the other; the
    project role; a `comment_id` must name a comment of this ticket written by the caller's
    person; the ticket's attachment count must be below `COWORK_ATTACHMENT_MAX_PER_TICKET`
-   (0: no limit), else `409 attachment_limit`; the tenant's attachments summed
+   (0: no limit), else `409 attachment_limit`; the team's attachments summed
    (`TenantAttachmentUsage`, every ticket's — the query is exempt from the predicate — and a
    deleted ticket's until the purge removes its rows: they occupy the bucket until then) plus the
    file must not exceed the quota, else `409 attachment_quota`, whose detail names the quota and
@@ -69,12 +69,12 @@ Endpoint, bucket and both keys come together or not at all (`config.Load`). With
    key committed first and this one replays — the object is deleted again: no row names those
    bytes.
 
-`GetAttachmentUsage` (`GET /api/v1/tenants/{tenant}/attachment-usage`) answers the same sum, the
-count and the quota to the tenant's administrators (`adminRead`), with a weak `ETag` and `304` for an
+`GetAttachmentUsage` (`GET /api/v1/teams/{team}/attachment-usage`) answers the same sum, the
+count and the quota to the team's administrators (`adminRead`), with a weak `ETag` and `304` for an
 answer the client holds: the sum counts files of tickets a member may not see, and a deleted
-ticket's until the purge. The tenant's settings page shows it
-([frontend.md](frontend.md#the-tenants-administration)). The quota is off by default, and why is
-[runtime.md](../operations/runtime.md#the-tenants-attachment-quota).
+ticket's until the purge. The team's settings page shows it
+([frontend.md](frontend.md#the-teams-administration)). The quota is off by default, and why is
+[runtime.md](../operations/runtime.md#the-teams-attachment-quota).
 
 ## Type detection
 
@@ -127,14 +127,14 @@ purge.
 ## The consistency check
 
 The job `consistency-check` ([ADR 0059] D4, D6; [`store/consistency.go`](../../backend/internal/store/consistency.go))
-compares each tenant's attachment rows with the objects under its prefix, after a restore that
+compares each team's attachment rows with the objects under its prefix, after a restore that
 brought the database and the bucket back from two points in time. Its schedule and its place among
 the jobs are [data-access.md](data-access.md#jobs); its tables and policies
 [data-access.md](data-access.md#the-consistency-checks-tables).
 
 ```
 CheckConsistency(objects, now) ── RunJob(consistency-check, lock 8) ─┬─ ListTenantsToCheck
-                                                                     └─ per tenant, inTenant:
+                                                                     └─ per team, inTenant:
    comparison.run, a batch of the listing at a time:
    1 objects.List(<tenant-id>/)              the listing first, in key order, a thousand objects to a batch
    2 ListTenantAttachmentIDs(after, upto)    then the rows the batch's keys can name: an upload puts its object before its row commits
@@ -143,20 +143,20 @@ CheckConsistency(objects, now) ── RunJob(consistency-check, lock 8) ─┬�
    4 objects.Exists, per unlisted row        a put after the listing passed its key is no loss
    5 ListAcceptedAttachments, ForgetWholeAcceptances
    6 ListCheckedAttachments (at most 1000)   the missing files' names and tickets
-   7 SaveConsistencyCheck                    the tenant's one row, under a new id
-then one installation-level act `checked`, counts per tenant id
+   7 SaveConsistencyCheck                    the team's one row, under a new id
+then one installation-level act `checked`, counts per team id
 ```
 
 - **The comparison** ([ADR 0059] D4 as amended 2026-10-07) holds a bounded memory whatever the
   number of objects. `comparison.run` takes the listing a batch of `consistencyBatch`, a thousand
   objects, at a time, and fails the run when a key does not follow the one before it in byte order —
-  S3 lists in that order, and the comparison relies on it. A key the backend writes is the tenant's
+  S3 lists in that order, and the comparison relies on it. A key the backend writes is the team's
   prefix and the id in lowercase hexadecimal, which sorts as PostgreSQL sorts a `uuid`, by its
   sixteen bytes (`TestTheKeysSortAsTheirIDs`; the integration tier reads the order back from the
   database), so the rows a batch's keys can name are those above the last batch's last attachment id
   and up to its own — `ListTenantAttachmentIDs` reads that range —, and at the end of the listing the
   rows above the last range are read. `judge` matches a batch with its rows through a set of the
-  batch's ids. Of a tenant the check keeps the counts and the bytes, the first `ConsistencyListBound`
+  batch's ids. Of a team the check keeps the counts and the bytes, the first `ConsistencyListBound`
   orphans in key order and the attachments the listing did not show, which step 4 asks for: what it
   holds grows with the files whose bytes are missing, never with the objects
   (`TestTheComparisonHoldsABoundedMemoryWhateverTheNumberOfObjects`, a million objects).
@@ -175,18 +175,22 @@ then one installation-level act `checked`, counts per tenant id
 - **The lists.** At most `ConsistencyListBound`, a thousand, of each; the counts are exact. The
   missing files are listed with the ones nobody accepted first. An acceptance whose attachment is
   whole again is forgotten (`ForgetWholeAcceptances`), so a later loss counts once more.
-- **What it removes: nothing.** A tenant administrator confirms the removal of a result's orphans
+- **What it removes: nothing.** A team administrator confirms the removal of a result's orphans
   (`RemoveOrphanedObjects` in [`api/consistency.go`](../../backend/internal/api/consistency.go)): in
   the confirming transaction each listed orphan is asked again whether a row names it now
-  (`ListAttachmentsAmong`) — one that does is kept —, a key outside the tenant's prefix is never
+  (`ListAttachmentsAmong`) — one that does is kept —, a key outside the team's prefix is never
   touched, the act `purged` is recorded with the counts, the result keeps counting the orphans its
   list did not show (`unlistedOrphans`), and the objects go after the commit, as an administrator's
   purge removes its ticket's. The acceptance of the missing files
   (`AcceptDanglingAttachments`) inserts `consistency_acceptances` rows and moves the counts; it
   removes nothing either.
 - **Immediately.** `cowork check-consistency` ([`main.go`](../../backend/cmd/cowork/main.go)
-  `runCheckConsistency`) runs `CheckConsistency` once and prints every tenant's counts — what a
-  restore runs ([docs/operations/backups.md](../operations/backups.md)).
+  `runCheckConsistency`) runs `CheckConsistency` once and prints every team's counts — what a
+  restore runs ([docs/operations/backups.md](../operations/backups.md)): a line with the count of
+  `teams`, then `team <slug> (<id>): …` for each (`printConsistency`). The scheduled run of `serve`
+  (`checkConsistencyWhenDue`) logs a team out of step under the key `team` and the count under
+  `teams` — `tenant` and `tenants` before the rename, which a log query must follow
+  ([api.md](api.md#deprecated-names)).
 
 The download of a dangling attachment answers its `404` before any of this
 ([above](#download)); the check is what finds it without a reader.

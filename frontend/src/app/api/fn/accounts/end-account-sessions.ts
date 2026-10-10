@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface EndAccountSessions$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * A local account's username (docs/adr/0033 D2)
@@ -24,7 +24,7 @@ export interface EndAccountSessions$Params {
 export function endAccountSessions(http: HttpClient, rootUrl: string, params: EndAccountSessions$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, endAccountSessions.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('username', params.username, {});
   }
 
@@ -38,4 +38,4 @@ export function endAccountSessions(http: HttpClient, rootUrl: string, params: En
   );
 }
 
-endAccountSessions.PATH = '/api/v1/tenants/{tenant}/accounts/{username}/sessions';
+endAccountSessions.PATH = '/api/v1/teams/{team}/accounts/{username}/sessions';

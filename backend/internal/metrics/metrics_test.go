@@ -24,7 +24,7 @@ import (
 // backend's own instruments has a series to gather.
 func exercise(m *Metrics) {
 	ctx, done := m.Request(context.Background(), http.MethodGet)
-	SetRoute(ctx, "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}")
+	SetRoute(ctx, "/api/v1/teams/{team}/projects/{project}/tickets/{number}")
 	done(http.StatusOK)
 	m.ObservePool(func() PoolStats {
 		return PoolStats{Idle: 3, InUse: 1, Max: 4, Acquires: 10, AcquireTime: time.Second, Waits: 2, WaitTime: time.Second, Canceled: 1}
@@ -47,10 +47,10 @@ func exercise(m *Metrics) {
 	})
 }
 
-// tenantLabelled are the families that carry a tenant, by its id: the
+// teamLabelled are the families that carry a team, by its id: the
 // consistency family's — the check's two counts and the age of the last
 // export —, and nothing else (docs/adr/0060 D5).
-var tenantLabelled = map[string]bool{
+var teamLabelled = map[string]bool{
 	"cowork_consistency_dangling_attachments":    true,
 	"cowork_consistency_orphaned_objects":        true,
 	"cowork_consistency_last_export_age_seconds": true,
@@ -84,10 +84,11 @@ func TestEveryInstrumentIsNamedByTheRule(t *testing.T) {
 }
 
 // docs/adr/0060 D5: no label carries a person, a ticket, a key, a token or a
-// request id, anywhere; the tenant label belongs to the consistency family's
-// three gauges alone, as the tenant's id — never its slug — and they carry
-// nothing else. Every family of the backend's is gathered, so a new instrument cannot
-// slip past this test unexercised.
+// request id, anywhere; the team label belongs to the consistency family's
+// three gauges alone, as the team's id — never its slug —, and they carry
+// nothing else but tenant, the same id under the label's name before, for one
+// release (docs/adr/0005 D1). Every family of the backend's is gathered, so a
+// new instrument cannot slip past this test unexercised.
 func TestNoInstrumentCarriesAForbiddenLabel(t *testing.T) {
 	m := New()
 	exercise(m)
@@ -98,20 +99,21 @@ func TestNoInstrumentCarriesAForbiddenLabel(t *testing.T) {
 		for label, value := range s.Labels {
 			assert.NotContains(t, []string{"person", "person_id", "user", "user_id", "ticket", "key", "token", "token_id", "request_id"},
 				label, "%s carries the label %s", s.Name, label)
-			if label == "tenant" {
-				assert.True(t, tenantLabelled[s.Name], "%s carries a tenant", s.Name)
+			if label == "team" || label == "tenant" {
+				assert.True(t, teamLabelled[s.Name], "%s carries a team", s.Name)
 				_, err := uuid.Parse(value)
-				assert.NoError(t, err, "%s names a tenant by %q, which is no id", s.Name, value)
+				assert.NoError(t, err, "%s names a team by %q, which is no id", s.Name, value)
 			}
 		}
-		if tenantLabelled[s.Name] {
-			assert.Equal(t, []string{"tenant"}, slices.Sorted(maps.Keys(s.Labels)), "%s carries the tenant and nothing else", s.Name)
+		if teamLabelled[s.Name] {
+			assert.Equal(t, []string{"team", "tenant"}, slices.Sorted(maps.Keys(s.Labels)), "%s carries the team and nothing else", s.Name)
+			assert.Equal(t, s.Labels["team"], s.Labels["tenant"], "%s: tenant repeats team", s.Name)
 		}
 	}
 	for _, name := range m.Names() {
 		assert.True(t, families[name], "%s was not gathered: exercise it in this test", name)
 	}
-	for name := range tenantLabelled {
+	for name := range teamLabelled {
 		assert.True(t, slices.Contains(m.Names(), name), "%s is an instrument of the registry", name)
 	}
 }
@@ -123,7 +125,7 @@ func TestARequestIsRecordedByItsPattern(t *testing.T) {
 	m := New()
 	ctx, done := m.Request(context.Background(), http.MethodPatch)
 	assert.Equal(t, 1.0, Sum(gathered(t, m), "cowork_http_requests_in_flight"), "in flight while it runs")
-	SetRoute(ctx, "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}")
+	SetRoute(ctx, "/api/v1/teams/{team}/projects/{project}/tickets/{number}")
 	done(http.StatusConflict)
 
 	_, done = m.Request(context.Background(), "BREW")
@@ -132,9 +134,9 @@ func TestARequestIsRecordedByItsPattern(t *testing.T) {
 	samples := gathered(t, m)
 	assert.Equal(t, 0.0, Sum(samples, "cowork_http_requests_in_flight"))
 	assert.Equal(t, 1.0, Sum(samples, "cowork_http_requests_total",
-		"route", "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", "method", "PATCH", "status", "409"))
+		"route", "/api/v1/teams/{team}/projects/{project}/tickets/{number}", "method", "PATCH", "status", "409"))
 	assert.Equal(t, 1.0, Sum(samples, "cowork_http_request_duration_seconds_count",
-		"route", "/api/v1/tenants/{tenant}/projects/{project}/tickets/{number}", "method", "PATCH"))
+		"route", "/api/v1/teams/{team}/projects/{project}/tickets/{number}", "method", "PATCH"))
 	assert.Equal(t, 1.0, Sum(samples, "cowork_http_requests_total", "route", Unmatched, "method", "other", "status", "200"))
 
 	SetRoute(context.Background(), "/nowhere") // outside a record: nothing happens
@@ -277,10 +279,10 @@ func TestTheConsistencyCountsAreReadAtMostOnceAMinute(t *testing.T) {
 	})
 
 	samples := gathered(t, m)
-	assert.Equal(t, 3.0, Sum(samples, "cowork_consistency_dangling_attachments", "tenant", a))
-	assert.Equal(t, 2.0, Sum(samples, "cowork_consistency_orphaned_objects", "tenant", a))
-	assert.True(t, Has(samples, "cowork_consistency_dangling_attachments", "tenant", b), "a checked tenant shows its zero")
-	assert.Equal(t, 0.0, Sum(samples, "cowork_consistency_orphaned_objects", "tenant", b))
+	assert.Equal(t, 3.0, Sum(samples, "cowork_consistency_dangling_attachments", "team", a))
+	assert.Equal(t, 2.0, Sum(samples, "cowork_consistency_orphaned_objects", "team", a))
+	assert.True(t, Has(samples, "cowork_consistency_dangling_attachments", "team", b), "a checked tenant shows its zero")
+	assert.Equal(t, 0.0, Sum(samples, "cowork_consistency_orphaned_objects", "team", b))
 
 	state.counts = []ConsistencyCounts{{Tenant: a, Dangling: 1}}
 	clock = clock.Add(59 * time.Second)
@@ -290,9 +292,9 @@ func TestTheConsistencyCountsAreReadAtMostOnceAMinute(t *testing.T) {
 	clock = clock.Add(time.Second)
 	samples = gathered(t, m)
 	assert.Equal(t, 2, reads)
-	assert.Equal(t, 1.0, Sum(samples, "cowork_consistency_dangling_attachments", "tenant", a), "an acceptance shows at the next read")
-	assert.Equal(t, 0.0, Sum(samples, "cowork_consistency_orphaned_objects", "tenant", a), "a removal shows at the next read")
-	assert.False(t, Has(samples, "cowork_consistency_dangling_attachments", "tenant", b), "a tenant without a result has no series")
+	assert.Equal(t, 1.0, Sum(samples, "cowork_consistency_dangling_attachments", "team", a), "an acceptance shows at the next read")
+	assert.Equal(t, 0.0, Sum(samples, "cowork_consistency_orphaned_objects", "team", a), "a removal shows at the next read")
+	assert.False(t, Has(samples, "cowork_consistency_dangling_attachments", "team", b), "a tenant without a result has no series")
 
 	state.err = errors.New("the database does not answer")
 	clock = clock.Add(time.Minute)
@@ -326,27 +328,27 @@ func TestTheLastExportsAgeIsCountedAtEveryScrape(t *testing.T) {
 	})
 
 	samples := gathered(t, m)
-	assert.Equal(t, (8 * 24 * time.Hour).Seconds(), Sum(samples, "cowork_consistency_last_export_age_seconds", "tenant", a))
-	assert.Equal(t, time.Hour.Seconds(), Sum(samples, "cowork_consistency_last_export_age_seconds", "tenant", b))
+	assert.Equal(t, (8 * 24 * time.Hour).Seconds(), Sum(samples, "cowork_consistency_last_export_age_seconds", "team", a))
+	assert.Equal(t, time.Hour.Seconds(), Sum(samples, "cowork_consistency_last_export_age_seconds", "team", b))
 	assert.False(t, Has(samples, "cowork_consistency_dangling_attachments"), "a tenant without a check has an age and no counts")
 
 	state.exports = []TenantExport{{Tenant: a, Since: clock.Add(30 * time.Second)}, {Tenant: b, Since: clock.Add(-time.Hour)}}
 	clock = clock.Add(30 * time.Second)
 	samples = gathered(t, m)
 	assert.Equal(t, 1, reads, "a scrape within the minute reuses the read")
-	assert.Equal(t, (8*24*time.Hour + 30*time.Second).Seconds(), Sum(samples, "cowork_consistency_last_export_age_seconds", "tenant", a),
+	assert.Equal(t, (8*24*time.Hour + 30*time.Second).Seconds(), Sum(samples, "cowork_consistency_last_export_age_seconds", "team", a),
 		"the age grows between two reads")
 
 	clock = clock.Add(30 * time.Second)
 	samples = gathered(t, m)
 	assert.Equal(t, 2, reads)
-	assert.Equal(t, 30.0, Sum(samples, "cowork_consistency_last_export_age_seconds", "tenant", a), "an export shows at the next read")
+	assert.Equal(t, 30.0, Sum(samples, "cowork_consistency_last_export_age_seconds", "team", a), "an export shows at the next read")
 
 	state.exports = []TenantExport{{Tenant: a, Since: clock.Add(time.Hour)}}
 	clock = clock.Add(time.Minute)
 	samples = gathered(t, m)
-	assert.Equal(t, 0.0, Sum(samples, "cowork_consistency_last_export_age_seconds", "tenant", a), "a clock ahead is no negative age")
-	assert.True(t, Has(samples, "cowork_consistency_last_export_age_seconds", "tenant", a))
+	assert.Equal(t, 0.0, Sum(samples, "cowork_consistency_last_export_age_seconds", "team", a), "a clock ahead is no negative age")
+	assert.True(t, Has(samples, "cowork_consistency_last_export_age_seconds", "team", a))
 
 	state.err = errors.New("the database does not answer")
 	clock = clock.Add(time.Minute)

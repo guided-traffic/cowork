@@ -43,7 +43,7 @@ describe('SavedFiltersService', () => {
     http.expectOne(
       (request) =>
         request.method === 'GET' &&
-        request.url === '/api/v1/tenants/acme/filters' &&
+        request.url === '/api/v1/teams/acme/filters' &&
         request.params.get('cursor') === cursor,
     );
 
@@ -112,7 +112,7 @@ describe('SavedFiltersService', () => {
     await settle();
 
     const saved = service.create('Bugs', { type: ['bug'] }, true, 'key-of-the-form');
-    const post = http.expectOne({ method: 'POST', url: '/api/v1/tenants/acme/filters' });
+    const post = http.expectOne({ method: 'POST', url: '/api/v1/teams/acme/filters' });
     expect(post.request.headers.get('Idempotency-Key')).toBe('key-of-the-form');
     expect(post.request.body).toEqual({
       name: 'Bugs',
@@ -132,7 +132,7 @@ describe('SavedFiltersService', () => {
     await settle();
 
     const changed = service.update(filter('a'), { shared: true });
-    const patch = http.expectOne({ method: 'PATCH', url: '/api/v1/tenants/acme/filters/a' });
+    const patch = http.expectOne({ method: 'PATCH', url: '/api/v1/teams/acme/filters/a' });
     expect(patch.request.headers.get('If-Match')).toBe('"3"');
     expect(patch.request.body).toEqual({ shared: true });
     patch.flush(filter('a', { shared: true, version: 4 }));
@@ -142,7 +142,7 @@ describe('SavedFiltersService', () => {
     await settle();
 
     const removed = service.remove(filter('a'));
-    http.expectOne({ method: 'DELETE', url: '/api/v1/tenants/acme/filters/a' }).flush(null);
+    http.expectOne({ method: 'DELETE', url: '/api/v1/teams/acme/filters/a' }).flush(null);
     await removed;
     await settle();
     list().flush(pageOf([], null));

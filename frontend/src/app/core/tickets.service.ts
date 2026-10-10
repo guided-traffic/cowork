@@ -15,7 +15,7 @@ import {
   listProjectTickets,
   ListProjectTickets$Params,
 } from '../api/fn/tickets/list-project-tickets';
-import { listTenantTickets, ListTenantTickets$Params } from '../api/fn/tickets/list-tenant-tickets';
+import { listTeamTickets, ListTeamTickets$Params } from '../api/fn/tickets/list-team-tickets';
 import { resolveTicket } from '../api/fn/tickets/resolve-ticket';
 import { Ticket, TicketList } from '../api/models';
 import { ConditionalPages, PageFetcher } from './conditional';
@@ -42,10 +42,10 @@ export interface TicketPage {
   versions?: ReadonlyMap<string, number>;
 }
 
-/** `acme/VKO-12` → `{ tenant: 'acme', key: 'VKO-12' }`. */
-export function splitKey(key: string): { tenant: string; key: string } {
+/** `acme/VKO-12` → `{ team: 'acme', key: 'VKO-12' }`, the parameters of the ticket resolver. */
+export function splitKey(key: string): { team: string; key: string } {
   const slash = key.indexOf('/');
-  return { tenant: key.slice(0, slash), key: key.slice(slash + 1) };
+  return { team: key.slice(0, slash), key: key.slice(slash + 1) };
 }
 
 /** How long list reloads wait for more events of the same burst. */
@@ -136,7 +136,7 @@ export class TicketsService {
 
   /** A list across the tenant's projects. */
   tenantTickets(
-    params: () => ListTenantTickets$Params | undefined,
+    params: () => ListTeamTickets$Params | undefined,
     injector = inject(Injector),
   ): ResourceRef<TicketPage | undefined> {
     const pages = new ConditionalPages(this.api);
@@ -144,7 +144,7 @@ export class TicketsService {
       params,
       loader: ({ params }) =>
         keepShown(tickets, () =>
-          pages.load((page) => page(listTenantTickets, params)).then((list) => this.keep(list)),
+          pages.load((page) => page(listTeamTickets, params)).then((list) => this.keep(list)),
         ),
       injector,
     });
@@ -192,7 +192,7 @@ export class TicketsService {
     let cursor: string | undefined;
     do {
       const list = await this.api.invoke(listProjectTickets, {
-        tenant,
+        team: tenant,
         project,
         cursor,
         limit: pageSize,

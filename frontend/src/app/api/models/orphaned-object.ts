@@ -3,12 +3,12 @@
 
 
 /**
- * An object under the tenant's prefix that no metadata names
+ * An object under the team's prefix that no metadata names
  */
 export interface OrphanedObject {
 
   /**
-   * The object key in the bucket, <tenant-id>/<attachment-id> where it is one the backend wrote
+   * The object key in the bucket, <team-id>/<attachment-id> where it is one the backend wrote
    */
   key: string;
   last_modified: string;

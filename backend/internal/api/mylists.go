@@ -53,7 +53,11 @@ type mine struct {
 // "for me". A weak ETag answers an unchanged page with 304 (docs/adr/0054 D7).
 func (s *Server) ListMyNext(ctx context.Context, req apigen.ListMyNextRequestObject) (apigen.ListMyNextResponseObject, error) {
 	p := principal(ctx)
-	out, err := s.listMine(ctx, mine{op: "listMyNext", tenant: req.Params.Tenant, project: req.Params.Project,
+	narrow, perr := teamQuery(req.Params.Team, req.Params.Tenant) //nolint:staticcheck // SA1019: deprecated in the document, taken as team until a later release removes it
+	if perr != nil {
+		return nil, perr
+	}
+	out, err := s.listMine(ctx, mine{op: "listMyNext", tenant: narrow, project: req.Params.Project,
 		cursor: req.Params.Cursor, limit: req.Params.Limit,
 		filter: store.TicketFilter{Assignees: store.PersonSet{In: []uuid.UUID{p.PersonID}, None: true}}})
 	if err != nil {
@@ -70,7 +74,11 @@ func (s *Server) ListMyNext(ctx context.Context, req apigen.ListMyNextRequestObj
 // tenants (docs/adr/0018 D3), with a weak ETag and 304 as ListMyNext.
 func (s *Server) ListMyAssigned(ctx context.Context, req apigen.ListMyAssignedRequestObject) (apigen.ListMyAssignedResponseObject, error) {
 	p := principal(ctx)
-	out, err := s.listMine(ctx, mine{op: "listMyAssigned", tenant: req.Params.Tenant, cursor: req.Params.Cursor,
+	narrow, perr := teamQuery(req.Params.Team, req.Params.Tenant) //nolint:staticcheck // SA1019: deprecated in the document, taken as team until a later release removes it
+	if perr != nil {
+		return nil, perr
+	}
+	out, err := s.listMine(ctx, mine{op: "listMyAssigned", tenant: narrow, cursor: req.Params.Cursor,
 		limit: req.Params.Limit, filter: store.TicketFilter{Assignees: store.PersonSet{In: []uuid.UUID{p.PersonID}}}})
 	if err != nil {
 		return nil, err
@@ -87,7 +95,7 @@ func (s *Server) ListMyAssigned(ctx context.Context, req apigen.ListMyAssignedRe
 // place; the parts merged in the same order and cut to the page.
 func (s *Server) listMine(ctx context.Context, l mine) (apigen.MyTicketList, error) {
 	if l.project != nil && l.tenant == nil {
-		return apigen.MyTicketList{}, problem.Field("query:project", "a project is named within a tenant: name the tenant as well")
+		return apigen.MyTicketList{}, problem.Field("query:project", "a project is named within a team: name the team as well")
 	}
 	scope := principal(ctx).PersonID.String() + "/" + deref(l.tenant) + "/" + deref(l.project)
 	after := ""
@@ -122,8 +130,9 @@ func (s *Server) listMine(ctx context.Context, l mine) (apigen.MyTicketList, err
 	now := s.h.opts.Now()
 	out := apigen.MyTicketList{Items: make([]apigen.MyTicket, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, m := range rows {
-		out.Items = append(out.Items, apigen.MyTicket{Tenant: m.tenant.ref(), Ticket: ticketView(m.tenant.scope(), m.row, now),
-			Place: int(m.place)})
+		out.Items = append(out.Items, apigen.MyTicket{Team: m.tenant.ref(), Ticket: ticketView(m.tenant.scope(), m.row, now),
+			Tenant: m.tenant.ref(), //nolint:staticcheck // SA1019: deprecated in the document, answered beside team until a later release removes it
+			Place:  int(m.place)})
 	}
 	return out, nil
 }
@@ -203,7 +212,11 @@ func decisionAfter(raw string, params *readq.ListOpenDecisionsParams) bool {
 func (s *Server) ListMyDecisions(ctx context.Context, req apigen.ListMyDecisionsRequestObject) (apigen.ListMyDecisionsResponseObject, error) {
 	p := principal(ctx)
 	const op = "listMyDecisions"
-	scope := p.PersonID.String() + "/" + deref(req.Params.Tenant)
+	narrow, perr := teamQuery(req.Params.Team, req.Params.Tenant) //nolint:staticcheck // SA1019: deprecated in the document, taken as team until a later release removes it
+	if perr != nil {
+		return nil, perr
+	}
+	scope := p.PersonID.String() + "/" + deref(narrow)
 	var after readq.ListOpenDecisionsParams
 	if req.Params.Cursor != nil {
 		raw, perr := s.cursors.decode(op, scope, *req.Params.Cursor)
@@ -214,7 +227,7 @@ func (s *Server) ListMyDecisions(ctx context.Context, req apigen.ListMyDecisions
 			return nil, invalidCursor()
 		}
 	}
-	tenants, err := s.h.personTenants(ctx, req.Params.Tenant)
+	tenants, err := s.h.personTenants(ctx, narrow)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +276,8 @@ func (s *Server) ListMyDecisions(ctx context.Context, req apigen.ListMyDecisions
 func decisionView(d decision) apigen.Decision {
 	q := d.row
 	return apigen.Decision{
-		Tenant: d.tenant.ref(),
+		Team:   d.tenant.ref(),
+		Tenant: d.tenant.ref(), //nolint:staticcheck // SA1019: deprecated in the document, answered beside team until a later release removes it
 		Ticket: apigen.TicketRef{Key: domain.FullKey(d.tenant.slug, q.ProjectKey, q.TicketNumber), Title: q.TicketTitle,
 			State: apigen.TicketState(q.TicketState)},
 		Question: questionView(question{

@@ -33,7 +33,7 @@ ARG GIT_COMMIT
 ARG BUILD_TIME
 
 LABEL org.opencontainers.image.title="cowork-backend" \
-      org.opencontainers.image.description="cowork backend - the API and the schema migration of the multi-tenant backlog for people and LLM agents" \
+      org.opencontainers.image.description="cowork backend - the API and the schema migration of the multi-team backlog for people and LLM agents" \
       org.opencontainers.image.vendor="Guided Traffic" \
       org.opencontainers.image.licenses="Apache-2.0" \
       org.opencontainers.image.documentation="https://github.com/guided-traffic/cowork" \

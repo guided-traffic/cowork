@@ -8,7 +8,7 @@ info:
   title: cowork
   version: 0.0.0 # replaced by the backend version when served (docs/adr/0046 D5)
   description: |
-    A multi-tenant backlog for people and the agents that work for them.
+    A multi-team backlog for people and the agents that work for them.
 
     Every route that names a person is authenticated with one of two
     credentials. A personal access token, `Authorization: Bearer cwk_…`
@@ -16,9 +16,9 @@ info:
     browser login (docs/adr/0031 — `POST /auth/local`, or the identity
     provider's `GET /auth/callback`, docs/adr/0029) is for the UI. Each
     operation says which it takes: most take either, a few a session only —
-    creating a token, a tenant or a local account, resetting or changing a
+    creating a token, a team or a local account, resetting or changing a
     password, logging out, a turn of the chat and stopping one, choosing the
-    chat's capabilities, a global administrator's list of every tenant, purging a
+    chat's capabilities, a global administrator's list of every team, purging a
     deleted ticket — the one irreversible act on a ticket —, removing the
     orphaned objects a consistency check found — gone for good as well —, and the
     administration acts that give access: adding a member, setting a grant,
@@ -39,7 +39,7 @@ tags:
   - name: auth
   - name: me
   - name: accounts
-  - name: tenants
+  - name: teams
   - name: projects
   - name: repositories
   - name: tickets
@@ -53,6 +53,13 @@ tags:
   - name: chat
   - name: dashboard
   - name: imports
+  - name: tenants
+    description: |
+      Deprecated: every path under `/api/v1/teams/{team}`, and `/api/v1/teams` itself, served under
+      the name before — `/api/v1/tenants/{tenant}`, `/api/v1/tenants` — for one release and removed
+      in a later one (docs/adr/0005 D1, docs/adr/0023 D1, docs/adr/0046 D7). A twin answers as the
+      path it stands for; tools/specbundle writes the twins into the bundled document, and neither
+      generated client carries them.
 paths:
   /api/v1/version:
     $ref: './meta.yaml#/version'
@@ -98,155 +105,155 @@ paths:
     $ref: './me.yaml#/decisions'
   /api/v1/me/search:
     $ref: './search.yaml#/me'
-  /api/v1/tenants:
-    $ref: './tenants.yaml#/tenants'
-  /api/v1/tenants/{tenant}:
-    $ref: './tenants.yaml#/tenant'
-  /api/v1/tenants/{tenant}/accounts:
+  /api/v1/teams:
+    $ref: './teams.yaml#/teams'
+  /api/v1/teams/{team}:
+    $ref: './teams.yaml#/team'
+  /api/v1/teams/{team}/accounts:
     $ref: './accounts.yaml#/accounts'
-  /api/v1/tenants/{tenant}/accounts/{username}/password:
+  /api/v1/teams/{team}/accounts/{username}/password:
     $ref: './accounts.yaml#/accountPassword'
-  /api/v1/tenants/{tenant}/accounts/{username}/lockout:
+  /api/v1/teams/{team}/accounts/{username}/lockout:
     $ref: './accounts.yaml#/accountLockout'
-  /api/v1/tenants/{tenant}/accounts/{username}/deactivation:
+  /api/v1/teams/{team}/accounts/{username}/deactivation:
     $ref: './accounts.yaml#/accountDeactivation'
-  /api/v1/tenants/{tenant}/accounts/{username}/sessions:
+  /api/v1/teams/{team}/accounts/{username}/sessions:
     $ref: './accounts.yaml#/accountSessions'
-  /api/v1/tenants/{tenant}/members:
+  /api/v1/teams/{team}/members:
     $ref: './members.yaml#/members'
-  /api/v1/tenants/{tenant}/members/{person_id}/grant:
+  /api/v1/teams/{team}/members/{person_id}/grant:
     $ref: './members.yaml#/memberGrant'
-  /api/v1/tenants/{tenant}/group-mappings:
+  /api/v1/teams/{team}/group-mappings:
     $ref: './members.yaml#/groupMappings'
-  /api/v1/tenants/{tenant}/group-mappings/{mapping_id}:
+  /api/v1/teams/{team}/group-mappings/{mapping_id}:
     $ref: './members.yaml#/groupMapping'
-  /api/v1/tenants/{tenant}/tokens:
-    $ref: './members.yaml#/tenantTokens'
-  /api/v1/tenants/{tenant}/tokens/{token_id}:
-    $ref: './members.yaml#/tenantToken'
-  /api/v1/tenants/{tenant}/audit:
-    $ref: './tenants.yaml#/audit'
-  /api/v1/tenants/{tenant}/projects:
-    $ref: './tenants.yaml#/projects'
-  /api/v1/tenants/{tenant}/projects/{project}:
-    $ref: './tenants.yaml#/project'
-  /api/v1/tenants/{tenant}/projects/{project}/archive:
-    $ref: './tenants.yaml#/projectArchive'
-  /api/v1/tenants/{tenant}/projects/{project}/rank:
-    $ref: './tenants.yaml#/projectRank'
-  /api/v1/tenants/{tenant}/projects/{project}/restriction:
+  /api/v1/teams/{team}/tokens:
+    $ref: './members.yaml#/teamTokens'
+  /api/v1/teams/{team}/tokens/{token_id}:
+    $ref: './members.yaml#/teamToken'
+  /api/v1/teams/{team}/audit:
+    $ref: './teams.yaml#/audit'
+  /api/v1/teams/{team}/projects:
+    $ref: './teams.yaml#/projects'
+  /api/v1/teams/{team}/projects/{project}:
+    $ref: './teams.yaml#/project'
+  /api/v1/teams/{team}/projects/{project}/archive:
+    $ref: './teams.yaml#/projectArchive'
+  /api/v1/teams/{team}/projects/{project}/rank:
+    $ref: './teams.yaml#/projectRank'
+  /api/v1/teams/{team}/projects/{project}/restriction:
     $ref: './members.yaml#/projectRestriction'
-  /api/v1/tenants/{tenant}/projects/{project}/access:
+  /api/v1/teams/{team}/projects/{project}/access:
     $ref: './members.yaml#/projectAccessList'
-  /api/v1/tenants/{tenant}/projects/{project}/access/{person_id}:
+  /api/v1/teams/{team}/projects/{project}/access/{person_id}:
     $ref: './members.yaml#/projectAccess'
-  /api/v1/tenants/{tenant}/projects/{project}/repositories:
+  /api/v1/teams/{team}/projects/{project}/repositories:
     $ref: './repositories.yaml#/repositories'
-  /api/v1/tenants/{tenant}/projects/{project}/repositories/{repository}:
+  /api/v1/teams/{team}/projects/{project}/repositories/{repository}:
     $ref: './repositories.yaml#/repository'
-  /api/v1/tenants/{tenant}/projects/{project}/imports:
+  /api/v1/teams/{team}/projects/{project}/imports:
     $ref: './imports.yaml#/imports'
-  /api/v1/tenants/{tenant}/projects/{project}/imports/{import}:
+  /api/v1/teams/{team}/projects/{project}/imports/{import}:
     $ref: './imports.yaml#/import'
-  /api/v1/tenants/{tenant}/projects/{project}/imports/{import}/execution:
+  /api/v1/teams/{team}/projects/{project}/imports/{import}/execution:
     $ref: './imports.yaml#/importExecution'
-  /api/v1/tenants/{tenant}/projects/{project}/export:
+  /api/v1/teams/{team}/projects/{project}/export:
     $ref: './imports.yaml#/projectExport'
-  /api/v1/tenants/{tenant}/export:
-    $ref: './imports.yaml#/tenantExport'
-  /api/v1/tenants/{tenant}/events:
+  /api/v1/teams/{team}/export:
+    $ref: './imports.yaml#/teamExport'
+  /api/v1/teams/{team}/events:
     $ref: './events.yaml#/events'
-  /api/v1/tenants/{tenant}/chat:
+  /api/v1/teams/{team}/chat:
     $ref: './chat.yaml#/chat'
-  /api/v1/tenants/{tenant}/chat/turns:
+  /api/v1/teams/{team}/chat/turns:
     $ref: './chat.yaml#/turns'
-  /api/v1/tenants/{tenant}/dashboard:
+  /api/v1/teams/{team}/dashboard:
     $ref: './dashboard.yaml#/dashboard'
-  /api/v1/tenants/{tenant}/tickets:
-    $ref: './tenants.yaml#/tenantTickets'
-  /api/v1/tenants/{tenant}/search:
-    $ref: './search.yaml#/tenant'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets:
-    $ref: './tenants.yaml#/projectTickets'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}:
-    $ref: './tenants.yaml#/ticket'
-  /api/v1/tenants/{tenant}/filters:
+  /api/v1/teams/{team}/tickets:
+    $ref: './teams.yaml#/teamTickets'
+  /api/v1/teams/{team}/search:
+    $ref: './search.yaml#/team'
+  /api/v1/teams/{team}/projects/{project}/tickets:
+    $ref: './teams.yaml#/projectTickets'
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}:
+    $ref: './teams.yaml#/ticket'
+  /api/v1/teams/{team}/filters:
     $ref: './filters.yaml#/savedFilters'
-  /api/v1/tenants/{tenant}/filters/{filter}:
+  /api/v1/teams/{team}/filters/{filter}:
     $ref: './filters.yaml#/savedFilter'
-  /api/v1/tenants/{tenant}/deleted-tickets:
-    $ref: './tenants.yaml#/deletedTickets'
-  /api/v1/tenants/{tenant}/deleted-tickets/{key}:
-    $ref: './tenants.yaml#/deletedTicket'
-  /api/v1/tenants/{tenant}/deleted-tickets/{key}/restore:
-    $ref: './tenants.yaml#/deletedTicketRestore'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/body:
-    $ref: './tenants.yaml#/ticketBody'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/horizon:
-    $ref: './tenants.yaml#/ticketHorizon'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/confidential:
-    $ref: './tenants.yaml#/ticketConfidential'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/markdown:
+  /api/v1/teams/{team}/deleted-tickets:
+    $ref: './teams.yaml#/deletedTickets'
+  /api/v1/teams/{team}/deleted-tickets/{key}:
+    $ref: './teams.yaml#/deletedTicket'
+  /api/v1/teams/{team}/deleted-tickets/{key}/restore:
+    $ref: './teams.yaml#/deletedTicketRestore'
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/body:
+    $ref: './teams.yaml#/ticketBody'
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/horizon:
+    $ref: './teams.yaml#/ticketHorizon'
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/confidential:
+    $ref: './teams.yaml#/ticketConfidential'
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/markdown:
     $ref: './tickets.yaml#/markdown'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/context:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/context:
     $ref: './tickets.yaml#/context'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/transitions:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/transitions:
     $ref: './tickets.yaml#/transitions'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/rank:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/rank:
     $ref: './tickets.yaml#/rank'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/questions:
     $ref: './questions.yaml#/questions'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/questions/{question}:
     $ref: './questions.yaml#/question'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/answer:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/questions/{question}/answer:
     $ref: './questions.yaml#/questionAnswer'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/questions/{question}/withdrawal:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/questions/{question}/withdrawal:
     $ref: './questions.yaml#/questionWithdrawal'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/comments:
     $ref: './comments.yaml#/comments'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/comments/{comment}:
     $ref: './comments.yaml#/comment'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}/revisions:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/comments/{comment}/revisions:
     $ref: './comments.yaml#/commentRevisions'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/comments/{comment}/withdrawal:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/comments/{comment}/withdrawal:
     $ref: './comments.yaml#/commentWithdrawal'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/activity:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/activity:
     $ref: './comments.yaml#/activity'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/interest:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/interest:
     $ref: './tickets.yaml#/interest'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/prerequisites:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisites:
     $ref: './tickets.yaml#/prerequisites'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries:
     $ref: './time.yaml#/ticketTime'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries/{entry}:
     $ref: './time.yaml#/timeEntry'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}/void:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries/{entry}/void:
     $ref: './time.yaml#/timeEntryVoid'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/time-entries/{entry}/revisions:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/time-entries/{entry}/revisions:
     $ref: './time.yaml#/timeEntryRevisions'
-  /api/v1/tenants/{tenant}/time-entries:
-    $ref: './time.yaml#/tenantTime'
-  /api/v1/tenants/{tenant}/time-report:
+  /api/v1/teams/{team}/time-entries:
+    $ref: './time.yaml#/teamTime'
+  /api/v1/teams/{team}/time-report:
     $ref: './time.yaml#/timeReport'
-  /api/v1/tenants/{tenant}/attachment-usage:
+  /api/v1/teams/{team}/attachment-usage:
     $ref: './attachments.yaml#/attachmentUsage'
-  /api/v1/tenants/{tenant}/attachment-consistency:
+  /api/v1/teams/{team}/attachment-consistency:
     $ref: './attachments.yaml#/attachmentConsistency'
-  /api/v1/tenants/{tenant}/attachment-consistency/orphan-removal:
+  /api/v1/teams/{team}/attachment-consistency/orphan-removal:
     $ref: './attachments.yaml#/orphanRemoval'
-  /api/v1/tenants/{tenant}/attachment-consistency/dangling-acceptance:
+  /api/v1/teams/{team}/attachment-consistency/dangling-acceptance:
     $ref: './attachments.yaml#/danglingAcceptance'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/attachments:
     $ref: './attachments.yaml#/attachments'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/attachments/{attachment}:
     $ref: './attachments.yaml#/attachment'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/attachments/{attachment}/content:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/attachments/{attachment}/content:
     $ref: './attachments.yaml#/attachmentContent'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/links:
     $ref: './tickets.yaml#/links'
-  /api/v1/tenants/{tenant}/projects/{project}/tickets/{number}/links/{type}/{other}:
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}:
     $ref: './tickets.yaml#/link'
-  /api/v1/tickets/{tenant}/{key}:
+  /api/v1/tickets/{team}/{key}:
     $ref: './tickets.yaml#/resolve'
 components:
   # The data of the chat's server-sent events (chat.yaml). No operation answers
@@ -269,6 +276,11 @@ components:
       $ref: './components/schemas.yaml#/ExportLink'
     ExportAttachment:
       $ref: './components/schemas.yaml#/ExportAttachment'
+  parameters:
+    # The path parameter of the deprecated twins under /api/v1/tenants/{tenant},
+    # which tools/specbundle writes; no source path names it.
+    TenantSlug:
+      $ref: './components/parameters.yaml#/TenantSlug'
   securitySchemes:
     bearerToken:
       type: http

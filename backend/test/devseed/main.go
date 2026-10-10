@@ -1,10 +1,10 @@
 // Command devseed is `make dev-seed` (docs/adr/0038 D7): until a login
-// exists, it gives a developer what a login would — a person, a tenant, an
+// exists, it gives a developer what a login would — a person, a team, an
 // admin membership and a token — in the database of `make postgres-up`. It
 // writes through the test fixture over the administrative connection and is
 // never part of the binary.
 //
-// Every run reuses the person and the tenant and creates a fresh token, which
+// Every run reuses the person and the team and creates a fresh token, which
 // it prints once.
 package main
 
@@ -30,7 +30,7 @@ func main() {
 
 func run() error {
 	username := flag.String("username", "dev", "the person's username")
-	slug := flag.String("tenant", "dev", "the tenant's slug")
+	slug := flag.String("team", "dev", "the team's slug")
 	agent := flag.Bool("agent", true, "create an agent token (scope write, every capability) instead of a plain admin-scope one")
 	flag.Parse()
 
@@ -50,11 +50,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	tenant, err := f.Tenant(ctx, *slug, "Development")
+	team, err := f.Tenant(ctx, *slug, "Development")
 	if err != nil {
 		return err
 	}
-	if err := f.Member(ctx, tenant, person, domain.RoleAdmin); err != nil {
+	if err := f.Member(ctx, team, person, domain.RoleAdmin); err != nil {
 		return err
 	}
 	spec := fixture.TokenSpec{UserID: person, Name: "dev-seed", Scope: domain.ScopeAdmin}
@@ -66,7 +66,7 @@ func run() error {
 		return err
 	}
 	fmt.Printf("person:  local:%s (admin of %s)\n", *username, *slug)
-	fmt.Printf("tenant:  %s\n", *slug)
+	fmt.Printf("team:    %s\n", *slug)
 	fmt.Printf("token:   %s\n", token)
 	fmt.Printf("scope:   %s, agent: %t, expires in 90 days\n", spec.Scope, spec.Agent)
 	return nil

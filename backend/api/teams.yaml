@@ -1,0 +1,936 @@
+# The installation's teams, /api/v1/teams: a global administrator lists
+# them all and creates one (docs/adr/0005 D5, docs/adr/0034 D2).
+teams:
+  get:
+    operationId: listTeams
+    tags: [teams]
+    summary: Every team of the installation, for a global administrator
+    description: |
+      Every team by slug, with the role the caller holds in it — the highest
+      of their mapping and their grant — or `null` where they hold none
+      (docs/adr/0034 D2). It is how a global administrator finds a team in
+      which they have no role: there they see its administration — the
+      team and its settings, its members, its group mappings — and grant
+      themselves a role (`PUT …/members/{person_id}/grant` with their own id),
+      and nothing of its work until they have. A person who is not a global
+      administrator is `403 forbidden`; the teams they belong to are in
+      `GET /api/v1/me`. A browser session only, which no agent mark carries: a
+      token is `403 session_required`, so a leaked token of a global
+      administrator lists no team beyond the person's own.
+    security:
+      - sessionCookie: []
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+    responses:
+      '200':
+        description: A page of teams, by slug
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TeamSummaryList'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: createTeam
+    tags: [teams]
+    summary: Create a team
+    description: |
+      A global administrator, in a browser session: no token creates a team
+      (`403 session_required`), and a person who is not a global administrator
+      is `403 forbidden`. The creator becomes the team's first administrator
+      by a marked grant, recorded with the team (docs/adr/0032 D7); a global
+      administrator has no other role in it (docs/adr/0034 D2). The slug is
+      immutable and never reused (docs/adr/0005 D4).
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    security:
+      - sessionCookie: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TeamCreate'
+          example:
+            slug: acme
+            name: Acme
+    responses:
+      '201':
+        description: The team
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Team'
+            example:
+              slug: acme
+              name: Acme
+              version: 1
+              time_visible_to_members: false
+              time_locked_until: null
+              members_create_projects: true
+              created_at: '2026-03-02T08:45:00Z'
+              updated_at: '2026-03-02T08:45:00Z'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+# Everything under one team, /api/v1/teams/{team}/… (docs/adr/0023 D1).
+# An unknown slug, a team the person is not a member of, and a token
+# restricted to another team answer alike: 404 not_found (D5). A global
+# administrator without a role in the team reaches, in a browser session that
+# no agent marks, its administration — getTeam, listMembers,
+# listGroupMappings — and the grant of a role to themselves, setMemberGrant;
+# every other route of the team answers them that 404 too (docs/adr/0034 D2).
+team:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+  get:
+    operationId: getTeam
+    tags: [teams]
+    summary: The team and its settings
+    description: |
+      Every member reads it; a global administrator who holds no role in the
+      team too, in a browser session, as part of its administration
+      (docs/adr/0034 D2).
+    responses:
+      '200':
+        description: The team
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Team'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  patch:
+    operationId: updateTeam
+    tags: [teams]
+    summary: Change the team's name or settings
+    description: |
+      An administrator's act with `admin` scope; agents never (docs/adr/0043 D3).
+      `If-Match` is required (docs/adr/0050 D3).
+
+      A change that widens what the members may see or do — switching
+      `time_visible_to_members` or `members_create_projects` on, or moving
+      `time_locked_until` earlier or clearing it — takes a browser session: a
+      token is `403 session_required` (docs/adr/0035 D5). The other direction,
+      and the name, stay open to an administrator's token.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TeamPatch'
+          example:
+            members_create_projects: false
+    responses:
+      '200':
+        description: The changed team
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Team'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+audit:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+  get:
+    operationId: listAudit
+    tags: [teams]
+    summary: The team's audit record (docs/adr/0026 D6)
+    description: |
+      For the team's administrators. Filters combine with AND; a repeated
+      `action` with OR. Newest first, paged by cursor, or by number with a total
+      (docs/adr/0048 D2). `Accept: text/csv` returns the same rows as CSV, every
+      cell that could start a formula prefixed with an apostrophe. A CSV answer
+      carries no cursor: a client that reads more than one page as CSV asks for
+      numbered pages, with `to` held at the moment it began, so that a newer
+      row does not move the rows between two pages.
+    parameters:
+      - name: actor
+        in: query
+        description: A person's id
+        schema: {type: string, format: uuid}
+      - name: token
+        in: query
+        description: A token's id
+        schema: {type: string, format: uuid}
+      - name: action
+        in: query
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            $ref: './components/schemas.yaml#/AuditAction'
+      - name: entity_type
+        in: query
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: from
+        in: query
+        description: Inclusive lower bound of the time
+        schema: {type: string, format: date-time}
+      - name: to
+        in: query
+        description: Exclusive upper bound of the time
+        schema: {type: string, format: date-time}
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
+    responses:
+      '200':
+        description: A page of audit rows, newest first
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/AuditList'
+          text/csv:
+            schema:
+              type: string
+            example: |
+              id,created_at,actor_user_id,actor_system,agent,token_id,entity_type,entity_id,ticket_key,action,reason,note,request_id,before,after,token_name
+              01a1108c-69c0-708c-a456-d344b487f663,2026-10-06T09:30:00Z,019cadb4-4b00-7719-ade7-c2d450e9b5f3,,,,ticket,01a1108c-69c0-748d-8363-132fa3f8667c,acme/WEB-43,created,,,01a1108c-69c0-7a3e-9c21-5b7d0f4e8a16,,"{""type"": ""bug"", ""title"": ""The password reset mail links to the old domain"", ""effort"": ""S"", ""urgency"": ""later"", ""security"": ""none"", ""severity"": ""medium""}",
+              01a0fbe2-7f00-7f00-a107-cc0e604f9a75,2026-10-02T09:12:00Z,019cb855-3d80-7d3c-a80d-97fa1e50d59e,,,,ticket,01a0f687-f3a0-7516-87ab-709ca2b1c1e6,acme/WEB-42,transitioned,,,01a0fbe2-7f00-779f-a8b1-4da03f48c675,"{""state"": ""decided""}","{""state"": ""in-progress""}",
+      default:
+        $ref: './components/responses.yaml#/Problem'
+projects:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+  get:
+    operationId: listProjects
+    tags: [projects]
+    summary: The projects the caller can see
+    description: |
+      By key, paged by cursor, or by number with a total (docs/adr/0048 D2).
+    parameters:
+      - name: include_archived
+        in: query
+        schema: {type: boolean, default: false}
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of projects, by key
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ProjectList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: createProject
+    tags: [projects]
+    summary: Create a project
+    description: |
+      `write` scope. A member creates projects while the team allows it,
+      an administrator always (docs/adr/0034 D9); an agent needs the
+      `create-project` capability (docs/adr/0043 D4).
+
+      With `repository`, the project is created and the repository bound in one
+      recorded act, and the creation is idempotent over the remote
+      (docs/adr/0066 D3, D5): when a project of the team binds the repository
+      and path already, the answer is 200 with that project and nothing is
+      created or bound — 409 `repository_bound` when the caller cannot see it.
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ProjectCreate'
+          example:
+            key: WEB
+            name: Website
+            description: The public website and the customer sign-in
+            wip_limits: {in-progress: 4, review: 2}
+            repository:
+              remote: git@github.com:acme/website.git
+    responses:
+      '200':
+        description: A project of the team binds the repository already; that project
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Project'
+      '201':
+        description: The new project
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Project'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+project:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  get:
+    operationId: getProject
+    tags: [projects]
+    summary: One project
+    responses:
+      '200':
+        description: The project
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Project'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  patch:
+    operationId: updateProject
+    tags: [projects]
+    summary: Change a project's name, description or WIP limits
+    description: |
+      A member's act with `write` scope, an agent's too: no record restricts it (docs/adr/0043).
+      `If-Match` is required. The WIP limits are advisory, per state, `review` included
+      (docs/adr/0019 D3).
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ProjectPatch'
+          example:
+            description: The public website and the customer sign-in
+            wip_limits: {in-progress: 4, review: 2}
+    responses:
+      '200':
+        description: The changed project
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Project'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+projectArchive:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  put:
+    operationId: archiveProject
+    tags: [projects]
+    summary: Archive a project
+    description: |
+      An administrator's act with `admin` scope, never an agent's
+      (docs/adr/0043 D3). The project keeps its tickets and keys, leaves the
+      default lists and refuses new tickets (docs/adr/0006 D4). Archiving an
+      archived project changes nothing.
+    responses:
+      '200':
+        description: The archived project
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Project'
+            example:
+              id: 019cadcb-2e60-7116-9641-67b17d11d0ef
+              key: WEB
+              name: Website
+              description: The public website and the customer sign-in
+              restricted: false
+              wip_limits: {in-progress: 4, review: 2}
+              archived_at: '2026-10-06T11:00:00Z'
+              version: 3
+              created_at: '2026-03-02T09:05:00Z'
+              updated_at: '2026-10-06T11:00:00Z'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+projectRank:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  put:
+    operationId: sortProjectRank
+    tags: [tickets]
+    summary: Reorder the project's open tickets by their score
+    description: |
+      "Sort by score" (docs/adr/0014 D3): the open tickets of the project the caller can see take
+      the places they hold among themselves in the score's order — highest first, each scored anew
+      with the function as it stands — so every horizon's group and every parent's children read in
+      the score's order; a ticket the caller cannot see keeps its key and its place. One act,
+      `ranked` on the project with `{"by": "score", "score_version", "moved"}`, naming the tickets
+      it moved, whose activity shows it, published as `project.changed`; each ticket it moved gets
+      a new version, as a move gives one. A rank that follows the score already answers `moved: 0`
+      and records nothing. Never automatic. A member's act with `write` scope; an agent
+      needs `rank` (docs/adr/0043 D4). No `If-Match`: it names the order, not a state it overwrites
+      (docs/adr/0050 D4).
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ProjectRankSort'
+          example:
+            by: score
+    responses:
+      '200':
+        description: How many tickets changed their place
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/ProjectRankSorted'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+teamTickets:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+  get:
+    operationId: listTeamTickets
+    tags: [tickets]
+    summary: The team's tickets across its projects, newest first
+    description: |
+      The filters of docs/adr/0049: repeated values combine with OR, parameters with AND, a
+      value prefixed with ! is negated, me is the caller's person. Done and dropped tickets
+      show only with include_terminal or when state names them; done_after keeps those done
+      after a time.
+    parameters:
+      - $ref: './components/parameters.yaml#/FilterProject'
+      - $ref: './components/parameters.yaml#/FilterState'
+      - $ref: './components/parameters.yaml#/FilterType'
+      - $ref: './components/parameters.yaml#/FilterSeverity'
+      - $ref: './components/parameters.yaml#/FilterSecurity'
+      - $ref: './components/parameters.yaml#/FilterHorizon'
+      - $ref: './components/parameters.yaml#/FilterEffort'
+      - $ref: './components/parameters.yaml#/FilterAssignee'
+      - $ref: './components/parameters.yaml#/FilterReporter'
+      - $ref: './components/parameters.yaml#/FilterParent'
+      - $ref: './components/parameters.yaml#/ProgressMin'
+      - $ref: './components/parameters.yaml#/ProgressMax'
+      - $ref: './components/parameters.yaml#/OpenedAfter'
+      - $ref: './components/parameters.yaml#/OpenedBefore'
+      - $ref: './components/parameters.yaml#/UpdatedAfter'
+      - $ref: './components/parameters.yaml#/UpdatedBefore'
+      - $ref: './components/parameters.yaml#/DoneAfter'
+      - $ref: './components/parameters.yaml#/Query'
+      - $ref: './components/parameters.yaml#/IncludeTerminal'
+      - $ref: './components/parameters.yaml#/FilterBlocked'
+      - $ref: './components/parameters.yaml#/FilterHasOpenQuestions'
+      - $ref: './components/parameters.yaml#/FilterInterest'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of tickets
+        headers:
+          ETag:
+            description: A weak validator of this page for this caller
+            schema: {type: string}
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TicketList'
+      '304':
+        description: The page is unchanged since the If-None-Match ETag
+        headers:
+          ETag:
+            description: The weak validator of the unchanged page
+            schema: {type: string}
+      default:
+        $ref: './components/responses.yaml#/Problem'
+projectTickets:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+  get:
+    operationId: listProjectTickets
+    tags: [tickets]
+    summary: The project's tickets, in the project's rank
+    description: |
+      The ranked tickets by their key, then the unranked — done and dropped tickets, and open ones
+      a release before the rank filed — by number (docs/adr/0014 D1). A cursor carries the key
+      and the number sealed, since a key is computed over tickets the caller may not see, and is
+      bound to this order; one from before the rank is 400 `invalid_cursor` (docs/adr/0048 D1,
+      D5). `state=done&done_after=<time>` counts what the board shows for done
+      (docs/adr/0018 D1).
+    parameters:
+      - $ref: './components/parameters.yaml#/FilterState'
+      - $ref: './components/parameters.yaml#/FilterType'
+      - $ref: './components/parameters.yaml#/FilterSeverity'
+      - $ref: './components/parameters.yaml#/FilterSecurity'
+      - $ref: './components/parameters.yaml#/FilterHorizon'
+      - $ref: './components/parameters.yaml#/FilterEffort'
+      - $ref: './components/parameters.yaml#/FilterAssignee'
+      - $ref: './components/parameters.yaml#/FilterReporter'
+      - $ref: './components/parameters.yaml#/FilterParent'
+      - $ref: './components/parameters.yaml#/ProgressMin'
+      - $ref: './components/parameters.yaml#/ProgressMax'
+      - $ref: './components/parameters.yaml#/OpenedAfter'
+      - $ref: './components/parameters.yaml#/OpenedBefore'
+      - $ref: './components/parameters.yaml#/UpdatedAfter'
+      - $ref: './components/parameters.yaml#/UpdatedBefore'
+      - $ref: './components/parameters.yaml#/DoneAfter'
+      - $ref: './components/parameters.yaml#/Query'
+      - $ref: './components/parameters.yaml#/IncludeTerminal'
+      - $ref: './components/parameters.yaml#/FilterBlocked'
+      - $ref: './components/parameters.yaml#/FilterHasOpenQuestions'
+      - $ref: './components/parameters.yaml#/FilterInterest'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/Page'
+      - $ref: './components/parameters.yaml#/PerPage'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of tickets
+        headers:
+          ETag:
+            description: A weak validator of this page for this caller
+            schema: {type: string}
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TicketList'
+      '304':
+        description: The page is unchanged since the If-None-Match ETag
+        headers:
+          ETag:
+            description: The weak validator of the unchanged page
+            schema: {type: string}
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  post:
+    operationId: createTicket
+    tags: [tickets]
+    summary: File a ticket
+    description: |
+      A member's act with `write` scope, in the agent baseline (docs/adr/0043 D2). The number is
+      the project's next. `horizon` is the ticket's horizon, a planning category independent of
+      the state, `later` when left out; another horizon is the ticket's set horizon, set by the
+      caller and without a reason (docs/adr/0010 D3). The ticket joins the rank at the bottom,
+      the end of its horizon, or directly `after` or `before` the open ticket of the project
+      named, which must stand in the same horizon (docs/adr/0014 D2). An agent needs
+      `set-horizon` for a horizon other than `later` and `rank` for a place, else 403
+      `agent_forbidden` (docs/adr/0043 D4). A live or boundary security class makes the ticket
+      confidential (docs/adr/0065 D2); an agent assigns a confidential filing only to its own
+      person, else 403 `agent_forbidden` (docs/adr/0043 D3), and so does a person's token, else
+      403 `session_required` — admitting another person takes a browser session
+      (docs/adr/0035 D5). An archived project refuses.
+    parameters:
+      - $ref: './components/parameters.yaml#/IdempotencyKey'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TicketCreate'
+          example:
+            type: bug
+            title: The password reset mail links to the old domain
+            severity: medium
+            security: none
+            effort: S
+            parent: WEB-40
+    responses:
+      '201':
+        description: The new ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+          Location:
+            $ref: './components/headers.yaml#/Location'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+            example:
+              id: 01a1108c-69c0-748d-8363-132fa3f8667c
+              key: acme/WEB-43
+              project: WEB
+              number: 43
+              type: bug
+              title: The password reset mail links to the old domain
+              body: ''
+              state: filed
+              block: null
+              severity: medium
+              security: none
+              threat: null
+              horizon: later
+              horizon_set: null
+              effort: S
+              progress: 0
+              progress_refinement: 0
+              progress_review: 0
+              progress_derived: false
+              parent: acme/WEB-40
+              reporter: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
+              reporter_agent: null
+              reporter_token: null
+              assignee: null
+              confidential: false
+              opened_at: '2026-10-06T09:30:00Z'
+              decided_at: null
+              done_at: null
+              done_from: null
+              done_by_hand: false
+              open_prerequisites: 0
+              score: 4.0
+              score_version: 1
+              version: 1
+              created_at: '2026-10-06T09:30:00Z'
+              updated_at: '2026-10-06T09:30:00Z'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+ticket:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: getTicket
+    tags: [tickets]
+    summary: One ticket
+    responses:
+      '200':
+        description: The ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  patch:
+    operationId: updateTicket
+    tags: [tickets]
+    summary: Change a ticket's fields
+    description: |
+      `If-Match` is required (docs/adr/0050 D3). Assigning a confidential ticket admits the new
+      assignee (docs/adr/0065 D9): an agent assigns a confidential ticket — or one the change
+      makes confidential — only to its own person or to nobody, and another new assignee is 403
+      `agent_forbidden` (docs/adr/0043 D3); a person's token is held the same way, and another
+      new assignee is 403 `session_required` — admitting a person takes a browser session
+      (docs/adr/0035 D5).
+
+      The three progress stages — `progress_refinement`, `progress` (implementation),
+      `progress_review` — take 0 to 100 in steps of five in every state but dropped, and not on a
+      ticket with children, whose stages are derived (409 `state_conflict`; docs/adr/0017 D2, D3).
+      A change that brings the last of the three to 100 on a ticket without children is the done act
+      in the same transaction (docs/adr/0009 D5, docs/adr/0017 D4): it needs `note`, the
+      verification (400 at `/note` otherwise); over open prerequisites it is 409
+      `open_prerequisites` unless a person sends `override_prerequisites` with a `reason`; an agent
+      needs `close` and a ticket in in-progress or review (403 `agent_forbidden`) and never
+      overrides. The ticket is then done by its stages: `done_by_hand` false, `done_from` the state
+      it left, its rank taken away; a `transitioned` act carries the note beside the `updated` act.
+      A change that lowers a stage of a ticket done by its stages reopens it to `done_from`, with a
+      `reason` (400 at `/reason` otherwise), ranked at the bottom of its project. A ticket done by
+      hand keeps its state while its stages change. `note`, `override_prerequisites` and `reason`
+      on a change that moves no state are 400. The version rises once.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TicketPatch'
+          example:
+            progress: 60
+            comment: The fix sends the password as typed; the test in Safari is next.
+    responses:
+      '200':
+        description: The changed ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: deleteTicket
+    tags: [tickets]
+    summary: Delete a ticket into the team's bin
+    description: |
+      A team administrator's act with `admin` scope, never an agent's (docs/adr/0024 D7,
+      docs/adr/0043 D3; 403 `agent_forbidden`). The ticket is soft-deleted: from then on it answers
+      like a missing one everywhere but the team's bin (`GET …/deleted-tickets`) — every route of
+      it and under it is 404, and it leaves every list, the prerequisite trees, the person-level
+      lists, the inbox and the context; links to it are hidden, not removed, and its key stays taken
+      (docs/adr/0024 D1, D3). Its parent's derived stages leave it out. Recorded as `deleted` and
+      published. A restoration brings everything back; thirty days after the deletion the purge job
+      removes it for good (D2). Deleting a ticket that others depend on is not refused — the browser
+      shows the dependents and asks first (D7).
+    responses:
+      '204':
+        description: Deleted
+      default:
+        $ref: './components/responses.yaml#/Problem'
+deletedTickets:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+  get:
+    operationId: listDeletedTickets
+    tags: [tickets]
+    summary: The team's bin of deleted tickets
+    description: |
+      The team administrators' view of the deleted tickets they can see, the last deleted first,
+      each with who deleted it and when the purge job removes it (docs/adr/0024 D1, D2): the one
+      list in which a deleted ticket exists. An administrator's, with `read` scope; a token
+      restricted to a project is refused like an unknown team.
+    parameters:
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of the bin
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/DeletedTicketList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+deletedTicket:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/TicketKeyPath'
+  delete:
+    operationId: purgeTicket
+    tags: [tickets]
+    summary: Purge a deleted ticket for good
+    description: |
+      A team administrator's act, never an agent's (docs/adr/0024 D2, D7, docs/adr/0043 D3),
+      **in a browser session only**: the one irreversible act on a ticket, so a token — an
+      administrator's `admin` token included — answers `403 session_required`, and the purge job
+      does the rest thirty days after the deletion (docs/adr/0024 D7 as amended 2026-10-05). On a
+      ticket of the bin only — any other key is 404. The ticket, its
+      comments, questions, links, stakes, time entries, notifications and attachments are removed,
+      and the attachments' objects after them; its children become roots, and a block that waited
+      on it waits on its key as an external reference. Its audit rows stay with their content
+      emptied: the key, the actor and the act remain (docs/adr/0026 D3). The key stays taken.
+      Irreversible: the browser asks a second time. Recorded as `purged` and published.
+    security:
+      - sessionCookie: []
+    responses:
+      '204':
+        description: Purged
+      default:
+        $ref: './components/responses.yaml#/Problem'
+deletedTicketRestore:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/TicketKeyPath'
+  put:
+    operationId: restoreTicket
+    tags: [tickets]
+    summary: Restore a deleted ticket from the bin
+    description: |
+      A team administrator's act with `admin` scope, never an agent's (docs/adr/0024 D1, D7,
+      docs/adr/0043 D3), on a ticket of the bin only — any other key is 404. The ticket comes back
+      as it was, its links, comments and place in the rank with it; the version rises. Recorded as
+      `restored` and published.
+    responses:
+      '200':
+        description: The restored ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+ticketBody:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: getTicketBody
+    tags: [tickets]
+    summary: The ticket's body, as Markdown and rendered
+    description: |
+      The body as written and as the HTML a browser shows (docs/adr/0011 D6), on a route of its
+      own: the ticket lists carry the Markdown of every row, and rendering every body of a page
+      is work no list needs. The HTML is rendered and sanitised on the server: raw HTML is shown
+      as text; a link keeps only an `http`, `https` or `mailto` address or one relative to the
+      installation, opens in a new tab and carries `rel="noopener noreferrer nofollow"`; an
+      image shows only when it names a raster attachment of this ticket, from that attachment's
+      own path (docs/adr/0016 D7), and any other image is a link to its address. Shown through
+      Angular's own sanitiser, never trusted past it. The `ETag` is the ticket's, the one a
+      replacement of the body names in `If-Match`; the HTML changes with the ticket's
+      attachments as well, which raise no version.
+    responses:
+      '200':
+        description: The body
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/TicketBody'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  put:
+    operationId: replaceTicketBody
+    tags: [tickets]
+    summary: Replace the ticket's body
+    description: The body is the current state, replaced as a whole; the timeline keeps the change (docs/adr/0011 D1).
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/TicketBodyReplace'
+          example:
+            body: |-
+              ## Current state
+
+              Safari 18 trims the password field before the form is sent, so a password that ends with a space never matches and the sign-in fails with `invalid_credentials`.
+
+              ## Required changes
+
+              - Send the password as typed.
+              - An end-to-end test that signs in with a trailing space in Safari.
+            comment: Rewritten after the reproduction in Safari 18.
+    responses:
+      '200':
+        description: The ticket with its new body
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+ticketHorizon:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  put:
+    operationId: setHorizon
+    tags: [tickets]
+    summary: Set the horizon
+    description: |
+      Sets the ticket's horizon — `now`, `release`, `next`, `later` or `icebox` — a planning
+      category independent of the state, which holds until a person or an agent sets another;
+      nothing changes it on its own (docs/adr/0010 D3). `later` is where a ticket nobody placed
+      stands: setting it clears the set horizon, so `horizon_set` is null afterwards, and on a
+      ticket with none set it changes nothing. The reason is optional for a person and required
+      of an agent, whose request without one is 400 at `/reason`; it is recorded on the act and,
+      for a horizon other than `later`, shown with it. An agent needs the set-horizon capability
+      (docs/adr/0043 D4). A 412 names the current `horizon` and `horizon_set`.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/HorizonUpdate'
+          example:
+            value: now
+            reason: Customers cannot sign in
+    responses:
+      '200':
+        description: The ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+ticketConfidential:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  put:
+    operationId: setConfidential
+    tags: [tickets]
+    summary: Set or lift the confidential flag
+    description: |
+      A team administrator's act with `admin` scope; never an agent's (docs/adr/0065 D6).
+      Lifting needs a reason and is recorded (D3), and a browser session: it shows the
+      ticket to every member, so a token is `403 session_required` (docs/adr/0035 D5).
+      Setting the flag stays open to an administrator's token.
+    parameters:
+      - $ref: './components/parameters.yaml#/IfMatch'
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: './components/schemas.yaml#/ConfidentialSet'
+          example:
+            confidential: false
+            reason: The fix is released; every member may read the finding now.
+    responses:
+      '200':
+        description: The ticket
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Ticket'
+      default:
+        $ref: './components/responses.yaml#/Problem'

@@ -11,15 +11,15 @@ import { RequestBuilder } from '../../request-builder';
 export interface StopChatTurns$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 }
 
 export function stopChatTurns(http: HttpClient, rootUrl: string, params: StopChatTurns$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
   const rb = new RequestBuilder(rootUrl, stopChatTurns.PATH, 'delete');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
   }
 
   return http.request(
@@ -32,4 +32,4 @@ export function stopChatTurns(http: HttpClient, rootUrl: string, params: StopCha
   );
 }
 
-stopChatTurns.PATH = '/api/v1/tenants/{tenant}/chat/turns';
+stopChatTurns.PATH = '/api/v1/teams/{team}/chat/turns';

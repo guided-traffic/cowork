@@ -12,9 +12,9 @@ import { ProjectList } from '../../models/project-list';
 export interface ListProjects$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
   include_archived?: boolean;
 
 /**
@@ -42,7 +42,7 @@ export interface ListProjects$Params {
 export function listProjects(http: HttpClient, rootUrl: string, params: ListProjects$Params, context?: HttpContext): Observable<StrictHttpResponse<ProjectList>> {
   const rb = new RequestBuilder(rootUrl, listProjects.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.query('include_archived', params.include_archived, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
@@ -61,4 +61,4 @@ export function listProjects(http: HttpClient, rootUrl: string, params: ListProj
   );
 }
 
-listProjects.PATH = '/api/v1/tenants/{tenant}/projects';
+listProjects.PATH = '/api/v1/teams/{team}/projects';

@@ -20,7 +20,7 @@ import type {
 /**
  * The suite seeds its data through the API and asserts through the UI (docs/adr/0056 D7). Two
  * credentials: an administrator's token for what a token may do, and the administrator's session
- * for what only a session may do — creating a tenant, a token, a local account or a group mapping
+ * for what only a session may do — creating a team, a token, a local account or a group mapping
  * (docs/adr/0031–0033, 0035). A session's writes carry what the frontend sends past the CSRF check:
  * the installation's origin and `X-Requested-With: cowork` (docs/adr/0037).
  */
@@ -94,20 +94,20 @@ export async function signInWithNewPassword(
 export class Session {
   constructor(readonly context: APIRequestContext) {}
 
-  /** The tenant, or nothing when it exists already — a stack of `make e2e-up` is used again. */
-  async ensureTenant(slug: string, name: string): Promise<void> {
-    const response = await this.context.post('/api/v1/tenants', {
+  /** The team, or nothing when it exists already — a stack of `make e2e-up` is used again. */
+  async ensureTeam(slug: string, name: string): Promise<void> {
+    const response = await this.context.post('/api/v1/teams', {
       data: { slug, name },
       headers: { 'Idempotency-Key': randomUUID() },
     });
     if (response.status() !== 409) {
-      await ok('create the tenant', response);
+      await ok('create the team', response);
     }
   }
 
-  /** The group mapping, or nothing when the tenant maps the group already. */
+  /** The group mapping, or nothing when the team maps the group already. */
   async ensureMapping(slug: string, group: string, role: 'viewer' | 'member' | 'admin') {
-    const response = await this.context.post(`/api/v1/tenants/${slug}/group-mappings`, {
+    const response = await this.context.post(`/api/v1/teams/${slug}/group-mappings`, {
       data: { group, role },
       headers: { 'Idempotency-Key': randomUUID() },
     });
@@ -139,7 +139,7 @@ export class Session {
   ): Promise<Account> {
     return ok(
       `create the account ${username}`,
-      await this.context.post(`/api/v1/tenants/${slug}/accounts`, {
+      await this.context.post(`/api/v1/teams/${slug}/accounts`, {
         data: {
           username,
           display_name: `E2E ${username}`,
@@ -156,7 +156,7 @@ export class Session {
    * read (docs/adr/0034 D3, docs/adr/0050 D3).
    */
   async restrict(slug: string, project: string): Promise<void> {
-    const path = `/api/v1/tenants/${slug}/projects/${project}`;
+    const path = `/api/v1/teams/${slug}/projects/${project}`;
     const etag = await etagOf(`read the project ${project}`, await this.context.get(path));
     await ok(
       `restrict the project ${project}`,
@@ -214,13 +214,13 @@ export class Seed {
   }
 
   private path(project: string, rest = ''): string {
-    return `/api/v1/tenants/${this.slug}/projects/${project}${rest}`;
+    return `/api/v1/teams/${this.slug}/projects/${project}${rest}`;
   }
 
   async project(key: string, name = `Project ${key}`): Promise<Project> {
     return ok(
       `create the project ${key}`,
-      await this.context.post(`/api/v1/tenants/${this.slug}/projects`, {
+      await this.context.post(`/api/v1/teams/${this.slug}/projects`, {
         data: { key, name },
         headers: { 'Idempotency-Key': randomUUID() },
       }),
@@ -229,7 +229,7 @@ export class Seed {
 
   /** The project, true when this call made it and false when the tenant has it already. */
   async ensureProject(key: string, name: string): Promise<boolean> {
-    const response = await this.context.post(`/api/v1/tenants/${this.slug}/projects`, {
+    const response = await this.context.post(`/api/v1/teams/${this.slug}/projects`, {
       data: { key, name },
       headers: { 'Idempotency-Key': randomUUID() },
     });

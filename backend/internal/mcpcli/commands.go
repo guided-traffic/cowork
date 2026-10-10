@@ -13,7 +13,9 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/tools"
 )
 
-// tokenReport is what token check finds (docs/adr/0070 D2).
+// tokenReport is what token check finds (docs/adr/0070 D2). Tenant is Team
+// under its key before, the same slug, kept for one release so that a script
+// reading it goes on working (docs/adr/0005 D1).
 type tokenReport struct {
 	Installation string   `json:"installation"`
 	Version      string   `json:"version"`
@@ -24,6 +26,7 @@ type tokenReport struct {
 	Name         string   `json:"name,omitempty"`
 	Scope        string   `json:"scope,omitempty"`
 	AgentToken   bool     `json:"agent_token"`
+	Team         string   `json:"team,omitempty"`
 	Tenant       string   `json:"tenant,omitempty"`
 	Project      string   `json:"project,omitempty"`
 	Capabilities []string `json:"capabilities"`
@@ -65,7 +68,7 @@ func tokenCheck(ctx context.Context, e Env, jsonOut bool) int {
 		r.Problem = fmt.Sprintf("%s cannot be reached: %v", cfg.url, err)
 	default:
 		r.Valid, r.Name, r.Scope, r.AgentToken = true, tok.Name, tok.Scope, tok.Flagged
-		r.Tenant, r.Project, r.Capabilities = tok.Tenant, tok.Project, append(r.Capabilities, tok.Capabilities...)
+		r.Team, r.Tenant, r.Project, r.Capabilities = tok.Team, tok.Team, tok.Project, append(r.Capabilities, tok.Capabilities...)
 		r.ExpiresAt = tok.ExpiresAt.UTC().Format(time.RFC3339)
 	}
 	if jsonOut {
@@ -102,9 +105,9 @@ func writeTokenReport(w io.Writer, r tokenReport, tok tools.Token) {
 	restriction := "none"
 	switch {
 	case r.Project != "":
-		restriction = "the project " + r.Tenant + "/" + r.Project
-	case r.Tenant != "":
-		restriction = "the tenant " + r.Tenant
+		restriction = "the project " + r.Team + "/" + r.Project
+	case r.Team != "":
+		restriction = "the team " + r.Team
 	}
 	caps := strings.Join(r.Capabilities, ", ")
 	if caps == "" {
@@ -165,7 +168,7 @@ func writeLookup(w io.Writer, sit tools.Situation) {
 		fmt.Fprintf(w, "Remote %s: %s\n", r.Name, r.URL)
 	}
 	if sit.File != nil {
-		fmt.Fprintf(w, "Binding file: %s (%s/%s)\n", sit.File.File, sit.File.Tenant, sit.File.Project)
+		fmt.Fprintf(w, "Binding file: %s (%s/%s)\n", sit.File.File, sit.File.Team, sit.File.Project)
 	}
 	if b := sit.Binding; b != nil {
 		fmt.Fprintf(w, "Bound to %s (%s) by the %s", b.Key(), b.ProjectName, b.Source)
@@ -193,17 +196,32 @@ func writeLookup(w io.Writer, sit tools.Situation) {
 func describeUnbound(w io.Writer, l *apigen.RepositoryLookup) {
 	if l.Status == apigen.RepositoryLookupStatusAmbiguous {
 		for _, b := range l.Bindings {
-			fmt.Fprintf(w, "Several projects bind it: %s/%s\n", b.Tenant.Slug, b.Project.Key)
+			fmt.Fprintf(w, "Several projects bind it: %s/%s\n", b.Team.Slug, b.Project.Key)
 		}
 		return
 	}
 	if p, err := l.Proposal.Get(); err == nil {
 		fmt.Fprintf(w, "Proposal: a project %q for %s", p.Name, p.Identity)
-		for _, t := range p.Tenants {
+		for _, t := range p.Teams {
 			fmt.Fprintf(w, "; in %s as %s", t.Slug, t.Key)
 		}
-		fmt.Fprintf(w, " (%s).\n", p.Reason)
+		fmt.Fprintf(w, " (%s).\n", proposalReason(p.Reason))
 	} else if why, err := l.ProposalUnavailable.Get(); err == nil {
 		fmt.Fprintf(w, "No proposal: %s.\n", why)
 	}
+}
+
+// proposalReason says why the server proposes the team it proposes; the
+// value only-tenant keeps its name before in the API (docs/adr/0005 D1), and a
+// person reads it as a team's.
+func proposalReason(r apigen.RepositoryProposalReason) string {
+	switch r {
+	case apigen.RepositoryProposalReasonOnlyTenant:
+		return "the only team you may create projects in"
+	case apigen.RepositoryProposalReasonRemoteOwner:
+		return "the team that binds the other repositories of the remote's owner"
+	case apigen.RepositoryProposalReasonChoose:
+		return "no team chosen: choose one"
+	}
+	return string(r)
 }

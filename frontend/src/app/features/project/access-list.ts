@@ -19,9 +19,9 @@ import { changesMemberships, EventStreamService } from '../../core/event-stream.
 import { keepShown, refresh } from '../../core/refresh';
 import { SessionService } from '../../core/session.service';
 
-/** Where an access list is: the tenant and the project's key. */
+/** Where an access list is: the team and the project's key, as the API names them. */
 interface Place {
-  tenant: string;
+  team: string;
   project: string;
 }
 
@@ -51,10 +51,10 @@ export class AccessList {
       const tenant = this.session.tenant();
       const project = this.project();
       return tenant !== null && project && this.session.membership()?.role === 'admin'
-        ? { tenant, project }
+        ? { team: tenant, project }
         : undefined;
     },
-    { equal: (a, b) => a?.tenant === b?.tenant && a?.project === b?.project },
+    { equal: (a, b) => a?.team === b?.team && a?.project === b?.project },
   );
 
   private readonly pages = new ConditionalPages(this.api);

@@ -98,14 +98,14 @@ describe('ChatService', () => {
   };
 
   const availability = (slug: string) =>
-    http.expectOne((request) => request.url === `/api/v1/tenants/${slug}/chat`);
+    http.expectOne((request) => request.url === `/api/v1/teams/${slug}/chat`);
 
   /** The request that stops the person's turns in a tenant, answered 204. */
   const stopped = (slug = 'acme') =>
     http
       .expectOne(
         (request) =>
-          request.method === 'DELETE' && request.url === `/api/v1/tenants/${slug}/chat/turns`,
+          request.method === 'DELETE' && request.url === `/api/v1/teams/${slug}/chat/turns`,
       )
       .flush(null, { status: 204, statusText: 'No Content' });
 
@@ -261,7 +261,7 @@ describe('ChatService', () => {
 
       expect(sent).toHaveLength(1);
       const [request] = sent;
-      expect(request.url).toBe('/api/v1/tenants/acme/chat');
+      expect(request.url).toBe('/api/v1/teams/acme/chat');
       expect(request.init.method).toBe('POST');
       expect(request.init.headers).toEqual({
         'Content-Type': 'application/json',
@@ -295,7 +295,7 @@ describe('ChatService', () => {
 
       void service.send('Hi');
 
-      expect(sent[0].url).toBe('/api/v1/tenants/a%20b/chat');
+      expect(sent[0].url).toBe('/api/v1/teams/a%20b/chat');
       streaming().body.end();
       await settle();
     });
@@ -974,7 +974,7 @@ describe('ChatService', () => {
 
       service.stop();
 
-      const request = http.expectOne('/api/v1/tenants/acme/chat/turns');
+      const request = http.expectOne('/api/v1/teams/acme/chat/turns');
       expect(request.request.method).toBe('DELETE');
       request.flush(null, { status: 204, statusText: 'No Content' });
       await settle();
@@ -986,7 +986,7 @@ describe('ChatService', () => {
 
       service.stop();
       http
-        .expectOne('/api/v1/tenants/acme/chat/turns')
+        .expectOne('/api/v1/teams/acme/chat/turns')
         .flush(problem(503, 'not_ready', 'down'), { status: 503, statusText: 'Unavailable' });
       await settle();
 
@@ -1000,7 +1000,7 @@ describe('ChatService', () => {
 
       expect(service.busy()).toBe(false);
       expect(service.entries()).toEqual([]);
-      http.expectNone('/api/v1/tenants/acme/chat/turns');
+      http.expectNone('/api/v1/teams/acme/chat/turns');
     });
 
     it('from elsewhere ends the turn with done: its messages stay, and it says it stopped', async () => {
@@ -1058,7 +1058,7 @@ describe('ChatService', () => {
         {
           id: expect.any(Number),
           kind: 'notice',
-          text: 'Your turns in this tenant are stopped. Send your message again.',
+          text: 'Your turns in this team are stopped. Send your message again.',
         },
       ]);
     });
@@ -1070,7 +1070,7 @@ describe('ChatService', () => {
 
       const done = service.stopElsewhere();
       http
-        .expectOne('/api/v1/tenants/acme/chat/turns')
+        .expectOne('/api/v1/teams/acme/chat/turns')
         .flush(problem(500, 'internal', 'down'), { status: 500, statusText: 'Internal' });
       await done;
 
@@ -1133,7 +1133,7 @@ describe('ChatService', () => {
 
       expect(service.entries()).toEqual([]);
       void service.send('Hello');
-      expect(sent[1].url).toBe('/api/v1/tenants/globex/chat');
+      expect(sent[1].url).toBe('/api/v1/teams/globex/chat');
       expect(sent[1].turn.messages).toEqual([{ role: 'user', text: 'Hello' }]);
       expect(sent[1].turn.conversation).toMatch(uuid);
       expect(sent[1].turn.conversation).not.toBe(sent[0].turn.conversation);
@@ -1499,9 +1499,9 @@ describe('CHAT_FETCH', () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(answer);
     const init: RequestInit = { method: 'POST' };
 
-    const response = await TestBed.inject(CHAT_FETCH)('/api/v1/tenants/acme/chat', init);
+    const response = await TestBed.inject(CHAT_FETCH)('/api/v1/teams/acme/chat', init);
 
-    expect(fetch).toHaveBeenCalledExactlyOnceWith('/api/v1/tenants/acme/chat', init);
+    expect(fetch).toHaveBeenCalledExactlyOnceWith('/api/v1/teams/acme/chat', init);
     expect(response).toBe(answer);
   });
 });

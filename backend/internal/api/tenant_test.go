@@ -17,13 +17,18 @@ import (
 // who is not a global administrator do not.
 func TestAGlobalAdministratorOverseesTheAdministrationOnly(t *testing.T) {
 	global := auth.Principal{GlobalAdmin: true, Session: true, Scope: domain.ScopeAdmin}
-	for _, op := range []string{"getTenant", "listMembers", "listGroupMappings", "setMemberGrant"} {
+	for _, op := range []string{"getTeam", "listMembers", "listGroupMappings", "setMemberGrant"} {
 		assert.True(t, oversees(global, op), op)
 	}
-	for _, op := range []string{"listProjects", "listTenantTickets", "getTicket", "listTenantTime", "uploadAttachment",
-		opStreamEvents, "runChatTurn", "listAudit", "updateTenant", "addMember", "removeMemberGrant", "listAccounts",
+	for _, op := range []string{"listProjects", "listTeamTickets", "getTicket", "listTeamTime", "uploadAttachment",
+		opStreamEvents, "runChatTurn", "listAudit", "updateTeam", "addMember", "removeMemberGrant", "listAccounts",
 		"createGroupMapping", "deleteGroupMapping", "resolveTicket"} {
-		assert.False(t, oversees(global, op), "%s is the tenant's work or another act", op)
+		assert.False(t, oversees(global, op), "%s is the team's work or another act", op)
+	}
+	// A twin's operation is never routed (TestNoTwinIsEverRouted); were one, it
+	// would oversee nothing.
+	for _, op := range []string{"getTenant", "listMembersDeprecated"} {
+		assert.False(t, oversees(global, op), op)
 	}
 	token := auth.Principal{GlobalAdmin: true, Scope: domain.ScopeAdmin}
 	assert.False(t, oversees(token, "listMembers"), "a token keeps the reach of its person's memberships")

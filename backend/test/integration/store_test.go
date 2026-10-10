@@ -322,9 +322,9 @@ func TestMutateCommitsNothingWithoutAnActOrOnError(t *testing.T) {
 	n, err := f.QueryCount(context.Background(), "SELECT count(*) FROM audit_events WHERE tenant_id = $1", w.A)
 	require.NoError(t, err)
 	assert.Zero(t, n, "no act was committed")
-	n, err = f.QueryCount(context.Background(), "SELECT count(*) FROM tenants WHERE id = $1 AND name = 'Tenant A'", w.A)
+	n, err = f.QueryCount(context.Background(), "SELECT count(*) FROM tenants WHERE id = $1 AND name = 'Team A'", w.A)
 	require.NoError(t, err)
-	assert.EqualValues(t, 1, n, "the tenant keeps its name")
+	assert.EqualValues(t, 1, n, "the team keeps its name")
 }
 
 // docs/adr/0045 D4: the same key with the same request replays the stored

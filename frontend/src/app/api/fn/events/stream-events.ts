@@ -11,9 +11,9 @@ import { RequestBuilder } from '../../request-builder';
 export interface StreamEvents$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The id of the last event the client received
@@ -21,7 +21,7 @@ export interface StreamEvents$Params {
   'Last-Event-ID'?: string;
 
 /**
- * Carries the events of every tenant of the person and their unread count (docs/adr/0054 D1)
+ * Carries the events of every team of the person and their unread count (docs/adr/0054 D1)
  */
   me?: boolean;
 }
@@ -29,7 +29,7 @@ export interface StreamEvents$Params {
 export function streamEvents(http: HttpClient, rootUrl: string, params: StreamEvents$Params, context?: HttpContext): Observable<StrictHttpResponse<string>> {
   const rb = new RequestBuilder(rootUrl, streamEvents.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.header('Last-Event-ID', params['Last-Event-ID'], {});
     rb.query('me', params.me, {});
   }
@@ -44,4 +44,4 @@ export function streamEvents(http: HttpClient, rootUrl: string, params: StreamEv
   );
 }
 
-streamEvents.PATH = '/api/v1/tenants/{tenant}/events';
+streamEvents.PATH = '/api/v1/teams/{team}/events';

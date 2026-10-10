@@ -5,7 +5,7 @@ import { provideApiConfiguration } from '../api/api-configuration';
 import { Comment, Question } from '../api/models';
 import { Conversation } from './conversation.service';
 
-const base = '/api/v1/tenants/acme/projects/VKO/tickets/12';
+const base = '/api/v1/teams/acme/projects/VKO/tickets/12';
 const key = 'acme/VKO-12';
 /** The key a form holds for its content (docs/adr/0045 D3). */
 const formKey = '0199aaaa-0000-7000-8000-00000000f0f0';
@@ -272,7 +272,7 @@ describe('Conversation', () => {
   it('addresses every call through the tenant, the project and the number of the key', async () => {
     const done = conversation.comment('globex/COW-3', 'x', formKey);
 
-    http.expectOne('/api/v1/tenants/globex/projects/COW/tickets/3/comments').flush({ id: 'c1' });
+    http.expectOne('/api/v1/teams/globex/projects/COW/tickets/3/comments').flush({ id: 'c1' });
     await done;
   });
 

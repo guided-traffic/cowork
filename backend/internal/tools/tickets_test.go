@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const ticketPath = "/api/v1/tenants/acme/projects/COW/tickets/12"
+const ticketPath = "/api/v1/teams/acme/projects/COW/tickets/12"
 
 // get_ticket reads the context (docs/adr/0044 D4) and hands the strings a
 // commit carries (docs/adr/0068 D4); a short key needs a bound session.
@@ -43,7 +43,7 @@ func TestGetTicket(t *testing.T) {
 	res = call(t, f.session(false), "get_ticket", `{"key": "acme/COW-12"}`)
 	assert.False(t, res.IsError, res.Text)
 
-	f.refuse("GET /api/v1/tenants/acme/projects/COW/tickets/13/context", http.StatusNotFound, "not_found", "no such ticket")
+	f.refuse("GET /api/v1/teams/acme/projects/COW/tickets/13/context", http.StatusNotFound, "not_found", "no such ticket")
 	res = call(t, f.session(true), "get_ticket", `{"key": "COW-13"}`)
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Text, "404 `not_found`: no such ticket", "the API's error with its code (docs/adr/0042 D4)")
@@ -51,47 +51,57 @@ func TestGetTicket(t *testing.T) {
 
 func TestSearch(t *testing.T) {
 	f := newFake(t)
-	f.on("GET /api/v1/tenants/acme/projects/COW/tickets", http.StatusOK, list(ticket("acme/COW-3", "decided")))
-	f.on("GET /api/v1/tenants/acme/tickets", http.StatusOK, list(ticket("acme/COW-4", "filed")))
-	f.on("GET /api/v1/tenants/beta/tickets", http.StatusOK, list(ticket("beta/OPS-1", "done")))
+	f.on("GET /api/v1/teams/acme/projects/COW/tickets", http.StatusOK, list(ticket("acme/COW-3", "decided")))
+	f.on("GET /api/v1/teams/acme/tickets", http.StatusOK, list(ticket("acme/COW-4", "filed")))
+	f.on("GET /api/v1/teams/beta/tickets", http.StatusOK, list(ticket("beta/OPS-1", "done")))
 	f.on("GET /api/v1/me", http.StatusOK, map[string]any{"id": uuid.NewString(), "display_name": "Ada", "global_admin": false,
 		"local": true, "password_change_required": false, "memberships": []any{
-			map[string]any{"tenant": map[string]any{"slug": "acme", "name": "Acme"}, "role": "member"},
-			map[string]any{"tenant": map[string]any{"slug": "beta", "name": "Beta"}, "role": "member"}}})
+			map[string]any{"team": map[string]any{"slug": "acme", "name": "Acme"}, "role": "member"},
+			map[string]any{"team": map[string]any{"slug": "beta", "name": "Beta"}, "role": "member"}}})
 
 	res := call(t, f.session(true), "search", `{"query": "export", "state": ["decided"], "assigned_to_me": true}`)
 	require.False(t, res.IsError, res.Text)
 	assert.Contains(t, res.Text, "Tickets in acme/COW matching \"export\"")
 	assert.Contains(t, res.Text, "acme/COW-3")
-	q, _ := url.ParseQuery(f.calls(http.MethodGet, "/api/v1/tenants/acme/projects/COW/tickets")[0].Query)
+	q, _ := url.ParseQuery(f.calls(http.MethodGet, "/api/v1/teams/acme/projects/COW/tickets")[0].Query)
 	assert.Equal(t, "export", q.Get("q"))
 	assert.Equal(t, []string{"decided"}, q["state"])
 	assert.Equal(t, []string{"me"}, q["assignee"])
 
-	res = call(t, f.session(true), "search", `{"query": "x", "scope": "tenant"}`)
+	res = call(t, f.session(true), "search", `{"query": "x", "scope": "team"}`)
+	assert.Contains(t, res.Text, "Tickets in the team acme matching")
 	assert.Contains(t, res.Text, "acme/COW-4")
 	res = call(t, f.session(false), "search", `{"query": "x"}`)
 	require.False(t, res.IsError, res.Text)
-	assert.Contains(t, res.Text, "every tenant of the person")
+	assert.Contains(t, res.Text, "every team of the person")
 	assert.Contains(t, res.Text, "acme/COW-4")
 	assert.Contains(t, res.Text, "beta/OPS-1")
-	res = call(t, f.session(false), "search", `{"query": "x", "scope": "tenant"}`)
+	res = call(t, f.session(false), "search", `{"query": "x", "scope": "team"}`)
 	assert.True(t, res.IsError)
+	assert.Contains(t, res.Text, "this session is bound to no team: search with scope all")
+
+	// The scope's name before, tenant, is still taken for one release
+	// (docs/adr/0005 D1), as team.
+	searched := len(f.calls(http.MethodGet, "/api/v1/teams/acme/tickets"))
+	res = call(t, f.session(true), "search", `{"query": "x", "scope": "tenant"}`)
+	require.False(t, res.IsError, res.Text)
+	assert.Contains(t, res.Text, "Tickets in the team acme matching")
+	assert.Len(t, f.calls(http.MethodGet, "/api/v1/teams/acme/tickets"), searched+1)
 
 	// Without words a search lists the project in rank order, and sends no q;
 	// outside one project it asks for words.
-	listed := len(f.calls(http.MethodGet, "/api/v1/tenants/acme/projects/COW/tickets"))
+	listed := len(f.calls(http.MethodGet, "/api/v1/teams/acme/projects/COW/tickets"))
 	for _, args := range []string{`{}`, `{"query": " "}`} {
 		res = call(t, f.session(true), "search", args)
 		require.False(t, res.IsError, res.Text)
 		assert.Contains(t, res.Text, "Tickets in acme/COW, in rank order:")
 		assert.Contains(t, res.Text, "acme/COW-3")
 	}
-	for _, sent := range f.calls(http.MethodGet, "/api/v1/tenants/acme/projects/COW/tickets")[listed:] {
+	for _, sent := range f.calls(http.MethodGet, "/api/v1/teams/acme/projects/COW/tickets")[listed:] {
 		q, _ := url.ParseQuery(sent.Query)
 		assert.False(t, q.Has("q"), sent.Query)
 	}
-	res = call(t, f.session(true), "search", `{"scope": "tenant"}`)
+	res = call(t, f.session(true), "search", `{"scope": "team"}`)
 	assert.True(t, res.IsError)
 	assert.Contains(t, res.Text, "give words to find, or search one project to list its tickets")
 	res = call(t, f.session(false), "search", `{"query": ""}`)
@@ -102,9 +112,9 @@ func TestSearch(t *testing.T) {
 // both directions and answers the canonical key.
 func TestFileTicket(t *testing.T) {
 	f := newFake(t)
-	f.on("POST /api/v1/tenants/acme/projects/COW/tickets", http.StatusCreated, ticket("acme/COW-12", "filed"))
-	f.on("PUT /api/v1/tenants/acme/projects/COW/tickets/12/links/{type}/{other}", http.StatusCreated, map[string]any{})
-	f.on("PUT /api/v1/tenants/acme/projects/COW/tickets/3/links/{type}/{other}", http.StatusCreated, map[string]any{})
+	f.on("POST /api/v1/teams/acme/projects/COW/tickets", http.StatusCreated, ticket("acme/COW-12", "filed"))
+	f.on("PUT /api/v1/teams/acme/projects/COW/tickets/12/links/{type}/{other}", http.StatusCreated, map[string]any{})
+	f.on("PUT /api/v1/teams/acme/projects/COW/tickets/3/links/{type}/{other}", http.StatusCreated, map[string]any{})
 
 	res := call(t, f.session(true), "file_ticket", `{"type": "task", "title": "Ship it", "severity": "medium",
 		"security": "none", "effort": "S", "body": "## Current state", "links": [
@@ -114,16 +124,16 @@ func TestFileTicket(t *testing.T) {
 	assert.Contains(t, res.Text, "Filed acme/COW-12 — Ship it (task, filed), in the horizon later.")
 	assert.Contains(t, res.Text, "Linked: acme/COW-12 relates-to acme/COW-5.")
 	assert.Contains(t, res.Text, "Linked: acme/COW-3 blocks acme/COW-12.")
-	assert.Contains(t, res.Text, "a link stays inside one tenant")
-	posted := f.calls(http.MethodPost, "/api/v1/tenants/acme/projects/COW/tickets")
+	assert.Contains(t, res.Text, "a link stays inside one team")
+	posted := f.calls(http.MethodPost, "/api/v1/teams/acme/projects/COW/tickets")
 	require.Len(t, posted, 1)
 	_, err := uuid.Parse(posted[0].Header.Get("Idempotency-Key"))
 	assert.NoError(t, err, "a creating POST carries a key the tool made")
 	body := decodeBody(t, posted[0])
 	assert.Equal(t, "## Current state", body["body"])
 	assert.NotContains(t, body, "threat")
-	assert.Len(t, f.calls(http.MethodPut, "/api/v1/tenants/acme/projects/COW/tickets/12/links/relates-to/COW-5"), 1)
-	assert.Len(t, f.calls(http.MethodPut, "/api/v1/tenants/acme/projects/COW/tickets/3/links/blocks/COW-12"), 1)
+	assert.Len(t, f.calls(http.MethodPut, "/api/v1/teams/acme/projects/COW/tickets/12/links/relates-to/COW-5"), 1)
+	assert.Len(t, f.calls(http.MethodPut, "/api/v1/teams/acme/projects/COW/tickets/3/links/blocks/COW-12"), 1)
 
 	res = call(t, f.session(false), "file_ticket", `{"type": "task", "title": "x", "severity": "low", "security": "none", "effort": "S"}`)
 	assert.True(t, res.IsError, "an unbound session names the project")
@@ -136,7 +146,7 @@ func TestFileTicket(t *testing.T) {
 // (docs/adr/0010 D3, docs/adr/0014 D2).
 func TestFileTicketIntoAHorizon(t *testing.T) {
 	f := newFake(t)
-	f.on("POST /api/v1/tenants/acme/projects/COW/tickets", http.StatusCreated, ticket("acme/COW-12", "filed", func(m map[string]any) {
+	f.on("POST /api/v1/teams/acme/projects/COW/tickets", http.StatusCreated, ticket("acme/COW-12", "filed", func(m map[string]any) {
 		m["horizon"] = "next"
 	}))
 	s := f.session(true)
@@ -145,7 +155,7 @@ func TestFileTicketIntoAHorizon(t *testing.T) {
 	res := call(t, s, "file_ticket", `{`+filing+`, "horizon": "next", "after": "COW-3"}`)
 	require.False(t, res.IsError, res.Text)
 	assert.Contains(t, res.Text, "Filed acme/COW-12 — Ship it (task, filed), in the horizon next, directly after COW-3.")
-	posted := f.calls(http.MethodPost, "/api/v1/tenants/acme/projects/COW/tickets")
+	posted := f.calls(http.MethodPost, "/api/v1/teams/acme/projects/COW/tickets")
 	require.Len(t, posted, 1)
 	body := decodeBody(t, posted[0])
 	assert.Equal(t, "next", body["horizon"])
@@ -161,7 +171,7 @@ func TestFileTicketIntoAHorizon(t *testing.T) {
 		assert.True(t, res.IsError, args)
 		assert.Contains(t, res.Text, want, args)
 	}
-	assert.Len(t, f.calls(http.MethodPost, "/api/v1/tenants/acme/projects/COW/tickets"), 1, "nothing was sent for the refused calls")
+	assert.Len(t, f.calls(http.MethodPost, "/api/v1/teams/acme/projects/COW/tickets"), 1, "nothing was sent for the refused calls")
 }
 
 // record_state replaces the body with the version it read; a stale version
@@ -223,7 +233,7 @@ func TestCommentMentions(t *testing.T) {
 	f := newFake(t)
 	f.on("POST "+ticketPath+"/comments", http.StatusCreated, map[string]any{"id": uuid.NewString()})
 	f.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "in-progress"), "ETag", `"3"`)
-	f.on("GET /api/v1/tenants/acme/members", http.StatusOK, list(
+	f.on("GET /api/v1/teams/acme/members", http.StatusOK, list(
 		map[string]any{"person": map[string]any{"id": adaID, "username": "ada", "display_name": "Ada"}, "role": "admin"},
 		map[string]any{"person": map[string]any{"id": samID, "username": "sam", "display_name": "Sam Doe"}, "role": "member"}))
 	f.on("GET /api/v1/me", http.StatusOK, map[string]any{"id": adaID, "display_name": "Ada", "memberships": []any{}})
@@ -238,7 +248,7 @@ func TestCommentMentions(t *testing.T) {
 
 	res = call(t, s, "comment", `{"key": "COW-12", "text": "x", "mentions": ["nobody"]}`)
 	assert.True(t, res.IsError)
-	assert.Contains(t, res.Text, "no member of the tenant acme")
+	assert.Contains(t, res.Text, "no member of the team acme")
 	assert.Len(t, f.calls(http.MethodPost, ticketPath+"/comments"), 1, "nothing written for a name that is no member")
 }
 
@@ -250,10 +260,10 @@ func TestCommentMentions(t *testing.T) {
 func TestPlaceTicket(t *testing.T) {
 	f := newFake(t)
 	f.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "decided"), "ETag", `"3"`)
-	f.on("GET /api/v1/tenants/acme/projects/COW/tickets/3", http.StatusOK, ticket("acme/COW-3", "filed", func(m map[string]any) {
+	f.on("GET /api/v1/teams/acme/projects/COW/tickets/3", http.StatusOK, ticket("acme/COW-3", "filed", func(m map[string]any) {
 		m["horizon"] = "next"
 	}))
-	f.on("GET /api/v1/tenants/acme/projects/COW/tickets/4", http.StatusOK, ticket("acme/COW-4", "in-progress"))
+	f.on("GET /api/v1/teams/acme/projects/COW/tickets/4", http.StatusOK, ticket("acme/COW-4", "in-progress"))
 	f.on("PUT "+ticketPath+"/horizon", http.StatusOK, ticket("acme/COW-12", "decided", func(m map[string]any) {
 		m["horizon"] = "next"
 	}))
@@ -322,26 +332,26 @@ func TestPlaceTicket(t *testing.T) {
 	assert.Equal(t, map[string]any{"value": "later", "reason": "not this month"}, decodeBody(t, put[0]))
 }
 
-// A session bound to a tenant and no project — the chat on a page that shows
-// none — searches the tenant by default, resolves short keys in it, and asks
+// A session bound to a team and no project — the chat on a page that shows
+// none — searches the team by default, resolves short keys in it, and asks
 // for the project where a tool needs one.
-func TestATenantBinding(t *testing.T) {
+func TestATeamBinding(t *testing.T) {
 	f := newFake(t)
-	f.on("GET /api/v1/tenants/acme/tickets", http.StatusOK, list(ticket("acme/COW-12", "decided")))
+	f.on("GET /api/v1/teams/acme/tickets", http.StatusOK, list(ticket("acme/COW-12", "decided")))
 	f.on("GET "+ticketPath, http.StatusOK, ticket("acme/COW-12", "decided"), "ETag", `"3"`)
 	s := f.session(false)
-	s.BindTenant("acme")
+	s.BindTeam("acme")
 
 	res := call(t, s, "search", `{"query": "gate"}`)
 	require.False(t, res.IsError, res.Text)
-	assert.Contains(t, res.Text, "Tickets in the tenant acme matching")
-	assert.Len(t, f.calls(http.MethodGet, "/api/v1/tenants/acme/tickets"), 1)
-	assert.Empty(t, f.calls(http.MethodGet, "/api/v1/me"), "nothing outside the tenant")
+	assert.Contains(t, res.Text, "Tickets in the team acme matching")
+	assert.Len(t, f.calls(http.MethodGet, "/api/v1/teams/acme/tickets"), 1)
+	assert.Empty(t, f.calls(http.MethodGet, "/api/v1/me"), "nothing outside the team")
 
 	res = call(t, s, "place_ticket", `{"key": "COW-12", "horizon": "later", "reason": "x"}`)
-	assert.Len(t, f.calls(http.MethodGet, ticketPath), 1, "a short key resolves in the tenant: %s", res.Text)
+	assert.Len(t, f.calls(http.MethodGet, ticketPath), 1, "a short key resolves in the team: %s", res.Text)
 
 	res = call(t, s, "file_ticket", `{"type": "task", "title": "x", "severity": "low", "security": "none", "effort": "S"}`)
 	assert.True(t, res.IsError)
-	assert.Contains(t, res.Text, "name the project: its key in the tenant acme")
+	assert.Contains(t, res.Text, "name the project: its key in the team acme")
 }

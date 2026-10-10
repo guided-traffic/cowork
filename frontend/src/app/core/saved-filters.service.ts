@@ -37,7 +37,7 @@ export class SavedFiltersService {
           const filters: SavedFilter[] = [];
           let cursor: string | undefined;
           do {
-            const next = await page(listSavedFilters, { tenant, cursor, limit: 200 });
+            const next = await page(listSavedFilters, { team: tenant, cursor, limit: 200 });
             filters.push(...next.items);
             cursor = next.next_cursor ?? undefined;
           } while (cursor);
@@ -73,7 +73,7 @@ export class SavedFiltersService {
     idempotencyKey: string,
   ): Promise<SavedFilter> {
     const filter = await this.api.invoke(createSavedFilter, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       'Idempotency-Key': idempotencyKey,
       body: { name, parameters, shared },
     });
@@ -87,7 +87,7 @@ export class SavedFiltersService {
    */
   async update(filter: SavedFilter, patch: SavedFilterPatch): Promise<SavedFilter> {
     const changed = await this.api.invoke(updateSavedFilter, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       filter: filter.id,
       'If-Match': etagOf(filter.version),
       body: patch,
@@ -98,7 +98,7 @@ export class SavedFiltersService {
 
   async remove(filter: SavedFilter): Promise<void> {
     await this.api.invoke(deleteSavedFilter, {
-      tenant: this.session.tenant() as string,
+      team: this.session.tenant() as string,
       filter: filter.id,
     });
     refresh(this.filters, this.injector);

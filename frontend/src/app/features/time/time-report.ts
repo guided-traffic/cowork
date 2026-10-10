@@ -16,7 +16,7 @@ import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { Clock, duration, today } from '../../shared/time';
 
-type GroupBy = 'ticket' | 'project' | 'person' | 'tenant';
+type GroupBy = 'ticket' | 'project' | 'person' | 'team';
 
 /** The first day of the month `day` falls in, as the API's day. */
 export function monthStart(day: string): string {
@@ -25,7 +25,7 @@ export function monthStart(day: string): string {
 
 /**
  * The time report (docs/adr/0017 D10, docs/adr/0018): the minutes booked in a period, summed per
- * ticket, project or person, or for the whole tenant, under the visibility of time entries the
+ * ticket, project or person, or for the whole team, under the visibility of time entries the
  * server applies. Days are the browser's dates; the API takes them as days (docs/adr/0055 D3).
  */
 @Component({
@@ -41,7 +41,7 @@ export class TimeReport {
   private readonly problems = inject(ProblemService);
   private readonly clock = inject(Clock);
 
-  protected readonly groups: GroupBy[] = ['project', 'ticket', 'person', 'tenant'];
+  protected readonly groups: GroupBy[] = ['project', 'ticket', 'person', 'team'];
   /** Today, moving on at midnight; a period the person chose holds until then. */
   private readonly currentDay = computed(() => today(new Date(this.clock.now())));
   protected readonly from = linkedSignal(() => monthStart(this.currentDay()));
@@ -52,7 +52,7 @@ export class TimeReport {
     params: () => {
       const tenant = this.session.tenant();
       return tenant
-        ? { tenant, from: this.from(), to: this.to(), group_by: this.groupBy() }
+        ? { team: tenant, from: this.from(), to: this.to(), group_by: this.groupBy() }
         : undefined;
     },
     loader: ({ params }) => this.api.invoke(timeReport, params),

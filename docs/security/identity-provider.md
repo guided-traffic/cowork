@@ -2,11 +2,11 @@
 
 How cowork logs a person in as an OpenID Connect relying party, what it checks of what the issuer
 says, what the issuer's groups decide — who gets in, who administers the installation, which
-tenants a person belongs to and in which role — how a session and a token keep up with the groups,
+teams a person belongs to and in which role — how a session and a token keep up with the groups,
 what cowork keeps of the issuer's tokens, how a person comes back without a click after a session
 ended, and what is recorded, as built on 2026-10-07. What a session is once the login has made one
 is [sessions.md](sessions.md); the local login beside this
-one is [local-accounts.md](local-accounts.md); what a tenant's administrators do with the groups —
+one is [local-accounts.md](local-accounts.md); what a team's administrators do with the groups —
 mappings, grants, a restricted project's access list — is [tenancy.md](tenancy.md); what a token
 may do is [tokens.md](tokens.md); what cowork trusts from the issuer, in one table with everything
 else it trusts, is [trust-boundaries.md](trust-boundaries.md).
@@ -168,7 +168,7 @@ person's advisory lock ([below](#one-decision-about-a-person-at-a-time)). In thi
    ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
    D4).
 2. **A deactivated person:** `not_allowed` (`TestADeactivatedPersonIsRefused`).
-3. **The init state.** While no tenant exists, a person who is not in the administrator group:
+3. **The init state.** While no team exists, a person who is not in the administrator group:
    `not_initialised` ([ADR 0032](../adr/0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
    D5).
 
@@ -179,13 +179,13 @@ has left it, and that is acted on as the freshest word there is (`leftTheGate`):
 stored as the issuer said them, their administrator flag and the gate's stamp are cleared, every
 session of theirs ends (`revoked`, cause `gate`), and their tokens meet the gate at their next
 request. Their memberships are left as they are and derived from nothing: they cannot use them,
-and the tenants do not count them as an administrator
+and the teams do not count them as an administrator
 (`TestLeavingTheGateStopsTheTokensAtOnce`).
 
 Otherwise:
 
 - **The person** is found by issuer and subject, or made ([below](#the-identity-is-issuer-and-subject)).
-- **Their memberships** are derived in every tenant ([below](#memberships-follow-the-groups)).
+- **Their memberships** are derived in every team ([below](#memberships-follow-the-groups)).
 - **The session** is made as the local login makes one ([sessions.md](sessions.md)), with the
   method `oidc`, the groups of the login, the time they were read and the issuer's refresh token,
   sealed ([below](#what-cowork-keeps-of-the-issuers-tokens)); the session the request presented
@@ -219,12 +219,12 @@ record is append-only, and an address or a group's name in it could not be erase
 (`TestAnAddressIsInNoAuditRow`, `TestNoAuditRowNamesAPersonsGroups`;
 [ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
 D6). The address and the name are display attributes; the address is
-also what an administrator grants by ([H-26](#h-26)), and the tenant's administrators alone see it
+also what an administrator grants by ([H-26](#h-26)), and the team's administrators alone see it
 in the member list and a project's access list
 ([tenancy.md](tenancy.md#members-grants-and-group-mappings)).
 
 The pair leaves the system together in one place: a ticket's canonical Markdown writes its
-assignee as `Name <oidc:<issuer>#<subject>>` — on its own and in the project and tenant export,
+assignee as `Name <oidc:<issuer>#<subject>>` — on its own and in the project and team export,
 whose manifest writes the exporter so as well ([import-and-export.md](import-and-export.md#h-75)) —,
 so that the importer can resolve the person by the stable key rather than by a name
 ([ADR 0044](../adr/0044-two-endpoints-markdown-is-the-canonical-ticket-context-is-the-ticket-with-what-surrounds-it.md)
@@ -241,15 +241,15 @@ definition. The flag is set and cleared from the groups at a login — a refused
 refresh that reads them, and at a token's gate check that admits the person, and a change is recorded
 (`TestRefreshFollowsTheIssuersGroups`); a refresh that reads nothing and a gate check that refuses
 write nothing of the person, so a changed `COWORK_ADMIN_GROUP` reaches a person still inside the gate
-only at one of the first three ([H-25](#h-25)). A global administrator creates tenants — becoming the new
-tenant's first administrator by a marked grant — and has no role in any tenant they were not given:
-they list every tenant, see the administration of one without a role — its members, mappings and
-settings — and grant themselves a role there, in a browser session, recorded in the tenant
-([tenancy.md](tenancy.md#a-global-administrator-without-a-role)); no route deletes a tenant
+only at one of the first three ([H-25](#h-25)). A global administrator creates teams — becoming the new
+team's first administrator by a marked grant — and has no role in any team they were not given:
+they list every team, see the administration of one without a role — its members, mappings and
+settings — and grant themselves a role there, in a browser session, recorded in the team
+([tenancy.md](tenancy.md#a-global-administrator-without-a-role)); no route deletes a team
 ([ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
-D2). While no tenant exists they and the local administrator are the only ones who log in
-(`TestInitStateThroughDex`). With `COWORK_BOOTSTRAP_TENANT_SLUG` and `_NAME` the start creates the
-tenant while none exists and maps the group to its `admin` role, so the group's members administer
+D2). While no team exists they and the local administrator are the only ones who log in
+(`TestInitStateThroughDex`). With `COWORK_BOOTSTRAP_TEAM_SLUG` and `_NAME` the start creates the
+team while none exists and maps the group to its `admin` role, so the group's members administer
 it from their first login and the installation needs no local administrator
 ([ADR 0032](../adr/0032-bootstrap-from-helm-values-a-local-administrator-synced-from-a-secret-and-an-init-state-for-administrators-only.md)
 D6; `TestBootstrapSeedsTheAdministratorGroupsMapping`).
@@ -258,11 +258,11 @@ Whoever may change that group at the issuer administers the installation.
 
 ## Memberships follow the groups
 
-A tenant's group mappings give a group a role in the tenant; a person's **mapped membership** in a
-tenant is the highest role the tenant's mappings give their groups, and nothing else writes it
+A team's group mappings give a group a role in the team; a person's **mapped membership** in a
+team is the highest role the team's mappings give their groups, and nothing else writes it
 ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
 D2; the administration is [tenancy.md](tenancy.md#members-grants-and-group-mappings)). It is
-derived in every tenant at once — made where a mapping now gives a role, changed where the highest
+derived in every team at once — made where a mapping now gives a role, changed where the highest
 role moved, removed where none gives one any more (`deriveEverywhere`) — at four moments, each only
 for a person the gate admits:
 
@@ -283,8 +283,8 @@ for a person the gate admits:
   cannot use them — no session, no working token — the member list still shows them, and
   `last_admin` does not count them ([tenancy.md](tenancy.md#members-grants-and-group-mappings);
   [H-29](#h-29)). The person's next admitted login brings them in line.
-- **Every change is an act of `system:identity-provider` in its tenant**, with the cause, announced
-  as `membership.changed` to the tenant's members
+- **Every change is an act of `system:identity-provider` in its team**, with the cause, announced
+  as `membership.changed` to the team's members
   ([ADR 0054](../adr/0054-server-sent-events-per-tenant-carry-keys-not-content-polling-is-the-fallback.md)
   D2). A mapping's change derives in the administrator's transaction: the administrator's act and
   the derivations commit together or not at all.
@@ -296,11 +296,11 @@ transaction-level advisory lock of the person (`identityLockNamespace`, `cowi`, 
 before they read anything the decision depends on, so two of them decide about one person one after
 the other, each on what the one before committed. A login takes the lock once it has found the person
 — a first login once it has made them — and writes the groups its own exchange read, whatever was
-stored meanwhile ([H-83](#h-83)). A mapping's change runs under the tenant's
+stored meanwhile ([H-83](#h-83)). A mapping's change runs under the team's
 lock (`cowt`, `LockTenant`), which every administrator's change of a grant or a mapping takes first,
-and then takes the locks of its persons in the order of their ids; no transaction takes a tenant's
+and then takes the locks of its persons in the order of their ids; no transaction takes a team's
 lock after a person's. The derivations of a login, a refresh and a token's gate check take the
-person's lock and no tenant's.
+person's lock and no team's.
 
 ## The groups refresh
 
@@ -312,7 +312,7 @@ D5; `checkProviderSession`, `refreshSession` and `askIssuer` in
 `ApplySessionRefresh` in [`store/identity.go`](../../backend/internal/store/identity.go)):
 
 - **when.** On the session's first request after the interval, inside its authentication — before
-  the CSRF check, the tenant boundary and the request timeout — and at an open event stream's
+  the CSRF check, the team boundary and the request timeout — and at an open event stream's
   heartbeat, which does not move the session's idle clock. A person who is not the configured
   issuer's — another issuer's, or any person of a provider while none is configured — is not
   refreshed: every session of theirs ends at once (`EndProviderSessions`, `revoked`, cause `gate`;
@@ -463,11 +463,11 @@ the access of whoever sits at an unlocked browser.
 ## Who decides who gets in
 
 The issuer decides who is in which group; the installation's configuration decides which groups
-pass the gate and which administer the installation; a tenant's administrators decide who belongs
-in their tenant by grant and a restricted project's access list, and remove mappings
+pass the gate and which administer the installation; a team's administrators decide who belongs
+in their team by grant and a restricted project's access list, and remove mappings
 ([tenancy.md](tenancy.md#members-grants-and-group-mappings)); a mapping is made and its role changed
-by a global administrator who administers the tenant only, because every tenant shares the issuer's
-one namespace of groups and a mapping brings everyone in its group into the tenant at once
+by a global administrator who administers the team only, because every team shares the issuer's
+one namespace of groups and a mapping brings everyone in its group into the team at once
 ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
 D7). Every administration act that can give access — adding a member, setting a grant, making or
 changing a mapping, restricting or opening a project, putting a person on an access list — takes a
@@ -485,20 +485,20 @@ makes any of them. The whole set of session-only operations, and the rule, is
 | `created`, `updated` (entity `user`) | `system:identity-provider` | installation | the first login — name, identity `oidc`, administrator flag, nothing of the groups — and what a login, a refresh that read groups or a token's gate check changed, with the cause; an address as `email_changed` and the groups as `groups_changed`, never the address or a group's name |
 | `revoked` (entity `user`) | `system:identity-provider` | installation | the sessions the provider ended: `sessions_ended`, the cause `gate` or `identity-provider` |
 | `logged_in` | the person | installation | a login, note `oidc` |
-| `created`, `updated`, `deleted` (entity `membership`) | `system:identity-provider` | the tenant | a derived membership, with the cause |
+| `created`, `updated`, `deleted` (entity `membership`) | `system:identity-provider` | the team | a derived membership, with the cause |
 
 An installation-level row of a system actor names no person as actor and is readable in the
-database only; the tenant's rows show in its audit view. Every row written for a request — the
+database only; the team's rows show in its audit view. Every row written for a request — the
 identity provider's included — carries the keyed hash of the client's address
 ([tokens.md](tokens.md#what-is-recorded)). **`login_refused` is written only after an ID token
 verified**: a stale state, the issuer's error, a failed exchange or verification and a claim of the
 wrong shape fail before anybody is known, and `oidc_failed` is in the log only — as is
 `login_required`, the issuer's error to a silent login. **No row names a person's groups** — their
 change is `groups_changed: true`, and the memberships they cause are
-recorded tenant by tenant, with the cause
+recorded team by team, with the cause
 ([ADR 0030](../adr/0030-a-global-allow-list-gates-login-group-mappings-derive-membership-a-marked-grant-adds-to-it.md)
 D6; `TestNoAuditRowNamesAPersonsGroups`). A mapping's own rows name its group: they are an
-administrator's act on the tenant's configuration, not a word about a person.
+administrator's act on the team's configuration, not a word about a person.
 
 **No code, ID token, access token or refresh token reaches a log line or an audit row.**
 `TestNoIssuerSecretIsLoggedOrRecorded` records every log level through a login, a refresh, an
@@ -530,9 +530,9 @@ migrations [20](../../backend/internal/store/migrations/000020_identity_provider
   its group — and inserts and updates only persons of the provider (`oidc_issuer` set, no username):
   a local account, the local administrator above all, is never its to touch.
 - `tenants`: it reads whether any exists, for the init state.
-- `group_mappings`: it reads every tenant's, and writes none.
+- `group_mappings`: it reads every team's, and writes none.
 - `memberships`: a mapped membership is inserted, changed and removed by it alone; a grant is
-  written by the tenant's administrators, by a global administrator for themselves, and by the
+  written by the team's administrators, by a global administrator for themselves, and by the
   start-up synchronisation (migrations 15, 22 and 26).
 
 The refresh's claim is no act of the provider's: it runs as the person, with the session's hash,
@@ -557,14 +557,14 @@ longer until the token expires. A person the issuer disables outright is no diff
 sessions end at their next refresh, when the issuer refuses the refresh token, but a refusal stores
 no groups, so their tokens go on until the groups of their last read are too old, and a sign-in goes
 through the issuer, which no longer lets them in. No route deactivates a person of the provider. A
-tenant's administrator revokes the person's tokens that can act in the tenant — an unrestricted one
-then ends in every tenant of the person, one restricted to a tenant only that tenant's administrators
+team's administrator revokes the person's tokens that can act in the team — an unrestricted one
+then ends in every team of the person, one restricted to a team only that team's administrators
 reach ([tokens.md](tokens.md#expiry-revocation-and-refusals), [H-57](tokens.md#h-57)). What does reach a token within
 one interval is the gate's configuration — the check judges the stored groups against
 `COWORK_OIDC_ALLOWED_GROUPS` and `COWORK_ADMIN_GROUP` as they are at the check — and a change of the
 configured issuer reaches it at once. Mitigation: a shorter `COWORK_OIDC_GROUPS_MAX_AGE` — a day asks
-a daily sign-in in the browser; the tenants' administrators revoke the person's tokens on each
-tenant's page *Tokens*; to cut a person off at once everywhere, the operator sets the person's
+a daily sign-in in the browser; the teams' administrators revoke the person's tokens on each
+team's page *Tokens*; to cut a person off at once everywhere, the operator sets the person's
 `users.deactivated_at` in the database, which every token and login of theirs then meets as
 revoked — outside the API, and recorded nowhere.
 
@@ -667,39 +667,39 @@ password. Mitigation: an issuer with an end-session endpoint; on a shared comput
 issuer as well.
 
 <a id="h-29"></a>
-### H-29 — The issuer's word can leave a tenant without an administrator who can log in
+### H-29 — The issuer's word can leave a team without an administrator who can log in
 
-Live in every tenant whose administrators hold the role through the identity provider. `409
+Live in every team whose administrators hold the role through the identity provider. `409
 last_admin` holds an administrator's acts — changing or removing a grant, changing or removing a
-mapping, deactivating an account the tenant manages — to leaving an administrator who can log in:
+mapping, deactivating an account the team manages — to leaving an administrator who can log in:
 active, and a local account or a person of the configured issuer whom the gate admitted at their
 last login, refresh or check (`TestTheLastAdministratorMustBeAbleToAct`). The gate's stamp that this
 reads is cleared only by a login refused at the gate or a refresh that read groups outside it; a
 refresh that read nothing, or a token's gate check that refuses, ends the sessions or refuses the
 token and leaves the stamp, so `last_admin` and a mapping's change count such a person until their
 next login. Nothing holds the issuer's word to it. A derivation at
-a login, a refresh or a token's gate check is never refused: the tenant's last administrator by a
+a login, a refresh or a token's gate check is never refused: the team's last administrator by a
 mapping who leaves the group loses the role at their next login or refresh. A person who leaves the
-gate keeps their memberships but cannot log in, and their tenants keep no administrator who can. And
-the derivations take no tenant's lock, so an administrator's change that counted such a person a
+gate keeps their memberships but cannot log in, and their teams keep no administrator who can. And
+the derivations take no team's lock, so an administrator's change that counted such a person a
 moment before can commit beside the derivation that takes their role — read from the code, run by no
-test. Afterwards nobody of the tenant can change its settings, members, mappings or restrictions
-until a global administrator acts. Recovery: a global administrator who holds no role in the tenant
-grants themselves `admin` — a marked grant recorded in the tenant with them as its actor, which
-takes no administrator away and so meets no `last_admin` — and gives the tenant an administrator of
+test. Afterwards nobody of the team can change its settings, members, mappings or restrictions
+until a global administrator acts. Recovery: a global administrator who holds no role in the team
+grants themselves `admin` — a marked grant recorded in the team with them as its actor, which
+takes no administrator away and so meets no `last_admin` — and gives the team an administrator of
 its own ([tenancy.md](tenancy.md#a-global-administrator-without-a-role);
 [ADR 0034](../adr/0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
 D2; `TestAStrandedTenantIsRecoveredByTheSelfGrant`); or put a person into the mapped group at the
 issuer — the mapping stays, so their next login makes them administrator. What remains: nothing
-tells anybody that a tenant has no administrator who can log in, so it stays without one until a
+tells anybody that a team has no administrator who can log in, so it stays without one until a
 global administrator looks — one who holds no role there grants themselves `admin`, one who holds a
 lower role raises their own grant to it; and an installation whose global administrators cannot log
 in either — the administrator group
 emptied at the issuer, no local administrator configured — has only a grant written into the
 database, outside the API and recorded nowhere. Mitigation: keep one
-administrator of every tenant by a grant to a local account the tenant manages itself, which neither
-a derivation nor the gate touches and whose deactivation the tenant's `last_admin` holds — an
-account another tenant manages, that tenant can still deactivate ([local-accounts.md](local-accounts.md#h-32)
+administrator of every team by a grant to a local account the team manages itself, which neither
+a derivation nor the gate touches and whose deactivation the team's `last_admin` holds — an
+account another team manages, that team can still deactivate ([local-accounts.md](local-accounts.md#h-32)
 H-32).
 
 <a id="h-62"></a>
@@ -710,7 +710,7 @@ with Dex, which keeps none, and with an issuer whose session has ended. The idle
 limit still end cowork's session ([sessions.md](sessions.md)), but a browser that remembers the
 provider signs the person in again at the first input on the login page
 ([above](#signing-in-again-without-a-click)): whoever sits at an unattended, unlocked browser —
-a colleague at a desk left open, a shared computer — is one input away from the person's tenants,
+a colleague at a desk left open, a shared computer — is one input away from the person's teams,
 where they were one click away. The click was no barrier either: it too passed without a password
 while the issuer's session lived. What ends that access is the issuer's session policy — its own
 idle and absolute limits, its sign-out — and cowork's sign-out, which forgets the method; an open tab

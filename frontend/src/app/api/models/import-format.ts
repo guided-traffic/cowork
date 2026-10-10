@@ -5,7 +5,7 @@
 /**
  * The grammar a file was read in. `repository`: a ticket file of a repository's docs/tickets/ —
  * `id: T<n>`, `urgency`, `blocked-by`, `filed-from`, the `local_` prefix (docs/adr/0063 D3).
- * `export`: cowork's own grammar v1, `key: <tenant>/<PROJECT>-<n>` (docs/adr/0044 D1). `plain`: a
+ * `export`: cowork's own grammar v1, `key: <team>/<PROJECT>-<n>` (docs/adr/0044 D1). `plain`: a
  * file without frontmatter, an archived record that becomes one done task (docs/adr/0063 D4)
  */
 export type ImportFormat = 'repository' | 'export' | 'plain';

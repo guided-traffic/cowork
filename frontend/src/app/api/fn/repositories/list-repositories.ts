@@ -12,9 +12,9 @@ import { RepositoryList } from '../../models/repository-list';
 export interface ListRepositories$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -35,7 +35,7 @@ export interface ListRepositories$Params {
 export function listRepositories(http: HttpClient, rootUrl: string, params: ListRepositories$Params, context?: HttpContext): Observable<StrictHttpResponse<RepositoryList>> {
   const rb = new RequestBuilder(rootUrl, listRepositories.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
@@ -51,4 +51,4 @@ export function listRepositories(http: HttpClient, rootUrl: string, params: List
   );
 }
 
-listRepositories.PATH = '/api/v1/tenants/{tenant}/projects/{project}/repositories';
+listRepositories.PATH = '/api/v1/teams/{team}/projects/{project}/repositories';

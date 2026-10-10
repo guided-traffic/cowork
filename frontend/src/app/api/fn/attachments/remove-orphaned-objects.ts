@@ -13,16 +13,16 @@ import { OrphanRemoval } from '../../models/orphan-removal';
 export interface RemoveOrphanedObjects$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
       body: ConsistencyCheckRef
 }
 
 export function removeOrphanedObjects(http: HttpClient, rootUrl: string, params: RemoveOrphanedObjects$Params, context?: HttpContext): Observable<StrictHttpResponse<OrphanRemoval>> {
   const rb = new RequestBuilder(rootUrl, removeOrphanedObjects.PATH, 'post');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.body(params.body, 'application/json');
   }
 
@@ -36,4 +36,4 @@ export function removeOrphanedObjects(http: HttpClient, rootUrl: string, params:
   );
 }
 
-removeOrphanedObjects.PATH = '/api/v1/tenants/{tenant}/attachment-consistency/orphan-removal';
+removeOrphanedObjects.PATH = '/api/v1/teams/{team}/attachment-consistency/orphan-removal';

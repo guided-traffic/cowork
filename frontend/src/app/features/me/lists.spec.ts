@@ -88,7 +88,9 @@ function ticket(key: string, overrides: Partial<Ticket> = {}): Ticket {
 
 function decision(id: string, key: string, askedOfPerson: typeof ada | null): Decision {
   return {
-    tenant: { slug: key.split('/')[0], name: 'Acme Corp' },
+    team: { slug: key.split('/')[0], name: 'Acme Corp' },
+    // The deprecated name of team, which the page never shows (docs/adr/0005 D1).
+    tenant: { slug: key.split('/')[0], name: 'not shown' },
     ticket: { key, title: `Title of ${key}`, state: 'analysed' },
     question: {
       id,
@@ -124,8 +126,8 @@ describe('the helpers of the person-level pages', () => {
 
   it('says whom a decision waits for', () => {
     expect(askedOf(decision('q1', 'acme/COW-1', ada), 'p1')).toBe('asked of you');
-    expect(askedOf(decision('q1', 'acme/COW-1', null), 'p1')).toBe('open in the tenant');
-    expect(askedOf(decision('q1', 'acme/COW-1', null), undefined)).toBe('open in the tenant');
+    expect(askedOf(decision('q1', 'acme/COW-1', null), 'p1')).toBe('open in the team');
+    expect(askedOf(decision('q1', 'acme/COW-1', null), undefined)).toBe('open in the team');
   });
 });
 
@@ -166,12 +168,15 @@ describe('the person-level lists', () => {
     const first: MyTicketList = {
       items: [
         {
-          tenant: { slug: 'acme', name: 'Acme Corp' },
+          team: { slug: 'acme', name: 'Acme Corp' },
+          // The deprecated name of team, which the page never shows (docs/adr/0005 D1).
+          tenant: { slug: 'acme', name: 'not shown' },
           ticket: ticket('acme/COW-2', { score: 9.4, score_version: 1, horizon: 'now' }),
           place: 2,
         },
         {
-          tenant: { slug: 'globex', name: 'Globex' },
+          team: { slug: 'globex', name: 'Globex' },
+          tenant: { slug: 'globex', name: 'not shown' },
           ticket: ticket('globex/OPS-1', { assignee: null, score: 4, score_version: 1 }),
           place: 1,
         },
@@ -222,7 +227,12 @@ describe('the person-level lists', () => {
     it('says a ticket without a score has none yet', async () => {
       configure(() => ({
         items: [
-          { tenant: { slug: 'acme', name: 'Acme Corp' }, ticket: ticket('acme/COW-9'), place: 1 },
+          {
+            team: { slug: 'acme', name: 'Acme Corp' },
+            tenant: { slug: 'acme', name: 'Acme Corp' },
+            ticket: ticket('acme/COW-9'),
+            place: 1,
+          },
         ],
         next_cursor: null,
       }));
@@ -369,6 +379,7 @@ describe('the person-level lists', () => {
           ? {
               items: [
                 {
+                  team: { slug: 'globex', name: 'Globex' },
                   tenant: { slug: 'globex', name: 'Globex' },
                   ticket: ticket('globex/OPS-7'),
                   place: 3,
@@ -421,7 +432,7 @@ describe('the person-level lists', () => {
         'asked of you',
       );
       expect(rows[1].querySelector('[data-testid="asked-of"]')?.textContent).toContain(
-        'open in the tenant',
+        'open in the team',
       );
       expect(rows[0].querySelector('a')?.getAttribute('href')).toBe('/t/acme/tickets/COW-1');
       expect(rows[0].querySelector('[data-testid="tenant"]')?.textContent?.trim()).toBe(

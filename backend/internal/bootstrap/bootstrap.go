@@ -1,6 +1,6 @@
 // Package bootstrap keeps what the configuration says an installation starts
-// with: the one local administrator and, while no tenant exists, the bootstrap
-// tenant (docs/adr/0032 D1–D3, D5–D8). `cowork serve` runs it at every start,
+// with: the one local administrator and, while no team exists, the bootstrap
+// team (docs/adr/0032 D1–D3, D5–D8). `cowork serve` runs it at every start,
 // after the migrations, as the runtime role and under an advisory lock, so
 // that "helm install" with a database and a Secret yields an installation a
 // person can log in to and use (D8). It is idempotent: a start that finds
@@ -40,13 +40,13 @@ const (
 )
 
 // Params is what the configuration says. Username and Password come together or
-// not at all, as do TenantSlug and TenantName, and a tenant needs somebody to
+// not at all, as do TeamSlug and TeamName, and a team needs somebody to
 // administer it — the local administrator or the administrator group of the
 // identity provider (internal/config checks all three).
 type Params struct {
-	Username, Password     string
-	TenantSlug, TenantName string
-	// AdminGroup is COWORK_ADMIN_GROUP: the bootstrap tenant gets a mapping
+	Username, Password string
+	TeamSlug, TeamName string
+	// AdminGroup is COWORK_ADMIN_GROUP: the bootstrap team gets a mapping
 	// that makes its members administrators (docs/adr/0032 D6).
 	AdminGroup string
 }
@@ -262,19 +262,19 @@ func (s syncer) setPassword(ctx context.Context, w *store.Writer, id uuid.UUID, 
 	return nil
 }
 
-// keepTenant creates the bootstrap tenant when none exists, gives the local
+// keepTenant creates the bootstrap team when none exists, gives the local
 // administrator — when one is configured — a marked grant as its
 // administrator, and maps the administrator group — when one is configured —
 // to its admin role (docs/adr/0032 D6, D7, docs/adr/0030 D2). When a tenant
 // exists the variables do nothing, whatever they say. The members of the
 // group get their membership at their next login or groups refresh.
 func (s syncer) keepTenant(ctx context.Context, w *store.Writer, adminID uuid.UUID) error {
-	if s.p.TenantSlug == "" {
+	if s.p.TeamSlug == "" {
 		return nil
 	}
 	exists, err := w.TenantsExist(ctx)
 	if err != nil {
-		return fmt.Errorf("ask whether a tenant exists: %w", err)
+		return fmt.Errorf("ask whether a team exists: %w", err)
 	}
 	if exists {
 		return nil
@@ -287,17 +287,17 @@ func (s syncer) keepTenant(ctx context.Context, w *store.Writer, adminID uuid.UU
 	if err != nil {
 		return err
 	}
-	if err := w.InsertTenant(ctx, writeq.InsertTenantParams{ID: id, Slug: s.p.TenantSlug, Name: s.p.TenantName}); err != nil {
-		return fmt.Errorf("create the bootstrap tenant: %w", err)
+	if err := w.InsertTenant(ctx, writeq.InsertTenantParams{ID: id, Slug: s.p.TeamSlug, Name: s.p.TeamName}); err != nil {
+		return fmt.Errorf("create the bootstrap team: %w", err)
 	}
 	w.Record(store.Event{EntityType: entityTenant, EntityID: id, Action: actionCreated,
-		After: map[string]any{"slug": s.p.TenantSlug, "name": s.p.TenantName}})
+		After: map[string]any{"slug": s.p.TeamSlug, "name": s.p.TeamName}})
 	if adminID != uuid.Nil {
 		if err := w.InsertGrant(ctx, writeq.InsertGrantParams{ID: grantID, TenantID: id, UserID: adminID, Role: domain.RoleAdmin}); err != nil {
-			return fmt.Errorf("grant the administrator the bootstrap tenant: %w", err)
+			return fmt.Errorf("grant the administrator the bootstrap team: %w", err)
 		}
 		w.Record(store.Event{EntityType: entityMembership, EntityID: grantID, Action: actionCreated,
-			After: map[string]any{"tenant": s.p.TenantSlug, "user": adminID, "role": domain.RoleAdmin, "source": "grant"}})
+			After: map[string]any{"tenant": s.p.TeamSlug, "user": adminID, "role": domain.RoleAdmin, "source": "grant"}})
 	}
 	if s.p.AdminGroup != "" {
 		mappingID, err := uuid.NewV7()
@@ -306,12 +306,12 @@ func (s syncer) keepTenant(ctx context.Context, w *store.Writer, adminID uuid.UU
 		}
 		if err := w.InsertGroupMapping(ctx, writeq.InsertGroupMappingParams{ID: mappingID, TenantID: id, GroupName: s.p.AdminGroup,
 			Role: domain.RoleAdmin}); err != nil {
-			return fmt.Errorf("map the administrator group to the bootstrap tenant: %w", err)
+			return fmt.Errorf("map the administrator group to the bootstrap team: %w", err)
 		}
 		w.Record(store.Event{EntityType: "group_mapping", EntityID: mappingID, Action: actionCreated,
-			After: map[string]any{"tenant": s.p.TenantSlug, "group": s.p.AdminGroup, "role": domain.RoleAdmin}})
+			After: map[string]any{"tenant": s.p.TeamSlug, "group": s.p.AdminGroup, "role": domain.RoleAdmin}})
 	}
-	s.logger.Info("the bootstrap tenant is created", "slug", s.p.TenantSlug, "administrator_group", s.p.AdminGroup != "")
+	s.logger.Info("the bootstrap team is created", "slug", s.p.TeamSlug, "administrator_group", s.p.AdminGroup != "")
 	return nil
 }
 

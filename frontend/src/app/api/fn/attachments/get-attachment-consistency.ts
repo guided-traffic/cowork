@@ -12,9 +12,9 @@ import { AttachmentConsistency } from '../../models/attachment-consistency';
 export interface GetAttachmentConsistency$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
@@ -25,7 +25,7 @@ export interface GetAttachmentConsistency$Params {
 export function getAttachmentConsistency(http: HttpClient, rootUrl: string, params: GetAttachmentConsistency$Params, context?: HttpContext): Observable<StrictHttpResponse<AttachmentConsistency>> {
   const rb = new RequestBuilder(rootUrl, getAttachmentConsistency.PATH, 'get');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
@@ -39,4 +39,4 @@ export function getAttachmentConsistency(http: HttpClient, rootUrl: string, para
   );
 }
 
-getAttachmentConsistency.PATH = '/api/v1/tenants/{tenant}/attachment-consistency';
+getAttachmentConsistency.PATH = '/api/v1/teams/{team}/attachment-consistency';

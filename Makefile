@@ -282,7 +282,7 @@ migrate: ## Apply the pending migrations to the development database as cowork_o
 	cd $(BACKEND_DIR) && COWORK_DATABASE_URL="$${COWORK_DATABASE_URL:-$(DEV_DATABASE_URL)}" COWORK_DATABASE_OWNER_URL="$${COWORK_DATABASE_OWNER_URL:-$(DEV_DATABASE_OWNER_URL)}" COWORK_LOG_FORMAT="$${COWORK_LOG_FORMAT:-text}" $(GOCMD) run ./cmd/cowork migrate
 
 .PHONY: dev-seed
-dev-seed: migrate ## Create a development person, tenant, admin membership and token, and print the token once (docs/adr/0038 D7).
+dev-seed: migrate ## Create a development person, team, admin membership and token, and print the token once (docs/adr/0038 D7).
 	cd $(BACKEND_DIR) && COWORK_DEV_SEED_DATABASE_URL="$${COWORK_DEV_SEED_DATABASE_URL:-$(DEV_ADMIN_URL)}" $(GOCMD) run ./test/devseed
 
 .PHONY: dev
@@ -500,6 +500,22 @@ helm-template: ## Render the chart with every values file under deploy/helm/cowo
 	  echo "$$out" | grep -q 'cowork/inline-credentials-revision: "1"' && \
 	  ! echo "$$out" | grep -q 'checksum/' || \
 	  { echo "the backend pod template of the inline values must carry the release revision and no checksum of a credential (docs/adr/0058 D3)"; exit 1; }
+	@echo "helm template with the values' names before and with their names now: each variable under both names, the same value, which an image rollback reads"
+	@for f in migrations-job local-admin; do \
+	  out=$$(helm template cowork $(HELM_CHART) -f $(HELM_CHART)/ci/$$f-values.yaml) || exit 1; \
+	  for pair in BOOTSTRAP_TEAM_SLUG:BOOTSTRAP_TENANT_SLUG BOOTSTRAP_TEAM_NAME:BOOTSTRAP_TENANT_NAME ATTACHMENT_TEAM_QUOTA:ATTACHMENT_TENANT_QUOTA; do \
+	    now=$$(printf '%s\n' "$$out" | grep -A1 "name: COWORK_$${pair%%:*}$$" | sed -n 's/^ *value: //p' || true); \
+	    before=$$(printf '%s\n' "$$out" | grep -A1 "name: COWORK_$${pair##*:}$$" | sed -n 's/^ *value: //p' || true); \
+	    [ -n "$$now" ] && [ "$$now" = "$$before" ] || \
+	    { echo "ci/$$f-values.yaml must render COWORK_$${pair%%:*} and COWORK_$${pair##*:}, with the same value: an image rollback reads the name before (docs/adr/0005 D1, docs/adr/0028 D4)"; exit 1; }; \
+	  done; \
+	done
+	@echo "helm template with a value under both names, the two different: refused"
+	@for set in bootstrap.team.slug=other backend.config.attachmentTeamQuota=1; do \
+	  err=$$(helm template cowork $(HELM_CHART) -f $(HELM_CHART)/ci/migrations-job-values.yaml --set $$set 2>&1 >/dev/null || true); \
+	  printf '%s\n' "$$err" | grep -q "$${set%%=*} and .* are both set and differ" || \
+	  { echo "$${set%%=*} beside a different value under its name before must fail the render (docs/adr/0005 D1)"; exit 1; }; \
+	done
 
 # CloudNativePG's Cluster CustomResourceDefinition is fetched at its tag and
 # turned into the JSON schema kubeconform reads (backend/tools/crdschema). Silo's

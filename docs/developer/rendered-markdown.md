@@ -25,6 +25,17 @@ function of the text and the images it may show, safe for concurrent use.
 | render | goldmark's HTML renderer, with `rawAsText` registered above it (priority 100 against the renderer's 1000 — the lower number wins) for `RawHTML` and `HTMLBlock`: the source of raw HTML written escaped, a block as one paragraph; the renderer's default would drop it and with it every word in angle brackets, `Vec<String>` included |
 | sanitise | `policy`, a bluemonday policy built once (`newPolicy`): the elements and attributes of the allow-list and nothing else, the URL schemes, relative URLs, `nofollow` and `noreferrer` required, `img` `src` held to `attachmentContent` |
 
+`attachmentContent` takes the path under either family, `/api/v1/teams/…` and `/api/v1/tenants/…`:
+a text written before a tenant was called a team names its images under the old family for good
+([api.md](api.md#deprecated-names)). Either way the image is shown from the path `Images` gives it
+(`attachmentContentURL`), which names the team family, as every path the server writes does —
+an upload's `content_url` among them, which the UI never writes into a text, but an agent or a
+person who pastes it does. The reverse does not hold, an accepted gap of
+the rollback window: under an image rolled back to the release before, whose pattern takes
+`/api/v1/tenants/…` alone and which serves no `/api/v1/teams/…`, an image embedded by its team path
+shows as a link whose address answers `404`, until the newer image runs again; nothing stored is
+lost.
+
 `Images` maps an attachment's id to the path of its bytes. The API builds it per ticket with
 `imagesOf` in [`api/rendered.go`](../../backend/internal/api/rendered.go): `ListTicketImages` reads the
 attachments of the tickets through their predicate, and `domain.InlineAttachment` keeps the raster
@@ -81,7 +92,7 @@ maintained one exists. Both chosen libraries are the newest stable versions on 2
 |---|---|---|
 | A ticket's body | `GET …/{number}/body` (`GetTicketBody`), `{"body","body_html","version"}` with the ticket's `ETag` | a route of its own: the ticket lists carry every row's Markdown, and rendering a page of bodies is work no list needs |
 | A comment's text | `body_html` beside `body` on every comment the API answers (`renderedComment`), `null` once withdrawn; a mention is plain `@Name` text beside the comment's `mentions`, the ids, so the rendering knows nothing of it and links nobody ([domain.md](domain.md#comments-and-the-activity-list); `TestMarkdownRenders`, `TestAMentionTellsThePersonAndMakesThemAWatcher`) | a comment is read in its thread a page at a time; the images are read once per page |
-| A question's options and answer | `options_html` and `answer_html` beside `options` and `answer` on every question (`questionView`), the open decisions of `/me/decisions` included (`imagesOf` per tenant's page) | likewise |
+| A question's options and answer | `options_html` and `answer_html` beside `options` and `answer` on every question (`questionView`), the open decisions of `/me/decisions` included (`imagesOf` per team's page) | likewise |
 
 The context document, the Markdown export, the revisions of a comment and the MCP tools stay
 Markdown: they are read by models and people as text. A stored answer an `Idempotency-Key` replays

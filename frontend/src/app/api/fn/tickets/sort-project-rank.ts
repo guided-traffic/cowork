@@ -13,9 +13,9 @@ import { ProjectRankSorted } from '../../models/project-rank-sorted';
 export interface SortProjectRank$Params {
 
 /**
- * The tenant's slug (docs/adr/0005 D4)
+ * The team's slug (docs/adr/0005 D1, D4)
  */
-  tenant: string;
+  team: string;
 
 /**
  * The project's key (docs/adr/0007 D1)
@@ -27,7 +27,7 @@ export interface SortProjectRank$Params {
 export function sortProjectRank(http: HttpClient, rootUrl: string, params: SortProjectRank$Params, context?: HttpContext): Observable<StrictHttpResponse<ProjectRankSorted>> {
   const rb = new RequestBuilder(rootUrl, sortProjectRank.PATH, 'put');
   if (params) {
-    rb.path('tenant', params.tenant, {});
+    rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.body(params.body, 'application/json');
   }
@@ -42,4 +42,4 @@ export function sortProjectRank(http: HttpClient, rootUrl: string, params: SortP
   );
 }
 
-sortProjectRank.PATH = '/api/v1/tenants/{tenant}/projects/{project}/rank';
+sortProjectRank.PATH = '/api/v1/teams/{team}/projects/{project}/rank';

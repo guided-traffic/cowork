@@ -29,9 +29,9 @@ import (
 // tenant's; the archive unpacked when it is one.
 func (e ticketEnv) exportOf(t *testing.T, c caller, project string) (*http.Response, []byte, map[string][]byte) {
 	t.Helper()
-	p := fmt.Sprintf("/api/v1/tenants/%s/export", e.SlugA)
+	p := fmt.Sprintf("/api/v1/teams/%s/export", e.SlugA)
 	if project != "" {
-		p = fmt.Sprintf("/api/v1/tenants/%s/projects/%s/export", e.SlugA, project)
+		p = fmt.Sprintf("/api/v1/teams/%s/projects/%s/export", e.SlugA, project)
 	}
 	res := e.s.do(t, c, http.MethodGet, p, nil)
 	if res.StatusCode != http.StatusOK {
@@ -274,7 +274,7 @@ func TestTheExportStreamsALargeProjectWithinAMemoryBound(t *testing.T) {
 			}
 		}
 	}()
-	res := s.do(t, caller{Token: e.tk.AdminA}, http.MethodGet, fmt.Sprintf("/api/v1/tenants/%s/projects/ALPHA/export", e.SlugA), nil)
+	res := s.do(t, caller{Token: e.tk.AdminA}, http.MethodGet, fmt.Sprintf("/api/v1/teams/%s/projects/ALPHA/export", e.SlugA), nil)
 	require.Equal(t, http.StatusOK, res.StatusCode)
 	gz, err := gzip.NewReader(res.Body)
 	require.NoError(t, err)

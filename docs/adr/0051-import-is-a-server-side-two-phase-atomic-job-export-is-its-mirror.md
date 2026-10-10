@@ -54,6 +54,15 @@ and the import page offered to every writer of the project. What D6 holds of a j
 D2 holds of an assignee at the execution and what D7 holds of the texts and of the export are made
 concrete by the implementer the same day, each marked in place, open to the owner's objection.
 
+Amended 2026-10-10 by the owner's rename of a tenant to a team
+([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1; D4: the manifest
+names the team as `team` and, for one release, as `tenant` beside it, for the importers of the
+release before; the importer reads `team`, or `tenant` alone as every archive written before names
+it — for good, since an archive outlives a release; the paths the archive writes name the team
+family), built the same day ([`api/exports.go`](../../backend/internal/api/exports.go),
+`exportManifest` in [`importer/analyze.go`](../../backend/internal/importer/analyze.go)). The
+manifest's `tenant` goes in a later release; the importer's reading of it stays.
+
 ~~**Not built.** No import, no export, no job entity.~~ **Built** (phase 6, 2026-10-06, in the API;
 ~~the UI's import page and export button outstanding~~ *(built 2026-10-07, below)*): D1–D9 — the routes of
 [`imports.yaml`](../../backend/api/imports.yaml): `POST …/projects/{project}/imports` (the dry
@@ -188,7 +197,9 @@ the project (D2, D9).
 
 *(Made concrete 2026-10-06 by the implementer, open to the owner's objection:)* the archive is a
 `tar.gz`, answered as `application/gzip` with a file name of the tenant, the project and the day.
-At its root are `manifest.json` — the format `cowork export v1`, the tenant, each project with its
+At its root are `manifest.json` — the format `cowork export v1`, the ~~tenant~~ team *(2026-10-10: as
+`team`, and as `tenant` beside it for one release; the importer reads `team`, or `tenant` alone, for
+good)*, each project with its
 key, name, whether it is archived, its count of documents and its count of the confidential
 tickets left out (ADR 0065 D5), the time, the exporter written as grammar v1 writes a person, and
 the totals —, `links.json` and `attachments.json` — each attachment's ticket, name, type, size
