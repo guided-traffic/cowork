@@ -56,6 +56,7 @@ function ticket(key: string, version = 1, overrides: Partial<Ticket> = {}): Tick
     block: null,
     confidential: false,
     parent: null,
+    parent_head: null,
     progress: 0,
     progress_derived: false,
     progress_refinement: 0,

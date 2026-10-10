@@ -7,10 +7,10 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { Link } from '../../models/link';
 import { LinkType } from '../../models/link-type';
+import { Relation } from '../../models/relation';
 
-export interface LinkTickets$Params {
+export interface LinkTicketTo$Params {
 
 /**
  * The team's slug (docs/adr/0005 D1, D4)
@@ -33,19 +33,25 @@ export interface LinkTickets$Params {
   type: LinkType;
 
 /**
+ * The team of the other end, any team of the installation (docs/adr/0005 D3, docs/adr/0012 D2)
+ */
+  other_team: string;
+
+/**
  * The other end's short key, <PROJECT>-<number>: a ticket of the team in the path, or with
  * `other_team` of that team (docs/adr/0007 D3, docs/adr/0012 D2)
  */
   other: string;
 }
 
-export function linkTickets(http: HttpClient, rootUrl: string, params: LinkTickets$Params, context?: HttpContext): Observable<StrictHttpResponse<Link>> {
-  const rb = new RequestBuilder(rootUrl, linkTickets.PATH, 'put');
+export function linkTicketTo(http: HttpClient, rootUrl: string, params: LinkTicketTo$Params, context?: HttpContext): Observable<StrictHttpResponse<Relation>> {
+  const rb = new RequestBuilder(rootUrl, linkTicketTo.PATH, 'put');
   if (params) {
     rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('type', params.type, {});
+    rb.path('other_team', params.other_team, {});
     rb.path('other', params.other, {});
   }
 
@@ -54,9 +60,9 @@ export function linkTickets(http: HttpClient, rootUrl: string, params: LinkTicke
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<Link>;
+      return r as StrictHttpResponse<Relation>;
     })
   );
 }
 
-linkTickets.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}';
+linkTicketTo.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}';

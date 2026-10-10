@@ -31,7 +31,9 @@ export interface TicketCreate {
   horizon?: Horizon;
 
   /**
-   * A ticket key of the same project, short or full
+   * The parent's key: canonical, a ticket of any team of the installation, or short, a ticket of
+   * this team in any project (docs/adr/0007 D3, docs/adr/0008 D2). A key the caller does not read
+   * is refused exactly as one that does not exist: 400 `validation_failed` at `/parent`
    */
   parent?: string;
   security: SecurityClass;

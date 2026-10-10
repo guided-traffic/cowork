@@ -7,9 +7,8 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { LinkType } from '../../models/link-type';
 
-export interface UnlinkTickets$Params {
+export interface RemoveTicketLink$Params {
 
 /**
  * The team's slug (docs/adr/0005 D1, D4)
@@ -27,25 +26,18 @@ export interface UnlinkTickets$Params {
   number: number;
 
 /**
- * The link's type, the ticket in the path its source (docs/adr/0012 D1)
+ * A link's id, as a relation of the ticket names it (docs/adr/0012 D1)
  */
-  type: LinkType;
-
-/**
- * The other end's short key, <PROJECT>-<number>: a ticket of the team in the path, or with
- * `other_team` of that team (docs/adr/0007 D3, docs/adr/0012 D2)
- */
-  other: string;
+  link: string;
 }
 
-export function unlinkTickets(http: HttpClient, rootUrl: string, params: UnlinkTickets$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
-  const rb = new RequestBuilder(rootUrl, unlinkTickets.PATH, 'delete');
+export function removeTicketLink(http: HttpClient, rootUrl: string, params: RemoveTicketLink$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
+  const rb = new RequestBuilder(rootUrl, removeTicketLink.PATH, 'delete');
   if (params) {
     rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
-    rb.path('type', params.type, {});
-    rb.path('other', params.other, {});
+    rb.path('link', params.link, {});
   }
 
   return http.request(
@@ -58,4 +50,4 @@ export function unlinkTickets(http: HttpClient, rootUrl: string, params: UnlinkT
   );
 }
 
-unlinkTickets.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}';
+removeTicketLink.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link}';

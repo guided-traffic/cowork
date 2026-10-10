@@ -78,6 +78,7 @@ function ticket(overrides: Partial<Ticket> = {}): Ticket {
     block: null,
     threat: null,
     parent: null,
+    parent_head: null,
     effort: 'M',
     progress: 40,
     progress_derived: false,

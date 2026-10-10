@@ -7,10 +7,9 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { Link } from '../../models/link';
 import { LinkType } from '../../models/link-type';
 
-export interface LinkTickets$Params {
+export interface UnlinkTicketFrom$Params {
 
 /**
  * The team's slug (docs/adr/0005 D1, D4)
@@ -33,30 +32,36 @@ export interface LinkTickets$Params {
   type: LinkType;
 
 /**
+ * The team of the other end, any team of the installation (docs/adr/0005 D3, docs/adr/0012 D2)
+ */
+  other_team: string;
+
+/**
  * The other end's short key, <PROJECT>-<number>: a ticket of the team in the path, or with
  * `other_team` of that team (docs/adr/0007 D3, docs/adr/0012 D2)
  */
   other: string;
 }
 
-export function linkTickets(http: HttpClient, rootUrl: string, params: LinkTickets$Params, context?: HttpContext): Observable<StrictHttpResponse<Link>> {
-  const rb = new RequestBuilder(rootUrl, linkTickets.PATH, 'put');
+export function unlinkTicketFrom(http: HttpClient, rootUrl: string, params: UnlinkTicketFrom$Params, context?: HttpContext): Observable<StrictHttpResponse<void>> {
+  const rb = new RequestBuilder(rootUrl, unlinkTicketFrom.PATH, 'delete');
   if (params) {
     rb.path('team', params.team, {});
     rb.path('project', params.project, {});
     rb.path('number', params.number, {});
     rb.path('type', params.type, {});
+    rb.path('other_team', params.other_team, {});
     rb.path('other', params.other, {});
   }
 
   return http.request(
-    rb.build({ responseType: 'json', accept: 'application/json', context })
+    rb.build({ responseType: 'text', accept: '*/*', context })
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<Link>;
+      return (r as HttpResponse<any>).clone({ body: undefined }) as StrictHttpResponse<void>;
     })
   );
 }
 
-linkTickets.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}';
+unlinkTicketFrom.PATH = '/api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}';

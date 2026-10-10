@@ -14,7 +14,8 @@ export interface ImportLink {
   direction: 'outgoing' | 'incoming';
 
   /**
-   * The other end's key in the project
+   * The other end's canonical key: a ticket of the upload or the project, or of another project or
+   * team the importing person reads (docs/adr/0012 D2, docs/adr/0051 D9)
    */
   key: string;
 
