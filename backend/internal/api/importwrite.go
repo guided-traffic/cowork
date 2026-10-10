@@ -239,9 +239,10 @@ func (ex *execution) questions(ctx context.Context, ticket uuid.UUID, pt *import
 }
 
 // link creates one link, with its act on both tickets; a blocks link the
-// tenant's graph would close a cycle with — through the project's tickets,
-// which the analysis does not walk — is omitted, and the report says so
-// (docs/adr/0012 D4).
+// installation's graph would close a cycle with — through tickets the upload
+// does not bring, of any team, which the analysis does not walk — is omitted,
+// and the report says so (docs/adr/0012 D4). The execution took the graph's
+// lock before anything else it locked.
 func (ex *execution) link(ctx context.Context, l importer.PlannedLink) error {
 	source, target := ex.ref(l.Source), ex.ref(l.Target)
 	if l.Type == domain.LinkBlocks {

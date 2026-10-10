@@ -75,16 +75,16 @@ func keysOfFiles(files map[string][]byte) []string {
 	return out
 }
 
-// importIn sends a dry run of an upload to a project of a team and executes
-// it, answering the executed job.
-func (e relEnv) importIn(t *testing.T, c caller, team, project string, parts ...namedFile) apigen.ImportJob {
+// importIntoBeta sends a dry run of an upload to team B's project BETA and
+// executes it, answering the executed job.
+func (e relEnv) importIntoBeta(t *testing.T, c caller, parts ...namedFile) apigen.ImportJob {
 	t.Helper()
 	contentType, body := uploadOf(t, parts...)
 	cl := e.s.client(t, c)
-	dry, err := cl.CreateImportWithBodyWithResponse(e.ctx, team, project, contentType, bytes.NewReader(body))
+	dry, err := cl.CreateImportWithBodyWithResponse(e.ctx, e.SlugB, "BETA", contentType, bytes.NewReader(body))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusCreated, dry.StatusCode(), string(dry.Body))
-	done, err := cl.ExecuteImportWithResponse(e.ctx, team, project, dry.JSON201.Id, apigen.ImportExecution{})
+	done, err := cl.ExecuteImportWithResponse(e.ctx, e.SlugB, "BETA", dry.JSON201.Id, apigen.ImportExecution{})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, done.StatusCode(), string(done.Body))
 	return *done.JSON200
@@ -98,13 +98,13 @@ func TestTheImportResolvesAParentInAnotherTeamForItsReader(t *testing.T) {
 	memberA, memberB, both := caller{Token: e.tk.MemberA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
 	parent := e.fileIn(t, memberA, e.SlugA, "ALPHA", task("The parent in A"))
 
-	job := e.importIn(t, both, e.SlugB, "BETA", ticketFile(1, "parent: "+parent.Key+"\n"))
+	job := e.importIntoBeta(t, both, ticketFile(1, "parent: "+parent.Key+"\n"))
 	file := reported(t, &job, "001-ticket-1.md")
 	assert.Equal(t, parent.Key, file.Parent.MustGet())
 	imported := e.readIn(t, both, e.SlugB, apigen.Ticket{Project: "BETA", Number: 1})
 	assert.Equal(t, parent.Key, imported.Parent.MustGet(), "the reader's import sets it")
 
-	job = e.importIn(t, memberB, e.SlugB, "BETA", ticketFile(2, "parent: "+parent.Key+"\n"))
+	job = e.importIntoBeta(t, memberB, ticketFile(2, "parent: "+parent.Key+"\n"))
 	file = reported(t, &job, "002-ticket-2.md")
 	assert.True(t, file.Parent.IsNull())
 	var warned bool
@@ -117,7 +117,7 @@ func TestTheImportResolvesAParentInAnotherTeamForItsReader(t *testing.T) {
 	// A link to a ticket of another team the person reads is made, its act on
 	// that ticket recorded in its own team's record; one whose source is that
 	// ticket is a member's of its team to set, reported and omitted.
-	job = e.importIn(t, both, e.SlugB, "BETA",
+	job = e.importIntoBeta(t, both,
 		ticketFile(3, "filed-from: "+parent.Key+"\n"), ticketFile(4, "blocked-by: "+parent.Key+"\n"))
 	three := reported(t, &job, "003-ticket-3.md")
 	require.Len(t, three.Links, 1)
@@ -133,6 +133,22 @@ func TestTheImportResolvesAParentInAnotherTeamForItsReader(t *testing.T) {
 		warned = warned || strings.Contains(w.Message, "its source is a ticket of another team")
 	}
 	assert.True(t, warned, "%+v", four.Warnings)
+
+	// A block waits on a ticket of its own team (docs/adr/0009 D2): a blocked
+	// file whose block names a ticket of another team cannot be imported, the
+	// report says why, and the execution writes the rest.
+	blocked := namedFile{name: "005-ticket-5.md", body: []byte("---\nid: T5\ntitle: ticket 5\nstate: blocked\nblocked-by: " +
+		parent.Key + "\nblocked-reason: waits on A\nblocked-from: in-progress\nseverity: low\nsecurity: none\nurgency: later\n" +
+		"effort: S\nopened: 2026-10-01\n---\n\n## Current state\n\nText.\n")}
+	job = e.importIntoBeta(t, both, blocked, ticketFile(6, ""))
+	five := reported(t, &job, "005-ticket-5.md")
+	assert.Equal(t, apigen.ImportOutcomeError, five.Outcome)
+	failed := false
+	for _, m := range five.Errors {
+		failed = failed || strings.Contains(m.Message, parent.Key+" is a ticket of another team")
+	}
+	assert.True(t, failed, "%+v", five.Errors)
+	assert.Equal(t, apigen.ImportOutcomeCreated, reported(t, &job, "006-ticket-6.md").Outcome)
 }
 
 // A purge ends the purged ticket's relations into another team — its child

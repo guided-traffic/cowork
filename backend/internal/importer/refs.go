@@ -95,7 +95,9 @@ func (a *analysis) waitsOnOf(e *entry) (string, string) {
 }
 
 // unresolvedBlock makes a block of kind ticket whose ticket nothing resolves
-// an error of the file (docs/adr/0009 D2).
+// an error of the file (docs/adr/0009 D2), and one that waits on a ticket of
+// another team: a block waits on a ticket of its own team, as the transition
+// to blocked takes it, whose row the block's key holds.
 func (a *analysis) unresolvedBlock(e *entry) bool {
 	b := e.plan.Block
 	if b == nil || b.Kind != domain.BlockTicket {
@@ -103,8 +105,12 @@ func (a *analysis) unresolvedBlock(e *entry) bool {
 	}
 	v, why := a.waitsOnOf(e)
 	if why == "" {
-		if _, why = a.resolve(v); why == "" {
-			return false
+		var ref *Ref
+		if ref, why = a.resolve(v); why == "" {
+			if !a.elsewhere(*ref) {
+				return false
+			}
+			why = v + " is a ticket of another team, and a block waits on a ticket of its own team"
 		}
 	}
 	e.f.fail(keyBlockedBy, e.f.line(keyBlockedBy), "the block cannot be imported: %s", why)
