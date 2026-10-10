@@ -71,7 +71,7 @@ test(
     await openTicket(page, blockerShort);
     await page.getByRole('combobox', { name: 'Link type' }).click();
     await page.getByRole('option', { name: 'blocks', exact: true }).click();
-    await page.getByRole('textbox', { name: 'The other ticket' }).fill(short);
+    await page.getByRole('combobox', { name: 'The other ticket' }).fill(short);
     await page.getByRole('button', { name: 'Add the link' }).click();
     const tree = member.page.getByTestId('tree');
     await expect(tree.getByRole('link', { name: blockerShort, exact: true })).toBeVisible();
