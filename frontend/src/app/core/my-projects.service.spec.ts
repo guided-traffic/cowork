@@ -4,7 +4,7 @@ import { signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
 import { provideApiConfiguration } from '../api/api-configuration';
-import { MyProject, MyProjectList, Project } from '../api/models';
+import { Membership, MyProject, MyProjectList, Project } from '../api/models';
 import { EventStreamService, StreamEvent } from './event-stream.service';
 import { MyProjectsService, shownAgainWithin } from './my-projects.service';
 import { SessionService } from './session.service';
@@ -27,6 +27,16 @@ function mine(team: string, key: string): MyProject {
   return { team: { slug: team, name: `Team ${team}` }, project: project(key) };
 }
 
+function member(slug: string): Membership {
+  return {
+    role: 'member',
+    team: { slug, name: `Team ${slug}` },
+    tenant: { slug, name: `Team ${slug}` },
+    origins: [{ source: 'grant', role: 'member' }],
+    can_create_projects: true,
+  };
+}
+
 function listOf(items: MyProject[], next: string | null = null): MyProjectList {
   return { items, next_cursor: next };
 }
@@ -37,6 +47,7 @@ describe('MyProjectsService', () => {
   let stream: Subject<StreamEvent>;
   let person: WritableSignal<{ id: string } | undefined>;
   let tenant: WritableSignal<string | null>;
+  let memberships: WritableSignal<Membership[]>;
 
   const settle = async () => {
     TestBed.tick();
@@ -62,13 +73,14 @@ describe('MyProjectsService', () => {
     stream = new Subject<StreamEvent>();
     person = signal<{ id: string } | undefined>({ id: 'p1' });
     tenant = signal<string | null>(null);
+    memberships = signal<Membership[]>([member('acme')]);
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
         provideApiConfiguration(''),
         { provide: EventStreamService, useValue: { events: stream.asObservable() } },
-        { provide: SessionService, useValue: { person, tenant } },
+        { provide: SessionService, useValue: { person, tenant, memberships } },
       ],
     });
     service = TestBed.inject(MyProjectsService);
@@ -168,6 +180,18 @@ describe('MyProjectsService', () => {
       } finally {
         visibility.mockRestore();
       }
+    });
+
+    it("reads it again when the person's teams change, whichever way `me` learnt of it", async () => {
+      memberships.set([member('acme'), member('globex')]);
+      await settle();
+      await again([mine('acme', 'COW'), mine('globex', 'WEB')]);
+      expect(service.of('globex').map((each) => each.key)).toEqual(['WEB']);
+
+      // `me` loaded again with the same teams, in another order: nothing to read.
+      memberships.set([member('globex'), member('acme')]);
+      await settle();
+      http.expectNone('/api/v1/me/projects');
     });
 
     it('reads it again when the pages enter a team, and when they leave it', async () => {

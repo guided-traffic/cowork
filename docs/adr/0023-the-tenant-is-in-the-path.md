@@ -95,8 +95,8 @@ out; a group collapses and the browser remembers it per team
 ([ADR 0053](0053-signals-and-services-no-store-framework.md) D6), the current team's group stays
 open, its name and the current project marked; the current team's projects stay live through its
 events, the other teams' are read from `/me/projects` again when the tab or the window comes back,
-when the pages enter or leave a team and on a `membership.changed` that may change what the person
-sees in any of their teams. The configuration
+when the pages enter or leave a team, on a `membership.changed` that may change what the person
+sees in any of their teams and when their teams change. The configuration
 ([`features/tenant/team-config.ts`](../../frontend/src/app/features/tenant/team-config.ts)): one
 route over the dashboard whose children are the seven pages at their addresses; a tab replaces the
 address, and closing goes back in the history when a link of the UI opened the dialog — a mark in

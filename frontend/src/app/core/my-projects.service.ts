@@ -31,8 +31,8 @@ export const shownAgainWithin = 1000;
  * loads again when the person may look at it anew: the tab shown again or the window's focus back,
  * the pages entering or leaving a team, a `membership.changed` of any team of the person that may
  * change what they see — a team joined or left, a role changed, a project restricted or opened
- * (`changesVisibility`) —, a `resync` and the fallback's `poll`. A load again that fails keeps the
- * list shown ({@link keepShown}).
+ * (`changesVisibility`) —, the person's teams changing in `me`, a `resync` and the fallback's
+ * `poll`. A load again that fails keeps the list shown ({@link keepShown}).
  */
 @Injectable({ providedIn: 'root' })
 export class MyProjectsService {
@@ -47,6 +47,14 @@ export class MyProjectsService {
    * (a resource loads again every time its params function runs).
    */
   private readonly person = computed(() => this.session.person()?.id);
+  /** The slugs of the person's teams as one string, which changes only when the teams do. */
+  private readonly teams = computed(() =>
+    this.session
+      .memberships()
+      .map((membership) => membership.team.slug)
+      .sort()
+      .join(' '),
+  );
 
   readonly projects: ResourceRef<MyProject[] | undefined> = resource({
     params: () => this.person(),
@@ -99,6 +107,18 @@ export class MyProjectsService {
           this.reload();
         }
         shown = tenant;
+      });
+    });
+    // The person's teams, once the list holds them: a team joined or left, whichever way `me`
+    // learnt of it — an event, a poll, a team made on the page of every team —, loads it again.
+    let known: string | undefined;
+    effect(() => {
+      const teams = this.teams();
+      untracked(() => {
+        if (known !== undefined && known !== teams && this.projects.hasValue()) {
+          this.reload();
+        }
+        known = teams;
       });
     });
 
