@@ -82,9 +82,10 @@ D4's redaction). D4's walk crosses teams under one lock for the installation's `
 before any other lock of the transaction: the transition to `blocked` and an import's execution
 take it before they write a ticket ([docs/developer/data-access.md](../developer/data-access.md#advisory-locks)).
 D5 across teams: a ticket that reaches `done` or `dropped` records `prerequisite_settled` on every
-ticket of another team it blocks, in that team's record, naming itself by its head as a person
-outside its team reads it — the placeholder where it is confidential —, and the act tells the
-blocked ticket's watchers who see it, as `blocker_closed`
+ticket of another team it blocks, in that team's record, naming itself ~~by its head as a person
+outside its team reads it — the placeholder where it is confidential —~~ *(2026-10-10, after the
+security review: in its refs alone, below)*, and the act tells the blocked ticket's watchers who see
+it, as `blocker_closed`
 ([ADR 0026](0026-one-append-only-audit-table-written-by-the-request-layer.md) D1 gains the action).
 D6: `GET …/tickets/{number}/prerequisite-tree`, and its mirror with `direction=up`, reads the tree
 across teams, each node by its head; the walk goes on only from a ticket the caller reads, a head
@@ -161,8 +162,15 @@ tickets in the same direction.
 act as well. When a blocking ticket reaches `done` or `dropped`, the blocked ticket is
 notified, not moved. *(Made concrete 2026-10-10 by the implementer, open to the owner's
 objection:)* a blocked ticket of another team is notified through an act in its own team's record,
-`prerequisite_settled`, which names the prerequisite by its head and tells the blocked ticket's
-watchers.
+`prerequisite_settled`, which names the prerequisite ~~by its head~~ and tells the blocked ticket's
+watchers. *(Made concrete again 2026-10-10 by the implementer after the security review, open to
+the owner's objection:)* the act names the prerequisite in its refs alone and stores no head of it,
+so its entry in the activity is redacted for every reader of the blocked ticket's team, the inbox
+names no blocker for it — the blocked ticket's relations show the prerequisite by its head as it
+is now —, and nothing of the prerequisite outlives a later confidential flag or a purge in the other
+team's record; a closer who holds no role in the blocked ticket's team is recorded there as
+`system:relation`, with no token and no agent mark (ADR 0026 D1;
+`TestTheWatchersOfAnotherTeamAreToldWhenAPrerequisiteSettles`).
 
 **D6 — The prerequisites of a ticket are a first-class view** *(added 2026-10-01)*. The
 prerequisites of B are the transitive closure of `blocks` edges into B: every A that blocks

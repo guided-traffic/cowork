@@ -779,7 +779,7 @@ func (m *stageMove) write(ctx context.Context, w *store.Writer, t tenantScope, t
 		Action: actionTransitioned, Before: map[string]any{fieldState: string(m.change.from)}, After: m.after,
 		Reason: deref(body.Reason), Note: deref(body.Note), ExplainedBy: explainedBy, Refs: m.refs,
 		Notices: stateNotices(m.change.to)})
-	return tellBlockedElsewhere(ctx, w, t, moved.row, m.change.to)
+	return tellBlockedElsewhere(ctx, w, moved.row, m.change.to)
 }
 
 // stageInputs holds a patch to what its stages do (docs/adr/0009 D5,

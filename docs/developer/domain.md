@@ -149,7 +149,8 @@ type, direction, its name from this side, its maker and time — and its head; t
 because a position names an id the caller may not see ([api.md](api.md#paging)). What else crosses:
 the derived progress counts the children of every team ([progress](#progress)); an act on a link
 across teams, the end of a relation at a purge and a settled prerequisite are recorded on the other
-ticket in its own team's record (`RecordElsewhere`); and the context document and the export name
+ticket in its own team's record (`RecordElsewhere`), naming the ticket of the caller's team in their
+refs, and as `system:relation` or `system:ticket-purge` where the caller holds no role in that team; and the context document and the export name
 the other end by its key, the placeholder by its team. An act in a ticket's activity whose `Refs`
 name a ticket of another team is always shown without its payload, since the reader's visible
 tickets are their team's ([comments and the activity list](#comments-and-the-activity-list)).
@@ -346,8 +347,9 @@ review: …` (`mayClose`, which the done act of the stages calls as well).
   `open_prerequisite_count`: a placeholder is never counted, and a prerequisite of the caller's own
   team in a project restricted from them is, by its head. A ticket that reaches `done` or `dropped`
   records `prerequisite_settled` on each ticket of another team it blocks, in that team's record,
-  naming itself by its head as an outsider reads it, which tells that ticket's watchers
-  (`tellBlockedElsewhere`; [who is told](#who-is-told)).
+  naming itself in its refs alone — no head of it stays there; the inbox names no blocker for it —,
+  which tells that ticket's watchers (`tellBlockedElsewhere`; [who is told](#who-is-told)); a closer
+  who holds no role in that team is recorded as `system:relation`.
 - An `Idempotency-Key` sent with a transition is recorded on the act.
 
 ## Rank

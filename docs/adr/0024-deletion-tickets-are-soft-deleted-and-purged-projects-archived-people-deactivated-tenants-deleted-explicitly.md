@@ -100,9 +100,11 @@ change recorded in the audit record of the team it changes. *(Built through
 `end_relations_elsewhere`, a crossing of
 [ADR 0021](0021-row-level-security-is-the-second-line-of-tenant-isolation.md) D7, inside the purge
 of a deleted ticket only: a child of another team becomes a root, its version unchanged, with an
-`updated` act whose reason is "the parent was purged" and which names no ticket; a link to or from
-the ticket goes, with an `unlinked` act on the other end, read from its side; the actor is the
-purge's, the administrator or `system:ticket-purge`. A block of another team never waits on the
+`updated` act whose reason is "the parent was purged" ~~and which names no ticket~~ *(after the
+security review: which names the purged ticket in its refs alone, no id of it in its payload)*; a
+link to or from the ticket goes, with an `unlinked` act on the other end, read from its side; the
+actor is the purge's, the administrator or `system:ticket-purge` *(after the security review:
+`system:ticket-purge` also for an administrator who holds no role in the other team, ADR 0026 D1)*. A block of another team never waits on the
 ticket, since a block names a ticket of its own team.)*
 
 **D3 — Soft deletion is an application filter, not a policy.** Row-level security

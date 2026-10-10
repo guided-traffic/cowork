@@ -99,7 +99,7 @@ func transition(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCt
 	ev.Action, ev.Before, ev.After = actionTransitioned, map[string]any{fieldState: string(from)}, after
 	ev.Notices = stateNotices(to)
 	w.Record(ev)
-	if err := tellBlockedElsewhere(ctx, w, t, tc.row, to); err != nil {
+	if err := tellBlockedElsewhere(ctx, w, tc.row, to); err != nil {
 		return store.TicketRow{}, err
 	}
 	return reread(ctx, w, t, tc.row.ID)
@@ -113,11 +113,12 @@ const actionPrerequisiteSettled = "prerequisite_settled"
 // tellBlockedElsewhere tells the watchers of the tickets of other teams that
 // a ticket reaching done or dropped blocks, as its own team's watchers are
 // told (docs/adr/0012 D5, docs/adr/0020 D2): an act on each blocked ticket in
-// its own team's record, naming the prerequisite by its head as a person
-// outside its team reads it — the placeholder where it is confidential —,
-// whose notices reach that ticket's watchers who see it. Nothing for any other
-// state.
-func tellBlockedElsewhere(ctx context.Context, w *store.Writer, t tenantScope, row store.TicketRow, to domain.TicketState) error {
+// its own team's record that names the prerequisite in its refs alone — no
+// head of it stays in that record, so a later confidential flag or a purge
+// leaves nothing of it behind —, whose notices reach that ticket's watchers
+// who see it. The closer who holds no role in that team is no actor there
+// (RecordElsewhere). Nothing for any other state.
+func tellBlockedElsewhere(ctx context.Context, w *store.Writer, row store.TicketRow, to domain.TicketState) error {
 	if !to.Terminal() {
 		return nil
 	}
@@ -125,19 +126,12 @@ func tellBlockedElsewhere(ctx context.Context, w *store.Writer, t tenantScope, r
 	if err != nil {
 		return err
 	}
-	prerequisite := map[string]any{"team": map[string]any{"slug": t.Slug, "name": t.Name}, "placeholder": row.Confidential,
-		"key": nil, "title": nil, fieldType: nil, fieldState: nil}
-	if !row.Confidential {
-		prerequisite["key"], prerequisite["title"] = ticketKey(t, row), row.Title
-		prerequisite[fieldType], prerequisite[fieldState] = string(row.Type), string(to)
-	}
 	for _, f := range far {
 		if f.Kind != store.RelationLink || f.LinkType == nil || *f.LinkType != domain.LinkBlocks || f.Outgoing == nil || !*f.Outgoing {
 			continue
 		}
 		if err := w.RecordElsewhere(ctx, f.Far, store.Event{EntityType: entityTicket, Action: actionPrerequisiteSettled,
-			After:   map[string]any{"prerequisite": prerequisite},
-			Notices: []store.Notice{{Reason: store.NoticeBlockerClosed, Watchers: true}}}); err != nil {
+			Refs: []uuid.UUID{row.ID}, Notices: []store.Notice{{Reason: store.NoticeBlockerClosed, Watchers: true}}}); err != nil {
 			return err
 		}
 	}

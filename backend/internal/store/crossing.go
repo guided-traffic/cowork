@@ -481,7 +481,10 @@ func (r *Reader) RelationsElsewhere(ctx context.Context, ticket uuid.UUID) ([]Fa
 // own team again after them. The far ticket is held against a deletion of its
 // row until the transaction ends, so a purge of it waits for these acts and
 // empties them with the rest; one a purge took away before records nothing. A
-// FarEnd comes only from a crossing of this file.
+// person who holds no role in the far team is no actor there: the acts are a
+// system actor's — system:ticket-purge inside a purge, system:relation
+// otherwise —, with no person, token or agent mark of the caller's
+// (docs/adr/0026 D1). A FarEnd comes only from a crossing of this file.
 func (w *Writer) RecordElsewhere(ctx context.Context, far FarEnd, events ...Event) (err error) {
 	if far.team == uuid.Nil || far.ticket == uuid.Nil || far.team == w.TenantID {
 		return errors.New("store: an act elsewhere is recorded at a ticket of another team")
@@ -504,6 +507,10 @@ func (w *Writer) RecordElsewhere(ctx context.Context, far FarEnd, events ...Even
 	if err != nil || !held {
 		return err
 	}
+	system, err := w.actorElsewhere(ctx)
+	if err != nil {
+		return err
+	}
 	kept := w.events
 	w.events = make([]Event, 0, len(events))
 	for _, e := range events {
@@ -511,12 +518,43 @@ func (w *Writer) RecordElsewhere(ctx context.Context, far FarEnd, events ...Even
 		if e.EntityID == uuid.Nil && e.EntityType == entityTicket {
 			e.EntityID = far.ticket
 		}
+		if e.System == "" {
+			e.System = system
+		}
 		w.events = append(w.events, e)
 	}
 	err = w.writeEvents(ctx, far.team, w.caller, Idempotency{}, false)
 	w.flushed = w.flushed || err == nil
 	w.events = kept
 	return err
+}
+
+// The system actors of an act in another team's record whose caller holds no
+// role there.
+const (
+	systemRelation    = "system:relation"
+	systemTicketPurge = "system:" + jobTicketPurge
+)
+
+// actorElsewhere is the system actor the acts in the far team's record are
+// recorded as, the transaction bound to it: none for a caller who holds a role
+// there, and for a system caller, whose own name stands.
+func (w *Writer) actorElsewhere(ctx context.Context) (string, error) {
+	if w.caller.System != "" {
+		return "", nil
+	}
+	var member bool
+	var job string
+	if err := w.tx.QueryRow(ctx, "SELECT app_is_member(), coalesce(current_setting('app.job', true), '')").Scan(&member, &job); err != nil {
+		return "", fmt.Errorf("read whether the caller holds a role in the other team: %w", err)
+	}
+	switch {
+	case member:
+		return "", nil
+	case job == jobTicketPurge:
+		return systemTicketPurge, nil
+	}
+	return systemRelation, nil
 }
 
 // holdFarTicket locks the far ticket's row FOR KEY SHARE in the far team's
@@ -572,13 +610,14 @@ func (w *Writer) endRelationsElsewhere(ctx context.Context, ticketID uuid.UUID, 
 }
 
 // endedRelation is the act recorded on a ticket of another team when its
-// relation to the ticket nearID ends: a child's parent cleared, `updated` and
-// no refs — the ticket it names is gone from every reader's sight —, or a
-// link's removal, `unlinked`, read from that ticket's side.
+// relation to the ticket nearID ends: a child's parent cleared, `updated`, or a
+// link's removal, `unlinked`, read from that ticket's side. Each names the
+// ticket of the other team in its refs alone, so no reader of the far team
+// reads its payload (docs/adr/0065 D4).
 func endedRelation(e farEndRow, nearID uuid.UUID, nearKey, parentReason, linkReason string) Event {
 	if e.Relation == RelationChild {
 		return Event{EntityType: entityTicket, EntityID: e.FarID, Action: actionUpdated,
-			Before: map[string]any{"parent": nearID.String()}, After: map[string]any{"parent": nil}, Reason: parentReason}
+			After: map[string]any{"parent": nil}, Reason: parentReason, Refs: []uuid.UUID{nearID}}
 	}
 	payload := map[string]any{"type": "", fieldSource: e.FarKey, fieldTarget: nearKey}
 	if e.LinkType != nil {

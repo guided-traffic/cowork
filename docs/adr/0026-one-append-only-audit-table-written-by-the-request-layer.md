@@ -76,12 +76,18 @@ entity `tenant`.
 *(2026-10-10.)* D1's action `prerequisite_settled` is built with the relations between teams
 ([ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D5 as made concrete that day,
 [migration 47](../../backend/internal/store/migrations/000047_relations_across_teams.up.sql)): the act on a blocked ticket of another team, in that team's
-record, when a ticket that blocks it reaches `done` or `dropped`; its `after` names the
-prerequisite by its head as a person outside its team reads it, and it tells the blocked ticket's
+record, when a ticket that blocks it reaches `done` or `dropped`; ~~its `after` names the
+prerequisite by its head as a person outside its team reads it~~ *(after the security review: its
+refs name the prerequisite, and it stores no head of it)*, and it tells the blocked ticket's
 watchers. The acts of a link across teams and of the end of a relation at a purge are written in
 the record of the team each changes
 ([ADR 0024](0024-deletion-tickets-are-soft-deleted-and-purged-projects-archived-people-deactivated-tenants-deleted-explicitly.md) D2),
-by the actor of the act that changed it.
+by the actor of the act that changed it. *(Made concrete 2026-10-10 by the implementer after the
+security review, open to the owner's objection:)* an actor who holds no role in the team whose
+record such an act goes into is no actor there: the act is a system actor's —
+`system:ticket-purge` inside a purge, `system:relation` otherwise — and carries no person, token or
+agent mark of the caller's, so a reader of that team learns nothing of a person outside it; each
+names the ticket of the other team in its refs, which the activity's redaction reads.
 
 ## Context
 
@@ -109,7 +115,9 @@ and the start-up synchronisation as `system:bootstrap`)* *(amended 2026-10-04: w
 provider decides — a login through it, a session's groups refresh, a token's gate check, the
 memberships it derives — is `system:identity-provider`'s, also where an administrator's request
 records it: the derivation that follows a change of a group mapping is the system actor's act in
-the administrator's transaction, and carries the request, not the administrator)* |
+the administrator's transaction, and carries the request, not the administrator)* *(amended
+2026-10-10: an act recorded in another team's record for a caller who holds no role there is
+`system:relation`'s, or `system:ticket-purge`'s inside a purge, [ADR 0012](0012-four-typed-directed-links-within-a-tenant.md) D5)* |
 | `agent` | null, or the agent mark from the request (name, model, session) when an agent acted in the person's name; *(added 2026-10-02)* `agent_capabilities` the capability set that applied ([ADR 0043](0043-agent-capabilities-are-chosen-per-token-the-default-is-everything-reversible-and-attributable.md) D5) |
 | `token_id` | the personal access token used, or null for a browser session; *(added 2026-10-04, [ADR 0036](0036-a-token-acts-as-its-person-an-agent-flag-is-the-floor-the-agent-header-only-narrows.md) D6)* `token_name` its name as the token has it, copied when the row is written — the activity shows it to readers who may not read the token's row, and a revoked token's acts keep it; null without a token, and on every row written before the column existed, which names the token by its id alone; a system actor's act in a request carries neither |
 | `entity_type`, `entity_id` | what changed |

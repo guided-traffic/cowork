@@ -719,8 +719,9 @@ AuditAction:
     prerequisite_settled]
   description: |
     `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
-    reaches done or dropped, naming that prerequisite by its head in `after.prerequisite` — the
-    placeholder where it is confidential —, and tells the ticket's watchers (docs/adr/0012 D5)
+    reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
+    redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
+    holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5)
 AuditEvent:
   type: object
   required: [id, created_at, actor, entity_type, action]
@@ -3351,9 +3352,8 @@ InboxEntry:
     blocker:
       description: |
         For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is
-        now; a ticket of another team by its head as it was when it settled, null where it is
-        confidential, the act's `after.prerequisite` naming it as `<team> [Confidential]`
-        (docs/adr/0012 D5); null otherwise
+        now; null for a ticket of another team, which the act names in its refs alone and the ticket's
+        relations show by its head (docs/adr/0012 D5); null otherwise
       oneOf:
         - $ref: '#/TicketRef'
         - type: 'null'

@@ -1581,8 +1581,9 @@ type AccountPasswordReset struct {
 // Activity defines model for Activity.
 type Activity struct {
 	// Action `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
-	// reaches done or dropped, naming that prerequisite by its head in `after.prerequisite` — the
-	// placeholder where it is confidential —, and tells the ticket's watchers (docs/adr/0012 D5)
+	// reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
+	// redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
+	// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5)
 	Action      AuditAction               `json:"action"`
 	Actor       nullable.Nullable[Person] `json:"actor"`
 	ActorSystem nullable.Nullable[string] `json:"actor_system"`
@@ -1706,15 +1707,17 @@ type AttachmentUsage struct {
 }
 
 // AuditAction `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
-// reaches done or dropped, naming that prerequisite by its head in `after.prerequisite` — the
-// placeholder where it is confidential —, and tells the ticket's watchers (docs/adr/0012 D5)
+// reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
+// redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
+// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5)
 type AuditAction string
 
 // AuditEvent defines model for AuditEvent.
 type AuditEvent struct {
 	// Action `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
-	// reaches done or dropped, naming that prerequisite by its head in `after.prerequisite` — the
-	// placeholder where it is confidential —, and tells the ticket's watchers (docs/adr/0012 D5)
+	// reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
+	// redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
+	// holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5)
 	Action AuditAction `json:"action"`
 
 	// Actor A person, or a system actor such as system:idempotency-expiry
@@ -2853,9 +2856,8 @@ type InboxEntry struct {
 	Act Activity `json:"act"`
 
 	// Blocker For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is
-	// now; a ticket of another team by its head as it was when it settled, null where it is
-	// confidential, the act's `after.prerequisite` naming it as `<team> [Confidential]`
-	// (docs/adr/0012 D5); null otherwise
+	// now; null for a ticket of another team, which the act names in its refs alone and the ticket's
+	// relations show by its head (docs/adr/0012 D5); null otherwise
 	Blocker   nullable.Nullable[TicketRef] `json:"blocker"`
 	CreatedAt time.Time                    `json:"created_at"`
 	Id        openapi_types.UUID           `json:"id"`

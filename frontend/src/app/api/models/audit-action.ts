@@ -4,8 +4,9 @@
 
 /**
  * `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
- * reaches done or dropped, naming that prerequisite by its head in `after.prerequisite` — the
- * placeholder where it is confidential —, and tells the ticket's watchers (docs/adr/0012 D5)
+ * reaches done or dropped, naming that prerequisite in its refs alone — its activity entry is
+ * redacted for every reader of the ticket's team —, and tells the ticket's watchers; a closer who
+ * holds no role in the ticket's team is recorded as `system:relation` (docs/adr/0012 D5)
  */
 export type AuditAction = 'created' | 'updated' | 'transitioned' | 'linked' | 'unlinked' | 'commented' | 'edited' | 'withdrawn' | 'assigned' | 'interest' | 'ranked' | 'overridden' | 'asked' | 'answered' | 'booked' | 'voided' | 'locked' | 'uploaded' | 'downloaded' | 'exported' | 'deleted' | 'restored' | 'purged' | 'revoked' | 'refused' | 'archived' | 'confidential_set' | 'confidential_lifted' | 'expired' | 'logged_in' | 'logged_out' | 'login_failed' | 'unlocked' | 'password_changed' | 'password_reset' | 'deactivated' | 'reactivated' | 'read' | 'merged' | 'closed' | 'reopened' | 'accepted' | 'imported' | 'prerequisite_settled';
 

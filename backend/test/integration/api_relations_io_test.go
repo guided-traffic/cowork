@@ -188,18 +188,25 @@ func TestAPurgeEndsTheRelationsIntoAnotherTeam(t *testing.T) {
 		links, err := e.f.QueryCount(ctx, "SELECT count(*) FROM ticket_links WHERE source_id = $1 OR target_id = $1", p.parent.Id)
 		require.NoError(t, err)
 		assert.Zero(t, links, "%s: no link names the purged ticket", name)
+		// The detach names the purged ticket in its refs alone, no id of it in
+		// its payload; a link's removal keeps the keys of its ends, redacted
+		// by the same refs.
 		for _, act := range []struct {
 			ticket, action, reason string
+			before                 bool
 		}{
-			{p.child.Id.String(), "updated", "the parent was purged"},
-			{p.fromB.Id.String(), "unlinked", "the other ticket was purged"},
-			{p.toB.Id.String(), "unlinked", "the other ticket was purged"},
+			{p.child.Id.String(), "updated", "the parent was purged", false},
+			{p.fromB.Id.String(), "unlinked", "the other ticket was purged", true},
+			{p.toB.Id.String(), "unlinked", "the other ticket was purged", true},
 		} {
 			n, err := e.f.QueryCount(ctx, `SELECT count(*) FROM audit_events
 				WHERE tenant_id = $1 AND ticket_id = $2 AND action = $3 AND reason = $4
-				  AND coalesce(actor_system, actor_user_id::text) = $5`, e.B, act.ticket, act.action, act.reason, actor)
+				  AND coalesce(actor_system, actor_user_id::text) = $5
+				  AND token_id IS NULL AND agent IS NULL AND (before IS NOT NULL) = $7 AND $6 = ANY (refs)`,
+				e.B, act.ticket, act.action, act.reason, actor, p.parent.Id, act.before)
 			require.NoError(t, err)
-			assert.EqualValues(t, 1, n, "%s: the act %s on %s in B's record", name, act.action, act.ticket)
+			assert.EqualValues(t, 1, n, "%s: the act %s on %s in B's record, naming the purged ticket in its refs alone",
+				name, act.action, act.ticket)
 		}
 		assert.True(t, e.readIn(t, both, e.SlugB, p.child).ParentHead.IsNull(), name)
 	}
@@ -207,7 +214,7 @@ func TestAPurgeEndsTheRelationsIntoAnotherTeam(t *testing.T) {
 	explicit := arrange("explicit")
 	res := e.s.do(t, session, http.MethodDelete, "/api/v1/teams/"+e.SlugA+"/deleted-tickets/"+url.PathEscape(shortOf(explicit.parent)), nil)
 	require.Equal(t, http.StatusNoContent, res.StatusCode)
-	check("the explicit purge", explicit, e.AdminA.String())
+	check("the explicit purge, whose administrator holds no role in B", explicit, "system:ticket-purge")
 
 	job := arrange("the job's")
 	require.NoError(t, e.f.Exec(ctx, "UPDATE tickets SET deleted_at = now() - interval '31 days' WHERE id = $1", job.parent.Id))

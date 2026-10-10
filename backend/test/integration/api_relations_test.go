@@ -792,34 +792,64 @@ func TestARestrictedTokenReadsAStrangersHeads(t *testing.T) {
 }
 
 // When a ticket reaches done or dropped, the watchers of the tickets it blocks
-// in other teams are told as in its own team: an act recorded on the blocked
-// ticket in its own team's record names the prerequisite by its head — the
-// placeholder where it is confidential — and tells its watchers
-// (docs/adr/0012 D5 as made concrete 2026-10-10).
+// in other teams are told as in its own team: an act on the blocked ticket in
+// its own team's record names the prerequisite in its refs alone — its
+// activity entry redacted for every reader there, no head of the prerequisite
+// stored, so nothing of it outlives a later confidential flag or a purge —,
+// and a closer who holds no role in that team is recorded as system:relation,
+// with no token or agent mark (docs/adr/0012 D5 as made concrete 2026-10-10,
+// docs/adr/0026 D1).
 func TestTheWatchersOfAnotherTeamAreToldWhenAPrerequisiteSettles(t *testing.T) {
 	e := newRelEnv(t)
 	ctx := context.Background()
 	adminA, memberA, memberB, both := caller{Token: e.tk.AdminA}, caller{Token: e.tk.MemberA}, caller{Token: e.tk.MemberB}, caller{Token: e.tk.Both}
+	toldOf := func(blocked apigen.Ticket) apigen.InboxEntry {
+		t.Helper()
+		var inbox apigen.InboxList
+		require.NoError(t, json.Unmarshal(e.rawBody(t, memberB, "/api/v1/me/inbox"), &inbox))
+		for _, n := range inbox.Items {
+			if n.Reason == apigen.InboxReasonBlockerClosed && n.Ticket.Key == blocked.Key {
+				return n
+			}
+		}
+		t.Fatalf("the blocked ticket's watcher is told: %+v", inbox.Items)
+		return apigen.InboxEntry{}
+	}
+	stored := func(blocked, pre apigen.Ticket) (actor string, token, after bool) {
+		t.Helper()
+		require.NoError(t, e.f.QueryRow(ctx, `SELECT coalesce(actor_system, actor_user_id::text), token_id IS NOT NULL, after IS NOT NULL
+			FROM audit_events WHERE tenant_id = $1 AND ticket_id = $2 AND action = 'prerequisite_settled' AND $3 = ANY (refs)`,
+			e.B, blocked.Id, pre.Id).Scan(&actor, &token, &after))
+		return actor, token, after
+	}
+	settle := func(c caller, pre, blocked apigen.Ticket) {
+		t.Helper()
+		link := e.s.do(t, both, http.MethodPut, ticketPathOf(e.SlugA, pre)+"/links/blocks/"+e.SlugB+"/"+shortOf(blocked), nil)
+		require.Equal(t, http.StatusCreated, link.StatusCode)
+		res := e.transitionIn(t, c, e.SlugA, pre, apigen.Transition{From: apigen.TicketStateFiled, To: apigen.TicketStateDone, Note: ptr("done")})
+		require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
+	}
+
 	pre := e.fileIn(t, memberA, e.SlugA, "ALPHA", task("The prerequisite in A"))
 	blocked := e.fileIn(t, memberB, e.SlugB, "BETA", task("Blocked in B"))
-	link := e.s.do(t, both, http.MethodPut, ticketPathOf(e.SlugA, pre)+"/links/blocks/"+e.SlugB+"/"+shortOf(blocked), nil)
-	require.Equal(t, http.StatusCreated, link.StatusCode)
-	res := e.transitionIn(t, memberA, e.SlugA, pre, apigen.Transition{From: apigen.TicketStateFiled, To: apigen.TicketStateDone, Note: ptr("done")})
-	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
-
-	var inbox apigen.InboxList
-	require.NoError(t, json.Unmarshal(e.rawBody(t, memberB, "/api/v1/me/inbox"), &inbox))
-	var told *apigen.InboxEntry
-	for i, n := range inbox.Items {
-		if n.Reason == apigen.InboxReasonBlockerClosed && n.Ticket.Key == blocked.Key {
-			told = &inbox.Items[i]
-		}
-	}
-	require.NotNil(t, told, "the blocked ticket's watcher is told: %+v", inbox.Items)
+	settle(memberA, pre, blocked)
+	told := toldOf(blocked)
 	assert.Equal(t, apigen.AuditActionPrerequisiteSettled, told.Act.Action)
-	blocker := told.Blocker.MustGet()
-	assert.Equal(t, pre.Key, blocker.Key)
-	assert.Equal(t, apigen.TicketStateDone, blocker.State)
+	assert.True(t, told.Act.Redacted, "the act names a ticket of another team")
+	assert.True(t, told.Blocker.IsNull(), "the blocked ticket's relations name the prerequisite, the inbox does not")
+	assert.Equal(t, "system:relation", told.Act.ActorSystem.MustGet(), "the closer holds no role in B")
+	assert.True(t, told.Act.Actor.IsNull())
+	assert.True(t, told.Act.Token.IsNull())
+	actor, token, after := stored(blocked, pre)
+	assert.Equal(t, "system:relation", actor)
+	assert.False(t, token, "no token of the closer in B's record")
+	assert.False(t, after, "no head of the prerequisite in B's record")
+
+	byBoth := e.fileIn(t, memberA, e.SlugA, "ALPHA", task("A prerequisite a member of both closes"))
+	alsoBlocked := e.fileIn(t, memberB, e.SlugB, "BETA", task("Also blocked in B"))
+	settle(both, byBoth, alsoBlocked)
+	actor, _, _ = stored(alsoBlocked, byBoth)
+	assert.Equal(t, e.Both.String(), actor, "a closer who holds a role in B is the actor there")
 
 	secret := e.fileIn(t, adminA, e.SlugA, "ALPHA", task("A confidential prerequisite", func(c *apigen.TicketCreate) {
 		c.Security, c.Threat = apigen.SecurityClassLive, ptr("it leaks")
@@ -827,22 +857,11 @@ func TestTheWatchersOfAnotherTeamAreToldWhenAPrerequisiteSettles(t *testing.T) {
 	quiet := e.fileIn(t, memberB, e.SlugB, "BETA", task("Blocked by a confidential ticket"))
 	require.NoError(t, e.f.Exec(ctx, `INSERT INTO ticket_links (tenant_id, type, source_id, target_id, created_by)
 		VALUES ($1, 'blocks', $2, $3, $4)`, e.A, secret.Id, quiet.Id, e.AdminA))
-	res = e.transitionIn(t, adminA, e.SlugA, secret, apigen.Transition{From: apigen.TicketStateFiled, To: apigen.TicketStateDropped, Reason: ptr("not needed")})
+	res := e.transitionIn(t, adminA, e.SlugA, secret, apigen.Transition{From: apigen.TicketStateFiled, To: apigen.TicketStateDropped, Reason: ptr("not needed")})
 	require.Equal(t, http.StatusOK, res.StatusCode(), string(res.Body))
-	require.NoError(t, json.Unmarshal(e.rawBody(t, memberB, "/api/v1/me/inbox"), &inbox))
-	told = nil
-	for i, n := range inbox.Items {
-		if n.Reason == apigen.InboxReasonBlockerClosed && n.Ticket.Key == quiet.Key {
-			told = &inbox.Items[i]
-		}
-	}
-	require.NotNil(t, told)
+	told = toldOf(quiet)
 	assert.True(t, told.Blocker.IsNull(), "a confidential prerequisite is named by no key")
-	after := told.Act.After.MustGet()
-	prerequisite := after["prerequisite"].(map[string]any)
-	assert.Equal(t, true, prerequisite["placeholder"])
-	assert.Nil(t, prerequisite["key"])
-	assert.Nil(t, prerequisite["title"])
-	assert.NotContains(t, fmt.Sprint(after), "confidential prerequisite")
+	assert.True(t, told.Act.Redacted)
+	assert.NotContains(t, fmt.Sprint(told), "confidential prerequisite")
 	assert.True(t, strings.HasSuffix(told.Ticket.Key, shortOf(quiet)))
 }

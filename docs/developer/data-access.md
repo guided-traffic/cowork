@@ -424,7 +424,10 @@ columns, and on a ticket of the transaction's own team the seeded stages, `done_
 another team is no crossing's: `Writer.RecordElsewhere(ctx, far, events...)` binds the transaction to
 the far team — `set_config('app.tenant_id', …)` —, locks the far ticket's row `FOR KEY SHARE` there
 (`holdFarTicket`), writes the audit rows, their notifications and their publication as the caller's
-acts, under that team's own policies, and binds it back. The lock makes a purge of the far ticket,
+acts, under that team's own policies, and binds it back. A caller who holds no role in the far team
+(`app_is_member()` there) is no actor in its record: the acts are `system:ticket-purge`'s inside a
+purge and `system:relation`'s otherwise (`actorElsewhere`, through `Event.System`), with no person,
+token or agent mark; every such act names the ticket of the caller's team in its refs. The lock makes a purge of the far ticket,
 whose deletion locks the row `FOR UPDATE`, wait for the transaction and empty its acts with the
 rest; a far ticket whose row a purge took away since the crossing named it records nothing, where
 its publication would have found no row (`TestAnActElsewhereHoldsItsTicketAgainstAPurge`). A

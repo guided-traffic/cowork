@@ -424,7 +424,11 @@ another.
   those statements alone (`Writer.RecordElsewhere`), under that team's own policies, at a far end
   only a crossing hands out, whose row it holds against a purge until it commits; a unit test
   refuses a binding of `app.tenant_id` anywhere else and `app.crossing` in any Go or query file
-  (`TestOnlyTheCrossingFunctionsCross`).
+  (`TestOnlyTheCrossingFunctionsCross`). Such an act names the ticket of the caller's team in its
+  refs, so the activity of the other team withholds its payload, and stores no head of it — a
+  settled prerequisite's act stores none at all —; a caller who holds no role in the other team is
+  recorded as `system:relation`, or `system:ticket-purge` inside a purge, never with their name,
+  token or agent mark.
 - **The start-up check.** `cowork serve` refuses a database whose crossing policies name another role
   than the owner of the tables, or whose crossing functions are not that owner's
   (`DB.CheckCrossing`, `TestServeRefusesACrossingOfAnotherOwner`): a change of ownership past the
