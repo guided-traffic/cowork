@@ -90,7 +90,9 @@ The target is the ADRs as amended; what the build has to do, in the order the wo
    the person cannot read answers exactly as a key that does not exist — the same status, code and
    body — so that trying keys tells nothing (ADR 0008 D2).
 2. Setting a parent or a link takes a `member` or `admin` of the child's, or the source's, team who can
-   read the other end; removing it, a write on the child or the source alone.
+   read the other end; removing it, a write on either end — a `member` or `admin` of the child's or the
+   parent's team, of the source's or the target's —, recorded in the audit records of both teams, whether
+   or not the remover can read the other end (Q7).
 3. A ticket's body names its parent, children and link ends by key and, across a team the reader holds
    no role in, by the head; the prerequisite tree likewise (ADR 0012 D6); `done` is refused over an
    open prerequisite in another team whose state the closer reads (D7).
@@ -106,6 +108,8 @@ The target is the ADRs as amended; what the build has to do, in the order the wo
    placeholder and its subtree stays absent.
 3. The parent's derived progress counts the children in other teams; nothing in the page says more
    about them than their heads.
+4. A person who writes the ticket shown removes any of its relations from it — a child, a parent, an
+   outgoing or an incoming link — whatever team the other end is in (Q7).
 
 ### The documentation
 
@@ -127,6 +131,9 @@ The integration tier, with two teams and identities that hold a role in one, bot
 - a key of team A that the person cannot read is refused as a missing key, byte for byte;
 - a viewer of team A who is a member of B sets A's ticket as the parent of B's; a member of B alone
   cannot;
+- a member of team A who holds no role in B removes a B ticket from under an A parent, and a `blocks`
+  link from a B ticket onto an A ticket, each recorded in both teams' audit records; a viewer of A cannot;
+  a relation that does not touch the remover's ticket answers as a missing one;
 - a parent's derived progress counts a child of another team, its version unchanged;
 - a parent cycle and a `blocks` cycle across teams are refused; two writers that cross the same two
   teams in opposite directions both finish;
@@ -231,4 +238,4 @@ does not end it.
   the two constraining relations.
 - **(c)** as decided, the gap written down: A's persons override `done` with a reason; A's agents cannot.
 
-**Answer:** _open_
+**Answer:** (a), 2026-10-10.

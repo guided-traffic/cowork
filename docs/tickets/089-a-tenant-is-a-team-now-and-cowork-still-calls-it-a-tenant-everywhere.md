@@ -74,6 +74,11 @@ expand left, and where:
 - The ADRs that quote `/api/v1/tenants/…` are amended in place; ADR 0005, 0023, 0046 record the contract
   as built.
 - The image workflow's label says team; a token's `restricted_project_id` goes.
+- The problem code `tenant_slug_taken` becomes `team_slug_taken` and the repository proposal's reason
+  `only-tenant` becomes `only-team`; that release's own clients — the UI and cowork-mcp — take both values
+  for it. The stored values keep the old word, as the database's names do, and the UI keeps labelling them
+  team: the audit record's `entity_type` `tenant` and payload key `tenant`, a local account's origin
+  `tenant` (Q3). ADR 0005 D1, ADR 0047 and ADR 0066 say so.
 - Until 1.0 no commit carries a breaking mark (ADR 0003 D9); the change says in its body what it removes.
 
 ### The tests that prove it
@@ -102,4 +107,4 @@ record's `entity_type` `tenant` and payload key `tenant`, a local account's orig
 - **(c)** the wire values change and the stored values are rewritten by a migration as well: an
   append-only record rewritten for a word, which ADR 0026 forbids for the audit rows.
 
-**Answer:** _open_
+**Answer:** (a), 2026-10-10.
