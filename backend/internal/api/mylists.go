@@ -273,6 +273,96 @@ func (s *Server) ListMyDecisions(ctx context.Context, req apigen.ListMyDecisions
 	return apigen.ListMyDecisions200JSONResponse{Body: out, Headers: apigen.ListMyDecisions200ResponseHeaders{ETag: &tag}}, nil
 }
 
+// myProject is a project of a person-level list with its tenant.
+type myProject struct {
+	tenant personTenant
+	row    readq.ListProjectsRow
+}
+
+// myProjectPosition is where the person's projects resume: the tenant's slug
+// and the project's key, neither of which holds a slash.
+func myProjectPosition(m myProject) string { return m.tenant.slug + "/" + m.row.Key }
+
+// myProjectCursor reads the position a cursor of the person's projects holds:
+// the tenant's slug and the project's key; both empty without a cursor.
+func (s *Server) myProjectCursor(op, scope string, cursor *string) (slug, key string, err error) {
+	if cursor == nil {
+		return "", "", nil
+	}
+	raw, perr := s.cursors.decode(op, scope, *cursor)
+	if perr != nil {
+		return "", "", perr
+	}
+	slug, key, found := strings.Cut(raw, "/")
+	if !found || slug == "" || key == "" {
+		return "", "", invalidCursor()
+	}
+	return slug, key, nil
+}
+
+// myProjectsAfter reads each tenant's projects after the position, one read
+// per tenant in that tenant (docs/adr/0021 D5), in the tenants' order of their
+// slugs, which is the list's: a tenant before the position's is past, and once
+// more than a page is read the tenants after it have nothing for this page.
+func (s *Server) myProjectsAfter(ctx context.Context, tenants []personTenant, afterSlug, afterKey string, size int) ([]myProject, error) {
+	var rows []myProject
+	for _, t := range tenants {
+		if len(rows) > size || t.slug < afterSlug {
+			continue
+		}
+		params := readq.ListProjectsParams{TenantID: t.id, PageSize: limitArg(size)}
+		if t.slug == afterSlug {
+			params.After = &afterKey
+		}
+		err := s.db.InTenant(ctx, t.id, func(r *store.Reader) error {
+			list, err := r.ListProjects(ctx, params)
+			for _, row := range list {
+				rows = append(rows, myProject{tenant: t, row: row})
+			}
+			return err
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return rows, nil
+}
+
+// ListMyProjects answers the projects of the person's tenants (docs/adr/0023
+// D2 as amended 2026-10-10): each tenant's part read in that tenant under the
+// predicate of the tenant's own list, the archived ones left out, ordered by
+// the tenant's slug and then the key. A weak ETag answers an unchanged page
+// with 304 (docs/adr/0054 D7).
+func (s *Server) ListMyProjects(ctx context.Context, req apigen.ListMyProjectsRequestObject) (apigen.ListMyProjectsResponseObject, error) {
+	p := principal(ctx)
+	const op = "listMyProjects"
+	narrow := req.Params.Team
+	scope := p.PersonID.String() + "/" + deref(narrow)
+	afterSlug, afterKey, err := s.myProjectCursor(op, scope, req.Params.Cursor)
+	if err != nil {
+		return nil, err
+	}
+	tenants, err := s.h.personTenants(ctx, narrow)
+	if err != nil {
+		return nil, err
+	}
+	size := s.h.pageSize(req.Params.Limit)
+	rows, err := s.myProjectsAfter(ctx, tenants, afterSlug, afterKey, size)
+	if err != nil {
+		return nil, err
+	}
+	rows, next := page(s.h, rows, size, op, scope, myProjectPosition)
+	out := apigen.MyProjectList{Items: make([]apigen.MyProject, 0, len(rows)), NextCursor: nullableString(next)}
+	for _, m := range rows {
+		out.Items = append(out.Items, apigen.MyProject{Team: m.tenant.ref(), Project: projectView(project(m.row))})
+	}
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListMyProjects304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListMyProjects200JSONResponse{Body: out, Headers: apigen.ListMyProjects200ResponseHeaders{ETag: &tag}}, nil
+}
+
 func decisionView(d decision) apigen.Decision {
 	q := d.row
 	return apigen.Decision{

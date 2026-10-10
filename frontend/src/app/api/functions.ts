@@ -21,6 +21,8 @@ export type { ListMyNext$Params as ListMyNext$Params } from './fn/me/list-my-nex
 export { listMyNext as listMyNext } from './fn/me/list-my-next';
 export type { ChangeMyPassword$Params as ChangeMyPassword$Params } from './fn/me/change-my-password';
 export { changeMyPassword as changeMyPassword } from './fn/me/change-my-password';
+export type { ListMyProjects$Params as ListMyProjects$Params } from './fn/me/list-my-projects';
+export { listMyProjects as listMyProjects } from './fn/me/list-my-projects';
 export type { GetMyToken$Params as GetMyToken$Params } from './fn/me/get-my-token';
 export { getMyToken as getMyToken } from './fn/me/get-my-token';
 export type { ListMyTokens$Params as ListMyTokens$Params } from './fn/me/list-my-tokens';

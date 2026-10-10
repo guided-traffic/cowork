@@ -7,15 +7,9 @@ import { filter, map } from 'rxjs/operators';
 import { StrictHttpResponse } from '../../strict-http-response';
 import { RequestBuilder } from '../../request-builder';
 
-import { SearchHitList } from '../../models/search-hit-list';
+import { MyProjectList } from '../../models/my-project-list';
 
-export interface SearchMyTeams$Params {
-
-/**
- * The words to find (docs/adr/0025); a text matches when it holds every one of them. Its length
- * is capped by the server, and a query of white space alone is `validation_failed`
- */
-  q: string;
+export interface ListMyProjects$Params {
 
 /**
  * Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
@@ -23,15 +17,6 @@ export interface SearchMyTeams$Params {
  * deprecated `tenant` as well, not together with it (`400 validation_failed`)
  */
   team?: string;
-
-/**
- * Deprecated: replaced by `team`, which it means, kept in /api/v1 for one release and removed in a
- * later one (docs/adr/0005 D1, docs/adr/0046 D7). Not together with `team`
- * (`400 validation_failed`)
- *
- * @deprecated
- */
-  tenant?: string;
 
 /**
  * The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
@@ -42,16 +27,20 @@ export interface SearchMyTeams$Params {
  * Items per page; the server caps it at its configured maximum
  */
   limit?: number;
+
+/**
+ * The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+ */
+  'If-None-Match'?: string;
 }
 
-export function searchMyTeams(http: HttpClient, rootUrl: string, params: SearchMyTeams$Params, context?: HttpContext): Observable<StrictHttpResponse<SearchHitList>> {
-  const rb = new RequestBuilder(rootUrl, searchMyTeams.PATH, 'get');
+export function listMyProjects(http: HttpClient, rootUrl: string, params?: ListMyProjects$Params, context?: HttpContext): Observable<StrictHttpResponse<MyProjectList>> {
+  const rb = new RequestBuilder(rootUrl, listMyProjects.PATH, 'get');
   if (params) {
-    rb.query('q', params.q, {});
     rb.query('team', params.team, {});
-    rb.query('tenant', params.tenant, {});
     rb.query('cursor', params.cursor, {});
     rb.query('limit', params.limit, {});
+    rb.header('If-None-Match', params['If-None-Match'], {});
   }
 
   return http.request(
@@ -59,9 +48,9 @@ export function searchMyTeams(http: HttpClient, rootUrl: string, params: SearchM
   ).pipe(
     filter((r: any): r is HttpResponse<any> => r instanceof HttpResponse),
     map((r: HttpResponse<any>) => {
-      return r as StrictHttpResponse<SearchHitList>;
+      return r as StrictHttpResponse<MyProjectList>;
     })
   );
 }
 
-searchMyTeams.PATH = '/api/v1/me/search';
+listMyProjects.PATH = '/api/v1/me/projects';

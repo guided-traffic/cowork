@@ -54,3 +54,24 @@ func TestWideningTheTenantSettingsTakesASession(t *testing.T) {
 	assert.Nil(t, sessionToGive(token, nil), "a token narrows")
 	assert.Nil(t, sessionToGive(session, []string{"members_create_projects"}), "a session widens")
 }
+
+// docs/adr/0034 D9: GET /api/v1/me says per membership whether the role lets
+// the person create a project — an administrator always, a member while the
+// team lets members create them, a viewer never — by the role the route asks
+// for itself.
+func TestTheRoleSaysWhoMayCreateProjects(t *testing.T) {
+	for _, c := range []struct {
+		role          domain.Role
+		membersCreate bool
+		may           bool
+	}{
+		{domain.RoleAdmin, false, true},
+		{domain.RoleAdmin, true, true},
+		{domain.RoleMember, true, true},
+		{domain.RoleMember, false, false},
+		{domain.RoleViewer, true, false},
+		{domain.RoleViewer, false, false},
+	} {
+		assert.Equal(t, c.may, mayCreateProjects(c.role, c.membersCreate), "%s, members create: %t", c.role, c.membersCreate)
+	}
+}

@@ -354,7 +354,7 @@
         }
       },
       "MeTeam": {
-        "description": "Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names\nnone of them is `404 not_found`, whether or not the team exists. Not together with the\ndeprecated `tenant` (`400 validation_failed`)\n",
+        "description": "Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names\nnone of them is `404 not_found`, whether or not the team exists. Where the list takes the\ndeprecated `tenant` as well, not together with it (`400 validation_failed`)\n",
         "in": "query",
         "name": "team",
         "schema": {
@@ -5371,6 +5371,7 @@
           "local": true,
           "memberships": [
             {
+              "can_create_projects": true,
               "origins": [
                 {
                   "role": "admin",
@@ -5786,6 +5787,10 @@
       },
       "Membership": {
         "properties": {
+          "can_create_projects": {
+            "description": "Whether the role lets the person create a project in the team: an administrator always, a\nmember while the team's `members_create_projects` is on, a viewer never (docs/adr/0034 D9).\nA token's scope and an agent's capabilities may still refuse it (docs/adr/0043 D4), as\n`POST /api/v1/teams/{team}/projects` decides\n",
+            "type": "boolean"
+          },
           "origins": {
             "description": "Where the role comes from, each source with its own role; `role` is the\nhigher of them (docs/adr/0030 D4)\n",
             "items": {
@@ -5813,7 +5818,8 @@
           "team",
           "tenant",
           "role",
-          "origins"
+          "origins",
+          "can_create_projects"
         ],
         "type": "object"
       },
@@ -5839,6 +5845,69 @@
           "grant"
         ],
         "type": "string"
+      },
+      "MyProject": {
+        "description": "A project of one of the person's teams, with its team (docs/adr/0023 D2)",
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/Project"
+          },
+          "team": {
+            "$ref": "#/components/schemas/TeamRef"
+          }
+        },
+        "required": [
+          "team",
+          "project"
+        ],
+        "type": "object"
+      },
+      "MyProjectList": {
+        "example": {
+          "items": [
+            {
+              "project": {
+                "archived_at": null,
+                "created_at": "2026-03-02T09:05:00Z",
+                "description": "The public website and the customer sign-in",
+                "id": "019cadcb-2e60-7116-9641-67b17d11d0ef",
+                "key": "WEB",
+                "name": "Website",
+                "restricted": false,
+                "updated_at": "2026-09-14T11:20:00Z",
+                "version": 2,
+                "wip_limits": {
+                  "in-progress": 4,
+                  "review": 2
+                }
+              },
+              "team": {
+                "name": "Acme",
+                "slug": "acme"
+              }
+            }
+          ],
+          "next_cursor": null
+        },
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MyProject"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "type": "object"
       },
       "MyTicket": {
         "properties": {
@@ -9890,6 +9959,53 @@
           }
         ],
         "summary": "Change the password of the person's local account",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/projects": {
+      "get": {
+        "description": "Every project the person sees in every team they belong to, each with its team — the lists\nof the UI's sidebar (docs/adr/0023 D2, D4) —: one read per team (docs/adr/0021 D5), under the\npredicate of `GET /api/v1/teams/{team}/projects`, so a restricted project is listed only to\nthe team's administrators and the people on its access list (docs/adr/0034 D3). An archived\nproject is left out, and so is a team in which a global administrator holds no role\n(docs/adr/0034 D2). Ordered by the team's slug, then the project's key. Cursor paging only,\nwithout a total (docs/adr/0048 D3). `team` narrows to one of the person's teams. A token\nrestricted to a team reads that team's projects, one restricted to a project that project\n(docs/adr/0035 D3).\n",
+        "operationId": "listMyProjects",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/MeTeam"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/IfNoneMatch"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyProjectList"
+                }
+              }
+            },
+            "description": "A page of the person's projects",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ListETag"
+              }
+            }
+          },
+          "304": {
+            "$ref": "#/components/responses/NotModified"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "The projects of the person's teams, across their teams",
         "tags": [
           "me"
         ]

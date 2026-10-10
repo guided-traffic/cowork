@@ -123,6 +123,8 @@ export type { MembershipOrigin } from './models/membership-origin';
 export type { MembershipSource } from './models/membership-source';
 export type { MemberToken } from './models/member-token';
 export type { MemberTokenList } from './models/member-token-list';
+export type { MyProject } from './models/my-project';
+export type { MyProjectList } from './models/my-project-list';
 export type { MyTicket } from './models/my-ticket';
 export type { MyTicketList } from './models/my-ticket-list';
 export type { OrphanedObject } from './models/orphaned-object';

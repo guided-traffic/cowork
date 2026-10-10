@@ -14,8 +14,8 @@ export interface MarkMyInboxRead$Params {
 
 /**
  * Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
- * none of them is `404 not_found`, whether or not the team exists. Not together with the
- * deprecated `tenant` (`400 validation_failed`)
+ * none of them is `404 not_found`, whether or not the team exists. Where the list takes the
+ * deprecated `tenant` as well, not together with it (`400 validation_failed`)
  */
   team?: string;
 

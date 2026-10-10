@@ -113,7 +113,7 @@ TeamSummaryList:
     next_cursor: null
 Membership:
   type: object
-  required: [team, tenant, role, origins]
+  required: [team, tenant, role, origins, can_create_projects]
   properties:
     team:
       $ref: '#/TeamRef'
@@ -131,6 +131,13 @@ Membership:
         higher of them (docs/adr/0030 D4)
       items:
         $ref: '#/MembershipOrigin'
+    can_create_projects:
+      type: boolean
+      description: |
+        Whether the role lets the person create a project in the team: an administrator always, a
+        member while the team's `members_create_projects` is on, a viewer never (docs/adr/0034 D9).
+        A token's scope and an agent's capabilities may still refuse it (docs/adr/0043 D4), as
+        `POST /api/v1/teams/{team}/projects` decides
 MembershipSource:
   type: string
   enum: [mapping, grant]
@@ -184,6 +191,7 @@ Me:
         origins:
           - source: grant
             role: admin
+        can_create_projects: true
 TokenState:
   type: string
   enum: [active, expired, revoked]
@@ -3157,6 +3165,31 @@ DecisionList:
         tenant: {slug: acme, name: Acme}
         ticket: {key: acme/WEB-42, title: Sign-in fails in Safari when the password contains a space, state: in-progress}
         question: *example-question
+    next_cursor: null
+MyProject:
+  type: object
+  required: [team, project]
+  description: A project of one of the person's teams, with its team (docs/adr/0023 D2)
+  properties:
+    team:
+      $ref: '#/TeamRef'
+    project:
+      $ref: '#/Project'
+MyProjectList:
+  type: object
+  required: [items, next_cursor]
+  properties:
+    items:
+      type: array
+      items:
+        $ref: '#/MyProject'
+    next_cursor:
+      type: [string, 'null']
+  # What Ada Lovelace's sidebar lists: the projects of her teams.
+  example:
+    items:
+      - team: {slug: acme, name: Acme}
+        project: *example-project
     next_cursor: null
 Dashboard:
   type: object
