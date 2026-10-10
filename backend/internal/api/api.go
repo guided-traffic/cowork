@@ -525,6 +525,7 @@ func callerOf(p auth.Principal, requestID uuid.UUID, sourceHash []byte) store.Ca
 		TokenName:           p.TokenName,
 		SessionHash:         p.SessionHash,
 		RestrictedProjectID: p.RestrictedProjectID,
+		RestrictedTenantID:  p.RestrictedTenantID,
 		Agent:               p.Agent,
 		Capabilities:        p.Capabilities,
 		RequestID:           requestID,

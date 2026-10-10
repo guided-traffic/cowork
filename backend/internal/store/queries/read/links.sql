@@ -25,24 +25,6 @@ LEFT JOIN users u ON u.id = l.created_by
 WHERE l.tenant_id = sqlc.arg(tenant_id) AND l.type = sqlc.arg(type)
   AND l.source_id = sqlc.arg(source_id) AND l.target_id = sqlc.arg(target_id);
 
--- name: BlocksPathExists :one
--- Whether to_id is reachable from from_id over blocks links (docs/adr/0012 D4).
--- visibility: exempt (an integrity walk returns no ticket)
-SELECT blocks_path_exists(sqlc.arg(tenant_id), sqlc.arg(from_id), sqlc.arg(to_id))::boolean AS reachable;
-
--- name: ListOpenPrerequisites :many
--- The open direct blocks sources of a ticket the caller can see: what refuses
--- done (docs/adr/0012 D7). One the caller cannot see neither shows nor
--- refuses.
-SELECT s.id, sp.key AS project_key, s.number, s.title, s.state
-FROM ticket_links l
-JOIN tickets s ON s.tenant_id = l.tenant_id AND s.id = l.source_id
-JOIN projects sp ON sp.tenant_id = s.tenant_id AND sp.id = s.project_id
-WHERE l.tenant_id = sqlc.arg(tenant_id) AND l.target_id = sqlc.arg(ticket_id) AND l.type = 'blocks'
-  AND s.state NOT IN ('done', 'dropped')
-  AND s.deleted_at IS NULL AND app_ticket_visible(s.project_id, s.confidential, s.assignee_id, s.reporter_id)
-ORDER BY sp.key, s.number;
-
 -- name: ListPrerequisites :many
 -- The prerequisite tree of a ticket (docs/adr/0012 D6): the tickets that
 -- block it, what blocks those, and so on to max_depth, depth first, siblings

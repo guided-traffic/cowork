@@ -47,7 +47,7 @@ func (s *Server) DeleteTicket(ctx context.Context, req apigen.DeleteTicketReques
 		if err != nil {
 			return err
 		}
-		if err := refreshProgress(ctx, w, t, tc.row.ParentID); err != nil {
+		if err := refreshProgress(ctx, w, tc.row.ParentID); err != nil {
 			return err
 		}
 		w.Record(store.Event{EntityType: entityTicket, EntityID: tc.row.ID, TicketID: tc.row.ID,
@@ -138,7 +138,7 @@ func (s *Server) RestoreTicket(ctx context.Context, req apigen.RestoreTicketRequ
 	if perr := auth.Authorize(principal(ctx), t.Role, deletion); perr != nil {
 		return nil, perr
 	}
-	var out store.TicketRow
+	var out shown
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		d, err := deletedTicket(ctx, w.Reader, t, req.Key)
 		if err != nil {
@@ -149,18 +149,22 @@ func (s *Server) RestoreTicket(ctx context.Context, req apigen.RestoreTicketRequ
 		} else if err != nil {
 			return err
 		}
-		if err := refreshProgress(ctx, w, t, d.ParentID); err != nil {
+		// The derived progress passes a deleted ticket over: the restored one
+		// derives its own again, from children that changed while it was in
+		// the bin, before its parent counts it.
+		if err := refreshProgress(ctx, w, &d.ID, d.ParentID); err != nil {
 			return err
 		}
 		w.Record(store.Event{EntityType: entityTicket, EntityID: d.ID, TicketID: d.ID,
 			TicketKey: domain.FullKey(t.Slug, d.ProjectKey, d.Number), Action: "restored"})
-		out, err = reread(ctx, w, t, d.ID)
+		row, err := reread(ctx, w, t, d.ID)
+		out, err = showing(ctx, w.Reader, row, err)
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	return apigen.RestoreTicket200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.RestoreTicket200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.RestoreTicket200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.RestoreTicket200ResponseHeaders{ETag: etag(out.row.Version)}}, nil
 }
 
 // PurgeTicket removes a deleted ticket for good before its thirty days have

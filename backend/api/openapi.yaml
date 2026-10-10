@@ -255,6 +255,14 @@ paths:
     $ref: './tickets.yaml#/links'
   /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other}:
     $ref: './tickets.yaml#/link'
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{type}/{other_team}/{other}:
+    $ref: './tickets.yaml#/linkAcross'
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/links/{link}:
+    $ref: './tickets.yaml#/linkByID'
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/relations:
+    $ref: './tickets.yaml#/relations'
+  /api/v1/teams/{team}/projects/{project}/tickets/{number}/prerequisite-tree:
+    $ref: './tickets.yaml#/prerequisiteTree'
   /api/v1/tickets/{team}/{key}:
     $ref: './tickets.yaml#/resolve'
 components:

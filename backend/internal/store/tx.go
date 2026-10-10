@@ -37,14 +37,19 @@ type Writer struct {
 	*writeq.Queries
 	events []Event
 	result *Result
-	// caller is the system actor of a job, whose acts a job that works tenant
-	// by tenant writes in each tenant (RunJob, flushIn); flushed says it wrote
-	// some, so the job commits.
+	// caller is who the transaction acts for: the system actor of a job, whose
+	// acts a job that works tenant by tenant writes in each tenant (RunJob,
+	// flushIn), or the request's caller, whose acts on a ticket of another team
+	// are written in that team's record (RecordElsewhere); flushed says such
+	// acts were written, so a job commits.
 	caller  Caller
 	flushed bool
 	// written are the acts the transaction wrote, which the metrics count once
 	// it has committed (countActs).
 	written []writtenAct
+	// graphs are the graph locks the transaction holds, a bit per Graph
+	// (LockGraph).
+	graphs uint8
 }
 
 // writtenAct is an act as the metrics count it: its action and who it is
@@ -229,14 +234,17 @@ func newReader(tx pgx.Tx, tenantID uuid.UUID, caller Caller) *Reader {
 
 // setContext writes the transaction-local settings the policies read. An empty
 // value leaves a setting unset, which every policy reads as "matches nothing".
+// app.restricted_tenant_id is read by the sight of a ticket of another team
+// (migration 47's ticket_sight), never by a policy of the runtime role.
 func setContext(ctx context.Context, tx pgx.Tx, tenantID uuid.UUID, caller Caller, job string) error {
 	_, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id', $1, true),
 		set_config('app.user_id', $2, true),
 		set_config('app.restricted_project_id', $3, true),
 		set_config('app.job', $4, true),
-		set_config('app.session_hash', $5, true)`,
+		set_config('app.session_hash', $5, true),
+		set_config('app.restricted_tenant_id', $6, true)`,
 		uuidText(tenantID), uuidText(caller.UserID), uuidText(caller.RestrictedProjectID), job,
-		hex.EncodeToString(caller.SessionHash))
+		hex.EncodeToString(caller.SessionHash), uuidText(caller.RestrictedTenantID))
 	if err != nil {
 		return fmt.Errorf("set transaction context: %w", err)
 	}
@@ -302,7 +310,7 @@ func (db *DB) mutateOnce(ctx context.Context, tenantID uuid.UUID, caller Caller,
 	if err := setContext(ctx, tx, tenantID, caller, ""); err != nil {
 		return false, err
 	}
-	w := &Writer{Reader: newReader(tx, tenantID, caller), Queries: writeq.New(tx)}
+	w := &Writer{Reader: newReader(tx, tenantID, caller), Queries: writeq.New(tx), caller: caller}
 	if err := fn(w); err != nil {
 		return false, err
 	}

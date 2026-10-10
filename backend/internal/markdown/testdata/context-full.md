@@ -37,13 +37,17 @@ The zip has no files.
 
 - blocked by acme/VKO-3 — Fix the writer (in-progress, Sam)
 - relates to acme/OPS-1 — Backups (filed, unassigned)
+- blocked by globex/API-7 — Send the cookie (in-progress)
+- found here Globex [Confidential]
 
 ## Prerequisites
 
-1 of 2 open.
+2 of 3 open.
 
 - acme/VKO-3 — Fix the writer (in-progress, Sam, 40%)
   - acme/VKO-1 — Pick a library (done, unassigned, 100%)
+- globex/API-7 — Send the cookie (in-progress)
+- Globex [Confidential]
 
 ## Recent comments
 

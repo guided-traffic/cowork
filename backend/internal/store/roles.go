@@ -97,3 +97,113 @@ func (db *DB) CheckRuntimeRole(ctx context.Context) error {
 	}
 	return f.check(role)
 }
+
+// crossingFunctions are the SECURITY DEFINER functions of migration 47 that
+// read or write a ticket of another team (docs/adr/0021 D7 as made concrete
+// 2026-10-10), and crossingPolicies how many policies admit them.
+var crossingFunctions = []string{
+	"relation_heads", "readable_ticket", "prerequisite_heads", "open_prerequisite_count", "open_prerequisite_targets",
+	"open_prerequisite_heads", "parent_chain_reaches", "blocks_reach", "refresh_derived", "relations_elsewhere",
+	"end_relations_elsewhere", "end_team_relations",
+}
+
+const crossingPolicies = 8
+
+// crossingPolicyQuery reads every crossing policy and whether it names the
+// owner of the tickets table alone; crossingFunctionQuery every crossing
+// function and whether that owner owns it and it runs with the owner's rights.
+// Both read catalogs any role may read.
+const (
+	crossingPolicyQuery = `
+SELECT p.polname,
+       p.polroles = ARRAY[(SELECT c.relowner FROM pg_class c WHERE c.oid = to_regclass('public.tickets'))]::oid[]
+FROM pg_policy p
+WHERE p.polname LIKE '%\_crossing\_%'`
+	crossingFunctionQuery = `
+SELECT f.proname,
+       f.proowner = (SELECT c.relowner FROM pg_class c WHERE c.oid = to_regclass('public.tickets')) AND f.prosecdef
+FROM pg_proc f
+WHERE f.pronamespace = 'public'::regnamespace AND f.proname = ANY ($1::text[])`
+)
+
+// CheckCrossing refuses a database whose crossings between teams are not the
+// owner role's alone: every crossing policy must name the owner of the tables
+// and nobody else, and every crossing function must be that owner's and run
+// with its rights. A change of ownership past the migrations — REASSIGN OWNED,
+// an ALTER … OWNER — would leave policies that admit no function, so the heads
+// would be absent and the cycle walks would see one team, a cycle across teams
+// undetected. `cowork serve` calls it before it listens.
+func (db *DB) CheckCrossing(ctx context.Context) error {
+	var problems []error
+	policies, err := crossingCatalog(ctx, db, crossingPolicyQuery, "policies",
+		func(name string) error {
+			return fmt.Errorf("the policy %s names another role than the owner of the tables", name)
+		})
+	if err != nil {
+		return err
+	}
+	for _, p := range policies {
+		problems = append(problems, p.problem)
+	}
+	if len(policies) != crossingPolicies {
+		problems = append(problems, fmt.Errorf("%d crossing policies, %d expected", len(policies), crossingPolicies))
+	}
+	functions, err := crossingCatalog(ctx, db, crossingFunctionQuery, "functions",
+		func(name string) error {
+			return fmt.Errorf("the function %s is not the owner's running with its rights", name)
+		},
+		crossingFunctions)
+	if err != nil {
+		return err
+	}
+	found := map[string]bool{}
+	for _, f := range functions {
+		found[f.name] = true
+		problems = append(problems, f.problem)
+	}
+	for _, f := range crossingFunctions {
+		if !found[f] {
+			problems = append(problems, fmt.Errorf("the function %s is missing", f))
+		}
+	}
+	if err := errors.Join(problems...); err != nil {
+		return fmt.Errorf("refusing a database whose crossings between teams are not the owner role's alone (docs/adr/0021 D7): %w", err)
+	}
+	return nil
+}
+
+// catalogEntry is a crossing policy or function as the catalog reads it, and
+// the problem with it, nil for none.
+type catalogEntry struct {
+	name    string
+	problem error
+}
+
+// crossingCatalog reads the name and the owner's check of every row a catalog
+// query answers.
+func crossingCatalog(ctx context.Context, db *DB, query, what string, bad func(string) error, args ...any) ([]catalogEntry, error) {
+	rows, err := db.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read the crossing %s: %w", what, err)
+	}
+	defer rows.Close()
+	var out []catalogEntry
+	for rows.Next() {
+		var (
+			name string
+			good bool
+		)
+		if err := rows.Scan(&name, &good); err != nil {
+			return nil, fmt.Errorf("read the crossing %s: %w", what, err)
+		}
+		e := catalogEntry{name: name}
+		if !good {
+			e.problem = bad(name)
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read the crossing %s: %w", what, err)
+	}
+	return out, nil
+}

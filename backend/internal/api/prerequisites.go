@@ -87,6 +87,107 @@ func (s *Server) ListPrerequisites(ctx context.Context, req apigen.ListPrerequis
 
 const treeOp = "listPrerequisites"
 
+// headTreeOp is the operation of the tree across teams.
+const headTreeOp = "listPrerequisiteTree"
+
+// ListPrerequisiteTree answers a ticket's prerequisite tree across teams, or
+// read upward its dependents, every node by its head as the caller sees it
+// (docs/adr/0012 D6 as amended 2026-10-10): the walk goes on only from a
+// ticket the caller reads, a head and a placeholder are leaves, and a node of
+// the caller's own team they read shows its assignee and its progress. A
+// cursor carries the node's path, ids of tickets the caller may not see among
+// them, so it is sealed.
+func (s *Server) ListPrerequisiteTree(ctx context.Context, req apigen.ListPrerequisiteTreeRequestObject) (apigen.ListPrerequisiteTreeResponseObject, error) {
+	t := tenantFrom(ctx)
+	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
+		return nil, perr
+	}
+	up := req.Params.Direction != nil && *req.Params.Direction == apigen.ListPrerequisiteTreeParamsDirectionUp
+	scope := treeScope(t, req.Project, req.Number, up)
+	size := s.h.pageSize(req.Params.Limit)
+	var after []uuid.UUID
+	if req.Params.Cursor != nil {
+		sealed, perr := s.cursors.decode(headTreeOp, scope, *req.Params.Cursor)
+		if perr != nil {
+			return nil, perr
+		}
+		position, ok := s.cursors.openPosition(sealed)
+		if !ok {
+			return nil, invalidCursor()
+		}
+		if after, perr = decodeTreePath(position); perr != nil {
+			return nil, perr
+		}
+	}
+	var nodes []store.TreeHead
+	open := 0
+	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
+		tc, err := visibleTicket(ctx, r, t, req.Project, req.Number)
+		if err != nil {
+			return err
+		}
+		if nodes, err = r.PrerequisiteHeads(ctx, tc.row.ID, up, treeDepth, after, limitArg(size)); err != nil {
+			return err
+		}
+		counted := nodes
+		if len(nodes) == 0 && after != nil {
+			if counted, err = r.PrerequisiteHeads(ctx, tc.row.ID, up, treeDepth, nil, 1); err != nil {
+				return err
+			}
+		}
+		if len(counted) > 0 {
+			open = int(counted[0].OpenCount)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	nodes, next := page(s.h, nodes, size, headTreeOp, scope, func(n store.TreeHead) string {
+		return s.cursors.sealPosition(encodeTreePath(n.Path))
+	})
+	out := apigen.PrerequisiteHeadTree{Items: []apigen.PrerequisiteHeadNode{}, NextCursor: nullableString(next), Open: open}
+	for _, n := range nodes {
+		out.Items = append(out.Items, headNodeView(n))
+	}
+	tag, unchanged := listTag(req.Params.IfNoneMatch, out)
+	if unchanged {
+		return apigen.ListPrerequisiteTree304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
+	}
+	return apigen.ListPrerequisiteTree200JSONResponse{Body: out, Headers: apigen.ListPrerequisiteTree200ResponseHeaders{ETag: &tag}}, nil
+}
+
+// headNodeView is a node of the tree across teams as the API shows it: its
+// head; settled where its state is the caller's to read; its assignee and its
+// stages only for a ticket of the caller's own team they read.
+func headNodeView(n store.TreeHead) apigen.PrerequisiteHeadNode {
+	v := apigen.PrerequisiteHeadNode{Depth: int(n.Depth), Repeated: n.Repeated, Head: headView(n.Head),
+		Settled: nullableOf[bool](nil), BlockedFrom: nullableOf[apigen.TicketState](nil),
+		Assignee: nullableOf[apigen.Person](nil), Progress: nullableOf[apigen.NodeProgress](nil)}
+	if !n.Head.Placeholder() {
+		settled := n.Head.State.Terminal()
+		v.Settled = nullableOf(&settled)
+	}
+	if n.BlockedFrom != nil {
+		from := apigen.TicketState(*n.BlockedFrom)
+		v.BlockedFrom = nullableOf(&from)
+	}
+	if !n.Own || n.Progress == nil || n.Refinement == nil || n.Review == nil {
+		return v
+	}
+	if n.Assignee != nil {
+		a := personView(n.Assignee.ID, n.Assignee.Username, n.Assignee.Name)
+		v.Assignee = nullableOf(&a)
+	}
+	stages := stagesOf(store.TicketRow{Progress: *n.Progress, ProgressDerived: n.ProgressDerived,
+		ProgressRefinement: *n.Refinement, ProgressRefinementDerived: n.RefinementDer,
+		ProgressReview: *n.Review, ProgressReviewDerived: n.ReviewDerived})
+	progress := apigen.NodeProgress{Implementation: stages.Implementation, Refinement: stages.Refinement,
+		Review: stages.Review, Derived: n.ProgressDerived != nil}
+	v.Progress = nullableOf(&progress)
+	return v
+}
+
 // treeScope binds a cursor to its ticket and its direction: a cursor of the
 // prerequisites does not page the dependents.
 func treeScope(t tenantScope, project string, number int, up bool) string {

@@ -15,7 +15,6 @@ import (
 	"github.com/guided-traffic/cowork/backend/internal/importer"
 	"github.com/guided-traffic/cowork/backend/internal/problem"
 	"github.com/guided-traffic/cowork/backend/internal/store"
-	"github.com/guided-traffic/cowork/backend/internal/store/readq"
 	"github.com/guided-traffic/cowork/backend/internal/store/writeq"
 )
 
@@ -36,7 +35,6 @@ type execution struct {
 	existing map[uuid.UUID]int32
 	files    map[int32]*importer.FileReport
 	parents  map[uuid.UUID]bool
-	locked   bool
 }
 
 // execute writes the plan, the sequence advanced past its highest number,
@@ -53,6 +51,17 @@ func (s *Server) execute(ctx context.Context, w *store.Writer, t tenantScope, p 
 			ex.files[*f.Number] = f
 		}
 	}
+	// A planned blocks link is walked under the installation's lock of the
+	// blocks graph, which comes before the rank's row lock and every ticket
+	// row the execution writes (docs/developer/data-access.md#advisory-locks).
+	for _, l := range result.Plan.Links {
+		if l.Type == domain.LinkBlocks {
+			if err := w.LockGraph(ctx, store.GraphBlocks); err != nil {
+				return err
+			}
+			break
+		}
+	}
 	last, err := rankUnranked(ctx, w, t, p.ID)
 	if err != nil {
 		return err
@@ -63,7 +72,7 @@ func (s *Server) execute(ctx context.Context, w *store.Writer, t tenantScope, p 
 		}
 	}
 	for id := range ex.parents {
-		if err := refreshProgress(ctx, w, t, &id); err != nil {
+		if err := refreshProgress(ctx, w, &id); err != nil {
 			return err
 		}
 	}
@@ -242,15 +251,9 @@ func (ex *execution) questions(ctx context.Context, ticket uuid.UUID, pt *import
 func (ex *execution) link(ctx context.Context, l importer.PlannedLink) error {
 	source, target := ex.ref(l.Source), ex.ref(l.Target)
 	if l.Type == domain.LinkBlocks {
-		if !ex.locked {
-			if err := ex.w.LockBlocks(ctx); err != nil {
-				return err
-			}
-			ex.locked = true
-		}
-		cycle, err := ex.w.BlocksPathExists(ctx, readq.BlocksPathExistsParams{TenantID: ex.t.ID, FromID: target, ToID: source})
+		cycle, err := ex.w.BlocksReach(ctx, target, source)
 		if err != nil {
-			return fmt.Errorf("walk the blocks graph: %w", err)
+			return err
 		}
 		if cycle {
 			ex.omitted(l)

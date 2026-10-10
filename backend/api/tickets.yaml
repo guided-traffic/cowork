@@ -34,10 +34,14 @@ links:
   get:
     operationId: listTicketLinks
     tags: [tickets]
-    summary: The ticket's links in both directions
+    summary: The ticket's links in both directions, inside its team
+    deprecated: true
     description: |
-      Each link read from this ticket, under its reverse name when the ticket is the target
-      (docs/adr/0012 D1). A link whose other end the caller cannot see is absent.
+      Deprecated, replaced by `…/relations?kind=link`, which shows every link, the ends of other
+      teams and those the caller may not see included, by their heads; kept in /api/v1 for one
+      release, behaving as it did, and removed in a later one (docs/adr/0046 D7). Each link read
+      from this ticket, under its reverse name when the ticket is the target (docs/adr/0012 D1). A
+      link whose other end the caller cannot see, or is a ticket of another team, is absent.
     parameters:
       - $ref: './components/parameters.yaml#/Cursor'
       - $ref: './components/parameters.yaml#/Limit'
@@ -68,10 +72,13 @@ link:
     tags: [tickets]
     summary: Link this ticket, as the source, to another ticket of the team
     description: |
-      Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second
-      act for an existing one. A member's act with `write` scope, in the agent baseline
-      (docs/adr/0043 D2). A `blocks` link that would close a cycle is 409 `link_cycle`
-      (docs/adr/0012 D4); `relates-to` is symmetric and stored once.
+      The short form inside the team (docs/adr/0007 D3); `…/links/{type}/{other_team}/{other}`
+      links to a ticket of any team. Idempotent by its address (docs/adr/0045 D1): 201 for a new
+      link, 200 without a second act for an existing one. A member's act with `write` scope on this
+      ticket, in the agent baseline (docs/adr/0043 D2), who reads the other ticket: one they do not
+      read is the 404 of one that does not exist (docs/adr/0012 D2). A `blocks` link that would close
+      a cycle, through any team, is 409 `link_cycle` (docs/adr/0012 D4); `relates-to` is symmetric
+      and stored once.
     responses:
       '200':
         description: The link existed already
@@ -91,10 +98,163 @@ link:
     operationId: unlinkTickets
     tags: [tickets]
     summary: Remove a link
-    description: Idempotent; removing a link that does not exist answers 204 as well.
+    description: |
+      Idempotent; removing a link that does not exist answers 204 as well. A write on the ticket in
+      the path, the link's source, whatever the caller reads of the other end (docs/adr/0012 D2).
     responses:
       '204':
         description: The link is gone
+      default:
+        $ref: './components/responses.yaml#/Problem'
+linkAcross:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/PathLinkType'
+    - $ref: './components/parameters.yaml#/OtherTeamSlug'
+    - $ref: './components/parameters.yaml#/OtherTicketKey'
+  put:
+    operationId: linkTicketTo
+    tags: [tickets]
+    summary: Link this ticket, as the source, to a ticket of any team by its canonical key
+    description: |
+      `other_team` and `other` are the other end's canonical key, <team>/<PROJECT>-<number>, a ticket
+      of any team of the installation (docs/adr/0012 D2 as amended 2026-10-10). Set by a `member` or
+      `admin` of this ticket's team with `write` scope, in the agent baseline (docs/adr/0043 D2), who
+      reads the other ticket — at least a `viewer` of its team, its project open to them, a
+      confidential one only when admitted. One they do not read answers exactly as one that does not
+      exist, 404 `not_found` "no such ticket", so that trying keys tells nothing (docs/adr/0008 D2).
+      Idempotent by its address (docs/adr/0045 D1): 201 for a new link, 200 without a second act for
+      an existing one — a `relates-to` made from the other end included. An act on both tickets, the
+      other end's in its own team's record (docs/adr/0012 D3). A `blocks` link that would close a
+      cycle through any team is 409 `link_cycle` (D4).
+    responses:
+      '200':
+        description: The link existed already
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Relation'
+      '201':
+        description: The new link
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/Relation'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+  delete:
+    operationId: unlinkTicketFrom
+    tags: [tickets]
+    summary: Remove a link to a ticket of any team by its canonical key
+    description: |
+      A write on this ticket, the link's source, whatever the caller reads of the other end
+      (docs/adr/0012 D2); the link is found among this ticket's relations by the other end's key,
+      so a key the caller sees as a head removes its link. Idempotent: no such link — or a key that
+      names none — answers 204 as well. An end the caller may not see shows no key; its link is
+      removed by its id, `DELETE …/links/{link}`. The act is recorded on both tickets.
+    responses:
+      '204':
+        description: The link is gone
+      default:
+        $ref: './components/responses.yaml#/Problem'
+linkByID:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+    - $ref: './components/parameters.yaml#/LinkID'
+  delete:
+    operationId: removeTicketLink
+    tags: [tickets]
+    summary: Remove a link of this ticket, its source, by the link's id
+    description: |
+      The way to remove a link whose other end the caller may not see — a placeholder shows no key
+      (docs/adr/0065 D5) —, by the id `…/relations` names it by. A write on this ticket, which must
+      be the link's source, whatever the caller reads of the other end (docs/adr/0012 D2). A link of
+      which this ticket is not the source, or no link, answers 204 and removes nothing. The act is
+      recorded on both tickets, the other end's in its own team's record.
+    responses:
+      '204':
+        description: The link is gone, or was never this ticket's to remove
+      default:
+        $ref: './components/responses.yaml#/Problem'
+relations:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: listTicketRelations
+    tags: [tickets]
+    summary: The ticket's parent, children and links, of any project or team, by their heads
+    description: |
+      Every relation of the ticket (docs/adr/0005 D3, docs/adr/0008 D2, docs/adr/0012 D2): its parent,
+      its children and its links in both directions, each other end of any project or team shown as
+      the caller sees it — readable, by its head where the caller holds no role in its team or its
+      project is restricted from them (docs/adr/0034 D4), and as the placeholder `<team>
+      [Confidential]` where they may not see it, in another team or their own (docs/adr/0065 D5). A
+      deleted other end is absent. The parent first, then the children in the order they were filed,
+      then the links in the order they were made.
+    parameters:
+      - $ref: './components/parameters.yaml#/RelationKinds'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of relations
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/RelationList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'
+prerequisiteTree:
+  parameters:
+    - $ref: './components/parameters.yaml#/TeamSlug'
+    - $ref: './components/parameters.yaml#/ProjectKey'
+    - $ref: './components/parameters.yaml#/TicketNumber'
+  get:
+    operationId: listPrerequisiteTree
+    tags: [tickets]
+    summary: The ticket's prerequisite tree across teams, or read upward its dependents, by heads
+    description: |
+      docs/adr/0012 D6 as amended 2026-10-10. `direction=down`, the default: the tickets that block
+      this one, what blocks those, and so on; `direction=up`: its dependents. Every node is a head of
+      any project or team, as the caller sees it. The walk goes on only from a ticket the caller
+      reads: a head and a placeholder are leaves, and what lies behind them stays behind their
+      team's membership (docs/adr/0005 D3, docs/adr/0065 D5). A node of the caller's own team they
+      read shows its assignee and its progress; any other node neither. To a depth of eight, depth
+      first, siblings in the order they were filed; a ticket under two others stands in full once and
+      `repeated` elsewhere. `open` counts the open tickets of the whole tree whose state the caller
+      reads, each once, never a placeholder.
+    parameters:
+      - name: direction
+        in: query
+        description: down for the prerequisites, the default; up for the dependents
+        schema: {type: string, enum: [down, up], default: down}
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of the tree, depth first
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/PrerequisiteHeadTree'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
 transitions:
@@ -206,8 +366,12 @@ prerequisites:
   get:
     operationId: listPrerequisites
     tags: [tickets]
-    summary: The ticket's prerequisite tree, or read upward its dependents
+    summary: The ticket's prerequisite tree inside its team, or read upward its dependents
+    deprecated: true
     description: |
+      Deprecated, replaced by `…/prerequisite-tree`, whose nodes are heads of any team; kept in
+      /api/v1 for one release, behaving as it did — a ticket of another team is absent with what lies
+      behind it —, and removed in a later one (docs/adr/0046 D7).
       docs/adr/0012 D6. `direction=down`, the default: the tickets that block this one, what
       blocks those, and so on — what has to be done before it can be finished. `direction=up`:
       its dependents, the tickets it blocks and what those block. To a depth of eight, depth

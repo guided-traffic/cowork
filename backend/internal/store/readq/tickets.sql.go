@@ -52,24 +52,18 @@ SELECT t.id, t.project_id, p.key AS project_key, t.number, t.type, t.title, t.bo
        t.urgency_override_reason, t.urgency_override_by, ou.username AS urgency_override_by_username,
        ou.display_name AS urgency_override_by_name, t.urgency_override_at, t.effort, t.progress, t.progress_derived,
        t.progress_refinement, t.progress_refinement_derived, t.progress_review, t.progress_review_derived,
-       t.parent_id, pt.number AS parent_number,
+       t.parent_id,
        t.reporter_id, ru.username AS reporter_username, ru.display_name AS reporter_name,
        t.reporter_agent, t.reporter_token_id, t.reporter_token_name,
        t.assignee_id, au.username AS assignee_username, au.display_name AS assignee_name,
        t.confidential, t.rank, t.score_key, t.score_version, t.opened_at, t.decided_at, t.done_at, t.done_from, t.done_by_hand,
-       (SELECT count(*) FROM ticket_links pl
-        JOIN tickets ps ON ps.tenant_id = pl.tenant_id AND ps.id = pl.source_id
-        WHERE pl.tenant_id = t.tenant_id AND pl.target_id = t.id AND pl.type = 'blocks'
-          AND ps.state NOT IN ('done', 'dropped')
-          AND ps.deleted_at IS NULL AND app_ticket_visible(ps.project_id, ps.confidential, ps.assignee_id, ps.reporter_id))::integer AS open_prerequisites,
+       open_prerequisite_count(t.id)::integer AS open_prerequisites,
        t.version, t.created_at, t.updated_at
 FROM tickets t
 JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
 LEFT JOIN users ru ON ru.id = t.reporter_id
 LEFT JOIN users au ON au.id = t.assignee_id
 LEFT JOIN users ou ON ou.id = t.urgency_override_by
-LEFT JOIN tickets pt ON pt.tenant_id = t.tenant_id AND pt.id = t.parent_id
-     AND pt.deleted_at IS NULL AND app_ticket_visible(pt.project_id, pt.confidential, pt.assignee_id, pt.reporter_id)
 LEFT JOIN tickets bt ON bt.tenant_id = t.tenant_id AND bt.id = t.block_ticket_id
      AND bt.deleted_at IS NULL AND app_ticket_visible(bt.project_id, bt.confidential, bt.assignee_id, bt.reporter_id)
 LEFT JOIN projects bp ON bp.tenant_id = bt.tenant_id AND bp.id = bt.project_id
@@ -118,7 +112,6 @@ type GetTicketByNumberRow struct {
 	ProgressReview            int16
 	ProgressReviewDerived     *int16
 	ParentID                  *uuid.UUID
-	ParentNumber              *int32
 	ReporterID                uuid.UUID
 	ReporterUsername          *string
 	ReporterName              *string
@@ -145,9 +138,11 @@ type GetTicketByNumberRow struct {
 
 // The ticket's columns are listed once more in the list builder
 // (internal/store/tickets.go); a unit test holds the two lists equal.
-// open_prerequisites counts the open tickets that block it which the caller
-// can see, the number on a board card (docs/adr/0018 D1, docs/adr/0012 D7); a
-// hidden one is never counted. The persons it names — the reporter, the
+// open_prerequisites counts the open tickets of any team that block it and
+// whose state the caller reads in a head, the number on a board card
+// (docs/adr/0018 D1, docs/adr/0012 D6, D7): open_prerequisite_count of
+// migration 47 decides, and never counts a placeholder. The parent is its id
+// here; its head comes from relation_heads (store.Reader.ParentHeads). The persons it names — the reporter, the
 // assignee and the one who set the horizon — are read through the policy of
 // users: a person who is no longer a member of the tenant has the id alone.
 func (q *Queries) GetTicketByNumber(ctx context.Context, arg GetTicketByNumberParams) (GetTicketByNumberRow, error) {
@@ -188,7 +183,6 @@ func (q *Queries) GetTicketByNumber(ctx context.Context, arg GetTicketByNumberPa
 		&i.ProgressReview,
 		&i.ProgressReviewDerived,
 		&i.ParentID,
-		&i.ParentNumber,
 		&i.ReporterID,
 		&i.ReporterUsername,
 		&i.ReporterName,
@@ -266,24 +260,4 @@ func (q *Queries) ListRankPlaces(ctx context.Context, arg ListRankPlacesParams) 
 		return nil, err
 	}
 	return items, nil
-}
-
-const parentChainContains = `-- name: ParentChainContains :one
-SELECT ticket_ancestor_or_self($1, $2, $3)::boolean AS contains
-`
-
-type ParentChainContainsParams struct {
-	TenantID          uuid.UUID
-	CandidateParentID uuid.UUID
-	TicketID          uuid.UUID
-}
-
-// Whether ticket_id is the candidate parent or one of its ancestors: the
-// parent cycle refusal (docs/adr/0008 D2).
-// visibility: exempt (an integrity walk returns no ticket)
-func (q *Queries) ParentChainContains(ctx context.Context, arg ParentChainContainsParams) (bool, error) {
-	row := q.db.QueryRow(ctx, parentChainContains, arg.TenantID, arg.CandidateParentID, arg.TicketID)
-	var contains bool
-	err := row.Scan(&contains)
-	return contains, err
 }

@@ -3,14 +3,15 @@ package api
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/oapi-codegen/nullable"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/auth"
-	"github.com/guided-traffic/cowork/backend/internal/domain"
 	"github.com/guided-traffic/cowork/backend/internal/markdown"
 	"github.com/guided-traffic/cowork/backend/internal/store"
 	"github.com/guided-traffic/cowork/backend/internal/store/readq"
@@ -104,28 +105,71 @@ func countOf(n *int) int32 {
 	return int32(*n) // #nosec G115 -- between 1 and 99 here
 }
 
+// contextLinks reads the ticket's links of any team, each other end as the
+// caller sees it (docs/adr/0005 D3, docs/adr/0012 D2): readable in the
+// caller's team with its assignee, by its head without one, or as
+// `<team> [Confidential]`.
 func contextLinks(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx, doc *markdown.Context) error {
-	rows, err := r.ContextLinks(ctx, readq.ContextLinksParams{TenantID: t.ID, TicketID: tc.row.ID, PageSize: maxContextLinks})
-	for _, l := range rows {
-		doc.Links = append(doc.Links, markdown.Link{Name: l.Type.Name(l.Outgoing),
-			Key: domain.FullKey(t.Slug, l.OtherProjectKey, l.OtherNumber), Title: l.OtherTitle, State: string(l.OtherState),
-			Assignee: deref(l.OtherAssigneeName)})
+	rels, err := r.RelationHeads(ctx, []uuid.UUID{tc.row.ID}, store.RelationLink)
+	if err != nil {
+		return err
 	}
-	return err
+	slices.SortStableFunc(rels, func(a, b store.Relation) int {
+		switch {
+		case a.Link.Type != b.Link.Type:
+			return strings.Compare(string(a.Link.Type), string(b.Link.Type))
+		case a.Link.Outgoing != b.Link.Outgoing:
+			if a.Link.Outgoing {
+				return -1
+			}
+			return 1
+		case a.Head.Placeholder() != b.Head.Placeholder():
+			if b.Head.Placeholder() {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.Head.Key(), b.Head.Key())
+	})
+	for _, rel := range rels[:min(len(rels), maxContextLinks)] {
+		l := markdown.Link{Name: rel.Link.Type.Name(rel.Link.Outgoing), Key: rel.Head.Key(), Title: rel.Head.Title,
+			State: string(rel.Head.State), Placeholder: rel.Head.Placeholder()}
+		switch {
+		case rel.Head.Readable() && rel.Head.TeamSlug == t.Slug:
+			if rel.Assignee != nil {
+				l.Assignee = deref(rel.Assignee.Name)
+			}
+		default:
+			l.Team = rel.Head.TeamName
+		}
+		doc.Links = append(doc.Links, l)
+	}
+	return nil
 }
 
-// contextTree reads the prerequisite tree of the route (docs/adr/0012 D6) and
-// shows each prerequisite once: a ticket the tree repeats under a second
-// ticket it blocks is left out there.
-func contextTree(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx, doc *markdown.Context) error {
-	rows, err := ticketTree(ctx, r, t.ID, tc.row.ID, false, nil, maxContextNodes)
-	for _, n := range rows {
+// contextTree reads the prerequisite tree across teams (docs/adr/0012 D6 as
+// amended 2026-10-10) and shows each prerequisite once: a ticket the tree
+// repeats under a second ticket it blocks is left out there. A node of the
+// caller's own team they read shows its assignee and its progress; any other
+// its head, or the placeholder.
+func contextTree(ctx context.Context, r *store.Reader, _ tenantScope, tc ticketCtx, doc *markdown.Context) error {
+	nodes, err := r.PrerequisiteHeads(ctx, tc.row.ID, false, treeDepth, nil, maxContextNodes)
+	for _, n := range nodes {
 		if n.Repeated {
 			continue
 		}
-		v := treeNodeView(t.Slug, n)
-		doc.Prerequisites = append(doc.Prerequisites, markdown.Prerequisite{Depth: v.Depth, Key: v.Key, Title: v.Title,
-			State: string(v.State), Assignee: deref(n.AssigneeName), Progress: v.Progress})
+		v := headNodeView(n)
+		p := markdown.Prerequisite{Depth: v.Depth, Key: n.Head.Key(), Title: n.Head.Title, State: string(n.Head.State),
+			Placeholder: n.Head.Placeholder()}
+		if progress, perr := v.Progress.Get(); perr == nil {
+			p.Progress = progress.Implementation
+			if n.Assignee != nil {
+				p.Assignee = deref(n.Assignee.Name)
+			}
+		} else {
+			p.Head, p.Team = true, n.Head.TeamName
+		}
+		doc.Prerequisites = append(doc.Prerequisites, p)
 	}
 	return err
 }

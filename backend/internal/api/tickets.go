@@ -36,11 +36,81 @@ func ticketURL(t tenantScope, project string, number int32) string {
 	return projectURL(t, project) + "/tickets/" + strconv.Itoa(int(number))
 }
 
+// shown is a ticket as an answer shows it: its row and the head of its parent
+// as the caller sees it — of any project or team, a head or the placeholder
+// (docs/adr/0005 D3, docs/adr/0008 D2) —, read in the transaction the row was.
+type shown struct {
+	row    store.TicketRow
+	parent *store.Head
+}
+
+// showing reads the head of a ticket's parent for its answer. The error of the
+// write the ticket comes from passes through — ErrNoChange included, so a
+// write that changed nothing still answers its ticket.
+func showing(ctx context.Context, r *store.Reader, row store.TicketRow, werr error) (shown, error) {
+	if werr != nil && !errors.Is(werr, store.ErrNoChange) {
+		return shown{}, werr
+	}
+	out := shown{row: row}
+	if row.ParentID == nil {
+		return out, werr
+	}
+	heads, err := r.ParentHeads(ctx, []uuid.UUID{row.ID})
+	if err != nil {
+		return shown{}, err
+	}
+	if h, ok := heads[row.ID]; ok {
+		out.parent = &h
+	}
+	return out, werr
+}
+
+// showingAll reads the heads of the parents of a page of tickets at once.
+func showingAll(ctx context.Context, r *store.Reader, rows []store.TicketRow) ([]shown, error) {
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		if row.ParentID != nil {
+			ids = append(ids, row.ID)
+		}
+	}
+	heads, err := r.ParentHeads(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]shown, 0, len(rows))
+	for _, row := range rows {
+		s := shown{row: row}
+		if h, ok := heads[row.ID]; ok {
+			s.parent = &h
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// headView is a ticket at the end of a relation as the API shows it: its
+// team, and unless the caller may not see it its key, title, type and state
+// (docs/adr/0005 D3, docs/adr/0065 D5 as amended 2026-10-10).
+func headView(h store.Head) apigen.TicketHead {
+	v := apigen.TicketHead{Team: apigen.TeamRef{Slug: h.TeamSlug, Name: h.TeamName}, Placeholder: h.Placeholder(),
+		Readable: h.Readable(), Key: nullableOf[string](nil), Title: nullableOf[string](nil),
+		Type: nullableOf[apigen.TicketType](nil), State: nullableOf[apigen.TicketState](nil)}
+	if h.Placeholder() {
+		return v
+	}
+	key, typ, state := h.Key(), apigen.TicketType(h.Type), apigen.TicketState(h.State)
+	v.Key, v.Title, v.Type, v.State = nullableOf(&key), nullableOf(&h.Title), nullableOf(&typ), nullableOf(&state)
+	return v
+}
+
 // ticketView is a ticket as the API shows it at the moment now, which its
 // score's age is counted to (docs/adr/0014 D4). The rank key is not shown: it
 // is computed over tickets the caller may not see (docs/adr/0014 D2), and the
-// list's order is what the caller reads of the rank.
-func ticketView(t tenantScope, r store.TicketRow, now time.Time) apigen.Ticket {
+// list's order is what the caller reads of the rank. The parent is named by
+// its key, of any project or team, and by its head; a parent the caller may
+// not see is the placeholder, its key null (docs/adr/0008 D2).
+func ticketView(t tenantScope, st shown, now time.Time) apigen.Ticket {
+	r := st.row
 	stages := stagesOf(r)
 	score, version := scoreView(r, now)
 	v := apigen.Ticket{
@@ -57,6 +127,7 @@ func ticketView(t tenantScope, r store.TicketRow, now time.Time) apigen.Ticket {
 		Reporter: personView(r.ReporterID, r.ReporterUsername, r.ReporterName), ReporterAgent: nullableOf(r.ReporterAgent),
 		ReporterToken: tokenMarkView(r.ReporterTokenID, r.ReporterTokenName), Block: nullableOf[apigen.Block](nil),
 		Assignee: nullableOf[apigen.Person](nil), Parent: nullableOf[string](nil),
+		ParentHead: nullableOf[apigen.TicketHead](nil),
 	}
 	if r.State == domain.StateDone {
 		from := apigen.TicketState(origin(r))
@@ -78,9 +149,12 @@ func ticketView(t tenantScope, r store.TicketRow, now time.Time) apigen.Ticket {
 		a := personView(*r.AssigneeID, r.AssigneeUsername, r.AssigneeName)
 		v.Assignee = nullableOf(&a)
 	}
-	if r.ParentNumber != nil {
-		key := domain.FullKey(t.Slug, r.ProjectKey, *r.ParentNumber)
-		v.Parent = nullableOf(&key)
+	if st.parent != nil {
+		head := headView(*st.parent)
+		v.ParentHead = nullableOf(&head)
+		if key := st.parent.Key(); key != "" {
+			v.Parent = nullableOf(&key)
+		}
 	}
 	return v
 }
@@ -139,23 +213,12 @@ func derivedOr(derived *int16, own int16) int16 {
 	return own
 }
 
-// refreshProgress derives the stages of a parent again after a change of its
-// children, and of its ancestors as far as a value changes; their versions
-// stay (docs/adr/0017 D3, docs/adr/0050 D1).
-func refreshProgress(ctx context.Context, w *store.Writer, t tenantScope, parents ...*uuid.UUID) error {
-	for _, id := range parents {
-		for id != nil {
-			next, err := w.RefreshDerivedProgress(ctx, writeq.RefreshDerivedProgressParams{TenantID: t.ID, ID: *id})
-			if errors.Is(err, pgx.ErrNoRows) {
-				break
-			}
-			if err != nil {
-				return fmt.Errorf("derive the progress: %w", err)
-			}
-			id = next
-		}
-	}
-	return nil
+// refreshProgress derives the stages of parents again after a change of their
+// children, and of their ancestors, across teams: a parent counts its children
+// of every team (docs/adr/0017 D3 as amended 2026-10-10). Their versions stay
+// (docs/adr/0050 D1).
+func refreshProgress(ctx context.Context, w *store.Writer, parents ...*uuid.UUID) error {
+	return w.RefreshDerived(ctx, parents...)
 }
 
 // personView names a person; one the caller cannot see any more (no longer a
@@ -251,11 +314,11 @@ func reread(ctx context.Context, w *store.Writer, t tenantScope, id uuid.UUID) (
 // GetTicket answers one ticket.
 func (s *Server) GetTicket(ctx context.Context, req apigen.GetTicketRequestObject) (apigen.GetTicketResponseObject, error) {
 	t := tenantFrom(ctx)
-	row, err := s.readTicket(ctx, t, req.Project, req.Number)
+	st, err := s.readTicket(ctx, t, req.Project, req.Number)
 	if err != nil {
 		return nil, err
 	}
-	return apigen.GetTicket200JSONResponse{Body: ticketView(t, row, s.h.opts.Now()), Headers: apigen.GetTicket200ResponseHeaders{ETag: etag(row.Version)}}, nil
+	return apigen.GetTicket200JSONResponse{Body: ticketView(t, st, s.h.opts.Now()), Headers: apigen.GetTicket200ResponseHeaders{ETag: etag(st.row.Version)}}, nil
 }
 
 // ResolveTicket answers a ticket by its key under the tenant it names
@@ -266,24 +329,27 @@ func (s *Server) ResolveTicket(ctx context.Context, req apigen.ResolveTicketRequ
 	if err != nil || key.Tenant != "" {
 		return nil, problem.New(problem.NotFound, "no such ticket")
 	}
-	row, err := s.readTicket(ctx, t, key.Project, int(key.Number))
+	st, err := s.readTicket(ctx, t, key.Project, int(key.Number))
 	if err != nil {
 		return nil, err
 	}
-	return apigen.ResolveTicket200JSONResponse{Body: ticketView(t, row, s.h.opts.Now()), Headers: apigen.ResolveTicket200ResponseHeaders{ETag: etag(row.Version)}}, nil
+	return apigen.ResolveTicket200JSONResponse{Body: ticketView(t, st, s.h.opts.Now()), Headers: apigen.ResolveTicket200ResponseHeaders{ETag: etag(st.row.Version)}}, nil
 }
 
-func (s *Server) readTicket(ctx context.Context, t tenantScope, projectKey string, number int) (store.TicketRow, error) {
+func (s *Server) readTicket(ctx context.Context, t tenantScope, projectKey string, number int) (shown, error) {
 	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
-		return store.TicketRow{}, perr
+		return shown{}, perr
 	}
-	var row store.TicketRow
+	var st shown
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		tc, err := visibleTicket(ctx, r, t, projectKey, number)
-		row = tc.row
+		if err != nil {
+			return err
+		}
+		st, err = showing(ctx, r, tc.row, nil)
 		return err
 	})
-	return row, err
+	return st, err
 }
 
 // CreateTicket files a ticket (docs/adr/0007, 0010, 0065 D2), into its
@@ -302,7 +368,7 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 	if perr != nil {
 		return nil, perr
 	}
-	var created store.TicketRow
+	var created shown
 	replay, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		p, err := fileableProject(ctx, w.Reader, t, req.Project, f.capabilities()...)
 		if err != nil {
@@ -312,7 +378,7 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 		if err != nil {
 			return err
 		}
-		id, err := insertTicket(ctx, w, t, ins)
+		id, err := insertTicket(ctx, w, ins)
 		if err != nil {
 			return err
 		}
@@ -328,11 +394,12 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 			w.Record(store.Event{EntityType: entityTicket, EntityID: id, TicketID: id, TicketKey: key,
 				Action: actionConfidentialSet, Reason: "the security class is " + string(body.Security)})
 		}
-		if created, err = reread(ctx, w, t, id); err != nil {
+		row, err := reread(ctx, w, t, id)
+		if created, err = showing(ctx, w.Reader, row, err); err != nil {
 			return err
 		}
 		res, err := stored(ticketView(t, created, s.h.opts.Now()), map[string]string{
-			headerETag: *etag(created.Version), headerLocation: ticketURL(t, p.Key, created.Number)})
+			headerETag: *etag(created.row.Version), headerLocation: ticketURL(t, p.Key, created.row.Number)})
 		if err != nil {
 			return err
 		}
@@ -350,22 +417,24 @@ func (s *Server) CreateTicket(ctx context.Context, req apigen.CreateTicketReques
 		return apigen.CreateTicket201JSONResponse{Body: body, Headers: apigen.CreateTicket201ResponseHeaders{
 			ETag: header(replay, headerETag), Location: header(replay, headerLocation)}}, nil
 	}
-	location := ticketURL(t, created.ProjectKey, created.Number)
+	location := ticketURL(t, created.row.ProjectKey, created.row.Number)
 	return apigen.CreateTicket201JSONResponse{Body: ticketView(t, created, s.h.opts.Now()), Headers: apigen.CreateTicket201ResponseHeaders{
-		ETag: etag(created.Version), Location: &location}}, nil
+		ETag: etag(created.row.Version), Location: &location}}, nil
 }
 
 // insertTicket writes a filing: the ticket, its score (docs/adr/0014 D4) and
-// the stages its parent derives from it (docs/adr/0017 D3).
-func insertTicket(ctx context.Context, w *store.Writer, t tenantScope, ins writeq.InsertTicketParams) (uuid.UUID, error) {
+// the stages its parent — of any team — derives from it (docs/adr/0017 D3).
+// A new ticket has no descendants, so its parent needs no walk
+// (docs/adr/0008 D2).
+func insertTicket(ctx context.Context, w *store.Writer, ins writeq.InsertTicketParams) (uuid.UUID, error) {
 	id, err := w.InsertTicket(ctx, ins)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	if err := refreshScore(ctx, w, t, id); err != nil {
+	if err := refreshScore(ctx, w, tenantScope{ID: ins.TenantID}, id); err != nil {
 		return uuid.Nil, err
 	}
-	return id, refreshProgress(ctx, w, t, ins.ParentID)
+	return id, refreshProgress(ctx, w, ins.ParentID)
 }
 
 // filing is what a filing decides beyond the ticket's fields: the horizon
@@ -459,11 +528,11 @@ func (s *Server) newTicket(ctx context.Context, w *store.Writer, t tenantScope, 
 		ins.UrgencyOverride, ins.UrgencyOverrideBy = &horizon, &caller.PersonID
 	}
 	if body.Parent != nil {
-		parent, perr := resolveParent(ctx, w.Reader, t, p, *body.Parent)
-		if perr != nil {
-			return ins, nil, perr
+		parent, err := resolveParent(ctx, w.Reader, t, *body.Parent)
+		if err != nil {
+			return ins, nil, err
 		}
-		ins.ParentID = &parent
+		ins.ParentID = &parent.ID
 	}
 	if body.Assignee != nil {
 		if err := checkAssignee(ctx, w.Reader, t, p.ID, *body.Assignee); err != nil {
@@ -500,24 +569,36 @@ func checkThreat(security domain.SecurityClass, threat *string) *problem.Error {
 	return nil
 }
 
-// resolveParent reads a parent key given inside the project: a ticket of the
-// same project the caller can see (docs/adr/0008 D2).
-func resolveParent(ctx context.Context, r *store.Reader, t tenantScope, p project, key string) (uuid.UUID, *problem.Error) {
+// noSuchParent is the one answer for a parent key the caller does not read,
+// whatever the reason — no such team, project or number, deleted, confidential
+// and not admitted, a team they hold no role in, a project restricted from
+// them, outside a token's restriction —, exactly the answer for a key that
+// names nothing (docs/adr/0008 D2): ticket numbers are a sequence, and trying
+// keys must tell nothing.
+func noSuchParent() *problem.Error { return problem.Field("/parent", "no such ticket") }
+
+// resolveParent reads a parent key: a canonical key of any team of the
+// installation, or a short key of the child's team, any project
+// (docs/adr/0007 D3, docs/adr/0008 D2). The caller must read the parent; one
+// they do not read is refused like one that does not exist. A key that does
+// not parse keeps its own message.
+func resolveParent(ctx context.Context, r *store.Reader, t tenantScope, key string) (store.Readable, error) {
 	k, err := domain.ParseTicketKey(key)
-	if err == nil {
-		k, err = k.InTenant(t.Slug)
-	}
 	if err != nil {
-		return uuid.Nil, problem.Field("/parent", err.Error())
+		return store.Readable{}, problem.Field("/parent", err.Error())
 	}
-	if k.Project != p.Key {
-		return uuid.Nil, problem.Field("/parent", "a parent is a ticket of the same project")
+	team := k.Tenant
+	if team == "" {
+		team = t.Slug
 	}
-	row, err := r.GetTicketByNumber(ctx, readq.GetTicketByNumberParams{TenantID: t.ID, ProjectID: p.ID, Number: k.Number})
+	rd, ok, err := r.ReadableTicket(ctx, team, k.Project, k.Number)
 	if err != nil {
-		return uuid.Nil, problem.Field("/parent", "no such ticket")
+		return store.Readable{}, err
 	}
-	return row.ID, nil
+	if !ok {
+		return store.Readable{}, noSuchParent()
+	}
+	return rd, nil
 }
 
 // checkAssignee admits as assignee only a person who can see the project.
@@ -564,7 +645,7 @@ func (s *Server) UpdateTicket(ctx context.Context, req apigen.UpdateTicketReques
 	if perr != nil {
 		return nil, perr
 	}
-	var out store.TicketRow
+	var out shown
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
 		if err != nil {
@@ -583,15 +664,17 @@ func (s *Server) UpdateTicket(ctx context.Context, req apigen.UpdateTicketReques
 		if perr := stageInputs(principal(ctx), tc, ch.effect, *req.Body); perr != nil {
 			return perr
 		}
-		if out, err = writeTicketChange(ctx, w, t, tc, ch, *req.Body); errors.Is(err, store.ErrNoChange) {
-			out = tc.row
+		row, err := writeTicketChange(ctx, w, t, tc, ch, *req.Body)
+		if errors.Is(err, store.ErrNoChange) {
+			row = tc.row
 		}
+		out, err = showing(ctx, w.Reader, row, err)
 		return err
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.UpdateTicket200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.UpdateTicket200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.UpdateTicket200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.UpdateTicket200ResponseHeaders{ETag: etag(out.row.Version)}}, nil
 }
 
 // writeTicketChange writes a patch with its acts, its explaining comment and
@@ -622,7 +705,7 @@ func writeTicketChange(ctx context.Context, w *store.Writer, t tenantScope, tc t
 		}
 	}
 	if sm != nil || changes(changedAfter, fieldParent, "effort", fieldProgress, fieldRefinement, fieldReview) {
-		if err := refreshProgress(ctx, w, t, tc.row.ParentID, ch.params.ParentID); err != nil {
+		if err := refreshProgress(ctx, w, tc.row.ParentID, ch.params.ParentID); err != nil {
 			return store.TicketRow{}, err
 		}
 	}
@@ -696,7 +779,7 @@ func (m *stageMove) write(ctx context.Context, w *store.Writer, t tenantScope, t
 		Action: actionTransitioned, Before: map[string]any{fieldState: string(m.change.from)}, After: m.after,
 		Reason: deref(body.Reason), Note: deref(body.Note), ExplainedBy: explainedBy, Refs: m.refs,
 		Notices: stateNotices(m.change.to)})
-	return nil
+	return tellBlockedElsewhere(ctx, w, t, moved.row, m.change.to)
 }
 
 // stageInputs holds a patch to what its stages do (docs/adr/0009 D5,
@@ -864,28 +947,33 @@ func applyStages(row store.TicketRow, p apigen.TicketPatch, ch *ticketChange) *p
 	return nil
 }
 
-// applyRelations applies the parent and the assignee of a patch.
+// applyRelations applies the parent and the assignee of a patch. Setting a
+// parent takes a parent the caller reads, of any team, and the installation's
+// lock of the parent graph before the walk that refuses a cycle through any
+// team — the first lock of the transaction (docs/adr/0008 D2,
+// docs/developer/data-access.md#advisory-locks). Clearing it is a write on the
+// child alone, whatever the caller reads of the parent it had.
 func applyRelations(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, p apigen.TicketPatch, ch *ticketChange) error {
 	if p.Parent.IsSpecified() {
 		ch.sent = append(ch.sent, fieldParent)
 		ch.params.ParentID = nil
 		if !p.Parent.IsNull() {
-			parent, perr := resolveParent(ctx, w.Reader, t, tc.project, p.Parent.MustGet())
-			if perr != nil {
-				return perr
-			}
-			if err := w.LockParents(ctx, tc.project.ID); err != nil {
+			parent, err := resolveParent(ctx, w.Reader, t, p.Parent.MustGet())
+			if err != nil {
 				return err
 			}
-			cycle, err := w.ParentChainContains(ctx, readq.ParentChainContainsParams{TenantID: t.ID, CandidateParentID: parent, TicketID: tc.row.ID})
+			if err := w.LockGraph(ctx, store.GraphParents); err != nil {
+				return err
+			}
+			cycle, err := w.ParentChainReaches(ctx, parent.ID, tc.row.ID)
 			if err != nil {
-				return fmt.Errorf("walk the parent chain: %w", err)
+				return err
 			}
 			if cycle {
 				return &problem.Error{Code: problem.ParentCycle, Detail: "the parent is the ticket itself or one of its descendants",
 					Errors: []problem.FieldError{{Pointer: "/parent", Message: "would make a cycle"}}}
 			}
-			ch.params.ParentID = &parent
+			ch.params.ParentID = &parent.ID
 		}
 	}
 	if p.Assignee.IsSpecified() {
@@ -966,7 +1054,7 @@ func (s *Server) ReplaceTicketBody(ctx context.Context, req apigen.ReplaceTicket
 	if perr != nil {
 		return nil, perr
 	}
-	var out store.TicketRow
+	var out shown
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
 		if err != nil {
@@ -979,8 +1067,8 @@ func (s *Server) ReplaceTicketBody(ctx context.Context, req apigen.ReplaceTicket
 			return stale(tc.row.Version, map[string]any{fieldBody: tc.row.Body})
 		}
 		if tc.row.Body == req.Body.Body {
-			out = tc.row
-			return store.ErrNoChange
+			out, err = showing(ctx, w.Reader, tc.row, store.ErrNoChange)
+			return err
 		}
 		if _, err := w.UpdateTicketBody(ctx, writeq.UpdateTicketBodyParams{TenantID: t.ID, ID: tc.row.ID, Version: version, Body: req.Body.Body}); errors.Is(err, pgx.ErrNoRows) {
 			return stale(tc.row.Version, map[string]any{fieldBody: tc.row.Body})
@@ -994,13 +1082,14 @@ func (s *Server) ReplaceTicketBody(ctx context.Context, req apigen.ReplaceTicket
 		w.Record(store.Event{EntityType: entityTicket, EntityID: tc.row.ID, TicketID: tc.row.ID,
 			TicketKey: domain.FullKey(t.Slug, tc.project.Key, tc.row.Number), Action: actionUpdated,
 			Before: map[string]any{fieldBody: tc.row.Body}, After: map[string]any{fieldBody: req.Body.Body}, ExplainedBy: explainedBy})
-		out, err = reread(ctx, w, t, tc.row.ID)
+		row, err := reread(ctx, w, t, tc.row.ID)
+		out, err = showing(ctx, w.Reader, row, err)
 		return err
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.ReplaceTicketBody200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.ReplaceTicketBody200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.ReplaceTicketBody200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.ReplaceTicketBody200ResponseHeaders{ETag: etag(out.row.Version)}}, nil
 }
 
 // SetHorizon sets the ticket's horizon, which holds until a person or an
@@ -1017,7 +1106,7 @@ func (s *Server) SetHorizon(ctx context.Context, req apigen.SetHorizonRequestObj
 	if err != nil {
 		return nil, err
 	}
-	return apigen.SetHorizon200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.SetHorizon200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.SetHorizon200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.SetHorizon200ResponseHeaders{ETag: etag(out.row.Version)}}, nil
 }
 
 // horizonWrite is a write of a ticket's set horizon, which the columns keep
@@ -1036,12 +1125,12 @@ func (hw horizonWrite) current(r store.TicketRow) map[string]any {
 	return cur
 }
 
-func (s *Server) setOverride(ctx context.Context, t tenantScope, projectKey string, number int, ifm *string, hw horizonWrite) (store.TicketRow, error) {
+func (s *Server) setOverride(ctx context.Context, t tenantScope, projectKey string, number int, ifm *string, hw horizonWrite) (shown, error) {
 	version, perr := ifMatch(ifm)
 	if perr != nil {
-		return store.TicketRow{}, perr
+		return shown{}, perr
 	}
-	var out store.TicketRow
+	var out shown
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, err := visibleTicket(ctx, w.Reader, t, projectKey, number)
 		if err != nil {
@@ -1054,8 +1143,8 @@ func (s *Server) setOverride(ctx context.Context, t tenantScope, projectKey stri
 			return stale(tc.row.Version, hw.current(tc.row))
 		}
 		if hw.value == nil && tc.row.UrgencyOverride == nil {
-			out = tc.row
-			return store.ErrNoChange
+			out, err = showing(ctx, w.Reader, tc.row, store.ErrNoChange)
+			return err
 		}
 		// A reason is kept with a horizon set, never without one
 		// (migration 19); the act records it either way.
@@ -1083,11 +1172,12 @@ func (s *Server) setOverride(ctx context.Context, t tenantScope, projectKey stri
 			e.Reason = *hw.reason
 		}
 		w.Record(e)
-		out, err = reread(ctx, w, t, tc.row.ID)
+		row, err := reread(ctx, w, t, tc.row.ID)
+		out, err = showing(ctx, w.Reader, row, err)
 		return err
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
-		return store.TicketRow{}, err
+		return shown{}, err
 	}
 	return out, nil
 }
@@ -1137,7 +1227,7 @@ func (s *Server) SetConfidential(ctx context.Context, req apigen.SetConfidential
 	if !req.Body.Confidential && (req.Body.Reason == nil || strings.TrimSpace(*req.Body.Reason) == "") {
 		return nil, problem.Field("/reason", "lifting the flag needs a reason")
 	}
-	var out store.TicketRow
+	var out shown
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
 		if err != nil {
@@ -1147,8 +1237,8 @@ func (s *Server) SetConfidential(ctx context.Context, req apigen.SetConfidential
 			return stale(tc.row.Version, map[string]any{"confidential": tc.row.Confidential})
 		}
 		if tc.row.Confidential == req.Body.Confidential {
-			out = tc.row
-			return store.ErrNoChange
+			out, err = showing(ctx, w.Reader, tc.row, store.ErrNoChange)
+			return err
 		}
 		if _, err := w.SetConfidential(ctx, writeq.SetConfidentialParams{TenantID: t.ID, ID: tc.row.ID, Version: version, Confidential: req.Body.Confidential}); errors.Is(err, pgx.ErrNoRows) {
 			return stale(tc.row.Version, map[string]any{"confidential": tc.row.Confidential})
@@ -1165,13 +1255,14 @@ func (s *Server) SetConfidential(ctx context.Context, req apigen.SetConfidential
 			e.Reason = *req.Body.Reason
 		}
 		w.Record(e)
-		out, err = reread(ctx, w, t, tc.row.ID)
+		row, err := reread(ctx, w, t, tc.row.ID)
+		out, err = showing(ctx, w.Reader, row, err)
 		return err
 	})
 	if err != nil && !errors.Is(err, store.ErrNoChange) {
 		return nil, err
 	}
-	return apigen.SetConfidential200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.SetConfidential200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.SetConfidential200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.SetConfidential200ResponseHeaders{ETag: etag(out.row.Version)}}, nil
 }
 
 // weakETag is a list page's validator for its caller: a hash of what it

@@ -115,7 +115,10 @@ func (s *Server) listTickets(ctx context.Context, op, projectKey string, q ticke
 	if perr != nil {
 		return apigen.TicketList{}, "", perr
 	}
-	var list store.TicketList
+	var (
+		list  store.TicketList
+		shows []shown
+	)
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
 		if projectKey != "" {
 			p, err := visibleProject(ctx, r, t, projectKey)
@@ -128,26 +131,29 @@ func (s *Server) listTickets(ctx context.Context, op, projectKey string, q ticke
 			return err
 		}
 		var err error
-		list, err = r.ListTickets(ctx, l.filter, l.page)
+		if list, err = r.ListTickets(ctx, l.filter, l.page); err != nil {
+			return err
+		}
+		shows, err = showingAll(ctx, r, list.Rows)
 		return err
 	})
 	if err != nil {
 		return apigen.TicketList{}, "", err
 	}
 	out := apigen.TicketList{Items: []apigen.Ticket{}}
-	rows := list.Rows
 	if l.page.Page > 0 {
 		total := int(list.Total)
 		out.Page, out.PerPage, out.Total = &l.page.Page, &l.page.PerPage, &total
 		out.NextCursor = nullableString(nil)
 	} else {
 		var next *string
-		rows, next = page(s.h, rows, l.size, op, scope, s.position(order))
+		position := s.position(order)
+		shows, next = page(s.h, shows, l.size, op, scope, func(st shown) string { return position(st.row) })
 		out.NextCursor = nullableString(next)
 	}
 	now := s.h.opts.Now()
-	for _, r := range rows {
-		out.Items = append(out.Items, ticketView(t, r, now))
+	for _, st := range shows {
+		out.Items = append(out.Items, ticketView(t, st, now))
 	}
 	return out, weakETag(out), nil
 }

@@ -33,6 +33,7 @@ import (
 type myTicket struct {
 	tenant personTenant
 	row    store.TicketRow
+	parent *store.Head
 	place  int32
 }
 
@@ -130,7 +131,7 @@ func (s *Server) listMine(ctx context.Context, l mine) (apigen.MyTicketList, err
 	now := s.h.opts.Now()
 	out := apigen.MyTicketList{Items: make([]apigen.MyTicket, 0, len(rows)), NextCursor: nullableString(next)}
 	for _, m := range rows {
-		out.Items = append(out.Items, apigen.MyTicket{Team: m.tenant.ref(), Ticket: ticketView(m.tenant.scope(), m.row, now),
+		out.Items = append(out.Items, apigen.MyTicket{Team: m.tenant.ref(), Ticket: ticketView(m.tenant.scope(), shown{row: m.row, parent: m.parent}, now),
 			Tenant: m.tenant.ref(), //nolint:staticcheck // SA1019: deprecated in the document, answered beside team until a later release removes it
 			Place:  int(m.place)})
 	}
@@ -158,8 +159,12 @@ func (s *Server) mineIn(ctx context.Context, t personTenant, filter store.Ticket
 		for _, p := range places {
 			place[p.ID] = p.Place
 		}
-		for _, row := range list.Rows {
-			out = append(out, myTicket{tenant: t, row: row, place: place[row.ID]})
+		shows, err := showingAll(ctx, r, list.Rows)
+		if err != nil {
+			return err
+		}
+		for _, st := range shows {
+			out = append(out, myTicket{tenant: t, row: st.row, parent: st.parent, place: place[st.row.ID]})
 		}
 		return nil
 	})

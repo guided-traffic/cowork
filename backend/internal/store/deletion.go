@@ -49,7 +49,10 @@ type Purged struct {
 // with their revisions, stakes and links — and empties the content of its
 // audit rows, which keep its key, the actor and the act (docs/adr/0024 D2).
 // Its children become roots, and a block that waits on it waits on its key as
-// an external reference from then on, an act on that ticket. The purge's own
+// an external reference from then on, an act on that ticket. Its relations
+// into other teams end first — a child there becomes a root, a link goes —,
+// each change recorded in the record of the team it changes
+// (endRelationsElsewhere, docs/adr/0024 D2 as made concrete 2026-10-10). The purge's own
 // act is recorded with the facts its publication needs, since the ticket is
 // gone when the act is written. ErrNotFound when the ticket is no deleted
 // ticket of the tenant — a concurrent purge or restoration came first. slug
@@ -71,9 +74,16 @@ func (w *Writer) PurgeTicket(ctx context.Context, slug string, ticketID uuid.UUI
 	if _, err := w.PurgeTicketAudit(ctx, ticketID); err != nil {
 		return Purged{}, fmt.Errorf("empty the ticket's audit rows: %w", err)
 	}
+	elsewhere, err := w.endRelationsElsewhere(ctx, ticketID, key)
+	if err != nil {
+		return Purged{}, err
+	}
 	removed, err := w.removeWhatBelongsTo(ctx, tenantID, ticketID)
 	if err != nil {
 		return Purged{}, err
+	}
+	if elsewhere > 0 {
+		removed["relations_elsewhere"] = elsewhere
 	}
 	if err := w.forgetImportedFile(ctx, tenantID, row.ImportedFromJob, key, removed); err != nil {
 		return Purged{}, err

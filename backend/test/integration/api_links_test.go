@@ -92,11 +92,17 @@ func TestLinkingTickets(t *testing.T) {
 	assert.Contains(t, e.links(t, member, a), "found here "+full(g))
 	assertProblem(t, e.s.do(t, member, http.MethodPut, e.projectTickets("ALPHA")+"/"+strconv.Itoa(a.Number)+"/links/blocks/BETA-1", nil),
 		http.StatusNotFound, "not_found")
+	// The schema takes a link into another team since migration 47 — the row
+	// in its source's team, its target any ticket (docs/adr/0012 D2 as
+	// amended 2026-10-10) —; the API holds who may set one.
 	beta, _, err := f.Ticket(e.ctx, e.B, e.ProjectB, e.MemberB, "in tenant B")
 	require.NoError(t, err)
+	require.NoError(t, f.Exec(e.ctx, `INSERT INTO ticket_links (tenant_id, type, source_id, target_id, created_by)
+		VALUES ($1, 'found-in', $2, $3, $4)`, e.A, a.Id, beta, e.MemberA))
 	err = f.Exec(e.ctx, `INSERT INTO ticket_links (tenant_id, type, source_id, target_id, created_by)
-		VALUES ($1, 'found-in', $2, $3, $4)`, e.A, a.Id, beta, e.MemberA)
-	assert.ErrorContains(t, err, "violates foreign key constraint", "the schema refuses a link into another tenant (docs/adr/0012 D2)")
+		VALUES ($1, 'found-in', $2, $3, $4)`, e.A, beta, a.Id, e.MemberB)
+	assert.ErrorContains(t, err, "violates foreign key constraint", "a link's source is a ticket of the link's own team")
+	require.NoError(t, f.Exec(e.ctx, "DELETE FROM ticket_links WHERE source_id = $1 AND target_id = $2", a.Id, beta))
 
 	del := e.s.do(t, member, http.MethodDelete, e.linkPath(a, apigen.LinkTypeBlocks, b), nil)
 	assert.Equal(t, http.StatusNoContent, del.StatusCode)

@@ -30,7 +30,7 @@ const (
 func (s *Server) TransitionTicket(ctx context.Context, req apigen.TransitionTicketRequestObject) (apigen.TransitionTicketResponseObject, error) {
 	t := tenantFrom(ctx)
 	body := *req.Body
-	var out store.TicketRow
+	var out shown
 	_, err := s.db.Mutate(ctx, t.ID, func(w *store.Writer) error {
 		tc, err := visibleTicket(ctx, w.Reader, t, req.Project, req.Number)
 		if err != nil {
@@ -45,21 +45,31 @@ func (s *Server) TransitionTicket(ctx context.Context, req apigen.TransitionTick
 		if req.Params.IdempotencyKey != nil {
 			ev.IdempotencyKey = *req.Params.IdempotencyKey
 		}
+		var row store.TicketRow
 		if mv == domain.MoveWithdraw && domain.WithdrawalStaysDone(hasChildren(tc.row), stagesOf(tc.row)) {
-			out, err = keepDoneByStages(ctx, w, t, tc, body.Comment, ev)
-			return err
+			row, err = keepDoneByStages(ctx, w, t, tc, body.Comment, ev)
+		} else {
+			row, err = transition(ctx, w, t, tc, mv, body, ev)
 		}
-		out, err = transition(ctx, w, t, tc, mv, body, ev)
+		out, err = showing(ctx, w.Reader, row, err)
 		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	return apigen.TransitionTicket200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.TransitionTicket200ResponseHeaders{ETag: etag(out.Version)}}, nil
+	return apigen.TransitionTicket200JSONResponse{Body: ticketView(t, out, s.h.opts.Now()), Headers: apigen.TransitionTicket200ResponseHeaders{ETag: etag(out.row.Version)}}, nil
 }
 
-// transition writes a move of the matrix with its act.
+// transition writes a move of the matrix with its act. A block that names the
+// ticket it waits on adds a blocks link, so it takes the installation's lock
+// of the blocks graph before anything else — before the ticket row is written
+// and the walk runs (docs/developer/data-access.md#advisory-locks).
 func transition(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, mv domain.Move, body apigen.Transition, ev store.Event) (store.TicketRow, error) {
+	if mv == domain.MoveBlock && body.Block != nil && body.Block.Ticket != nil {
+		if err := w.LockGraph(ctx, store.GraphBlocks); err != nil {
+			return store.TicketRow{}, err
+		}
+	}
 	rank, err := reopenRank(ctx, w, t, tc, mv)
 	if err != nil {
 		return store.TicketRow{}, err
@@ -89,7 +99,49 @@ func transition(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCt
 	ev.Action, ev.Before, ev.After = actionTransitioned, map[string]any{fieldState: string(from)}, after
 	ev.Notices = stateNotices(to)
 	w.Record(ev)
+	if err := tellBlockedElsewhere(ctx, w, t, tc.row, to); err != nil {
+		return store.TicketRow{}, err
+	}
 	return reread(ctx, w, t, tc.row.ID)
+}
+
+// actionPrerequisiteSettled is the act recorded on a blocked ticket of
+// another team when its prerequisite reaches done or dropped
+// (docs/adr/0012 D5 as made concrete 2026-10-10).
+const actionPrerequisiteSettled = "prerequisite_settled"
+
+// tellBlockedElsewhere tells the watchers of the tickets of other teams that
+// a ticket reaching done or dropped blocks, as its own team's watchers are
+// told (docs/adr/0012 D5, docs/adr/0020 D2): an act on each blocked ticket in
+// its own team's record, naming the prerequisite by its head as a person
+// outside its team reads it — the placeholder where it is confidential —,
+// whose notices reach that ticket's watchers who see it. Nothing for any other
+// state.
+func tellBlockedElsewhere(ctx context.Context, w *store.Writer, t tenantScope, row store.TicketRow, to domain.TicketState) error {
+	if !to.Terminal() {
+		return nil
+	}
+	far, err := w.RelationsElsewhere(ctx, row.ID)
+	if err != nil {
+		return err
+	}
+	prerequisite := map[string]any{"team": map[string]any{"slug": t.Slug, "name": t.Name}, "placeholder": row.Confidential,
+		"key": nil, "title": nil, fieldType: nil, fieldState: nil}
+	if !row.Confidential {
+		prerequisite["key"], prerequisite["title"] = ticketKey(t, row), row.Title
+		prerequisite[fieldType], prerequisite[fieldState] = string(row.Type), string(to)
+	}
+	for _, f := range far {
+		if f.Kind != store.RelationLink || f.LinkType == nil || *f.LinkType != domain.LinkBlocks || f.Outgoing == nil || !*f.Outgoing {
+			continue
+		}
+		if err := w.RecordElsewhere(ctx, f.Far, store.Event{EntityType: entityTicket, Action: actionPrerequisiteSettled,
+			After:   map[string]any{"prerequisite": prerequisite},
+			Notices: []store.Notice{{Reason: store.NoticeBlockerClosed, Watchers: true}}}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // stateNotices are whom a state change tells (docs/adr/0020 D2): the watchers
@@ -221,20 +273,23 @@ func blockInputs(mv domain.Move, b *apigen.BlockSet) *problem.Error {
 
 func blank(s *string) bool { return s == nil || strings.TrimSpace(*s) == "" }
 
-// closeOver refuses the done act over open direct blocks sources the caller
-// can see, unless the person overrides; the act then names the keys
-// overridden (docs/adr/0012 D7). pointer is the request's field that closes.
-func closeOver(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx, override bool, pointer string, after map[string]any, ev *store.Event) error {
-	open, err := r.ListOpenPrerequisites(ctx, readq.ListOpenPrerequisitesParams{TenantID: t.ID, TicketID: tc.row.ID})
+// closeOver refuses the done act over open direct blocks sources whose state
+// the caller reads in a head — of any team, a project restricted from them
+// included, never a placeholder — unless the person overrides; the act then
+// names the keys overridden (docs/adr/0012 D7 as amended 2026-10-10). pointer
+// is the request's field that closes.
+func closeOver(ctx context.Context, r *store.Reader, _ tenantScope, tc ticketCtx, override bool, pointer string, after map[string]any, ev *store.Event) error {
+	open, err := r.OpenPrerequisiteHeads(ctx, tc.row.ID)
 	if err != nil || len(open) == 0 {
 		return err
 	}
 	keys := make([]string, 0, len(open))
 	errs := make([]problem.FieldError, 0, len(open))
 	for _, o := range open {
-		key := domain.FullKey(t.Slug, o.ProjectKey, o.Number)
+		key := o.Head.Key()
 		keys = append(keys, key)
-		errs = append(errs, problem.FieldError{Pointer: pointer, Message: "open prerequisite " + key + ": " + o.Title, Current: string(o.State)})
+		errs = append(errs, problem.FieldError{Pointer: pointer, Message: "open prerequisite " + key + ": " + o.Head.Title,
+			Current: string(o.Head.State)})
 	}
 	if !override {
 		return &problem.Error{Code: problem.OpenPrerequisites,
@@ -284,7 +339,7 @@ func move(ctx context.Context, w *store.Writer, t tenantScope, tc ticketCtx, c s
 	if err != nil {
 		return uuid.Nil, err
 	}
-	return waits, refreshProgress(ctx, w, t, tc.row.ParentID)
+	return waits, refreshProgress(ctx, w, tc.row.ParentID)
 }
 
 // writeState writes the state change: a block entering blocked, with the link
@@ -359,13 +414,19 @@ func blockTicket(ctx context.Context, r *store.Reader, t tenantScope, tc ticketC
 	return &other, nil
 }
 
-// linkWaitsOn records what a block waits on as a blocks link from that
-// ticket, when there is none yet (docs/adr/0009 D2).
+// linkWaitsOn records what a block waits on — a ticket of the team the caller
+// sees — as a blocks link from that ticket, when there is none yet
+// (docs/adr/0009 D2). The transition took the blocks graph's lock first.
 func linkWaitsOn(ctx context.Context, w *store.Writer, t tenantScope, tc, waitsOn ticketCtx) error {
-	e := linkEnds{path: tc, other: waitsOn, typ: domain.LinkBlocks, source: waitsOn.row, target: tc.row}
-	_, err := w.GetLink(ctx, readq.GetLinkParams{TenantID: t.ID, Type: e.typ, SourceID: e.source.ID, TargetID: e.target.ID})
+	r := waitsOn.row
+	other := store.Readable{ID: r.ID, TenantID: t.ID, ProjectID: r.ProjectID, Head: store.Head{TeamSlug: t.Slug, TeamName: t.Name,
+		ProjectKey: r.ProjectKey, Number: r.Number, Title: r.Title, Type: r.Type, State: r.State, Sight: store.SightSees}}
+	e := linkEnds{path: tc, other: other, typ: domain.LinkBlocks, source: r.ID, target: tc.row.ID,
+		sourceKey: ticketKey(t, r), targetKey: ticketKey(t, tc.row)}
+	_, err := w.GetLink(ctx, readq.GetLinkParams{TenantID: t.ID, Type: e.typ, SourceID: e.source, TargetID: e.target})
 	if err == nil || !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
-	return addLink(ctx, w, t, e, "/block/ticket")
+	_, err = addLink(ctx, w, t, e, "/block/ticket")
+	return err
 }

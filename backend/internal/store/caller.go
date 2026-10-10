@@ -32,6 +32,12 @@ type Caller struct {
 	// RestrictedProjectID is the token's project restriction
 	// (docs/adr/0035 D3); the visibility predicate admits that project only.
 	RestrictedProjectID uuid.UUID
+	// RestrictedTenantID is the token's team restriction (docs/adr/0035 D3):
+	// the boundary holds the token's requests to that team, and the sight of a
+	// ticket of another team at the end of a relation reads it — such a token
+	// reads every other team's tickets by their heads only (docs/adr/0005 D3).
+	// uuid.Nil for an unrestricted token, a session and a system caller.
+	RestrictedTenantID uuid.UUID
 	// Agent is the agent mark of the request: the validated X-Cowork-Agent
 	// value, "unknown-agent", or empty for a person's own request.
 	Agent string

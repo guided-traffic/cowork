@@ -600,6 +600,14 @@ projectTickets:
               progress_review: 0
               progress_derived: false
               parent: acme/WEB-40
+              parent_head:
+                team: {slug: acme, name: Acme}
+                key: acme/WEB-40
+                title: Every supported browser signs in
+                type: feature
+                state: in-progress
+                placeholder: false
+                readable: true
               reporter: {id: 019cadb4-4b00-7719-ade7-c2d450e9b5f3, username: ada, display_name: Ada Lovelace}
               reporter_agent: null
               reporter_token: null
