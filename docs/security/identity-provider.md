@@ -159,7 +159,8 @@ compared exactly, case and all, wherever cowork compares one.
 
 One transaction of the system actor `system:identity-provider` decides a verified login
 ([`store/identity.go`](../../backend/internal/store/identity.go) `CompleteOIDCLogin`), under the
-person's advisory lock ([below](#one-decision-about-a-person-at-a-time)). In this order:
+advisory lock of the issuer's subject and then the person's
+([below](#one-decision-about-a-person-at-a-time)). In this order:
 
 1. **The gate.** The person is of the configured issuer — which a login's always is — and one of
    their groups is in `COWORK_OIDC_ALLOWED_GROUPS` or is `COWORK_ADMIN_GROUP` (`gate` in
@@ -294,13 +295,18 @@ for a person the gate admits:
 The application of a refresh's answer, a token's gate check and a mapping's change each take a
 transaction-level advisory lock of the person (`identityLockNamespace`, `cowi`, the person's id)
 before they read anything the decision depends on, so two of them decide about one person one after
-the other, each on what the one before committed. A login takes the lock once it has found the person
-— a first login once it has made them — and writes the groups its own exchange read, whatever was
-stored meanwhile ([H-83](#h-83)). A mapping's change runs under the team's
+the other, each on what the one before committed. A login takes, before it reads the person, the
+lock of the subject (`subjectLockNamespace`, `cows`, the issuer and the subject): the person of a
+first login has no id to lock until the login has made them, and the second of two first logins of one
+identity at once — two tabs, a double click — waits on it, finds the person the first made and
+carries on as a returning person's login, rather than failing on the unique pair
+(`TestTwoFirstLoginsOfOneIdentityMakeOnePerson`). It takes the person's lock once it has found the
+person — a first login once it has made them — and writes the groups its own exchange read,
+whatever was stored meanwhile ([H-83](#h-83)). A mapping's change runs under the team's
 lock (`cowt`, `LockTenant`), which every administrator's change of a grant or a mapping takes first,
 and then takes the locks of its persons in the order of their ids; no transaction takes a team's
-lock after a person's. The derivations of a login, a refresh and a token's gate check take the
-person's lock and no team's.
+lock after a person's, nor the subject's lock after either. The derivations of a login, a refresh
+and a token's gate check take the person's lock and no team's.
 
 ## The groups refresh
 

@@ -8,8 +8,12 @@ over hand-written `pgx`, over an ORM, and over a query builder for the list endp
 rules of D6–D8 were put to the owner with the question and not objected to.
 
 Amended 2026-10-02 (D2, D3: the wrappers' shape as built; D5: a transaction-level lock; D7:
-`sqlc compile` and the visibility lint), 2026-10-03 (D3: the writes that are no acts) and
-2026-10-04 (D3: the identity provider's transactions; D5: the tenant's and the person's locks). The first implementation found that a session-level
+`sqlc compile` and the visibility lint), 2026-10-03 (D3: the writes that are no acts),
+2026-10-04 (D3: the identity provider's transactions; D5: the tenant's and the person's locks) and
+2026-10-10 (D5: the subject's lock, which a login through the identity provider takes before it
+reads the person, and its place in the order — made concrete by the implementer, open to the
+owner's objection; built the same day as `forSubject` in
+[`store/identity.go`](../../backend/internal/store/identity.go)). The first implementation found that a session-level
 advisory lock outlives the job on an idle pooled connection, that `sqlc vet` needs a database
 the lint job does not have, and that the mutation wrapper is also where idempotency and the
 event publication belong.
@@ -102,6 +106,13 @@ role or removal, a group mapping's creation, change or removal, the deactivation
 the tenant manages — which take the tenant's lock first, so the check that the tenant keeps an
 administrator reads what the change before committed; what the identity provider decides about a
 person takes the person's lock; and no transaction takes a tenant's lock after a person's.
+*(Added 2026-10-10, made concrete by the implementer, open to the owner's objection:)* a login
+through the identity provider takes, before it reads the person, the lock of the subject it names
+— the issuer and the subject (`subjectLockNamespace`) — because the person of a first login has no
+id to lock until the login has made them: the second of two first logins of one identity at once waits
+for the first and finds the person it made, instead of failing on the unique pair. It is the
+login's first lock, and no transaction takes it after a tenant's or a person's: the order is the
+subject's lock, the tenant's, the persons' by ascending id.
 
 **D6 — `golang-migrate` stays for migrations; `database/sql` appears nowhere else.** The
 `pgx` stdlib adapter is used by the migration run only ([`migrate.go`](../../backend/internal/store/migrate.go)).

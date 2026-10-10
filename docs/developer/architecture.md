@@ -238,7 +238,8 @@ identity provider:
   GET /auth/callback?code&state ─► OidcCallback: open the cookie (≤ 10 min), compare the state
        ─► oidc.Provider.Exchange: the code with the verifier and the client secret; the ID token verified,
           its nonce compared; the groups from the token, else UserInfo
-       ─► store.CompleteOIDCLogin, one transaction of system:identity-provider under the person's lock:
+       ─► store.CompleteOIDCLogin, one transaction of system:identity-provider under the subject's lock
+          (issuer and subject, before the person is read), then the person's:
           the gate, deactivated, the init state ─► the person kept or made ─► memberships derived
           in every team ─► the session, with its groups and the sealed refresh token
        ─► 303 to return_to + the session cookie, the state cookie cleared — or 303 to /login?error=<code>

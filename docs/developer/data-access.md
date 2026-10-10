@@ -418,6 +418,7 @@ outlive its work on an idle pooled connection ([ADR 0027] D5).
 | `0x636f7771` | `cowq` | `Writer.LockQuestions(ticketID)` | question numbers of a ticket |
 | `0x636f7761` | `cowa` | `Writer.LockAttachments(ticketID)` | uploads to a ticket, before the per-ticket count |
 | `0x636f7775` | `cowu` | `Writer.LockAttachmentQuota()`, where `COWORK_ATTACHMENT_TEAM_QUOTA` is set, before the ticket's attachment lock | the team's uploads, before the sum against its quota |
+| `0x636f7773` | `cows` | `CompleteOIDCLogin` (`forSubject`), `pg_advisory_xact_lock(ns, hashtext(json_build_array(issuer, subject)::text))`, the login's first lock, before it reads the person | the logins of one identity of the issuer, its issuer and subject: the second of two first logins at once finds the person the first made and carries on as a returning person's login |
 | `0x636f7769` | `cowi` | the identity provider's transactions, and `RederiveGroup` per person in an administrator's change of a mapping | what the identity provider decides about one person: a login, a refresh's answer, a token's gate check, a mapping's derivation |
 | `0x636f7772` | `cowr` | `DB.ReserveLoginAttempt`, `pg_advisory_xact_lock(ns, hashtext(encode(address, 'hex')))` | the attempts to prove a password of one client address, before the throttle's count ([the login](#the-login-and-the-sessions)) |
 | `0x636f7774` | `cowt` | `Writer.LockTenant()`, first in an administrator's change of a grant (`PUT`, `DELETE …/grant`) or of a mapping (create, change, remove) and in the deactivation of an account (`PUT …/accounts/{username}/deactivation`) | the changes of who administers the team, before the `last_admin` check: the second of two concurrent changes sees the first committed |
@@ -429,7 +430,11 @@ cannot pass the check together. golang-migrate takes a single `bigint` key; the 
 never meets it. A transaction that takes a team's lock and persons' locks takes the team's first
 and the persons' in the order of their ids; none takes a team's lock after a person's, so the two
 cannot deadlock. A transaction takes the lock of its own team and of no other, so the teams'
-locks need no order among themselves. Two orderings are row locks, not advisory: the
+locks need no order among themselves. The subject's lock (`cows`) stands before both: a login
+through the identity provider takes it first of all, before it reads the person, and then the
+person's lock and no team's; no transaction takes the subject's lock after a team's or a person's,
+and a login takes the lock of its own subject and of no other, so it closes no cycle. The order is
+the subject's lock, the team's, the persons' by ascending id. Two orderings are row locks, not advisory: the
 `ticket_counters` row and the
 team row the time lock is read from `FOR SHARE` (`TimeLockedUntil`). The counter row is the
 project's number lock and its rank lock in one: a filing updates it (`NextTicketNumber`), a move
@@ -490,14 +495,20 @@ What the identity provider decides runs in transactions of its own, outside `Mut
 read-write transaction whose settings name the job `identity-provider`, the request id, the source
 hash and the session hash a login replaces or a refresh holds; `forPerson` names the person in
 `app.user_id` — which admits the person's sessions and memberships — and takes the advisory lock
-`cowi` of the person before anything is read that the decision depends on. The acts are written
+`cowi` of the person before anything is read that the decision depends on. A login takes the
+subject's lock (`cows`, `forSubject`, on the issuer and the subject) before that, as its first
+statement after the settings: the person of a first login has no id to lock until the login has
+made them, so two first logins of one identity at once would both find no person and the second would fail on
+`users_oidc_identity_key`; under the subject's lock the second waits, then finds the person the
+first made and carries on as a returning person's login
+(`TestTwoFirstLoginsOfOneIdentityMakeOnePerson`). The acts are written
 through the same `Writer.flush` as `Mutate`'s, team by team: `flushIn` sets `app.tenant_id` for
 the rows of one team and clears it again, because a decision about one person writes rows in
 every team whose mappings it touches.
 
 | Function | Decides | Writes |
 |---|---|---|
-| `CompleteOIDCLogin` | a verified login: the gate, deactivated, the init state | a refusal (`login_refused`, and for a known, active person outside the gate their groups with the gate's stamp and the administrator flag cleared, and the end of their sessions — no memberships, which stay as they were); or the person kept or made, the memberships derived in every team (`deriveEverywhere`), the session — with its groups and sealed refresh token — and the person's own `logged_in`, as the person |
+| `CompleteOIDCLogin` | a verified login, under the subject's lock and then the person's: the gate, deactivated, the init state | a refusal (`login_refused`, and for a known, active person outside the gate their groups with the gate's stamp and the administrator flag cleared, and the end of their sessions — no memberships, which stay as they were); or the person kept or made, the memberships derived in every team (`deriveEverywhere`), the session — with its groups and sealed refresh token — and the person's own `logged_in`, as the person |
 | `ClaimSessionRefresh` | whether this request refreshes the session: one short transaction **as the person**, no job, that moves `refresh_retry_at` thirty seconds ahead where the refresh is due and nobody holds it (`ClaimSessionRefresh` in `sessions.sql`), and returns the sealed refresh token | the lease only; no act. The API then asks the issuer with no transaction open |
 | `ApplySessionRefresh` | the issuer's answer, under the person's lock and the session's row `FOR UPDATE`, only while `refresh_retry_at` is still the claimed lease | read: the session's groups, and the person's (`keepSnapshot`) unless their `oidc_groups_at` is newer than the read, the memberships while the gate admits them; judged — nothing was read: the session's row only (`SetSessionGroups`); outside the gate: the end of every session of the person; refused: the end of this session; unreachable: the retry time and a rotated refresh token (`DeferSessionRefresh`) |
 | `EndProviderSessions` | nothing to decide: the person is not the configured issuer's | the end of every session of the person, `revoked` with the cause `gate` |
