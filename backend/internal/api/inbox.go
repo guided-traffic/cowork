@@ -3,12 +3,14 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/oapi-codegen/nullable"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
 	"github.com/guided-traffic/cowork/backend/internal/auth"
@@ -194,11 +196,30 @@ func inboxEntryView(r inboxRow, visible map[uuid.UUID]bool) apigen.InboxEntry {
 		Ticket:  apigen.TicketRef{Key: domain.FullKey(slug, n.ProjectKey, n.Number), Title: n.Title, State: apigen.TicketState(n.State)},
 		Blocker: nullableOf[apigen.TicketRef](nil), Withdrawn: n.Withdrawn, Read: n.ReadAt != nil, CreatedAt: n.CreatedAt,
 	}
-	if n.Reason == store.NoticeBlockerClosed {
+	switch {
+	case n.Reason == store.NoticeBlockerClosed && n.Action == actionPrerequisiteSettled:
+		v.Blocker = settledPrerequisite(n.After)
+	case n.Reason == store.NoticeBlockerClosed:
 		v.Blocker = nullableOf(&apigen.TicketRef{Key: domain.FullKey(slug, n.ActProjectKey, n.ActNumber), Title: n.ActTitle,
 			State: apigen.TicketState(n.ActState)})
 	}
 	return v
+}
+
+// settledPrerequisite is the blocker a notification of a prerequisite of
+// another team names: the head its act recorded when it settled, null where it
+// was confidential (docs/adr/0012 D5 as made concrete 2026-10-10).
+func settledPrerequisite(after []byte) nullable.Nullable[apigen.TicketRef] {
+	var act struct {
+		Prerequisite struct {
+			Key, Title, State *string
+		} `json:"prerequisite"`
+	}
+	p := &act.Prerequisite
+	if json.Unmarshal(after, &act) != nil || p.Key == nil || p.Title == nil || p.State == nil {
+		return nullableOf[apigen.TicketRef](nil)
+	}
+	return nullableOf(&apigen.TicketRef{Key: *p.Key, Title: *p.Title, State: apigen.TicketState(*p.State)})
 }
 
 // MarkNotificationRead marks one of the person's notifications read, in the

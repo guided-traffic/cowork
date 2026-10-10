@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -65,7 +66,7 @@ func newCrossing(t *testing.T) crossing {
 
 // relationsOf reads a ticket's relations of the kinds as the context's caller,
 // in the team.
-func relationsOf(t *testing.T, ctx context.Context, team, ticket uuid.UUID, kinds ...string) []store.Relation {
+func relationsOf(ctx context.Context, t *testing.T, team, ticket uuid.UUID, kinds ...string) []store.Relation {
 	t.Helper()
 	var rels []store.Relation
 	require.NoError(t, openRuntime(t).InTenant(ctx, team, func(r *store.Reader) error {
@@ -245,7 +246,7 @@ func TestTheSightOfARelation(t *testing.T) {
 	f := fixtures(t)
 	parentOf := func(t *testing.T, caller context.Context, team, ticket uuid.UUID) (store.Head, bool) {
 		t.Helper()
-		rels := relationsOf(t, caller, team, ticket, store.RelationParent)
+		rels := relationsOf(caller, t, team, ticket, store.RelationParent)
 		if len(rels) == 0 {
 			return store.Head{}, false
 		}
@@ -268,7 +269,7 @@ func TestTheSightOfARelation(t *testing.T) {
 		assert.Equal(t, store.SightSees, h.Sight)
 	})
 	t.Run("a member of the parent's team alone reads the child's head", func(t *testing.T) {
-		rels := relationsOf(t, as(c.MemberA), c.A, c.PA, store.RelationChild)
+		rels := relationsOf(as(c.MemberA), t, c.A, c.PA, store.RelationChild)
 		require.Len(t, rels, 2)
 		sights := map[string]store.Sight{}
 		for _, r := range rels {
@@ -326,7 +327,7 @@ func TestTheSightOfARelation(t *testing.T) {
 	t.Run("a person of neither team reads nothing", func(t *testing.T) {
 		stranger, err := f.Person(ctx, uniqueSlug("stranger"), "Stranger")
 		require.NoError(t, err)
-		assert.Empty(t, relationsOf(t, as(stranger), c.B, c.CB, store.RelationParent))
+		assert.Empty(t, relationsOf(as(stranger), t, c.B, c.CB, store.RelationParent))
 	})
 	t.Run("a deleted parent is absent", func(t *testing.T) {
 		require.NoError(t, f.Exec(ctx, "UPDATE tickets SET deleted_at = now(), deleted_by = $1 WHERE id = $2", c.AdminA, c.PA))
@@ -435,4 +436,116 @@ func TestRefreshDerivedCountsAChildOfAnotherTeam(t *testing.T) {
 	require.NotNil(t, derived)
 	assert.EqualValues(t, 75, *derived, "the mean of 50 and 100, both effort S")
 	assert.Equal(t, before, version)
+}
+
+// Ending a team's relations — what the deletion of a team does first — leaves
+// the other team's children as roots, the team's own tickets parentless, the
+// links between them gone and the other team's parents derived again, each
+// change recorded in the other team's record as system:team-deletion
+// (docs/adr/0024 D6 as made concrete 2026-10-10). No route calls it.
+func TestEndingATeamsRelations(t *testing.T) {
+	ctx := context.Background()
+	c := newCrossing(t)
+	f := fixtures(t)
+	db := openRuntime(t)
+	parentB, _, err := f.Ticket(ctx, c.B, c.ProjectB, c.MemberB, "a parent of B over a child of A")
+	require.NoError(t, err)
+	require.NoError(t, f.Exec(ctx, "UPDATE tickets SET parent_id = $1, progress = 60 WHERE id = $2", parentB, c.CA))
+	require.NoError(t, f.Exec(ctx, "UPDATE tickets SET progress_derived = 60, progress_refinement_derived = 0, progress_review_derived = 0 WHERE id = $1", parentB))
+	linkB, _, err := f.Ticket(ctx, c.B, c.ProjectB, c.MemberB, "a ticket of B linked both ways")
+	require.NoError(t, err)
+	require.NoError(t, f.Exec(ctx, `INSERT INTO ticket_links (tenant_id, type, source_id, target_id, created_by)
+		VALUES ($1, 'blocks', $2, $3, $4), ($5, 'found-in', $6, $7, $8)`,
+		c.B, linkB, c.PA, c.MemberB, c.A, c.PA, linkB, c.MemberA))
+
+	ran, err := db.EndTeamRelations(ctx, c.A)
+	require.NoError(t, err)
+	require.True(t, ran)
+
+	for _, child := range []uuid.UUID{c.CB, c.CB2, c.CB3, c.CA} {
+		var parent *uuid.UUID
+		require.NoError(t, f.QueryRow(ctx, "SELECT parent_id FROM tickets WHERE id = $1", child).Scan(&parent))
+		assert.Nil(t, parent, "%s is a root", child)
+	}
+	links, err := f.QueryCount(ctx, "SELECT count(*) FROM ticket_links WHERE source_id = $1 OR target_id = $1", linkB)
+	require.NoError(t, err)
+	assert.Zero(t, links)
+	var derived *int16
+	require.NoError(t, f.QueryRow(ctx, "SELECT progress_derived FROM tickets WHERE id = $1", parentB).Scan(&derived))
+	assert.Nil(t, derived, "the parent of B counts the child of A no more")
+	for ticket, action := range map[uuid.UUID]string{c.CB: "updated", c.CB2: "updated", c.CB3: "updated", linkB: "unlinked"} {
+		n, err := f.QueryCount(ctx, `SELECT count(*) FROM audit_events
+			WHERE tenant_id = $1 AND ticket_id = $2 AND action = $3 AND actor_system = 'system:team-deletion'`, c.B, ticket, action)
+		require.NoError(t, err)
+		assert.Positive(t, n, "the act %s on %s is in B's record", action, ticket)
+	}
+	outside, err := f.QueryCount(ctx, `SELECT count(*) FROM audit_events WHERE tenant_id IS DISTINCT FROM $1
+		AND actor_system = 'system:team-deletion' AND ticket_id IN ($2, $3)`, c.B, c.CB, linkB)
+	require.NoError(t, err)
+	assert.Zero(t, outside, "nothing of it is recorded outside B")
+}
+
+// cowork serve refuses crossings that are not the owner role's alone: a policy
+// of a crossing that names another role, a crossing function another role
+// owns (docs/adr/0021 D7 as made concrete 2026-10-10). A database migrated
+// from scratch passes.
+func TestServeRefusesACrossingOfAnotherOwner(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	name := fmt.Sprintf("cowork_it_cross_%d", time.Now().UnixNano())
+	require.NoError(t, createDatabase(ctx, env.AdminURL, name))
+	t.Cleanup(func() { _ = dropDatabase(context.Background(), env.AdminURL, name) })
+	ownerURL, err := withUserAndDatabase(env.AdminURL, ownerRole, ownerRole, name)
+	require.NoError(t, err)
+	runtimeURL, err := withUserAndDatabase(env.AdminURL, runtimeRole, runtimeRole, name)
+	require.NoError(t, err)
+	adminURL, err := withUserAndDatabase(env.AdminURL, "", "", name)
+	require.NoError(t, err)
+	_, err = store.Migrate(ctx, ownerURL, runtimeRole)
+	require.NoError(t, err)
+	db := openStore(t, runtimeURL)
+	require.NoError(t, db.CheckCrossing(ctx), "a database migrated from scratch")
+
+	admin, err := pgx.Connect(ctx, adminURL)
+	require.NoError(t, err)
+	defer func() { _ = admin.Close(ctx) }()
+	_, err = admin.Exec(ctx, `DO $$ BEGIN
+		IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'cowork_it_other') THEN CREATE ROLE cowork_it_other NOLOGIN; END IF;
+	END $$`)
+	require.NoError(t, err)
+	_, err = admin.Exec(ctx, "ALTER POLICY tickets_crossing_read ON tickets TO cowork_it_other")
+	require.NoError(t, err)
+	err = db.CheckCrossing(ctx)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "tickets_crossing_read names another role")
+
+	_, err = admin.Exec(ctx, fmt.Sprintf("ALTER POLICY tickets_crossing_read ON tickets TO %s", ownerRole))
+	require.NoError(t, err)
+	require.NoError(t, db.CheckCrossing(ctx))
+	_, err = admin.Exec(ctx, "ALTER FUNCTION relation_heads(uuid[], text[]) OWNER TO cowork_it_other")
+	require.NoError(t, err)
+	err = db.CheckCrossing(ctx)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "relation_heads is not the owner's")
+}
+
+// The probe the mechanism rests on, kept: PostgreSQL refuses a custom setting
+// in a function's SET clause to the owner role, which is no superuser — so the
+// crossings set app.crossing in their bodies (docs/adr/0021 D7 as made
+// concrete 2026-10-10; verified on PostgreSQL 18.6).
+func TestPostgreSQLRefusesTheCrossingInASetClause(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, env.OwnerURL)
+	require.NoError(t, err)
+	defer func() { _ = conn.Close(ctx) }()
+	tx, err := conn.Begin(ctx)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback(ctx) }()
+	_, err = tx.Exec(ctx, `CREATE FUNCTION crossing_probe() RETURNS text LANGUAGE sql SECURITY DEFINER
+		SET app.crossing = 'head' AS $$ SELECT current_setting('app.crossing', true) $$`)
+	var pgErr *pgconn.PgError
+	require.True(t, errors.As(err, &pgErr), "the owner role puts no custom setting into a SET clause: %v", err)
+	assert.Equal(t, "42501", pgErr.Code)
+	assert.Contains(t, pgErr.Message, `permission denied to set parameter "app.crossing"`)
 }

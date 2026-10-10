@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/guided-traffic/cowork/backend/internal/api/apigen"
@@ -49,7 +48,11 @@ func (s *Server) ExportTicket(ctx context.Context, req apigen.ExportTicketReques
 		if tc, err = visibleTicket(ctx, r, t, req.Project, req.Number); err != nil {
 			return err
 		}
-		doc, err = exportDocument(ctx, r, t, tc)
+		st, err := showing(ctx, r, tc.row, nil)
+		if err != nil {
+			return err
+		}
+		doc, err = exportDocument(ctx, r, t, st)
 		return err
 	})
 	if err != nil {
@@ -66,9 +69,12 @@ func (s *Server) ExportTicket(ctx context.Context, req apigen.ExportTicketReques
 	return markdownResponse{body: markdown.Render(doc), etag: *etag(tc.row.Version)}, nil
 }
 
-// exportDocument gathers what the document shows.
-func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, tc ticketCtx) (markdown.Ticket, error) {
-	row := tc.row
+// exportDocument gathers what the document shows. The parent is written by
+// its canonical key, of any project or team, and nothing else of it — never its
+// head's text —, and left out where the caller may not see it
+// (docs/adr/0051 D9 as made concrete 2026-10-10).
+func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, st shown) (markdown.Ticket, error) {
+	row := st.row
 	stages := stagesOf(row)
 	doc := markdown.Ticket{
 		Key: ticketKey(t, row), Title: row.Title, Type: string(row.Type), State: string(row.State), Severity: string(row.Severity),
@@ -82,8 +88,8 @@ func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, tc tick
 		return doc, err
 	}
 	doc.Assignee = assignee
-	if doc.Parent, err = exportParent(ctx, r, row); err != nil {
-		return doc, err
+	if st.parent != nil {
+		doc.Parent = st.parent.Key()
 	}
 	if err := stateNote(ctx, r, t, row, &doc); err != nil {
 		return doc, err
@@ -102,21 +108,6 @@ func exportDocument(ctx context.Context, r *store.Reader, t tenantScope, tc tick
 			Recommendation: q.Recommendation, Status: q.Status, Answer: deref(q.Answer)})
 	}
 	return doc, nil
-}
-
-// exportParent is the parent as the document writes it: its canonical key, of
-// any project or team, and nothing else of it — never its head's text
-// (docs/adr/0051 D9 as made concrete 2026-10-10); "" without a parent, and for
-// a parent the caller may not see, which the document leaves out.
-func exportParent(ctx context.Context, r *store.Reader, row store.TicketRow) (string, error) {
-	if row.ParentID == nil {
-		return "", nil
-	}
-	heads, err := r.ParentHeads(ctx, []uuid.UUID{row.ID})
-	if err != nil {
-		return "", err
-	}
-	return heads[row.ID].Key(), nil
 }
 
 // exportAssignee is the assignee as the document writes them, the display name

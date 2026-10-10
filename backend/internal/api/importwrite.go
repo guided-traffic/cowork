@@ -35,31 +35,23 @@ type execution struct {
 	existing map[uuid.UUID]int32
 	files    map[int32]*importer.FileReport
 	parents  map[uuid.UUID]bool
+	// far are the tickets of other teams the plan names, where the acts on
+	// them are recorded (docs/adr/0012 D3).
+	far map[uuid.UUID]store.FarEnd
 }
 
 // execute writes the plan, the sequence advanced past its highest number,
 // and the job's end with the report of what it created.
 func (s *Server) execute(ctx context.Context, w *store.Writer, t tenantScope, p project, job uuid.UUID, now time.Time,
-	tg importer.Target, result *importer.Result) error {
+	tg importer.Target, far map[uuid.UUID]store.FarEnd, result *importer.Result) error {
 	ex := &execution{w: w, t: t, p: p, job: job, caller: principal(ctx), ids: map[int32]uuid.UUID{},
-		existing: map[uuid.UUID]int32{}, files: map[int32]*importer.FileReport{}, parents: map[uuid.UUID]bool{}}
+		existing: map[uuid.UUID]int32{}, files: map[int32]*importer.FileReport{}, parents: map[uuid.UUID]bool{}, far: far}
 	for n, id := range tg.Existing {
 		ex.existing[id] = n
 	}
 	for _, f := range result.Report.Files {
 		if f.Number != nil && f.Outcome == importer.OutcomeCreate {
 			ex.files[*f.Number] = f
-		}
-	}
-	// A planned blocks link is walked under the installation's lock of the
-	// blocks graph, which comes before the rank's row lock and every ticket
-	// row the execution writes (docs/developer/data-access.md#advisory-locks).
-	for _, l := range result.Plan.Links {
-		if l.Type == domain.LinkBlocks {
-			if err := w.LockGraph(ctx, store.GraphBlocks); err != nil {
-				return err
-			}
-			break
 		}
 	}
 	last, err := rankUnranked(ctx, w, t, p.ID)
@@ -71,10 +63,12 @@ func (s *Server) execute(ctx context.Context, w *store.Writer, t tenantScope, p 
 			return fmt.Errorf("import %s: %w", pt.Path, err)
 		}
 	}
+	parents := make([]*uuid.UUID, 0, len(ex.parents))
 	for id := range ex.parents {
-		if err := refreshProgress(ctx, w, &id); err != nil {
-			return err
-		}
+		parents = append(parents, &id)
+	}
+	if err := refreshProgress(ctx, w, parents...); err != nil {
+		return err
 	}
 	for _, l := range result.Plan.Links {
 		if err := ex.link(ctx, l); err != nil {
@@ -260,7 +254,11 @@ func (ex *execution) link(ctx context.Context, l importer.PlannedLink) error {
 			return nil
 		}
 	}
-	if l.Type == domain.LinkRelatesTo && bytes.Compare(source[:], target[:]) > 0 {
+	_, sourceFar := ex.far[source]
+	_, targetFar := ex.far[target]
+	// relates-to is stored once: inside the team the smaller id first, with a
+	// ticket of another team from the import's end (docs/adr/0012 D1, D2).
+	if l.Type == domain.LinkRelatesTo && !sourceFar && !targetFar && bytes.Compare(source[:], target[:]) > 0 {
 		source, target = target, source
 		l.Source, l.Target = l.Target, l.Source
 	}
@@ -269,12 +267,13 @@ func (ex *execution) link(ctx context.Context, l importer.PlannedLink) error {
 	if err != nil {
 		return fmt.Errorf("insert the link: %w", err)
 	}
-	return ex.linkActs(l, ins.ID, source, target)
+	return ex.linkActs(ctx, l, ins.ID, source, target)
 }
 
-// linkActs records the link on both its tickets (docs/adr/0012 D3): quiet on
+// linkActs records the link on both its tickets (docs/adr/0012 D3) — on a
+// ticket of another team in that team's record —: quiet on
 // a ticket the import creates, published on the project's.
-func (ex *execution) linkActs(l importer.PlannedLink, id, source, target uuid.UUID) error {
+func (ex *execution) linkActs(ctx context.Context, l importer.PlannedLink, id, source, target uuid.UUID) error {
 	sourceKey, targetKey := ex.refKey(l.Source), ex.refKey(l.Target)
 	if sourceKey == "" || targetKey == "" {
 		return errNoTicket
@@ -285,17 +284,30 @@ func (ex *execution) linkActs(l importer.PlannedLink, id, source, target uuid.UU
 		key           string
 		created       bool
 	}{{source, target, sourceKey, l.Source.Number != 0}, {target, source, targetKey, l.Target.Number != 0}} {
-		ex.w.Record(store.Event{EntityType: entityLink, EntityID: id, TicketID: end.ticket, TicketKey: end.key,
-			Action: actionLinked, After: payload, Refs: []uuid.UUID{end.other}, Quiet: end.created})
+		ev := store.Event{EntityType: entityLink, EntityID: id, TicketID: end.ticket, TicketKey: end.key,
+			Action: actionLinked, After: payload, Refs: []uuid.UUID{end.other}, Quiet: end.created}
+		if far, ok := ex.far[end.ticket]; ok {
+			// The act on a ticket of another team is in its own team's record,
+			// published on its streams.
+			if err := ex.w.RecordElsewhere(ctx, far, ev); err != nil {
+				return err
+			}
+			continue
+		}
+		ex.w.Record(ev)
 	}
 	return nil
 }
 
-// refKey is the key of a planned ticket: one the execution creates, or the
-// project's by its number; "" for neither.
+// refKey is the key of a planned ticket: one the execution creates, the
+// project's by its number, or one of another project or team by the key the
+// upload names it by; "" for none.
 func (ex *execution) refKey(r importer.Ref) string {
 	if r.Number != 0 {
 		return ex.key(r.Number)
+	}
+	if r.Key != "" {
+		return r.Key
 	}
 	if n, ok := ex.existing[r.ID]; ok {
 		return ex.key(n)

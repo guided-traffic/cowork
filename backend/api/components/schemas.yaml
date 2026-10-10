@@ -715,7 +715,12 @@ AuditAction:
     interest, ranked, overridden, asked, answered, booked, voided, locked, uploaded, downloaded,
     exported, deleted, restored, purged, revoked, refused, archived, confidential_set,
     confidential_lifted, expired, logged_in, logged_out, login_failed, unlocked, password_changed,
-    password_reset, deactivated, reactivated, read, merged, closed, reopened, accepted, imported]
+    password_reset, deactivated, reactivated, read, merged, closed, reopened, accepted, imported,
+    prerequisite_settled]
+  description: |
+    `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
+    reaches done or dropped, naming that prerequisite by its head in `after.prerequisite` — the
+    placeholder where it is confidential —, and tells the ticket's watchers (docs/adr/0012 D5)
 AuditEvent:
   type: object
   required: [id, created_at, actor, entity_type, action]
@@ -3344,7 +3349,11 @@ InboxEntry:
     act:
       $ref: '#/Activity'
     blocker:
-      description: For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is now; null otherwise
+      description: |
+        For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is
+        now; a ticket of another team by its head as it was when it settled, null where it is
+        confidential, the act's `after.prerequisite` naming it as `<team> [Confidential]`
+        (docs/adr/0012 D5); null otherwise
       oneOf:
         - $ref: '#/TicketRef'
         - type: 'null'
@@ -3978,7 +3987,11 @@ ImportLink:
       type: string
       enum: [outgoing, incoming]
       description: Outgoing when this file's ticket is the link's source
-    key: {type: string, description: The other end's key in the project}
+    key:
+      type: string
+      description: |
+        The other end's canonical key: a ticket of the upload or the project, or of another project or
+        team the importing person reads (docs/adr/0012 D2, docs/adr/0051 D9)
     source:
       type: string
       enum: [blocked-by, filed-from, links.json]
@@ -4084,7 +4097,9 @@ ImportFile:
         - type: 'null'
     parent:
       type: [string, 'null']
-      description: The key of the parent in the project
+      description: |
+        The parent's canonical key: a ticket of the upload or the project, or of another project or team
+        the importing person reads (docs/adr/0008 D2, docs/adr/0051 D9)
     note:
       type: [string, 'null']
       description: |

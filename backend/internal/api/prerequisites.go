@@ -105,16 +105,12 @@ func (s *Server) ListPrerequisiteTree(ctx context.Context, req apigen.ListPrereq
 	up := req.Params.Direction != nil && *req.Params.Direction == apigen.ListPrerequisiteTreeParamsDirectionUp
 	scope := treeScope(t, req.Project, req.Number, up)
 	size := s.h.pageSize(req.Params.Limit)
+	position, perr := s.cursors.sealedPosition(headTreeOp, scope, req.Params.Cursor)
+	if perr != nil {
+		return nil, perr
+	}
 	var after []uuid.UUID
-	if req.Params.Cursor != nil {
-		sealed, perr := s.cursors.decode(headTreeOp, scope, *req.Params.Cursor)
-		if perr != nil {
-			return nil, perr
-		}
-		position, ok := s.cursors.openPosition(sealed)
-		if !ok {
-			return nil, invalidCursor()
-		}
+	if position != "" {
 		if after, perr = decodeTreePath(position); perr != nil {
 			return nil, perr
 		}
@@ -126,19 +122,8 @@ func (s *Server) ListPrerequisiteTree(ctx context.Context, req apigen.ListPrereq
 		if err != nil {
 			return err
 		}
-		if nodes, err = r.PrerequisiteHeads(ctx, tc.row.ID, up, treeDepth, after, limitArg(size)); err != nil {
-			return err
-		}
-		counted := nodes
-		if len(nodes) == 0 && after != nil {
-			if counted, err = r.PrerequisiteHeads(ctx, tc.row.ID, up, treeDepth, nil, 1); err != nil {
-				return err
-			}
-		}
-		if len(counted) > 0 {
-			open = int(counted[0].OpenCount)
-		}
-		return nil
+		nodes, open, err = headTree(ctx, r, tc.row.ID, up, after, size)
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -155,6 +140,26 @@ func (s *Server) ListPrerequisiteTree(ctx context.Context, req apigen.ListPrereq
 		return apigen.ListPrerequisiteTree304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
 	}
 	return apigen.ListPrerequisiteTree200JSONResponse{Body: out, Headers: apigen.ListPrerequisiteTree200ResponseHeaders{ETag: &tag}}, nil
+}
+
+// headTree reads a page of the tree across teams after the node at the path
+// after (nil: from the start), and how many of the ticket's prerequisites are
+// open, which a page past the last node reads from the first.
+func headTree(ctx context.Context, r *store.Reader, ticket uuid.UUID, up bool, after []uuid.UUID, size int) ([]store.TreeHead, int, error) {
+	nodes, err := r.PrerequisiteHeads(ctx, ticket, up, treeDepth, after, limitArg(size))
+	if err != nil {
+		return nil, 0, err
+	}
+	counted := nodes
+	if len(nodes) == 0 && after != nil {
+		if counted, err = r.PrerequisiteHeads(ctx, ticket, up, treeDepth, nil, 1); err != nil {
+			return nil, 0, err
+		}
+	}
+	if len(counted) == 0 {
+		return nodes, 0, nil
+	}
+	return nodes, int(counted[0].OpenCount), nil
 }
 
 // headNodeView is a node of the tree across teams as the API shows it: its

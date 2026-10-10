@@ -91,7 +91,7 @@ func (s *Server) CreateImport(ctx context.Context, req apigen.CreateImportReques
 		if err != nil {
 			return err
 		}
-		target, err := s.importTarget(ctx, w.Reader, t, p, upload, nil, nil)
+		target, _, err := s.importTarget(ctx, w.Reader, t, p, upload, nil, nil)
 		if err != nil {
 			return err
 		}
@@ -244,25 +244,58 @@ func importJobView(projectKey string, j readq.GetImportJobRow) (apigen.ImportJob
 // or an agent's, names its person, which a confidential ticket may be
 // assigned to alone — a person's browser session does not.
 func (s *Server) importTarget(ctx context.Context, r *store.Reader, t tenantScope, p project, u *importer.Upload,
-	corrections []importer.Correction, named map[string]uuid.UUID) (importer.Target, error) {
+	corrections []importer.Correction, named map[string]uuid.UUID) (importer.Target, map[uuid.UUID]store.FarEnd, error) {
 	issuer := ""
 	if s.h.opts.OIDC.Provider != nil {
 		issuer = s.h.opts.OIDC.Provider.Issuer()
 	}
 	tg := importer.Target{Tenant: t.Slug, Project: p.Key, Issuer: issuer, Taken: map[int32]bool{}, Purged: map[int32]bool{},
-		Existing: map[int32]uuid.UUID{}, Persons: map[string]importer.Person{}, Assignees: map[uuid.UUID]importer.Person{},
-		Named: named}
+		Existing: map[int32]uuid.UUID{}, External: map[string]importer.External{}, Persons: map[string]importer.Person{},
+		Assignees: map[uuid.UUID]importer.Person{}, Named: named}
 	if caller := principal(ctx); !caller.Session || caller.IsAgent() {
 		tg.TokenPerson = &caller.PersonID
 	}
 	needs := u.Needs(issuer)
 	if err := importNumbers(ctx, r, t, p, needs, &tg); err != nil {
-		return tg, err
+		return tg, nil, err
+	}
+	far, err := importExternal(ctx, r, needs, &tg)
+	if err != nil {
+		return tg, nil, err
 	}
 	if err := importPersons(ctx, r, t, p, needs, &tg); err != nil {
-		return tg, err
+		return tg, nil, err
 	}
-	return tg, correctedAssignees(ctx, r, t, p, corrections, &tg)
+	return tg, far, correctedAssignees(ctx, r, t, p, corrections, &tg)
+}
+
+// importExternal resolves the canonical keys the upload names outside the
+// project it comes from — another project, another team — under the rule of a
+// parent and a link (docs/adr/0008 D2, docs/adr/0051 D9 as made concrete
+// 2026-10-10): a key names its ticket where the importing person reads it,
+// and any other is left out, so the analysis reports it as not set, as one that
+// names nothing. It is read in the dry run and again at the execution, and
+// answers where the acts on a ticket of another team are recorded.
+func importExternal(ctx context.Context, r *store.Reader, needs importer.Needs, tg *importer.Target) (map[uuid.UUID]store.FarEnd, error) {
+	far := map[uuid.UUID]store.FarEnd{}
+	for _, key := range needs.External {
+		k, err := domain.ParseTicketKey(key)
+		if err != nil || k.Tenant == "" {
+			continue
+		}
+		rd, ok, err := r.ReadableTicket(ctx, k.Tenant, k.Project, k.Number)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		tg.External[key] = importer.External{ID: rd.ID, Team: rd.Head.TeamSlug}
+		if rd.Elsewhere {
+			far[rd.ID] = rd.Far
+		}
+	}
+	return far, nil
 }
 
 // importNumbers reads the numbers the project holds, those purged tickets
@@ -394,15 +427,23 @@ func (s *Server) ExecuteImport(ctx context.Context, req apigen.ExecuteImportRequ
 		if perr := checkCorrections(upload, corrections); perr != nil {
 			return perr
 		}
+		// A blocks link is walked under the installation's lock of the blocks
+		// graph, which comes before the rank's row lock and every ticket row
+		// (docs/developer/data-access.md#advisory-locks).
+		if upload.MayLinkBlocks() {
+			if err := w.LockGraph(ctx, store.GraphBlocks); err != nil {
+				return err
+			}
+		}
 		if err := lockRank(ctx, w, t, p.ID); err != nil {
 			return err
 		}
-		target, err := s.importTarget(ctx, w.Reader, t, p, upload, corrections, named)
+		target, far, err := s.importTarget(ctx, w.Reader, t, p, upload, corrections, named)
 		if err != nil {
 			return err
 		}
 		result := importer.Analyze(upload, target, corrections)
-		if err := s.execute(ctx, w, t, p, req.Import, now, target, &result); err != nil {
+		if err := s.execute(ctx, w, t, p, req.Import, now, target, far, &result); err != nil {
 			return err
 		}
 		job, err = w.GetImportJob(ctx, readq.GetImportJobParams{TenantID: t.ID, ProjectID: p.ID, ID: req.Import, Now: &now})

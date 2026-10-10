@@ -34,7 +34,7 @@ func (e ticketEnv) treeOf(t *testing.T, c caller, tk apigen.Ticket, up bool, cur
 	if limit > 0 {
 		params.Limit = &limit
 	}
-	res, err := e.s.client(t, c).ListPrerequisitesWithResponse(e.ctx, e.SlugA, tk.Project, tk.Number, params)
+	res, err := e.s.client(t, c).ListPrerequisitesWithResponse(e.ctx, e.SlugA, tk.Project, tk.Number, params) //nolint:staticcheck // SA1019: the deprecated read is still answered
 	require.NoError(t, err)
 	return res
 }

@@ -58,49 +58,50 @@ func (e AttachmentContentType) Valid() bool {
 
 // Defines values for AuditAction.
 const (
-	AuditActionAccepted           AuditAction = "accepted"
-	AuditActionAnswered           AuditAction = "answered"
-	AuditActionArchived           AuditAction = "archived"
-	AuditActionAsked              AuditAction = "asked"
-	AuditActionAssigned           AuditAction = "assigned"
-	AuditActionBooked             AuditAction = "booked"
-	AuditActionClosed             AuditAction = "closed"
-	AuditActionCommented          AuditAction = "commented"
-	AuditActionConfidentialLifted AuditAction = "confidential_lifted"
-	AuditActionConfidentialSet    AuditAction = "confidential_set"
-	AuditActionCreated            AuditAction = "created"
-	AuditActionDeactivated        AuditAction = "deactivated"
-	AuditActionDeleted            AuditAction = "deleted"
-	AuditActionDownloaded         AuditAction = "downloaded"
-	AuditActionEdited             AuditAction = "edited"
-	AuditActionExpired            AuditAction = "expired"
-	AuditActionExported           AuditAction = "exported"
-	AuditActionImported           AuditAction = "imported"
-	AuditActionInterest           AuditAction = "interest"
-	AuditActionLinked             AuditAction = "linked"
-	AuditActionLocked             AuditAction = "locked"
-	AuditActionLoggedIn           AuditAction = "logged_in"
-	AuditActionLoggedOut          AuditAction = "logged_out"
-	AuditActionLoginFailed        AuditAction = "login_failed"
-	AuditActionMerged             AuditAction = "merged"
-	AuditActionOverridden         AuditAction = "overridden"
-	AuditActionPasswordChanged    AuditAction = "password_changed"
-	AuditActionPasswordReset      AuditAction = "password_reset"
-	AuditActionPurged             AuditAction = "purged"
-	AuditActionRanked             AuditAction = "ranked"
-	AuditActionReactivated        AuditAction = "reactivated"
-	AuditActionRead               AuditAction = "read"
-	AuditActionRefused            AuditAction = "refused"
-	AuditActionReopened           AuditAction = "reopened"
-	AuditActionRestored           AuditAction = "restored"
-	AuditActionRevoked            AuditAction = "revoked"
-	AuditActionTransitioned       AuditAction = "transitioned"
-	AuditActionUnlinked           AuditAction = "unlinked"
-	AuditActionUnlocked           AuditAction = "unlocked"
-	AuditActionUpdated            AuditAction = "updated"
-	AuditActionUploaded           AuditAction = "uploaded"
-	AuditActionVoided             AuditAction = "voided"
-	AuditActionWithdrawn          AuditAction = "withdrawn"
+	AuditActionAccepted            AuditAction = "accepted"
+	AuditActionAnswered            AuditAction = "answered"
+	AuditActionArchived            AuditAction = "archived"
+	AuditActionAsked               AuditAction = "asked"
+	AuditActionAssigned            AuditAction = "assigned"
+	AuditActionBooked              AuditAction = "booked"
+	AuditActionClosed              AuditAction = "closed"
+	AuditActionCommented           AuditAction = "commented"
+	AuditActionConfidentialLifted  AuditAction = "confidential_lifted"
+	AuditActionConfidentialSet     AuditAction = "confidential_set"
+	AuditActionCreated             AuditAction = "created"
+	AuditActionDeactivated         AuditAction = "deactivated"
+	AuditActionDeleted             AuditAction = "deleted"
+	AuditActionDownloaded          AuditAction = "downloaded"
+	AuditActionEdited              AuditAction = "edited"
+	AuditActionExpired             AuditAction = "expired"
+	AuditActionExported            AuditAction = "exported"
+	AuditActionImported            AuditAction = "imported"
+	AuditActionInterest            AuditAction = "interest"
+	AuditActionLinked              AuditAction = "linked"
+	AuditActionLocked              AuditAction = "locked"
+	AuditActionLoggedIn            AuditAction = "logged_in"
+	AuditActionLoggedOut           AuditAction = "logged_out"
+	AuditActionLoginFailed         AuditAction = "login_failed"
+	AuditActionMerged              AuditAction = "merged"
+	AuditActionOverridden          AuditAction = "overridden"
+	AuditActionPasswordChanged     AuditAction = "password_changed"
+	AuditActionPasswordReset       AuditAction = "password_reset"
+	AuditActionPrerequisiteSettled AuditAction = "prerequisite_settled"
+	AuditActionPurged              AuditAction = "purged"
+	AuditActionRanked              AuditAction = "ranked"
+	AuditActionReactivated         AuditAction = "reactivated"
+	AuditActionRead                AuditAction = "read"
+	AuditActionRefused             AuditAction = "refused"
+	AuditActionReopened            AuditAction = "reopened"
+	AuditActionRestored            AuditAction = "restored"
+	AuditActionRevoked             AuditAction = "revoked"
+	AuditActionTransitioned        AuditAction = "transitioned"
+	AuditActionUnlinked            AuditAction = "unlinked"
+	AuditActionUnlocked            AuditAction = "unlocked"
+	AuditActionUpdated             AuditAction = "updated"
+	AuditActionUploaded            AuditAction = "uploaded"
+	AuditActionVoided              AuditAction = "voided"
+	AuditActionWithdrawn           AuditAction = "withdrawn"
 )
 
 // Valid indicates whether the value is a known member of the AuditAction enum.
@@ -161,6 +162,8 @@ func (e AuditAction) Valid() bool {
 	case AuditActionPasswordChanged:
 		return true
 	case AuditActionPasswordReset:
+		return true
+	case AuditActionPrerequisiteSettled:
 		return true
 	case AuditActionPurged:
 		return true
@@ -1577,6 +1580,9 @@ type AccountPasswordReset struct {
 
 // Activity defines model for Activity.
 type Activity struct {
+	// Action `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
+	// reaches done or dropped, naming that prerequisite by its head in `after.prerequisite` — the
+	// placeholder where it is confidential —, and tells the ticket's watchers (docs/adr/0012 D5)
 	Action      AuditAction               `json:"action"`
 	Actor       nullable.Nullable[Person] `json:"actor"`
 	ActorSystem nullable.Nullable[string] `json:"actor_system"`
@@ -1699,11 +1705,16 @@ type AttachmentUsage struct {
 	UsedBytes int64 `json:"used_bytes"`
 }
 
-// AuditAction defines model for AuditAction.
+// AuditAction `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
+// reaches done or dropped, naming that prerequisite by its head in `after.prerequisite` — the
+// placeholder where it is confidential —, and tells the ticket's watchers (docs/adr/0012 D5)
 type AuditAction string
 
 // AuditEvent defines model for AuditEvent.
 type AuditEvent struct {
+	// Action `prerequisite_settled` is recorded on a ticket when a ticket of another team that blocks it
+	// reaches done or dropped, naming that prerequisite by its head in `after.prerequisite` — the
+	// placeholder where it is confidential —, and tells the ticket's watchers (docs/adr/0012 D5)
 	Action AuditAction `json:"action"`
 
 	// Actor A person, or a system actor such as system:idempotency-expiry
@@ -2704,7 +2715,8 @@ type ImportFile struct {
 	// outcome, and `reason` says why each was left out
 	Outcome ImportOutcome `json:"outcome"`
 
-	// Parent The key of the parent in the project
+	// Parent The parent's canonical key: a ticket of the upload or the project, or of another project or team
+	// the importing person reads (docs/adr/0008 D2, docs/adr/0051 D9)
 	Parent nullable.Nullable[string] `json:"parent"`
 
 	// Path The file's path in the upload, `/`-separated
@@ -2762,7 +2774,8 @@ type ImportLink struct {
 	// Direction Outgoing when this file's ticket is the link's source
 	Direction ImportLinkDirection `json:"direction"`
 
-	// Key The other end's key in the project
+	// Key The other end's canonical key: a ticket of the upload or the project, or of another project or
+	// team the importing person reads (docs/adr/0012 D2, docs/adr/0051 D9)
 	Key string `json:"key"`
 
 	// Source Where the import read the link
@@ -2839,7 +2852,10 @@ type ImportSummary struct {
 type InboxEntry struct {
 	Act Activity `json:"act"`
 
-	// Blocker For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is now; null otherwise
+	// Blocker For `blocker_closed`, the ticket that blocked this one and reached done or dropped, as it is
+	// now; a ticket of another team by its head as it was when it settled, null where it is
+	// confidential, the act's `after.prerequisite` naming it as `<team> [Confidential]`
+	// (docs/adr/0012 D5); null otherwise
 	Blocker   nullable.Nullable[TicketRef] `json:"blocker"`
 	CreatedAt time.Time                    `json:"created_at"`
 	Id        openapi_types.UUID           `json:"id"`

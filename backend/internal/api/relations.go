@@ -43,29 +43,13 @@ func (s *Server) ListTicketRelations(ctx context.Context, req apigen.ListTicketR
 	if perr := auth.Authorize(principal(ctx), t.Role, read); perr != nil {
 		return nil, perr
 	}
-	kinds := relationKinds
-	if req.Params.Kind != nil && len(*req.Params.Kind) > 0 {
-		kinds = nil
-		for _, k := range relationKinds {
-			if slices.Contains(*req.Params.Kind, k) {
-				kinds = append(kinds, k)
-			}
-		}
-	}
+	kinds := relationKindsOf(req.Params.Kind)
 	const op = "listTicketRelations"
 	scope := fmt.Sprintf("%s/%s/%d/%s", t.ID, req.Project, req.Number, strings.Join(kinds, ","))
 	size := s.h.pageSize(req.Params.Limit)
-	var after string
-	if req.Params.Cursor != nil {
-		sealed, perr := s.cursors.decode(op, scope, *req.Params.Cursor)
-		if perr != nil {
-			return nil, perr
-		}
-		position, ok := s.cursors.openPosition(sealed)
-		if !ok {
-			return nil, invalidCursor()
-		}
-		after = position
+	after, perr := s.cursors.sealedPosition(op, scope, req.Params.Cursor)
+	if perr != nil {
+		return nil, perr
 	}
 	var rels []store.Relation
 	err := s.db.InTenant(ctx, t.ID, func(r *store.Reader) error {
@@ -104,6 +88,21 @@ func (s *Server) ListTicketRelations(ctx context.Context, req apigen.ListTicketR
 		return apigen.ListTicketRelations304Response{Headers: apigen.NotModifiedResponseHeaders{ETag: &tag}}, nil
 	}
 	return apigen.ListTicketRelations200JSONResponse{Body: out, Headers: apigen.ListTicketRelations200ResponseHeaders{ETag: &tag}}, nil
+}
+
+// relationKindsOf is the kinds a request asks for in the list's order; all of
+// them where it names none.
+func relationKindsOf(asked *[]string) []string {
+	if asked == nil || len(*asked) == 0 {
+		return relationKinds
+	}
+	var kinds []string
+	for _, k := range relationKinds {
+		if slices.Contains(*asked, k) {
+			kinds = append(kinds, k)
+		}
+	}
+	return kinds
 }
 
 // relationPosition is a relation's kind in the list's order.

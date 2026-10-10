@@ -554,13 +554,13 @@ func endedRelation(e farEndRow, nearID uuid.UUID, nearKey, parentReason, linkRea
 		return Event{EntityType: entityTicket, EntityID: e.FarID, Action: actionUpdated,
 			Before: map[string]any{"parent": nearID.String()}, After: map[string]any{"parent": nil}, Reason: parentReason}
 	}
-	payload := map[string]any{"type": "", "source": e.FarKey, "target": nearKey}
+	payload := map[string]any{"type": "", fieldSource: e.FarKey, fieldTarget: nearKey}
 	if e.LinkType != nil {
 		payload["type"] = string(*e.LinkType)
 	}
 	// Outgoing is read from the far end: true where it is the link's source.
 	if e.Outgoing != nil && !*e.Outgoing {
-		payload["source"], payload["target"] = nearKey, e.FarKey
+		payload[fieldSource], payload[fieldTarget] = nearKey, e.FarKey
 	}
 	ev := Event{EntityType: "link", Action: "unlinked", Before: payload, Reason: linkReason, Refs: []uuid.UUID{nearID}}
 	if e.LinkID != nil {
@@ -568,6 +568,12 @@ func endedRelation(e farEndRow, nearID uuid.UUID, nearKey, parentReason, linkRea
 	}
 	return ev
 }
+
+// The fields of a link's act: its source's and its target's keys.
+const (
+	fieldSource = "source"
+	fieldTarget = "target"
+)
 
 // jobTeamDeletion names the end of a team's relations in app.job, which
 // end_team_relations demands.

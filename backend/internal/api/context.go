@@ -60,7 +60,11 @@ func (s *Server) ExportTicketContext(ctx context.Context, req apigen.ExportTicke
 		if tc, err = visibleTicket(ctx, r, t, req.Project, req.Number); err != nil {
 			return err
 		}
-		if doc.Ticket, err = exportDocument(ctx, r, t, tc); err != nil {
+		st, err := showing(ctx, r, tc.row, nil)
+		if err != nil {
+			return err
+		}
+		if doc.Ticket, err = exportDocument(ctx, r, t, st); err != nil {
 			return err
 		}
 		if err := contextLinks(ctx, r, t, tc, &doc); err != nil {
