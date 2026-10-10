@@ -1,7 +1,7 @@
 ---
 id: T90
 title: two first logins of the same person at once answer one of them with a 500
-state: analysed
+state: done
 severity: low         # the second login fails once and works when repeated; no data is lost
 security: none
 threat:
@@ -10,7 +10,8 @@ effort: XS
 filed-from: the end-to-end run of the relations across teams, 2026-10-10
 opened: 2026-10-10
 decided:
-done:
+done: 2026-10-10
+shipped: 0.16.1 — a login takes a lock of the issuer and the subject before it reads the person, so the second of two first logins at once finds the person the first made
 ---
 
 ## Current state
