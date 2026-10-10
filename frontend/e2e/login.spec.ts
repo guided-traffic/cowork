@@ -113,7 +113,8 @@ test(
     await page.getByTestId('password-submit').click();
     await expect(page).not.toHaveURL(/\/password/);
     await expect(page.getByTestId('me-menu')).toBeVisible();
-    await expect(page.getByTestId('tenant-name')).toHaveText('End to end');
+    // The account's team in the sidebar (docs/adr/0023 D4 as amended 2026-10-10).
+    await expect(page.getByTestId(`nav-team-${tenant}`)).toHaveText('End to end');
 
     await signOut(page);
     await signInWithForm(page, username, chosen);
@@ -143,7 +144,7 @@ test(
       'aria-label',
       `Signed in as ${dexMember.name}`,
     );
-    await expect(page.getByTestId('tenant-name')).toHaveText('End to end');
+    await expect(page.getByTestId(`nav-team-${tenant}`)).toHaveText('End to end');
 
     await signOut(page);
   },

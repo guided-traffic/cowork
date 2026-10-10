@@ -274,7 +274,7 @@ describe('ProjectsService', () => {
       };
 
       it('posts the project to the projects of the tenant and hands back the one that was made', async () => {
-        const done = service.create(body, formKey);
+        const done = service.create('acme', body, formKey);
 
         const sent = write('POST', listUrl);
         expect(sent.request.body).toEqual(body);
@@ -287,7 +287,7 @@ describe('ProjectsService', () => {
       });
 
       it("sends the form's Idempotency-Key, one for each content it holds (docs/adr/0045 D3)", async () => {
-        const done = service.create(body, formKey);
+        const done = service.create('acme', body, formKey);
         const sent = write('POST', listUrl);
         expect(sent.request.headers.get('Idempotency-Key')).toBe(formKey);
         sent.flush(project('COW'));
@@ -296,7 +296,7 @@ describe('ProjectsService', () => {
       });
 
       it('loads the list again, so that the new project shows in the navigation', async () => {
-        const done = service.create(body, formKey);
+        const done = service.create('acme', body, formKey);
         write('POST', listUrl).flush(project('COW'));
         await done;
 
@@ -312,7 +312,7 @@ describe('ProjectsService', () => {
       });
 
       it('loads the list again only after the backend has answered', async () => {
-        const done = service.create(body, formKey);
+        const done = service.create('acme', body, formKey);
         const sent = write('POST', listUrl);
         await settle();
 
@@ -322,18 +322,14 @@ describe('ProjectsService', () => {
         (await reload()).flush(pageOf(['VKO', 'COW'], null));
       });
 
-      it('writes to the tenant that is entered', async () => {
-        session.enter('globex');
-        await settle();
-        page('globex').flush(pageOf(['G'], null));
-        await settle();
-
-        const done = service.create(body, formKey);
+      // docs/adr/0023 D4 as amended 2026-10-10: the sidebar's plus of any team of the person.
+      it('writes to the team it is given, whichever team the pages show', async () => {
+        const done = service.create('globex', body, formKey);
         write('POST', '/api/v1/teams/globex/projects').flush(project('COW'));
         await done;
 
-        await settle();
-        page('globex').flush(pageOf(['G', 'COW'], null));
+        http.expectNone((request) => request.url === '/api/v1/teams/globex/projects' && request.method === 'GET');
+        (await reload()).flush(pageOf(['VKO'], null));
       });
 
       it.each([
@@ -344,7 +340,7 @@ describe('ProjectsService', () => {
       ])(
         'rejects with the HTTP error of a %i and does not load the list again',
         async (status, code) => {
-          const outcome = rejection(service.create(body, formKey));
+          const outcome = rejection(service.create('acme', body, formKey));
 
           write('POST', listUrl).flush(refusal(status, code).body, refusal(status, code).init);
           const error = await outcome;
@@ -659,7 +655,7 @@ describe('ProjectsService', () => {
         'creating',
         'POST',
         listUrl,
-        (s: ProjectsService) => s.create({ key: 'COW', name: 'Cow' }, formKey),
+        (s: ProjectsService) => s.create('acme', { key: 'COW', name: 'Cow' }, formKey),
       ],
       [
         'updating',

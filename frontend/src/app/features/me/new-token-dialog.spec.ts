@@ -25,12 +25,14 @@ const acme: Membership = {
   team: { slug: 'acme', name: 'Acme Corp' },
   tenant: { slug: 'acme', name: 'Acme Corp' },
   origins: [{ source: 'grant', role: 'admin' }],
+  can_create_projects: true,
 };
 const globex: Membership = {
   role: 'member',
   team: { slug: 'globex', name: 'Globex' },
   tenant: { slug: 'globex', name: 'Globex' },
   origins: [{ source: 'grant', role: 'member' }],
+  can_create_projects: true,
 };
 
 const project = (key: string, name: string): Project => ({

@@ -44,18 +44,21 @@ const person = (admin = true): Me => ({
       tenant: { slug: 'acme', name: 'Acme' },
       role: admin ? 'admin' : 'member',
       origins: [{ source: 'grant', role: admin ? 'admin' : 'member' }],
+      can_create_projects: true,
     },
     {
       team: { slug: 'globex', name: 'Globex' },
       tenant: { slug: 'globex', name: 'Globex' },
       role: 'admin',
       origins: [{ source: 'mapping', role: 'admin' }],
+      can_create_projects: true,
     },
     {
       team: { slug: 'initech', name: 'Initech' },
       tenant: { slug: 'initech', name: 'Initech' },
       role: 'viewer',
       origins: [{ source: 'grant', role: 'viewer' }],
+      can_create_projects: false,
     },
   ],
 });

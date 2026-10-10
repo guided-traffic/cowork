@@ -5,10 +5,25 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { MessageService } from 'primeng/api';
 import type { MockInstance } from 'vitest';
-import { Problem, Project } from '../../api/models';
+import { Membership, Problem, Project } from '../../api/models';
 import { ProjectsService } from '../../core/projects.service';
 import { SessionService } from '../../core/session.service';
 import { NewProjectDialog, projectKey } from './new-project-dialog';
+
+const acme: Membership = {
+  role: 'admin',
+  team: { slug: 'acme', name: 'Acme Corp' },
+  tenant: { slug: 'acme', name: 'Acme Corp' },
+  origins: [{ source: 'grant', role: 'admin' }],
+  can_create_projects: true,
+};
+const globex: Membership = {
+  role: 'member',
+  team: { slug: 'globex', name: 'Globex' },
+  tenant: { slug: 'globex', name: 'Globex' },
+  origins: [{ source: 'grant', role: 'member' }],
+  can_create_projects: true,
+};
 
 /** Any Idempotency-Key a form makes: a UUID (docs/adr/0045 D3). */
 const formKey = expect.stringMatching(
@@ -67,14 +82,22 @@ describe('NewProjectDialog', () => {
         provideRouter([]),
         MessageService,
         { provide: ProjectsService, useValue: { create } },
-        { provide: SessionService, useValue: { tenant: signal<string | null>('acme') } },
+        {
+          provide: SessionService,
+          useValue: {
+            // The pages show another team: the dialog creates in the team it is given.
+            tenant: signal<string | null>('globex'),
+            memberships: signal<Membership[]>([acme, globex]),
+          },
+        },
       ],
     });
     navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
   });
 
-  async function render(visible = true) {
+  async function render(visible = true, team: string | null = 'acme') {
     const fixture = TestBed.createComponent(NewProjectDialog);
+    fixture.componentRef.setInput('team', team);
     fixture.componentRef.setInput('visible', visible);
     await settle(fixture);
     return fixture;
@@ -117,11 +140,11 @@ describe('NewProjectDialog', () => {
       expect(el(fixture, 'project-key')).toBeNull();
     });
 
-    it('asks for a key, a name and a description under the header of a new project', async () => {
+    it('asks for a key, a name and a description under a header that names the team', async () => {
       const fixture = await render();
 
       const host = fixture.nativeElement as HTMLElement;
-      expect(host.querySelector('.p-dialog-title')?.textContent).toBe('New project');
+      expect(host.querySelector('.p-dialog-title')?.textContent).toBe('New project in Acme Corp');
       expect(el(fixture, 'project-key')).not.toBeNull();
       expect(el(fixture, 'project-name')).not.toBeNull();
       expect(el(fixture, 'project-description')).not.toBeNull();
@@ -197,7 +220,7 @@ describe('NewProjectDialog', () => {
       expect(saveButton(fixture)?.disabled).toBe(false);
       submit(fixture);
       await settle(fixture);
-      expect(create.mock.calls[0][0].key).toBe('COW');
+      expect(create.mock.calls[0][1].key).toBe('COW');
     });
   });
 
@@ -209,8 +232,8 @@ describe('NewProjectDialog', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(create).toHaveBeenCalledExactlyOnceWith({ key: 'COW', name: 'cowork' }, formKey);
-      expect(create.mock.calls[0][0]).toStrictEqual({ key: 'COW', name: 'cowork' });
+      expect(create).toHaveBeenCalledExactlyOnceWith('acme', { key: 'COW', name: 'cowork' }, formKey);
+      expect(create.mock.calls[0][1]).toStrictEqual({ key: 'COW', name: 'cowork' });
     });
 
     it('creates the project with its description, trimmed, when there is one', async () => {
@@ -222,6 +245,7 @@ describe('NewProjectDialog', () => {
       await settle(fixture);
 
       expect(create).toHaveBeenCalledExactlyOnceWith(
+        'acme',
         {
           key: 'COW',
           name: 'cowork',
@@ -239,7 +263,7 @@ describe('NewProjectDialog', () => {
       submit(fixture);
       await settle(fixture);
 
-      expect(create.mock.calls[0][0]).toStrictEqual({ key: 'COW', name: 'cowork' });
+      expect(create.mock.calls[0][1]).toStrictEqual({ key: 'COW', name: 'cowork' });
     });
 
     it('closes the dialog, empties the form and opens the board of the new project', async () => {
@@ -268,6 +292,32 @@ describe('NewProjectDialog', () => {
       await settle(fixture);
 
       expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'acme', 'p', 'OPS', 'board']);
+    });
+
+    // docs/adr/0023 D4 as amended 2026-10-10: the plus of any team of the person's sidebar.
+    it('creates in the team it was opened for, not the one the pages show, and opens the board there', async () => {
+      const fixture = await render(true, 'globex');
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('.p-dialog-title')?.textContent,
+      ).toBe('New project in Globex');
+      fill(fixture, 'COW', 'cowork');
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(create).toHaveBeenCalledExactlyOnceWith('globex', { key: 'COW', name: 'cowork' }, formKey);
+      expect(navigate).toHaveBeenCalledExactlyOnceWith(['/t', 'globex', 'p', 'COW', 'board']);
+    });
+
+    it('creates nothing while it names no team', async () => {
+      const fixture = await render(true, null);
+      fill(fixture, 'COW', 'cowork');
+
+      submit(fixture);
+      await settle(fixture);
+
+      expect(saveButton(fixture)?.disabled).toBe(true);
+      expect(create).not.toHaveBeenCalled();
     });
 
     it('creates once while the project is on its way, and shows the button as busy', async () => {
@@ -353,12 +403,30 @@ describe('NewProjectDialog', () => {
       await settle(fixture);
       submit(fixture);
       await settle(fixture);
-      expect(create.mock.calls[1][1]).toBe(create.mock.calls[0][1]);
+      expect(create.mock.calls[1][2]).toBe(create.mock.calls[0][2]);
 
       typeInto(fixture, 'project-description', 'The tool itself');
       submit(fixture);
       await settle(fixture);
-      expect(create.mock.calls[2][1]).not.toBe(create.mock.calls[0][1]);
+      expect(create.mock.calls[2][2]).not.toBe(create.mock.calls[0][2]);
+    });
+
+    it('makes a new Idempotency-Key for the same content in another team (docs/adr/0045 D3)', async () => {
+      create.mockRejectedValueOnce(
+        new HttpErrorResponse({ status: 0, statusText: 'Unknown Error' }),
+      );
+      const fixture = await render();
+      fill(fixture);
+      submit(fixture);
+      await settle(fixture);
+
+      fixture.componentRef.setInput('team', 'globex');
+      await settle(fixture);
+      submit(fixture);
+      await settle(fixture);
+
+      expect(create.mock.calls[1][0]).toBe('globex');
+      expect(create.mock.calls[1][2]).not.toBe(create.mock.calls[0][2]);
     });
 
     it('shows no old problem when the next attempt is made, and creates the project when it works', async () => {
@@ -374,7 +442,7 @@ describe('NewProjectDialog', () => {
       await settle(fixture);
 
       expect(create).toHaveBeenCalledTimes(2);
-      expect(create.mock.calls[1][0].key).toBe('CWK');
+      expect(create.mock.calls[1][1].key).toBe('CWK');
       expect(navigate).toHaveBeenCalledOnce();
     });
   });

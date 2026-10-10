@@ -43,6 +43,7 @@ export const mappingExists = 'This team maps that group already: change its role
       [draggable]="false"
       [closable]="!saving()"
       [dismissableMask]="!saving()"
+      appendTo="body"
       [style]="{ width: '32rem' }"
       header="New group mapping"
       data-testid="new-mapping-dialog"

@@ -87,6 +87,7 @@ describe('ProjectAccess', () => {
     team: { slug: 'acme', name: 'Acme Corp' },
     tenant: { slug: 'acme', name: 'Acme Corp' },
     origins: [{ source: 'grant', role: 'admin' }],
+    can_create_projects: true,
   };
 
   beforeEach(() => {

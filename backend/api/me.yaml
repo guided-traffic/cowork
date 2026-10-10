@@ -411,3 +411,37 @@ decisions:
         $ref: './components/responses.yaml#/NotModified'
       default:
         $ref: './components/responses.yaml#/Problem'
+projects:
+  get:
+    operationId: listMyProjects
+    tags: [me]
+    summary: The projects of the person's teams, across their teams
+    description: |
+      Every project the person sees in every team they belong to, each with its team — the lists
+      of the UI's sidebar (docs/adr/0023 D2, D4) —: one read per team (docs/adr/0021 D5), under the
+      predicate of `GET /api/v1/teams/{team}/projects`, so a restricted project is listed only to
+      the team's administrators and the people on its access list (docs/adr/0034 D3). An archived
+      project is left out, and so is a team in which a global administrator holds no role
+      (docs/adr/0034 D2). Ordered by the team's slug, then the project's key. Cursor paging only,
+      without a total (docs/adr/0048 D3). `team` narrows to one of the person's teams. A token
+      restricted to a team reads that team's projects, one restricted to a project that project
+      (docs/adr/0035 D3).
+    parameters:
+      - $ref: './components/parameters.yaml#/MeTeam'
+      - $ref: './components/parameters.yaml#/Cursor'
+      - $ref: './components/parameters.yaml#/Limit'
+      - $ref: './components/parameters.yaml#/IfNoneMatch'
+    responses:
+      '200':
+        description: A page of the person's projects
+        headers:
+          ETag:
+            $ref: './components/headers.yaml#/ListETag'
+        content:
+          application/json:
+            schema:
+              $ref: './components/schemas.yaml#/MyProjectList'
+      '304':
+        $ref: './components/responses.yaml#/NotModified'
+      default:
+        $ref: './components/responses.yaml#/Problem'

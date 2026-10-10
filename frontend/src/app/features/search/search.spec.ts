@@ -14,12 +14,14 @@ const acme: Membership = {
   team: { name: 'Acme Corp', slug: 'acme' },
   tenant: { name: 'Acme Corp', slug: 'acme' },
   origins: [{ source: 'grant', role: 'member' }],
+  can_create_projects: true,
 };
 const globex: Membership = {
   role: 'member',
   team: { name: 'Globex', slug: 'globex' },
   tenant: { name: 'Globex', slug: 'globex' },
   origins: [{ source: 'grant', role: 'member' }],
+  can_create_projects: true,
 };
 
 function hit(overrides: Partial<SearchHit> = {}): SearchHit {

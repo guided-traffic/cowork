@@ -67,6 +67,7 @@ const me = (id = 'p1'): Me => ({
       team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'acme', name: 'Acme Corp' },
       origins: [{ source: 'grant', role: 'admin' }],
+      can_create_projects: true,
     },
   ],
 });
@@ -493,18 +494,23 @@ describe('Members', () => {
       it('opens the dialog for it, and closes it when the dialog asks', async () => {
         const fixture = await render();
         expect(addDialog(fixture).componentInstance.visible()).toBe(false);
+        // The dialog lies in the document's body (appendTo), beside the page.
+        const field = () =>
+          (fixture.nativeElement as HTMLElement).ownerDocument.body.querySelector(
+            '[data-testid="member-person"]',
+          );
 
         el(fixture, 'add-member')?.click();
         await settle(fixture);
 
         expect(addDialog(fixture).componentInstance.visible()).toBe(true);
-        expect(el(fixture, 'member-person')).not.toBeNull();
+        expect(field()).not.toBeNull();
 
         addDialog(fixture).triggerEventHandler('visibleChange', false);
         await settle(fixture);
 
         expect(fixture.componentInstance['adding']()).toBe(false);
-        expect(el(fixture, 'member-person')).toBeNull();
+        expect(field()).toBeNull();
       });
 
       it('leaves the keyboard alone when the dialog says it is open', async () => {

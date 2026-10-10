@@ -12,6 +12,7 @@ import { routes } from './app.routes';
 import { DesignPreview } from './dev/design-preview';
 import { ChangePassword } from './features/auth/change-password';
 import { Login } from './features/auth/login';
+import { AllTeams } from './features/home/all-teams';
 import { Home } from './features/home/home';
 import { NotFound } from './features/home/not-found';
 import { Decisions } from './features/me/decisions';
@@ -32,6 +33,7 @@ import { Members } from './features/tenant/members';
 import { TenantBoard } from './features/tenant/tenant-board';
 import { TenantSettings } from './features/tenant/tenant-settings';
 import { TenantTickets } from './features/tenant/tenant-tickets';
+import { TeamConfig } from './features/tenant/team-config';
 import { TenantTokens } from './features/tenant/tenant-tokens';
 import { TicketDetail } from './features/ticket/ticket-detail';
 import { TimeReport } from './features/time/time-report';
@@ -65,7 +67,11 @@ const pages: [string, Type<unknown>][] = [
   ['me/assigned', MyTickets],
   ['me/decisions', Decisions],
   ['me/search', SearchResults],
+  ['teams', AllTeams],
   ['t/:tenant', TenantDashboard],
+  // The team's configuration, a dialog over the dashboard without a path of its own, whose pages
+  // are its children (docs/adr/0023 D4 as amended 2026-10-10).
+  ['t/:tenant', TeamConfig],
   ['t/:tenant/board', TenantBoard],
   ['t/:tenant/tickets', TenantTickets],
   ['t/:tenant/p/:project/backlog', Backlog],
@@ -98,9 +104,13 @@ describe('the routes', () => {
     });
 
     it.each(pages)('loads the page of %j', async (path, page) => {
-      const route = placed.find((each) => each.path === path && each.route.loadComponent)?.route;
+      const loaded = await Promise.all(
+        placed
+          .filter((each) => each.path === path && each.route.loadComponent)
+          .map((each) => each.route.loadComponent?.()),
+      );
 
-      expect(await route?.loadComponent?.()).toBe(page);
+      expect(loaded).toContain(page);
     });
 
     it('frames every page in the shell, except the login page', () => {
@@ -169,17 +179,21 @@ describe('the routes', () => {
       named('/me/next', Shell, MyTickets),
       named('/me/assigned', Shell, MyTickets),
       named('/me/search?q=gate', Shell, SearchResults),
+      named('/teams', Shell, AllTeams),
       named('/t/acme/search?q=gate', Shell, TenantScope, SearchResults),
       named('/t/acme', Shell, TenantScope, TenantDashboard),
       named('/t/acme/board', Shell, TenantScope, TenantBoard),
       named('/t/acme/tickets', Shell, TenantScope, TenantTickets),
       named('/t/acme/tickets?project=COW&state=filed&q=crash', Shell, TenantScope, TenantTickets),
-      named('/t/acme/members', Shell, TenantScope, Members),
-      named('/t/acme/accounts', Shell, TenantScope, Accounts),
-      named('/t/acme/group-mappings', Shell, TenantScope, GroupMappings),
-      named('/t/acme/tokens', Shell, TenantScope, TenantTokens),
       named('/t/acme/time', Shell, TenantScope, TimeReport),
-      named('/t/acme/settings', Shell, TenantScope, TenantSettings),
+      // The configuration's pages, each a tab of the dialog over the dashboard.
+      named('/t/acme/members', Shell, TenantScope, TeamConfig, Members),
+      named('/t/acme/accounts', Shell, TenantScope, TeamConfig, Accounts),
+      named('/t/acme/group-mappings', Shell, TenantScope, TeamConfig, GroupMappings),
+      named('/t/acme/tokens', Shell, TenantScope, TeamConfig, TenantTokens),
+      named('/t/acme/settings', Shell, TenantScope, TeamConfig, TenantSettings),
+      named('/t/acme/audit', Shell, TenantScope, TeamConfig, Audit),
+      named('/t/acme/deleted-tickets', Shell, TenantScope, TeamConfig, DeletedTickets),
       named('/t/acme/p/COW/backlog', Shell, TenantScope, Backlog),
       named('/t/acme/p/COW/board', Shell, TenantScope, Board),
       named('/t/acme/p/COW/settings', Shell, TenantScope, ProjectSettings),

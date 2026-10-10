@@ -18,18 +18,21 @@ const person: Me = {
       team: { slug: 'acme', name: 'Acme Corp' },
       tenant: { slug: 'acme', name: 'Acme Corp' },
       origins: [{ source: 'grant', role: 'admin' }],
+      can_create_projects: true,
     },
     {
       role: 'member',
       team: { slug: 'globex', name: 'Globex' },
       tenant: { slug: 'globex', name: 'Globex' },
       origins: [{ source: 'grant', role: 'member' }],
+      can_create_projects: true,
     },
     {
       role: 'viewer',
       team: { slug: 'initech', name: 'Initech' },
       tenant: { slug: 'initech', name: 'Initech' },
       origins: [{ source: 'grant', role: 'viewer' }],
+      can_create_projects: false,
     },
   ],
 };
@@ -112,7 +115,6 @@ describe('TenantService', () => {
       expect(service.tenant.status()).toBe('idle');
       expect(service.value()).toBeUndefined();
       expect(service.isAdmin()).toBe(false);
-      expect(service.canCreateProjects()).toBe(false);
     });
   });
 
@@ -226,100 +228,6 @@ describe('TenantService', () => {
     });
   });
 
-  describe('canCreateProjects', () => {
-    it.each([
-      ['acme', 'an administrator', true, true],
-      ['acme', 'an administrator', false, true],
-      ['globex', 'a member', true, true],
-      ['globex', 'a member', false, false],
-      ['initech', 'a viewer', true, false],
-      ['initech', 'a viewer', false, false],
-    ])(
-      'in %s, where the person is %s and the tenant lets members create projects: %s, is %s',
-      async (slug, _role, allowed, expected) => {
-        await enter(slug, { members_create_projects: allowed });
-
-        expect(service.canCreateProjects()).toBe(expected);
-      },
-    );
-
-    it('is true for an administrator before the settings are loaded, who needs no setting', async () => {
-      session.enter('acme');
-      await settle();
-      const sent = request('/api/v1/teams/acme');
-
-      expect(service.value()).toBeUndefined();
-      expect(service.canCreateProjects()).toBe(true);
-
-      sent.flush(tenant('acme'));
-      await settle();
-    });
-
-    it.each([
-      ['globex', 'a member'],
-      ['initech', 'a viewer'],
-    ])('is false for %s, %s, until the settings say otherwise', async (slug) => {
-      session.enter(slug);
-      await settle();
-      const sent = request(`/api/v1/teams/${slug}`);
-
-      expect(service.canCreateProjects()).toBe(false);
-
-      sent.flush(tenant(slug, { members_create_projects: true }));
-      await settle();
-    });
-
-    it('is false for a member when the settings failed to load', async () => {
-      session.enter('globex');
-      await settle();
-
-      request('/api/v1/teams/globex').flush(forbidden, { status: 403, statusText: 'Forbidden' });
-      await settle();
-
-      expect(service.canCreateProjects()).toBe(false);
-    });
-
-    it('is false where the person is no member at all, whatever the settings say', async () => {
-      await enter('nowhere', { members_create_projects: true });
-
-      expect(service.canCreateProjects()).toBe(false);
-    });
-
-    it('is false outside a tenant', () => {
-      expect(service.canCreateProjects()).toBe(false);
-    });
-
-    it('follows the setting when the settings are changed', async () => {
-      await enter('globex', { members_create_projects: false });
-      expect(service.canCreateProjects()).toBe(false);
-
-      const done = service.update({ members_create_projects: true });
-      request('/api/v1/teams/globex').flush(
-        tenant('globex', { members_create_projects: true, version: 5 }),
-      );
-      await done;
-      expect(service.canCreateProjects()).toBe(true);
-
-      const back = service.update({ members_create_projects: false });
-      request('/api/v1/teams/globex').flush(
-        tenant('globex', { members_create_projects: false, version: 6 }),
-      );
-      await back;
-      expect(service.canCreateProjects()).toBe(false);
-    });
-
-    it('follows the tenant that is entered', async () => {
-      await enter('globex', { members_create_projects: true });
-      expect(service.canCreateProjects()).toBe(true);
-
-      await enter('initech', { members_create_projects: true });
-      expect(service.canCreateProjects()).toBe(false);
-
-      await enter('acme', { members_create_projects: false });
-      expect(service.canCreateProjects()).toBe(true);
-    });
-  });
-
   describe('update', () => {
     beforeEach(() => enter('acme', { version: 4 }));
 
@@ -374,6 +282,55 @@ describe('TenantService', () => {
       expect(sent.request.body).toEqual({ time_locked_until: null, members_create_projects: true });
       sent.flush(tenant('acme', { members_create_projects: true, version: 5 }));
       await done;
+      await settle();
+      request('/api/v1/me').flush(person);
+      await settle();
+    });
+
+    // docs/adr/0023 D4 as amended 2026-10-10: the sidebar's plus reads `can_create_projects` of `me`,
+    // and no event tells of the setting it follows.
+    it('asks for the person again once who may create projects changed', async () => {
+      const done = service.update({ members_create_projects: true });
+      request('/api/v1/teams/acme').flush(
+        tenant('acme', { members_create_projects: true, version: 5 }),
+      );
+      await done;
+      await settle();
+
+      const me = request('/api/v1/me');
+      expect(me.request.method).toBe('GET');
+      me.flush(person);
+      await settle();
+    });
+
+    it('asks for the person again after a load of it on its way, which may predate the change', async () => {
+      session.me.reload();
+      await settle();
+      const inFlight = request('/api/v1/me');
+
+      const done = service.update({ members_create_projects: true });
+      request('/api/v1/teams/acme').flush(
+        tenant('acme', { members_create_projects: true, version: 5 }),
+      );
+      await done;
+      await settle();
+      http.expectNone('/api/v1/me');
+      inFlight.flush(person);
+      await settle();
+
+      request('/api/v1/me').flush(person);
+      await settle();
+    });
+
+    it('leaves the person alone when who may create projects stayed as it was', async () => {
+      const done = service.update({ name: 'Acme Inc', members_create_projects: false });
+      request('/api/v1/teams/acme').flush(
+        tenant('acme', { name: 'Acme Inc', members_create_projects: false, version: 5 }),
+      );
+      await done;
+      await settle();
+
+      http.expectNone('/api/v1/me');
     });
 
     it('needs no key, being a patch of settings that exist', async () => {

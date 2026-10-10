@@ -47,10 +47,11 @@ func (s *Server) GetMe(ctx context.Context, _ apigen.GetMeRequestObject) (apigen
 			}
 			team := apigen.TeamRef{Slug: m.Slug, Name: m.Name}
 			out.Memberships = append(out.Memberships, apigen.Membership{
-				Team:    team,
-				Tenant:  team, //nolint:staticcheck // SA1019: deprecated in the document, answered beside team until a later release removes it
-				Role:    apigen.Role(m.Role),
-				Origins: originsOf(m.Sources, m.Roles),
+				Team:              team,
+				Tenant:            team, //nolint:staticcheck // SA1019: deprecated in the document, answered beside team until a later release removes it
+				Role:              apigen.Role(m.Role),
+				Origins:           originsOf(m.Sources, m.Roles),
+				CanCreateProjects: mayCreateProjects(m.Role, m.MembersCreateProjects),
 			})
 		}
 		return nil

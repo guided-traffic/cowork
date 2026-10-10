@@ -3,6 +3,7 @@ import { isSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { MessageService } from 'primeng/api';
+import { Dialog } from 'primeng/dialog';
 import type { MockInstance } from 'vitest';
 import { Account, Problem } from '../../api/models';
 import { AccountsService } from '../../core/accounts.service';
@@ -82,8 +83,11 @@ describe('ResetPasswordDialog', () => {
     await fixture.whenStable();
   }
 
+  // The dialog lies in the document's body (appendTo), beside its host, over a dialog it is opened
+  // from: its own window and the mask around it, while it is open.
   const host = (fixture: ComponentFixture<ResetPasswordDialog>) =>
-    fixture.nativeElement as HTMLElement;
+    (fixture.debugElement.query(By.directive(Dialog))?.componentInstance as Dialog | undefined)
+      ?.container()?.parentElement ?? (fixture.nativeElement as HTMLElement);
   const el = (fixture: ComponentFixture<ResetPasswordDialog>, testId: string) =>
     host(fixture).querySelector<HTMLElement>(`[data-testid="${testId}"]`);
 

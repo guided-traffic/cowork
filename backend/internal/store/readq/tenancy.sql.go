@@ -298,26 +298,29 @@ func (q *Queries) ListMembers(ctx context.Context, arg ListMembersParams) ([]Lis
 const listMembershipsOfUser = `-- name: ListMembershipsOfUser :many
 SELECT t.id AS tenant_id, t.slug, t.name, max(m.role)::tenant_role AS role,
        array_agg(m.source::text ORDER BY m.source)::text[] AS sources,
-       array_agg(m.role::text ORDER BY m.source)::text[] AS roles
+       array_agg(m.role::text ORDER BY m.source)::text[] AS roles,
+       t.members_create_projects
 FROM memberships m
 JOIN tenants t ON t.id = m.tenant_id
 WHERE m.user_id = $1
-GROUP BY t.id, t.slug, t.name
+GROUP BY t.id, t.slug, t.name, t.members_create_projects
 ORDER BY t.slug
 `
 
 type ListMembershipsOfUserRow struct {
-	TenantID uuid.UUID
-	Slug     string
-	Name     string
-	Role     domain.Role
-	Sources  []string
-	Roles    []string
+	TenantID              uuid.UUID
+	Slug                  string
+	Name                  string
+	Role                  domain.Role
+	Sources               []string
+	Roles                 []string
+	MembersCreateProjects bool
 }
 
 // The person's tenants with the highest role in each (GET /api/v1/me), and
 // every source of it with its own role, the mapping before the grant
-// (docs/adr/0030 D4).
+// (docs/adr/0030 D4); with whether the tenant lets its members create
+// projects (docs/adr/0034 D9), which GET /api/v1/me answers per membership.
 func (q *Queries) ListMembershipsOfUser(ctx context.Context, userID uuid.UUID) ([]ListMembershipsOfUserRow, error) {
 	rows, err := q.db.Query(ctx, listMembershipsOfUser, userID)
 	if err != nil {
@@ -334,6 +337,7 @@ func (q *Queries) ListMembershipsOfUser(ctx context.Context, userID uuid.UUID) (
 			&i.Role,
 			&i.Sources,
 			&i.Roles,
+			&i.MembersCreateProjects,
 		); err != nil {
 			return nil, err
 		}

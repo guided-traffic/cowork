@@ -3024,6 +3024,12 @@ type MemberTokenList struct {
 
 // Membership defines model for Membership.
 type Membership struct {
+	// CanCreateProjects Whether the role lets the person create a project in the team: an administrator always, a
+	// member while the team's `members_create_projects` is on, a viewer never (docs/adr/0034 D9).
+	// A token's scope and an agent's capabilities may still refuse it (docs/adr/0043 D4), as
+	// `POST /api/v1/teams/{team}/projects` decides
+	CanCreateProjects bool `json:"can_create_projects"`
+
 	// Origins Where the role comes from, each source with its own role; `role` is the
 	// higher of them (docs/adr/0030 D4)
 	Origins []MembershipOrigin `json:"origins"`
@@ -3050,6 +3056,18 @@ type MembershipOrigin struct {
 // MembershipSource How a membership came to be: derived from the person's groups by a group
 // mapping, or granted by an administrator (docs/adr/0030 D2, D3)
 type MembershipSource string
+
+// MyProject A project of one of the person's teams, with its team (docs/adr/0023 D2)
+type MyProject struct {
+	Project Project `json:"project"`
+	Team    TeamRef `json:"team"`
+}
+
+// MyProjectList defines model for MyProjectList.
+type MyProjectList struct {
+	Items      []MyProject               `json:"items"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+}
 
 // MyTicket defines model for MyTicket.
 type MyTicket struct {
@@ -4343,8 +4361,8 @@ type Username = string
 // ListMyAssignedParams defines parameters for ListMyAssigned.
 type ListMyAssignedParams struct {
 	// Team Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
-	// none of them is `404 not_found`, whether or not the team exists. Not together with the
-	// deprecated `tenant` (`400 validation_failed`)
+	// none of them is `404 not_found`, whether or not the team exists. Where the list takes the
+	// deprecated `tenant` as well, not together with it (`400 validation_failed`)
 	Team *MeTeam `form:"team,omitempty" json:"team,omitempty"`
 
 	// Tenant Deprecated: replaced by `team`, which it means, kept in /api/v1 for one release and removed in a
@@ -4366,8 +4384,8 @@ type ListMyAssignedParams struct {
 // ListMyDecisionsParams defines parameters for ListMyDecisions.
 type ListMyDecisionsParams struct {
 	// Team Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
-	// none of them is `404 not_found`, whether or not the team exists. Not together with the
-	// deprecated `tenant` (`400 validation_failed`)
+	// none of them is `404 not_found`, whether or not the team exists. Where the list takes the
+	// deprecated `tenant` as well, not together with it (`400 validation_failed`)
 	Team *MeTeam `form:"team,omitempty" json:"team,omitempty"`
 
 	// Tenant Deprecated: replaced by `team`, which it means, kept in /api/v1 for one release and removed in a
@@ -4389,8 +4407,8 @@ type ListMyDecisionsParams struct {
 // ListMyInboxParams defines parameters for ListMyInbox.
 type ListMyInboxParams struct {
 	// Team Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
-	// none of them is `404 not_found`, whether or not the team exists. Not together with the
-	// deprecated `tenant` (`400 validation_failed`)
+	// none of them is `404 not_found`, whether or not the team exists. Where the list takes the
+	// deprecated `tenant` as well, not together with it (`400 validation_failed`)
 	Team *MeTeam `form:"team,omitempty" json:"team,omitempty"`
 
 	// Tenant Deprecated: replaced by `team`, which it means, kept in /api/v1 for one release and removed in a
@@ -4412,8 +4430,8 @@ type ListMyInboxParams struct {
 // MarkMyInboxReadParams defines parameters for MarkMyInboxRead.
 type MarkMyInboxReadParams struct {
 	// Team Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
-	// none of them is `404 not_found`, whether or not the team exists. Not together with the
-	// deprecated `tenant` (`400 validation_failed`)
+	// none of them is `404 not_found`, whether or not the team exists. Where the list takes the
+	// deprecated `tenant` as well, not together with it (`400 validation_failed`)
 	Team *MeTeam `form:"team,omitempty" json:"team,omitempty"`
 
 	// Tenant Deprecated: replaced by `team`, which it means, kept in /api/v1 for one release and removed in a
@@ -4426,8 +4444,8 @@ type MarkMyInboxReadParams struct {
 // ListMyNextParams defines parameters for ListMyNext.
 type ListMyNextParams struct {
 	// Team Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
-	// none of them is `404 not_found`, whether or not the team exists. Not together with the
-	// deprecated `tenant` (`400 validation_failed`)
+	// none of them is `404 not_found`, whether or not the team exists. Where the list takes the
+	// deprecated `tenant` as well, not together with it (`400 validation_failed`)
 	Team *MeTeam `form:"team,omitempty" json:"team,omitempty"`
 
 	// Tenant Deprecated: replaced by `team`, which it means, kept in /api/v1 for one release and removed in a
@@ -4440,6 +4458,23 @@ type ListMyNextParams struct {
 	// needs `team` or the deprecated `tenant` (`400 validation_failed` without). A key that names no
 	// project the person sees there lists nothing
 	Project *MeProject `form:"project,omitempty" json:"project,omitempty"`
+
+	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
+	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Items per page; the server caps it at its configured maximum
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// IfNoneMatch The weak `ETag` of a list the client holds; an unchanged list answers 304 (docs/adr/0054 D7)
+	IfNoneMatch *IfNoneMatch `json:"If-None-Match,omitempty"`
+}
+
+// ListMyProjectsParams defines parameters for ListMyProjects.
+type ListMyProjectsParams struct {
+	// Team Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
+	// none of them is `404 not_found`, whether or not the team exists. Where the list takes the
+	// deprecated `tenant` as well, not together with it (`400 validation_failed`)
+	Team *MeTeam `form:"team,omitempty" json:"team,omitempty"`
 
 	// Cursor The opaque cursor of the previous page's `next_cursor` (docs/adr/0048 D1)
 	Cursor *Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -4467,8 +4502,8 @@ type SearchMyTeamsParams struct {
 	Q SearchQuery `form:"q" json:"q"`
 
 	// Team Narrows a person-level list to one of the person's teams (docs/adr/0023 D2); a slug that names
-	// none of them is `404 not_found`, whether or not the team exists. Not together with the
-	// deprecated `tenant` (`400 validation_failed`)
+	// none of them is `404 not_found`, whether or not the team exists. Where the list takes the
+	// deprecated `tenant` as well, not together with it (`400 validation_failed`)
 	Team *MeTeam `form:"team,omitempty" json:"team,omitempty"`
 
 	// Tenant Deprecated: replaced by `team`, which it means, kept in /api/v1 for one release and removed in a
@@ -5631,6 +5666,21 @@ type ClientInterface interface {
 	//
 	// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
 	ChangeMyPassword(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListMyProjects The projects of the person's teams, across their teams
+	//
+	// Every project the person sees in every team they belong to, each with its team — the lists
+	// of the UI's sidebar (docs/adr/0023 D2, D4) —: one read per team (docs/adr/0021 D5), under the
+	// predicate of `GET /api/v1/teams/{team}/projects`, so a restricted project is listed only to
+	// the team's administrators and the people on its access list (docs/adr/0034 D3). An archived
+	// project is left out, and so is a team in which a global administrator holds no role
+	// (docs/adr/0034 D2). Ordered by the team's slug, then the project's key. Cursor paging only,
+	// without a total (docs/adr/0048 D3). `team` narrows to one of the person's teams. A token
+	// restricted to a team reads that team's projects, one restricted to a project that project
+	// (docs/adr/0035 D3).
+	//
+	// Corresponds with GET /api/v1/me/projects (the `ListMyProjects` operationId).
+	ListMyProjects(ctx context.Context, params *ListMyProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// LookupRepository The project a repository is bound to, across the person's teams
 	//
@@ -8079,6 +8129,31 @@ func (c *Client) ChangeMyPasswordWithBody(ctx context.Context, contentType strin
 // Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
 func (c *Client) ChangeMyPassword(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewChangeMyPasswordRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ListMyProjects The projects of the person's teams, across their teams
+//
+// Every project the person sees in every team they belong to, each with its team — the lists
+// of the UI's sidebar (docs/adr/0023 D2, D4) —: one read per team (docs/adr/0021 D5), under the
+// predicate of `GET /api/v1/teams/{team}/projects`, so a restricted project is listed only to
+// the team's administrators and the people on its access list (docs/adr/0034 D3). An archived
+// project is left out, and so is a team in which a global administrator holds no role
+// (docs/adr/0034 D2). Ordered by the team's slug, then the project's key. Cursor paging only,
+// without a total (docs/adr/0048 D3). `team` narrows to one of the person's teams. A token
+// restricted to a team reads that team's projects, one restricted to a project that project
+// (docs/adr/0035 D3).
+//
+// Corresponds with GET /api/v1/me/projects (the `ListMyProjects` operationId).
+func (c *Client) ListMyProjects(ctx context.Context, params *ListMyProjectsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListMyProjectsRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -12436,6 +12511,99 @@ func NewChangeMyPasswordRequestWithBody(server string, contentType string, body 
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListMyProjectsRequest constructs an http.Request for the ListMyProjects method
+func NewListMyProjectsRequest(server string, params *ListMyProjectsParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/me/projects")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Team != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "team", *params.Team, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+
+		if params.IfNoneMatch != nil {
+			var headerParam0 string
+
+			headerParam0, err = runtime.StyleParamWithOptions("simple", false, "If-None-Match", *params.IfNoneMatch, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationHeader, Type: "string", Format: ""})
+			if err != nil {
+				return nil, err
+			}
+
+			req.Header.Set("If-None-Match", headerParam0)
+		}
+
+	}
 
 	return req, nil
 }
@@ -20961,6 +21129,23 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PUT /api/v1/me/password (the `ChangeMyPassword` operationId).
 	ChangeMyPasswordWithResponse(ctx context.Context, body ChangeMyPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*ChangeMyPasswordResponse, error)
 
+	// ListMyProjectsWithResponse The projects of the person's teams, across their teams
+	//
+	// Every project the person sees in every team they belong to, each with its team — the lists
+	// of the UI's sidebar (docs/adr/0023 D2, D4) —: one read per team (docs/adr/0021 D5), under the
+	// predicate of `GET /api/v1/teams/{team}/projects`, so a restricted project is listed only to
+	// the team's administrators and the people on its access list (docs/adr/0034 D3). An archived
+	// project is left out, and so is a team in which a global administrator holds no role
+	// (docs/adr/0034 D2). Ordered by the team's slug, then the project's key. Cursor paging only,
+	// without a total (docs/adr/0048 D3). `team` narrows to one of the person's teams. A token
+	// restricted to a team reads that team's projects, one restricted to a project that project
+	// (docs/adr/0035 D3).
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /api/v1/me/projects (the `ListMyProjects` operationId).
+	ListMyProjectsWithResponse(ctx context.Context, params *ListMyProjectsParams, reqEditors ...RequestEditorFn) (*ListMyProjectsResponse, error)
+
 	// LookupRepositoryWithResponse The project a repository is bound to, across the person's teams
 	//
 	// Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
@@ -23863,6 +24048,75 @@ func (r ChangeMyPasswordResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ChangeMyPasswordResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// ListMyProjectsResponse200Headers the declared response headers of an HTTP 200 response for ListMyProjects
+type ListMyProjectsResponse200Headers struct {
+	ETag *string
+}
+
+// ListMyProjectsResponse304Headers the declared response headers of an HTTP 304 response for ListMyProjects
+type ListMyProjectsResponse304Headers struct {
+	ETag *string
+}
+
+// ListMyProjectsResponseDefaultHeaders the declared response headers of an HTTP default response for ListMyProjects
+type ListMyProjectsResponseDefaultHeaders struct {
+	XRequestId *string
+}
+
+type ListMyProjectsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *MyProjectList
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+	// Headers200 the parsed response headers for an HTTP 200 response
+	Headers200 *ListMyProjectsResponse200Headers
+	// Headers304 the parsed response headers for an HTTP 304 response
+	Headers304 *ListMyProjectsResponse304Headers
+	// HeadersDefault the parsed response headers for an HTTP default response
+	HeadersDefault *ListMyProjectsResponseDefaultHeaders
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ListMyProjectsResponse) GetJSON200() *MyProjectList {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListMyProjectsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ListMyProjectsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ListMyProjectsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListMyProjectsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListMyProjectsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -31040,6 +31294,29 @@ func (c *ClientWithResponses) ChangeMyPasswordWithResponse(ctx context.Context, 
 	return ParseChangeMyPasswordResponse(rsp)
 }
 
+// ListMyProjectsWithResponse The projects of the person's teams, across their teams
+//
+// Every project the person sees in every team they belong to, each with its team — the lists
+// of the UI's sidebar (docs/adr/0023 D2, D4) —: one read per team (docs/adr/0021 D5), under the
+// predicate of `GET /api/v1/teams/{team}/projects`, so a restricted project is listed only to
+// the team's administrators and the people on its access list (docs/adr/0034 D3). An archived
+// project is left out, and so is a team in which a global administrator holds no role
+// (docs/adr/0034 D2). Ordered by the team's slug, then the project's key. Cursor paging only,
+// without a total (docs/adr/0048 D3). `team` narrows to one of the person's teams. A token
+// restricted to a team reads that team's projects, one restricted to a project that project
+// (docs/adr/0035 D3).
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /api/v1/me/projects (the `ListMyProjects` operationId).
+func (c *ClientWithResponses) ListMyProjectsWithResponse(ctx context.Context, params *ListMyProjectsParams, reqEditors ...RequestEditorFn) (*ListMyProjectsResponse, error) {
+	rsp, err := c.ListMyProjects(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListMyProjectsResponse(rsp)
+}
+
 // LookupRepositoryWithResponse The project a repository is bound to, across the person's teams
 //
 // Normalises each `remote` to its identity, host/path (docs/adr/0066 D1), and
@@ -34795,6 +35072,75 @@ func ParseChangeMyPasswordResponse(rsp *http.Response) (*ChangeMyPasswordRespons
 	switch {
 	case true:
 		var headers ChangeMyPasswordResponseDefaultHeaders
+		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.XRequestId = &value
+		}
+		response.HeadersDefault = &headers
+	}
+
+	return response, nil
+}
+
+// ParseListMyProjectsResponse parses an HTTP response from a ListMyProjectsWithResponse call
+func ParseListMyProjectsResponse(rsp *http.Response) (*ListMyProjectsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListMyProjectsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MyProjectList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case rsp.StatusCode == 304:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 200:
+		var headers ListMyProjectsResponse200Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers200 = &headers
+	case rsp.StatusCode == 304:
+		var headers ListMyProjectsResponse304Headers
+		if values := rsp.Header.Values("ETag"); len(values) > 0 {
+			var value string
+			if err := runtime.BindStyledParameterWithOptions("simple", "ETag", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ETag = &value
+		}
+		response.Headers304 = &headers
+	case true:
+		var headers ListMyProjectsResponseDefaultHeaders
 		if values := rsp.Header.Values("X-Request-Id"); len(values) > 0 {
 			var value string
 			if err := runtime.BindStyledParameterWithOptions("simple", "X-Request-Id", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""}); err != nil {
@@ -41193,6 +41539,9 @@ type ServerInterface interface {
 	// ChangeMyPassword Change the password of the person's local account
 	// (PUT /api/v1/me/password)
 	ChangeMyPassword(w http.ResponseWriter, r *http.Request)
+	// ListMyProjects The projects of the person's teams, across their teams
+	// (GET /api/v1/me/projects)
+	ListMyProjects(w http.ResponseWriter, r *http.Request, params ListMyProjectsParams)
 	// LookupRepository The project a repository is bound to, across the person's teams
 	// (GET /api/v1/me/repositories/lookup)
 	LookupRepository(w http.ResponseWriter, r *http.Request, params LookupRepositoryParams)
@@ -42056,6 +42405,86 @@ func (siw *ServerInterfaceWrapper) ChangeMyPassword(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ChangeMyPassword(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMyProjects operation middleware
+func (siw *ServerInterfaceWrapper) ListMyProjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListMyProjectsParams
+
+	// ------------- Optional query parameter "team" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "team", r.URL.Query(), &params.Team, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "team"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "team", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	headers := r.Header
+
+	// ------------- Optional header parameter "If-None-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-None-Match")]; found {
+		var IfNoneMatch IfNoneMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandlerFunc(w, r, &TooManyValuesForParamError{ParamName: "If-None-Match", Count: n})
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-None-Match", valueList[0], &IfNoneMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "If-None-Match", Err: err})
+			return
+		}
+
+		params.IfNoneMatch = &IfNoneMatch
+
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMyProjects(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -49448,6 +49877,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/inbox/{notification}/read", wrapper.MarkNotificationRead)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/next", wrapper.ListMyNext)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/v1/me/password", wrapper.ChangeMyPassword)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/projects", wrapper.ListMyProjects)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/repositories/lookup", wrapper.LookupRepository)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/search", wrapper.SearchMyTeams)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v1/me/token", wrapper.GetMyToken)
@@ -50073,6 +50503,69 @@ type ChangeMyPassworddefaultApplicationProblemPlusJSONResponse struct {
 }
 
 func (response ChangeMyPassworddefaultApplicationProblemPlusJSONResponse) VisitChangeMyPasswordResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.XRequestId != nil {
+		w.Header().Set("X-Request-Id", fmt.Sprint(*response.Headers.XRequestId))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyProjectsRequestObject struct {
+	Params ListMyProjectsParams
+}
+
+type ListMyProjectsResponseObject interface {
+	VisitListMyProjectsResponse(w http.ResponseWriter) error
+}
+
+type ListMyProjects200ResponseHeaders struct {
+	ETag *string
+}
+
+type ListMyProjects200JSONResponse struct {
+	Body    MyProjectList
+	Headers ListMyProjects200ResponseHeaders
+}
+
+func (response ListMyProjects200JSONResponse) VisitListMyProjectsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListMyProjects304Response = NotModifiedResponse
+
+func (response ListMyProjects304Response) VisitListMyProjectsResponse(w http.ResponseWriter) error {
+	if response.Headers.ETag != nil {
+		w.Header().Set("ETag", fmt.Sprint(*response.Headers.ETag))
+	}
+	w.WriteHeader(304)
+	return nil
+}
+
+type ListMyProjectsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListMyProjectsdefaultApplicationProblemPlusJSONResponse) VisitListMyProjectsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -56357,6 +56850,9 @@ type StrictServerInterface interface {
 	// ChangeMyPassword Change the password of the person's local account
 	// (PUT /api/v1/me/password)
 	ChangeMyPassword(ctx context.Context, request ChangeMyPasswordRequestObject) (ChangeMyPasswordResponseObject, error)
+	// ListMyProjects The projects of the person's teams, across their teams
+	// (GET /api/v1/me/projects)
+	ListMyProjects(ctx context.Context, request ListMyProjectsRequestObject) (ListMyProjectsResponseObject, error)
 	// LookupRepository The project a repository is bound to, across the person's teams
 	// (GET /api/v1/me/repositories/lookup)
 	LookupRepository(ctx context.Context, request LookupRepositoryRequestObject) (LookupRepositoryResponseObject, error)
@@ -57012,6 +57508,32 @@ func (sh *strictHandler) ChangeMyPassword(w http.ResponseWriter, r *http.Request
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ChangeMyPasswordResponseObject); ok {
 		if err := validResponse.VisitChangeMyPasswordResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListMyProjects operation middleware
+func (sh *strictHandler) ListMyProjects(w http.ResponseWriter, r *http.Request, params ListMyProjectsParams) {
+	var request ListMyProjectsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListMyProjects(ctx, request.(ListMyProjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListMyProjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListMyProjectsResponseObject); ok {
+		if err := validResponse.VisitListMyProjectsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

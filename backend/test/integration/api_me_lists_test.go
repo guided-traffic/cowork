@@ -42,6 +42,20 @@ func (e ticketEnv) decisions(t *testing.T, c caller, query string) ([]string, ap
 	return out, l
 }
 
+// myProjects reads the person's projects as c, with a query, and returns
+// "<team>/<KEY>" per item.
+func (e ticketEnv) myProjects(t *testing.T, c caller, query string) ([]string, apigen.MyProjectList) {
+	t.Helper()
+	res := e.s.do(t, c, http.MethodGet, "/api/v1/me/projects"+query, nil)
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	l := decode[apigen.MyProjectList](t, res)
+	out := make([]string, 0, len(l.Items))
+	for _, it := range l.Items {
+		out = append(out, it.Team.Slug+"/"+it.Project.Key)
+	}
+	return out, l
+}
+
 // walk follows a person-level list one item per page and returns the keys.
 func walk(t *testing.T, read func(query string) ([]string, *string)) []string {
 	t.Helper()
@@ -181,4 +195,80 @@ func TestOpenDecisionsAcrossTenants(t *testing.T) {
 	member, _ := e.decisions(t, caller{Token: e.tk.MemberA}, "")
 	assert.Equal(t, []string{first.Key + " Q2", first.Key + " Q3"}, member, "the member's own and the tenant's open one")
 	assertProblem(t, e.s.do(t, both, http.MethodGet, "/api/v1/me/decisions?limit=1&cursor=tampered", nil), http.StatusBadRequest, "invalid_cursor")
+}
+
+// docs/adr/0023 D2 as amended 2026-10-10, docs/adr/0021 D5, docs/adr/0034 D3:
+// the person's projects are every project they see in each of their teams,
+// beside the team, by the team's slug and then the key — a restricted project
+// only to the team's administrators and the people on its list, an archived
+// one to nobody —; a team narrows the list, a restricted token reads its team
+// or its project only, a team a global administrator holds no role in is not
+// theirs, and a team the person left takes its projects with it at once.
+func TestMyProjectsAcrossTeams(t *testing.T) {
+	e := newTicketEnv(t)
+	f := fixtures(t)
+	both := caller{Token: e.tk.Both}
+	gamma, err := f.Project(e.ctx, e.A, "GAMMA", "Gamma")
+	require.NoError(t, err)
+	hidden, err := f.Project(e.ctx, e.A, "HIDDEN", "Hidden")
+	require.NoError(t, err)
+	old, err := f.Project(e.ctx, e.A, "OLD", "Old")
+	require.NoError(t, err)
+	_, err = f.Project(e.ctx, e.B, "DELTA", "Delta")
+	require.NoError(t, err)
+	// GAMMA restricted with the person on its list, HIDDEN restricted without; OLD archived.
+	require.NoError(t, f.Exec(e.ctx, "UPDATE projects SET restricted = true WHERE id IN ($1, $2)", gamma, hidden))
+	require.NoError(t, f.Exec(e.ctx, "INSERT INTO project_access (tenant_id, project_id, user_id, role) VALUES ($1, $2, $3, 'viewer')",
+		e.A, gamma, e.Both))
+	require.NoError(t, f.Exec(e.ctx, "UPDATE projects SET archived_at = now() WHERE id = $1", old))
+	a, b := func(key string) string { return e.SlugA + "/" + key }, func(key string) string { return e.SlugB + "/" + key }
+
+	want := []string{a("ALPHA"), a("GAMMA"), b("BETA"), b("DELTA")}
+	keys, list := e.myProjects(t, both, "")
+	assert.Equal(t, want, keys, "every team of the person, by its slug, then each project by its key")
+	assert.Equal(t, apigen.TeamRef{Slug: e.SlugA, Name: "Team A"}, list.Items[1].Team)
+	assert.Equal(t, "Gamma", list.Items[1].Project.Name, "the whole project")
+	assert.True(t, list.Items[1].Project.Restricted)
+	assert.Equal(t, apigen.TeamRef{Slug: e.SlugB, Name: "Team B"}, list.Items[3].Team)
+
+	assert.Equal(t, want, walk(t, func(query string) ([]string, *string) {
+		keys, l := e.myProjects(t, both, query)
+		next, err := l.NextCursor.Get()
+		if err != nil {
+			return keys, nil
+		}
+		return keys, &next
+	}), "the cursor walks the same order, one per page, across the teams")
+
+	member, _ := e.myProjects(t, caller{Token: e.tk.MemberA}, "")
+	assert.Equal(t, []string{a("ALPHA")}, member, "a restricted project is not listed to a member off its list")
+	require.NoError(t, f.GlobalAdmin(e.ctx, e.AdminA))
+	admin, _ := e.myProjects(t, caller{Token: e.tk.AdminA}, "")
+	assert.Equal(t, []string{a("ALPHA"), a("GAMMA"), a("HIDDEN")}, admin,
+		"an administrator sees every project of the team, and a global administrator nothing of a team without a role")
+
+	onlyB, _ := e.myProjects(t, both, "?team="+e.SlugB)
+	assert.Equal(t, want[2:], onlyB)
+	assertProblem(t, e.s.do(t, both, http.MethodGet, "/api/v1/me/projects?team=no-such-team", nil), http.StatusNotFound, "not_found")
+	assertProblem(t, e.s.do(t, caller{Token: e.tk.MemberB}, http.MethodGet, "/api/v1/me/projects?team="+e.SlugA, nil),
+		http.StatusNotFound, "not_found")
+	_, first := e.myProjects(t, both, "?limit=1")
+	cursor, err := first.NextCursor.Get()
+	require.NoError(t, err)
+	assertProblem(t, e.s.do(t, both, http.MethodGet, "/api/v1/me/projects?limit=1&team="+e.SlugA+"&cursor="+cursor, nil),
+		http.StatusBadRequest, "invalid_cursor")
+	assertProblem(t, e.s.do(t, both, http.MethodGet, "/api/v1/me/projects?limit=1&cursor=tampered", nil), http.StatusBadRequest, "invalid_cursor")
+
+	teamToken, _, err := f.Token(e.ctx, fixture.TokenSpec{UserID: e.Both, TenantID: e.B})
+	require.NoError(t, err)
+	byTeam, _ := e.myProjects(t, caller{Token: teamToken}, "")
+	assert.Equal(t, want[2:], byTeam)
+	projectToken, _, err := f.Token(e.ctx, fixture.TokenSpec{UserID: e.Both, TenantID: e.A, ProjectID: e.ProjectA})
+	require.NoError(t, err)
+	byProject, _ := e.myProjects(t, caller{Token: projectToken}, "")
+	assert.Equal(t, []string{a("ALPHA")}, byProject)
+
+	require.NoError(t, f.Exec(e.ctx, "DELETE FROM memberships WHERE tenant_id = $1 AND user_id = $2", e.B, e.Both))
+	left, _ := e.myProjects(t, both, "")
+	assert.Equal(t, want[:2], left, "nothing of a team the person left")
 }

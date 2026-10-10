@@ -7,6 +7,14 @@ import { TeamRef } from '../models/team-ref';
 export interface Membership {
 
   /**
+   * Whether the role lets the person create a project in the team: an administrator always, a
+   * member while the team's `members_create_projects` is on, a viewer never (docs/adr/0034 D9).
+   * A token's scope and an agent's capabilities may still refuse it (docs/adr/0043 D4), as
+   * `POST /api/v1/teams/{team}/projects` decides
+   */
+  can_create_projects: boolean;
+
+  /**
    * Where the role comes from, each source with its own role; `role` is the
    * higher of them (docs/adr/0030 D4)
    */

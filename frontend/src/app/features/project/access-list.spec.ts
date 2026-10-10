@@ -36,6 +36,7 @@ const person = (admin = true): Me => ({
       tenant: { slug: 'acme', name: 'Acme' },
       role: admin ? 'admin' : 'member',
       origins: [{ source: 'grant', role: admin ? 'admin' : 'member' }],
+      can_create_projects: true,
     },
   ],
 });

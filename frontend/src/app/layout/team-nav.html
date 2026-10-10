@@ -1,0 +1,71 @@
+@for (group of groups(); track group.slug) {
+  <div class="section team" [class.current]="group.current" [attr.data-team]="group.slug">
+    <div class="team-head">
+      <!-- The current team's group stays open: it has nothing to collapse. -->
+      <button
+        type="button"
+        class="toggle"
+        [disabled]="group.current"
+        [attr.aria-expanded]="group.open"
+        [attr.aria-controls]="'nav-team-projects-' + group.slug"
+        [attr.aria-label]="'Projects of ' + group.name"
+        (click)="toggle(group.slug)"
+        [attr.data-testid]="'nav-team-toggle-' + group.slug"
+      >
+        <i class="pi" [class.pi-chevron-down]="group.open" [class.pi-chevron-right]="!group.open"></i>
+      </button>
+      <a
+        class="item name"
+        [class.active]="group.current"
+        [routerLink]="['/t', group.slug]"
+        [attr.aria-current]="group.front ? 'page' : group.current ? 'true' : null"
+        [attr.data-testid]="'nav-team-' + group.slug"
+        >{{ group.name }}</a
+      >
+      <a
+        class="icon"
+        [routerLink]="['/t', group.slug, group.gear]"
+        [state]="openedFromPage"
+        [attr.aria-label]="'Configuration of ' + group.name"
+        [pTooltip]="'Configuration of ' + group.name"
+        [showDelay]="400"
+        [attr.data-testid]="'nav-team-config-' + group.slug"
+        ><i class="pi pi-cog"></i
+      ></a>
+      @if (group.canCreate) {
+        <button
+          type="button"
+          class="icon"
+          (click)="create(group.slug)"
+          [attr.aria-label]="'New project in ' + group.name"
+          [pTooltip]="'New project in ' + group.name"
+          [showDelay]="400"
+          [attr.data-testid]="'nav-new-project-' + group.slug"
+        >
+          <i class="pi pi-plus"></i>
+        </button>
+      }
+    </div>
+    @if (group.open) {
+      <div class="projects" [id]="'nav-team-projects-' + group.slug">
+        @for (project of group.projects; track project.id) {
+          <a
+            class="item project"
+            [class.active]="project.key === group.activeProject"
+            [routerLink]="['/t', group.slug, 'p', project.key, 'board']"
+            [attr.aria-current]="project.key === group.activeProject ? 'true' : null"
+            [attr.data-testid]="'nav-project-' + group.slug + '-' + project.key"
+            ><span class="key">{{ project.key }}</span
+            ><span class="name">{{ project.name }}</span></a
+          >
+        } @empty {
+          @if (!group.loading) {
+            <span class="item empty">No projects yet</span>
+          }
+        }
+      </div>
+    }
+  </div>
+}
+
+<app-new-project-dialog [team]="creatingIn()" [(visible)]="creating" />

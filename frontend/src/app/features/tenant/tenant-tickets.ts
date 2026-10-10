@@ -46,6 +46,7 @@ import {
   sameList,
   withChosen,
 } from './tenant-tickets-model';
+import { TeamHeader } from './team-header';
 
 /** The sizes of a numbered page (docs/adr/0048 D2). */
 export type PerPage = NonNullable<ListTeamTickets$Params['per_page']>;
@@ -70,7 +71,8 @@ const vocabulary = (values: readonly string[]): Choice[] =>
   values.map((value) => ({ value, label: value }));
 
 /**
- * The tenant's tickets across its projects (docs/adr/0018 D5, docs/adr/0023 D4): a table over
+ * The tenant's tickets across its projects (docs/adr/0018 D5, docs/adr/0023 D4), a tab of the
+ * team's head ({@link TeamHeader}, docs/adr/0018 D6 as amended 2026-10-10): a table over
  * `GET …/tickets`, newest first, the project beside each key. The filters are the address's — every
  * filter of the ticket lists (docs/adr/0049 D1), the bar's selects writing theirs —, so that a
  * filtered list can be linked and comes back as it was; a saved filter applies to it as it does to
@@ -98,6 +100,7 @@ const vocabulary = (values: readonly string[]): Choice[] =>
     SizeIcon,
     Skeleton,
     StateBadge,
+    TeamHeader,
     Tooltip,
     TypeIcon,
   ],

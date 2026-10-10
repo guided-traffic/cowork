@@ -5,18 +5,20 @@ import { ProblemService } from '../../core/problem.service';
 import { SessionService } from '../../core/session.service';
 import { MyTickets } from '../me/my-tickets';
 import { FirstTenant } from './first-tenant';
+import { TeamTiles } from './team-tiles';
 
 /**
  * The start page is "next for me" (docs/adr/0018 D3, docs/adr/0023 D4 as amended 2026-10-05): what
  * the person could take up next across their tenants, whether they belong to one or to many. A
  * person who belongs to none chooses among the tenants they may open — a global administrator among
- * every tenant of the installation, the ones they hold no role in marked so (docs/adr/0034 D2) — and
- * a global administrator makes the first one while there is none (docs/adr/0032 D5).
+ * every tenant of the installation, the ones they hold no role in marked so (docs/adr/0034 D2), the
+ * tiles of the page of every team ({@link TeamTiles}) — and a global administrator makes the first
+ * one while there is none (docs/adr/0032 D5); a later one is made on that page (`/teams`).
  */
 @Component({
   selector: 'app-home',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FirstTenant, MyTickets, RouterLink, Skeleton],
+  imports: [FirstTenant, MyTickets, RouterLink, Skeleton, TeamTiles],
   template: `
     @if (session.me.isLoading() || listing()) {
       <section class="page">
@@ -39,20 +41,7 @@ import { FirstTenant } from './first-tenant';
     } @else {
       <section class="page">
         <h1>Your teams</h1>
-        <div class="tenants">
-          @for (tenant of session.tenants(); track tenant.slug) {
-            <a
-              class="tenant"
-              [routerLink]="['/t', tenant.slug]"
-              [attr.data-testid]="'tenant-' + tenant.slug"
-            >
-              <span class="name">{{ tenant.name }}</span>
-              <span class="muted">{{ tenant.slug }} · {{ tenant.role ?? 'no role' }}</span>
-            </a>
-          } @empty {
-            <p class="muted">You are not a member of any team yet.</p>
-          }
-        </div>
+        <app-team-tiles />
       </section>
     }
   `,
@@ -62,28 +51,6 @@ import { FirstTenant } from './first-tenant';
       display: flex;
       flex-direction: column;
       gap: 1.25rem;
-    }
-    .tenants {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
-      gap: 0.75rem;
-    }
-    .tenant {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-      padding: 1rem 1.125rem;
-      border: 1px solid var(--p-app-border);
-      border-radius: var(--p-border-radius-lg);
-      background: var(--p-app-panel);
-      color: var(--p-text-color);
-      &:hover {
-        border-color: var(--p-primary-color);
-        text-decoration: none;
-      }
-    }
-    .name {
-      font-weight: 600;
     }
     .notice {
       max-width: 40rem;

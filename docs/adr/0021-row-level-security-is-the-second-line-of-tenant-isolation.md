@@ -54,7 +54,8 @@ forced with a `tenant_isolation` policy, a unit test holds the migration set to 
 table that an unfiltered query under one tenant sees nothing of another. ~~D5's unions arrive
 with the person-level lists~~ *(built 2026-10-04: the inbox, "assigned to me" and "open decisions"
 read each tenant of the person in a transaction of its own and merge the parts in Go; the cross-tenant
-search the same way on 2026-10-05)*; D7 has not been used. Migrations 15 and 16 (phase 3, 2026-10-03)
+search the same way on 2026-10-05, the person's projects of [ADR 0023](0023-the-tenant-is-in-the-path.md)
+D2 on 2026-10-10)*; D7 has not been used. Migrations 15 and 16 (phase 3, 2026-10-03)
 add the policies of `sessions`, `local_accounts`, `login_attempts` and `login_locks`, widen those
 of `users`, `tenants`, `memberships` and `tokens`, and the unit test's list of named tables holds
 them. Migration 17 (2026-10-03) is the first that rewrites rows: it lifts and restores the force

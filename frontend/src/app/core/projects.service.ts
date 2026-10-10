@@ -14,7 +14,8 @@ import { keepShown, refresh } from './refresh';
 import { SessionService } from './session.service';
 
 /**
- * The projects of the tenant the pages show, every page of them, for the navigation. Project acts
+ * The projects of the tenant the pages show, every page of them, for the navigation — its group in
+ * the sidebar, the other teams' groups are `MyProjectsService`'s — and the pages. Project acts
  * are not on the event stream, but who sees a project is (docs/adr/0034 D3): `membership.changed`
  * that names a project — its restriction set or lifted, an access entry changed — or the person's
  * own role loads the list again, and so do a resync and the fallback's poll, which may have missed
@@ -70,13 +71,15 @@ export class ProjectsService {
   }
 
   /**
-   * Each write reloads the list itself. The key of a creation is the form's, one for each content
-   * it holds, so a retry of a lost answer is answered again instead of being refused as a key that
-   * is taken (docs/adr/0045 D3).
+   * Each write reloads the list itself. A project is created in the team the form names — the
+   * sidebar's plus of any team of the person, not only the team the pages show (docs/adr/0023 D4 as
+   * amended 2026-10-10). The key of a creation is the form's, one for each content it holds, so a
+   * retry of a lost answer is answered again instead of being refused as a key that is taken
+   * (docs/adr/0045 D3).
    */
-  async create(body: ProjectCreate, idempotencyKey: string): Promise<Project> {
+  async create(team: string, body: ProjectCreate, idempotencyKey: string): Promise<Project> {
     const project = await this.api.invoke(createProject, {
-      team: this.session.tenant() as string,
+      team,
       'Idempotency-Key': idempotencyKey,
       body,
     });

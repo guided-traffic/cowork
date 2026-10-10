@@ -48,6 +48,14 @@ func creating(membersCreateProjects bool) auth.Need {
 	return need
 }
 
+// mayCreateProjects says whether a role lets its person create a project in a
+// tenant whose members may, or may not, create them (docs/adr/0034 D9): the
+// role creating asks for, without the scope and the capability a request's
+// credential has to bring besides — what GET /api/v1/me answers per membership.
+func mayCreateProjects(role domain.Role, membersCreateProjects bool) bool {
+	return role.AtLeast(creating(membersCreateProjects).Role)
+}
+
 // boundRepository is a repository named by a request, normalised.
 type boundRepository struct {
 	identity, path, remote string

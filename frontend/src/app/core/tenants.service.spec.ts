@@ -153,6 +153,7 @@ describe('TenantsService', () => {
           team: { slug: 'acme', name: 'Acme Corp' },
           tenant: { slug: 'acme', name: 'Acme Corp' },
           origins: [{ source: 'grant', role: 'admin' }],
+          can_create_projects: true,
         },
       ]),
     );
@@ -161,7 +162,6 @@ describe('TenantsService', () => {
 
     expect(session.memberships().map((membership) => membership.team.slug)).toEqual(['acme']);
     expect(session.installation.value()?.map((tenant) => tenant.slug)).toEqual(['acme']);
-    expect(session.soleTenant()).toBe('acme');
   });
 
   it('loads the person once more when it ends while the person is loading, because that answer may predate the tenant', async () => {
@@ -183,6 +183,7 @@ describe('TenantsService', () => {
           team: { slug: 'acme', name: 'Acme Corp' },
           tenant: { slug: 'acme', name: 'Acme Corp' },
           origins: [{ source: 'grant', role: 'admin' }],
+          can_create_projects: true,
         },
       ]),
     );

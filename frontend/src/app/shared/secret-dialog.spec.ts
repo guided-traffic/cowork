@@ -56,8 +56,13 @@ describe('SecretDialog', () => {
     await fixture.whenStable();
   }
 
+  // The dialog lies in the document's body (appendTo), beside its host, over a dialog it is opened
+  // from: its own window and the mask around it, while it is open.
+  const body = (fixture: ComponentFixture<Host>) =>
+    (fixture.debugElement.query(By.directive(Dialog))?.componentInstance as Dialog | undefined)
+      ?.container()?.parentElement ?? (fixture.nativeElement as HTMLElement);
   const el = (fixture: ComponentFixture<Host>, testId: string) =>
-    (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+    body(fixture).querySelector<HTMLElement>(`[data-testid="${testId}"]`);
   const field = (fixture: ComponentFixture<Host>) =>
     el(fixture, 'secret-value') as HTMLInputElement | null;
   const copyButton = (fixture: ComponentFixture<Host>) =>
@@ -73,7 +78,7 @@ describe('SecretDialog', () => {
     it('opens with the secret, under the header and the label it is given', async () => {
       const fixture = await render();
 
-      const host = fixture.nativeElement as HTMLElement;
+      const host = body(fixture);
       expect(host.querySelector('.p-dialog-title')?.textContent).toBe('Your new token');
       expect(host.querySelector('.label')?.textContent).toBe('Token');
       expect(field(fixture)?.getAttribute('aria-label')).toBe('Token');
@@ -91,7 +96,7 @@ describe('SecretDialog', () => {
     it('shows the warning it is given as an alert', async () => {
       const fixture = await render();
 
-      const alert = (fixture.nativeElement as HTMLElement).querySelector('[role="alert"]');
+      const alert = body(fixture).querySelector('[role="alert"]');
       expect(alert?.textContent).toContain('Shown once. Whoever holds it acts as you.');
       expect(el(fixture, 'warning')?.textContent).toBe('Shown once.');
     });

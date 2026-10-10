@@ -103,6 +103,8 @@ paths:
     $ref: './me.yaml#/assigned'
   /api/v1/me/decisions:
     $ref: './me.yaml#/decisions'
+  /api/v1/me/projects:
+    $ref: './me.yaml#/projects'
   /api/v1/me/search:
     $ref: './search.yaml#/me'
   /api/v1/teams:

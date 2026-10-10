@@ -50,6 +50,7 @@ export const addRefusals: Partial<Record<ProblemCode, string>> = {
       [draggable]="false"
       [closable]="!saving()"
       [dismissableMask]="!saving()"
+      appendTo="body"
       [style]="{ width: '32rem' }"
       header="Add a member"
       data-testid="add-member-dialog"

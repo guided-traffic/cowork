@@ -1,0 +1,66 @@
+// The links of the sidebar, shared by the shell's own section and the teams' groups (team-nav.ts):
+// every colour is a token of the preset (docs/adr/0052 D5).
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-height: 2rem;
+  padding: 0 0.625rem;
+  border-radius: var(--p-border-radius-md);
+  color: var(--p-text-muted-color);
+  font-weight: 500;
+
+  .pi {
+    font-size: 0.875rem;
+  }
+
+  &:hover {
+    background: var(--p-app-hover);
+    color: var(--p-text-color);
+    text-decoration: none;
+  }
+
+  &.active {
+    background: var(--p-highlight-background);
+    color: var(--p-highlight-color);
+  }
+
+  &.active::before {
+    content: '';
+    position: absolute;
+    left: -0.625rem;
+    top: 0.375rem;
+    bottom: 0.375rem;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--p-brand-gradient);
+  }
+
+  &.empty {
+    font-weight: 400;
+    font-style: italic;
+  }
+}
+
+.project .name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.key {
+  flex: none;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  background: var(--p-app-hover);
+  color: var(--p-text-color);
+}
+
+.item.active .key {
+  background: color-mix(in srgb, var(--p-primary-color) 22%, transparent);
+}

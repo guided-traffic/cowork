@@ -1,31 +1,8 @@
 <p-toast position="bottom-right" />
-<app-new-project-dialog [(visible)]="creatingProject" />
 
 <div class="frame">
   <header class="topbar">
     <a class="brand" routerLink="/" aria-label="cowork, home"><app-wordmark [height]="42" /></a>
-
-    @if (tenants().length > 1) {
-      <p-select
-        class="tenant-switch"
-        [options]="tenants()"
-        optionLabel="name"
-        optionValue="slug"
-        [ngModel]="session.tenant()"
-        (ngModelChange)="switchTenant($event)"
-        placeholder="Choose a team"
-        size="small"
-        ariaLabel="Team"
-        data-testid="tenant-switch"
-      />
-    } @else if (session.shown(); as shown) {
-      <span class="tenant-name" data-testid="tenant-name">{{ shown.name }}</span>
-    } @else if (soleTenant(); as sole) {
-      <!-- On the person-level pages the only tenant's name leads to it: no switcher offers it. -->
-      <a class="tenant-name" [routerLink]="['/t', sole.slug]" data-testid="tenant-name">{{
-        sole.name
-      }}</a>
-    }
 
     <!-- The search (docs/adr/0018 D7): inside a tenant that tenant's, anywhere else every tenant's. -->
     <form class="search" role="search" ngNoForm (submit)="$event.preventDefault(); search()">
@@ -119,7 +96,7 @@
   </header>
 
   <nav class="sidebar" aria-label="Main" (focusin)="closeOverPage()">
-    <!-- The person-level pages, across every tenant of the person (docs/adr/0023 D4). -->
+    <!-- The person-level pages, across every team of the person (docs/adr/0023 D4). -->
     <div class="section">
       <div class="heading">For you</div>
       <a class="item" routerLink="/me/next" routerLinkActive="active" data-testid="nav-next"
@@ -143,137 +120,8 @@
       >
     </div>
 
-    @if (session.tenant(); as tenant) {
-      <div class="section">
-        <a
-          class="item"
-          [routerLink]="['/t', tenant]"
-          routerLinkActive="active"
-          [routerLinkActiveOptions]="frontPageActive"
-          data-testid="nav-overview"
-          ><i class="pi pi-home"></i>Overview</a
-        >
-        @if (!session.oversight()) {
-          <a
-            class="item"
-            [routerLink]="['/t', tenant, 'board']"
-            routerLinkActive="active"
-            data-testid="nav-board"
-            ><i class="pi pi-objects-column"></i>Board</a
-          >
-          <!-- The list itself, whatever it is filtered by; a ticket's own page is not part of it. -->
-          <a
-            class="item"
-            [routerLink]="['/t', tenant, 'tickets']"
-            routerLinkActive="active"
-            [routerLinkActiveOptions]="listOnly"
-            data-testid="nav-tickets"
-            ><i class="pi pi-ticket"></i>Tickets</a
-          >
-        }
-        <a
-          class="item"
-          [routerLink]="['/t', tenant, 'members']"
-          routerLinkActive="active"
-          data-testid="nav-members"
-          ><i class="pi pi-users"></i>Members</a
-        >
-        @if (tenantInfo.isAdmin()) {
-          <a
-            class="item"
-            [routerLink]="['/t', tenant, 'accounts']"
-            routerLinkActive="active"
-            data-testid="nav-accounts"
-            ><i class="pi pi-id-card"></i>Accounts</a
-          >
-        }
-        <!-- A global administrator without a role here sees the administration only (docs/adr/0034 D2). -->
-        @if (tenantInfo.isAdmin() || session.oversight()) {
-          <a
-            class="item"
-            [routerLink]="['/t', tenant, 'group-mappings']"
-            routerLinkActive="active"
-            data-testid="nav-group-mappings"
-            ><i class="pi pi-sitemap"></i>Group mappings</a
-          >
-        }
-        @if (tenantInfo.isAdmin()) {
-          <a
-            class="item"
-            [routerLink]="['/t', tenant, 'audit']"
-            routerLinkActive="active"
-            data-testid="nav-audit"
-            ><i class="pi pi-history"></i>Audit record</a
-          >
-          <a
-            class="item"
-            [routerLink]="['/t', tenant, 'tokens']"
-            routerLinkActive="active"
-            data-testid="nav-tenant-tokens"
-            ><i class="pi pi-key"></i>Tokens</a
-          >
-        }
-        @if (!session.oversight()) {
-          <a
-            class="item"
-            [routerLink]="['/t', tenant, 'time']"
-            routerLinkActive="active"
-            data-testid="nav-time"
-            ><i class="pi pi-clock"></i>Time</a
-          >
-        }
-        @if (tenantInfo.isAdmin()) {
-          <a
-            class="item"
-            [routerLink]="['/t', tenant, 'deleted-tickets']"
-            routerLinkActive="active"
-            data-testid="nav-deleted-tickets"
-            ><i class="pi pi-trash"></i>Deleted tickets</a
-          >
-        }
-        <a
-          class="item"
-          [routerLink]="['/t', tenant, 'settings']"
-          routerLinkActive="active"
-          data-testid="nav-settings"
-          ><i class="pi pi-cog"></i>Settings</a
-        >
-      </div>
-
-      @if (!session.oversight()) {
-        <div class="section">
-          <div class="heading">
-            Projects
-            @if (tenantInfo.canCreateProjects()) {
-              <button
-                type="button"
-                class="add"
-                (click)="creatingProject.set(true)"
-                aria-label="New project"
-                title="New project"
-                data-testid="nav-new-project"
-              >
-                <i class="pi pi-plus"></i>
-              </button>
-            }
-          </div>
-          @for (project of projects.list(); track project.id) {
-            <a
-              class="item project"
-              [routerLink]="['/t', tenant, 'p', project.key, 'board']"
-              routerLinkActive="active"
-              [attr.data-testid]="'nav-project-' + project.key"
-              ><span class="key">{{ project.key }}</span
-              ><span class="name">{{ project.name }}</span></a
-            >
-          } @empty {
-            @if (!projects.projects.isLoading()) {
-              <span class="item empty">No projects yet</span>
-            }
-          }
-        </div>
-      }
-    }
+    <!-- Every team of the person with its projects, on every page (docs/adr/0023 D4). -->
+    <app-team-nav />
 
     <div class="section bottom">
       @if (dev) {
@@ -283,7 +131,7 @@
       }
       <div class="version muted">
         @if (version(); as v) {
-          <span data-testid="version">{{ v.version }} ({{ v.commit }})</span>
+          <span data-testid="version">{{ v.version }}</span>
         } @else {
           <span data-testid="version">backend unreachable</span>
         }

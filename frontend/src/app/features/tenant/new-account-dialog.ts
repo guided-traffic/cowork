@@ -46,6 +46,7 @@ export const accountUsername = /^[a-z0-9][a-z0-9._-]{0,62}$/;
       [draggable]="false"
       [closable]="!saving()"
       [dismissableMask]="!saving()"
+      appendTo="body"
       [style]="{ width: '34rem' }"
       header="New account"
       data-testid="new-account-dialog"

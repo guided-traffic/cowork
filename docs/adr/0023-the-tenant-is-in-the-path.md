@@ -47,14 +47,15 @@ mirrors a project's import, `POST …/projects/{KEY}/imports` and `GET …/impor
 `/t/{slug}/p/{KEY}/imports` and `/t/{slug}/p/{KEY}/imports/{import}`, two routes D4 did not list
 ([`app.routes.ts`](../../frontend/src/app/app.routes.ts)).
 
-**Amended 2026-10-10 by the owner (not built)**, after a walk through the UI before use, and with
+**Amended 2026-10-10 by the owner (~~not built~~ built the same day, below)**, after a walk through the UI before use, and with
 [ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1's tenant that is a team: D1 — the family is `/api/v1/teams/{slug}/…`, the old one served
 beside it for a release; D2 — `projects` joins the person-level lists; D4 — the sidebar lists every
 team of the person with its projects on every page, a team's configuration is one dialog behind a
 gear, and the top bar loses the tenant switcher and the team's name to the sidebar and to "All
 teams". The rules this replaces are marked in place. *(2026-10-10:)* D1's team family with the old
-family's deprecated twins is built, and D2's `?team=` beside the deprecated `?tenant=` (below); D2's
-`projects` and D4 are not.
+family's deprecated twins is built, and D2's `?team=` beside the deprecated `?tenant=` (below); ~~D2's
+`projects` and D4 are not~~ D2's `projects` and D4 are built the same day (the second paragraph
+below).
 
 **Built** (2026-10-10): D1 — the source names the team family only, `/api/v1/teams/{team}/…` and
 `/api/v1/teams`; [`tools/specbundle`](../../backend/tools/specbundle/main.go) writes for every path of
@@ -70,6 +71,46 @@ implementer, open to the owner's objection; D3's resolver is
 at `query:tenant` whatever the values ([`api/inbox.go`](../../backend/internal/api/inbox.go)
 `teamQuery`), and every item names its team as `team` and, beside it, as `tenant`. D4's routes keep
 `/t/{slug}`. Not built: the removal of the twins and of `?tenant=`, a later release's.
+
+**Built** (2026-10-10, the same day): D2's `projects` — `GET /api/v1/me/projects`
+(`ListMyProjects` in [`api/mylists.go`](../../backend/internal/api/mylists.go)): every project the
+person sees in each of their teams, one read per team under the predicate of `GET …/projects`, so a
+restricted project only to the team's administrators and the people on its access list
+([ADR 0034](0034-three-tenant-roles-an-optional-project-restriction-no-implicit-role-for-the-global-administrator.md)
+D3), archived ones left out, ordered by the team's slug and then the key, cursor paging without a
+total ([ADR 0048](0048-cursor-pagination-on-every-list-numbered-pages-on-tables.md) D3) — the reads
+stop at the team that fills the page —, a weak `ETag` and `304`, `?team=` narrowing to one team of
+the person, and a token restricted to a team or a project held as on the other lists. Each item is
+the project with its team, `{team, project}`, and the route takes `?team=` alone and names the team
+under `team` alone: a route new in this release has no name before that a client of the release
+before reads ([ADR 0046](0046-spec-first-the-openapi-document-is-the-contract.md) D7) — made
+concrete by the implementer, open to the owner's objection. `GET /api/v1/me` answers
+`can_create_projects` per membership, what the role allows in the team (ADR 0034 D9), which the
+plus of each team's group follows; no event tells of a change of the setting it follows, so the
+pages ask for `me` again on every team they enter and when the team's settings change who may
+create projects. D4 — the sidebar
+([`layout/team-nav.ts`](../../frontend/src/app/layout/team-nav.ts)): a group per team of the
+person, by slug, its name leading to `/t/{slug}`, a gear beside it opening the team's configuration
+on its settings — the tab every role shows —, a plus where the membership says the person may
+create a project, which creates it in that team, and the team's projects by key, archived ones left
+out; a group collapses and the browser remembers it per team
+([ADR 0053](0053-signals-and-services-no-store-framework.md) D6), the current team's group stays
+open, its name and the current project marked; the current team's projects stay live through its
+events, the other teams' are read from `/me/projects` again when the tab or the window comes back,
+when the pages enter or leave a team, on a `membership.changed` that may change what the person
+sees in any of their teams and when their teams change. The configuration
+([`features/tenant/team-config.ts`](../../frontend/src/app/features/tenant/team-config.ts)): one
+route over the dashboard whose children are the seven pages at their addresses; a tab replaces the
+address, and closing goes back in the history when a link of the UI opened the dialog — a mark in
+the history entry's state, which the back button and a reload keep — and to `/t/{slug}` in place of
+the address otherwise, made concrete by the implementer, open to the owner's objection. The top bar
+([`layout/shell.html`](../../frontend/src/app/layout/shell.html)) names no team and switches none.
+*(Made concrete by the implementer, open to the owner's objection:)* "All teams" is the UI route
+**`/teams`** ([`features/home/all-teams.ts`](../../frontend/src/app/features/home/all-teams.ts)),
+its "New team" the form of the first team in a dialog; and a team a global administrator only
+oversees, which has no group in the sidebar, carries its gear beside its name on its own pages
+([`features/tenant/team-header.ts`](../../frontend/src/app/features/tenant/team-header.ts)), the
+way to its administration that the sidebar cannot offer.
 
 ## Context
 
@@ -97,7 +138,7 @@ ticket. The slug is the tenant's slug of ADR 0005 D4; the project key and the nu
 those of ADR 0007 D1.
 
 **D2 — The person-level lists live under `/api/v1/me/…`:** `next`, `assigned`, `decisions`,
-`inbox`, `search` *(amended 2026-10-10 by the owner, not built: and `projects`, every project of
+`inbox`, `search` *(amended 2026-10-10 by the owner, ~~not built~~ built the same day: and `projects`, every project of
 every team of the person, each naming its team, which the sidebar of D4 lists; the current team's
 stay live through its event stream, the others are read again when the tab regains focus, when the
 person enters a team and when their memberships change)*. These are the only routes whose response
@@ -122,8 +163,8 @@ the slug. *(Amended 2026-10-05:)* **The start page `/` is "next for me"** for ev
 membership, whether they belong to one tenant or to many: what they could take up next across
 their tenants ([ADR 0018](0018-the-views-of-the-first-release.md) D3). For a person with one
 membership ~~the top bar names the tenant and leads to `/t/{slug}`~~; a person with none chooses
-among the tenants they may open, as before. *(Amended 2026-10-10 by the owner, not built:)*
-**The sidebar is for the daily work.** Below the person-level lists it shows every team the person
+among the tenants they may open, as before. *(Amended 2026-10-10 by the owner, ~~not built~~ built
+the same day, "All teams" at the route `/teams`:)* **The sidebar is for the daily work.** Below the person-level lists it shows every team the person
 is a member of, one below the other, on every page — the person-level pages included —, each as its
 name, a small gear beside it, and its projects, each project opening its board; the team's name
 opens `/t/{slug}`, the dashboard that sums up the team, which carries the team's board, its ticket

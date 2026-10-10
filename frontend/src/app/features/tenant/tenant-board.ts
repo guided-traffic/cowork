@@ -31,6 +31,7 @@ import { SavedFilters } from '../project/saved-filters';
 import { MoveDialog } from '../ticket/move-dialog';
 import { BoardLane } from './board-lane';
 import { chosenKeys, excludes, laneOf, lanesOf, refusingLane } from './tenant-board-model';
+import { TeamHeader } from './team-header';
 
 /** The card a person drags, and the swimlane it belongs to. */
 interface Dragged {
@@ -39,7 +40,8 @@ interface Dragged {
 }
 
 /**
- * The tenant's board (docs/adr/0018 D4): one swimlane per project the person sees that is not
+ * The tenant's board (docs/adr/0018 D4), a tab of the team's head ({@link TeamHeader}, D6 as
+ * amended 2026-10-10): one swimlane per project the person sees that is not
  * archived ({@link BoardLane}), each with the project board's columns over the same tickets, so a
  * card stands in the same column on both boards. Only the swimlanes in view or near it load. The
  * project filter is the address's `?project=`, repeated; a saved filter applies as on the backlog
@@ -53,7 +55,16 @@ interface Dragged {
 @Component({
   selector: 'app-tenant-board',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [BoardLane, ButtonDirective, FormsModule, MoveDialog, SavedFilters, Select, Skeleton],
+  imports: [
+    BoardLane,
+    ButtonDirective,
+    FormsModule,
+    MoveDialog,
+    SavedFilters,
+    Select,
+    Skeleton,
+    TeamHeader,
+  ],
   providers: [BoardMoves],
   templateUrl: './tenant-board.html',
   styleUrl: './tenant-board.scss',

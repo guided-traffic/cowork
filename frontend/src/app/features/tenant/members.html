@@ -176,6 +176,7 @@
         [rows]="table.perPage()"
         [totalRecords]="table.total()"
         [rowsPerPageOptions]="perPageOptions"
+        appendTo="body"
         [showCurrentPageReport]="true"
         currentPageReportTemplate="{first}–{last} of {totalRecords}"
         (onPageChange)="table.turn($event)"

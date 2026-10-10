@@ -155,7 +155,9 @@ describe('Tokens', () => {
     await fixture.whenStable();
   }
 
-  const host = (fixture: ComponentFixture<Tokens>) => fixture.nativeElement as HTMLElement;
+  // The page and its dialogs, which lie in the document's body (appendTo), beside the page.
+  const host = (fixture: ComponentFixture<Tokens>) =>
+    (fixture.nativeElement as HTMLElement).ownerDocument.body;
   const el = (fixture: ComponentFixture<Tokens>, testId: string) =>
     host(fixture).querySelector<HTMLElement>(`[data-testid="${testId}"]`);
   const row = (fixture: ComponentFixture<Tokens>, id: string) => el(fixture, `token-${id}`);

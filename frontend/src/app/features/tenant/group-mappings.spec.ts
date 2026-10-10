@@ -37,6 +37,7 @@ const mapped: Membership = {
   team: { slug: 'acme', name: 'Acme Corp' },
   tenant: { slug: 'acme', name: 'Acme Corp' },
   origins: [{ source: 'mapping', role: 'admin' }],
+  can_create_projects: true,
 };
 
 function refusal(status: number, code: ProblemCode, detail = 'The server says no.') {
@@ -366,18 +367,23 @@ describe('GroupMappings', () => {
 
     it('opens the dialog for it, and closes it when the dialog asks', async () => {
       const fixture = await render();
+      // The dialog lies in the document's body (appendTo), beside the page.
+      const field = () =>
+        (fixture.nativeElement as HTMLElement).ownerDocument.body.querySelector(
+          '[data-testid="mapping-group"]',
+        );
 
       el(fixture, 'new-mapping')?.click();
       await settle(fixture);
 
       expect(newDialog(fixture).componentInstance.visible()).toBe(true);
-      expect(el(fixture, 'mapping-group')).not.toBeNull();
+      expect(field()).not.toBeNull();
 
       newDialog(fixture).triggerEventHandler('visibleChange', false);
       await settle(fixture);
 
       expect(fixture.componentInstance['creating']()).toBe(false);
-      expect(el(fixture, 'mapping-group')).toBeNull();
+      expect(field()).toBeNull();
     });
 
     it('leaves the keyboard alone when the dialog says it is open', async () => {

@@ -61,8 +61,8 @@ function otherSession(data: unknown, person: string): boolean {
  * tenant-scoped services follow `tenant()` and drop what they hold when it changes (D4). A role
  * that a grant, a mapping or the person's groups change (docs/adr/0030) is loaded again when the
  * stream says so — an act of the shown tenant, or one that names the person in any of their
- * tenants — or may have missed it, so the pages offer what the new role allows, and the tenant
- * switch a tenant joined, without a reload; a load again that fails keeps the person shown ({@link keepShown}).
+ * tenants — or may have missed it, so the pages offer what the new role allows, and the sidebar
+ * a team joined, without a reload; a load again that fails keeps the person shown ({@link keepShown}).
  *
  * A global administrator sees every tenant of the installation, and in one where they hold no role
  * its administration only — the members, the group mappings, the settings — until they grant
@@ -170,18 +170,6 @@ export class SessionService {
       this.person()?.global_admin === true &&
       this.membership()?.role !== 'admin',
   );
-  /**
-   * The only tenant when there is exactly one; it gets no switcher (docs/adr/0023 D4). A global
-   * administrator's tenants are known once the installation's list has answered.
-   */
-  readonly soleTenant = computed(() => {
-    if (this.globalAdmin() !== undefined && !this.installation.hasValue()) {
-      return null;
-    }
-    const tenants = this.tenants();
-    return tenants.length === 1 ? tenants[0].slug : null;
-  });
-
   constructor() {
     inject(EventStreamService)
       .events.pipe(takeUntilDestroyed())

@@ -23,16 +23,18 @@ import {
   shortKey,
   stateTotals,
 } from './dashboard-model';
+import { TeamHeader } from './team-header';
 
 /**
- * The tenant's front page, its dashboard (docs/adr/0018 D6): the nine tiles over what the person
- * can see — the server counts under the visibility predicate —, filtered by project and period, both
- * held in the page's address (`?project=`, repeatable as the ticket lists take it, `?from=`,
- * `?to=`); beside them each project's open tickets by state and the open tickets updated last. The
- * charts are bars drawn with the preset's tokens, so they follow the scheme without a library. The
- * dashboard loads again when an event may have changed it ({@link DashboardService}). A global
- * administrator without a role in the tenant sees its name only: its work is its members'
- * (docs/adr/0034 D2).
+ * The tenant's front page, its dashboard (docs/adr/0018 D6): under the team's head with its tabs
+ * ({@link TeamHeader}), the nine tiles over what the person can see — the server counts under the
+ * visibility predicate —, filtered by project and period, both held in the page's address
+ * (`?project=`, repeatable as the ticket lists take it, `?from=`, `?to=`); beside them each
+ * project's open tickets by state and the open tickets updated last. The charts are bars drawn with
+ * the preset's tokens, so they follow the scheme without a library. The dashboard loads again when
+ * an event may have changed it ({@link DashboardService}). A global administrator without a role in
+ * the tenant sees its name only: its work is its members' (docs/adr/0034 D2). The team's
+ * configuration lies over it, unfiltered (`TeamConfig`).
  */
 @Component({
   selector: 'app-tenant-dashboard',
@@ -47,6 +49,7 @@ import {
     SeverityBadge,
     Skeleton,
     StateBadge,
+    TeamHeader,
     TypeIcon,
   ],
   templateUrl: './dashboard.html',

@@ -113,6 +113,36 @@ func TestMeListsThePersonsTenants(t *testing.T) {
 	assert.ElementsMatch(t, []string{w.SlugA, w.SlugB}, slugs)
 }
 
+// docs/adr/0034 D9, docs/adr/0023 D4 as amended 2026-10-10: each membership
+// says whether the person's role lets them create a project in its team — an
+// administrator always, a member while the team lets members create them, a
+// viewer never —, which the sidebar's plus of each team follows.
+func TestMeSaysPerTeamWhetherThePersonMayCreateProjects(t *testing.T) {
+	w := newWorld(t)
+	tk := issueTokens(t, w)
+	s := newAPI(t)
+	ctx := context.Background()
+	may := func(token string) map[string]bool {
+		t.Helper()
+		me, err := s.client(t, caller{Token: token}).GetMeWithResponse(ctx)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, me.StatusCode(), string(me.Body))
+		out := map[string]bool{}
+		for _, m := range me.JSON200.Memberships {
+			out[m.Team.Slug] = m.CanCreateProjects
+		}
+		return out
+	}
+	assert.Equal(t, map[string]bool{w.SlugA: true}, may(tk.AdminA))
+	assert.Equal(t, map[string]bool{w.SlugA: true}, may(tk.MemberA), "members create projects by default")
+	assert.Equal(t, map[string]bool{w.SlugA: false}, may(tk.ViewerA))
+
+	require.NoError(t, fixtures(t).Exec(ctx, "UPDATE tenants SET members_create_projects = false WHERE id = $1", w.A))
+	assert.Equal(t, map[string]bool{w.SlugA: true}, may(tk.AdminA), "an administrator always")
+	assert.Equal(t, map[string]bool{w.SlugA: false}, may(tk.MemberA))
+	assert.Equal(t, map[string]bool{w.SlugA: false, w.SlugB: true}, may(tk.Both), "each team by its own setting")
+}
+
 // docs/adr/0035 D3: a token restricted to a tenant is invalid elsewhere — on
 // the person's own routes it sees its tenant's membership and itself only,
 // and revokes no other token.

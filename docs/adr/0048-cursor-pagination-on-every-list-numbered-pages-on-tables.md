@@ -48,6 +48,10 @@ a hash of its query as well. *(2026-10-05:)* D1's `(score, id)` for `/me/next` a
 across tenants, so every tenant's part resumes at the same place of one order — and
 `(score, ticket id, question number)` for `/me/decisions`; the position is not sealed, since a score
 is shown on the ticket, and a cursor of `/me/next` names its project narrowing as well.
+*(2026-10-10:)* D3's person-level lists gain `/me/projects` of
+[ADR 0023](0023-the-tenant-is-in-the-path.md) D2, cursor only, its position the team's slug and the
+project's key — the list's order, both shown in the answer, so unsealed —, its cursor bound to its
+person and its narrowing; applied by the implementer, no rule changes.
 
 Amended 2026-10-10 by the owner's rename of a tenant to a team ([ADR 0005](0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D1): the team's ticket list is
 `listTeamTickets`. A cursor stays bound to the operation by the name it had before the rename —

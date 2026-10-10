@@ -3,7 +3,8 @@
 How one team's data stays out of another team's reach, who belongs to a team and in which
 role — group mappings, grants, the last administrator — and who inside a team sees which project,
 ticket, act, event, notification and time entry, and what the person-level lists and stream gather
-across a person's teams, and what a search finds, as built on 2026-10-07. What a token or an agent may do with
+across a person's teams, and what a search finds, as built on 2026-10-07, the person's projects on
+2026-10-10. What a token or an agent may do with
 what it can see is [tokens.md](tokens.md); how a request reaches the backend at all, and where the
 database credentials live, is [trust-boundaries.md](trust-boundaries.md); where a person's groups
 come from, and when a mapped membership follows them, is
@@ -767,8 +768,9 @@ heartbeat (`TestStreamFollowsAccess`).
 
 ## The person-level lists are unions, one team at a time
 
-The inbox, "next for me", "assigned to me" and "open decisions" (`GET /api/v1/me/inbox`, `…/next`,
-`…/assigned`, `…/decisions`) are the one kind of answer that spans teams
+The inbox, "next for me", "assigned to me", "open decisions" and the person's projects
+(`GET /api/v1/me/inbox`, `…/next`, `…/assigned`, `…/decisions`, `…/projects`) are the one kind of
+answer that spans teams
 ([ADR 0005](../adr/0005-a-tenant-is-a-client-organisation-and-the-isolation-unit.md) D3). They are
 built as ADR 0021 D5 has it: the person's memberships are read first, and each team is then read in
 a transaction of its own, bound to that team and the caller, under the same predicates as the
@@ -787,9 +789,14 @@ shown on the ticket, computed from its own facts and its stakes, which whoever s
 not sealed. The place in the backlog beside each ticket counts only the open tickets of its horizon
 the reader sees (`ListRankPlaces`, the predicate on every ticket it compares), so it tells nothing of
 a hidden one. "Next for me" holds the person's own and the unassigned open tickets, never a
-colleague's. `TestTheInboxIsThePersonsAcrossTheirTenants`, `TestNextForMeAcrossTenants`,
-`TestAssignedToMeAcrossTenants` and `TestOpenDecisionsAcrossTenants` cover the teams, the
-restricted project, the confidential ticket, the narrowing and the restricted tokens.
+colleague's. The person's projects are each team's own list, `ListProjects` under
+`app_project_visible` — a restricted project only for the team's administrators and the people on
+its access list —, read team by team in the order of their slugs; their cursor carries the last
+project's team slug and key, which the answer shows, so it is signed and not sealed.
+`TestTheInboxIsThePersonsAcrossTheirTenants`, `TestNextForMeAcrossTenants`,
+`TestAssignedToMeAcrossTenants`, `TestOpenDecisionsAcrossTenants` and `TestMyProjectsAcrossTeams`
+cover the teams, the restricted project, the confidential ticket, the narrowing and the restricted
+tokens, and the last a team the person left and one a global administrator only oversees.
 
 **A notification is its person's.** The act's own transaction writes it for each person the act
 tells ([ADR 0020](../adr/0020-notifications-are-an-in-app-inbox-per-person.md) D2, D3), and only for an

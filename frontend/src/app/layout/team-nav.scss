@@ -1,0 +1,99 @@
+@use 'nav';
+
+:host {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.team-head {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+}
+
+// The team's name: the team of the page in the highlight's colour and weight, without the highlight's
+// ground, which marks the page itself — the dashboard's name, or the current project.
+.item.name {
+  flex: 1;
+  min-width: 0;
+  padding-left: 0.25rem;
+  font-weight: 600;
+  color: var(--p-text-color);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+
+  &.active {
+    background: none;
+    color: var(--p-highlight-color);
+
+    &::before {
+      content: none;
+    }
+  }
+
+  &.active[aria-current='page'] {
+    background: var(--p-highlight-background);
+
+    &::before {
+      content: '';
+    }
+  }
+}
+
+.toggle,
+.icon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--p-border-radius-sm);
+  background: none;
+  color: var(--p-text-muted-color);
+  cursor: pointer;
+
+  .pi {
+    font-size: 0.75rem;
+  }
+
+  &:hover:not(:disabled) {
+    background: var(--p-app-hover);
+    color: var(--p-text-color);
+    text-decoration: none;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--p-primary-color);
+    outline-offset: 1px;
+  }
+}
+
+.toggle {
+  width: 1.25rem;
+
+  .pi {
+    font-size: 0.625rem;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.35;
+  }
+}
+
+.projects {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding-left: 1.125rem;
+}
