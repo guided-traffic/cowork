@@ -121,7 +121,7 @@ GOSEC_VERSION ?= v2.29.0
 # supported version 4"), so every package fails to type-check; it is built
 # here with this x/tools until a gosec release carries one that can.
 # renovate: datasource=go depName=golang.org/x/tools
-GOSEC_XTOOLS_VERSION ?= v0.51.0
+GOSEC_XTOOLS_VERSION ?= v0.52.0
 # renovate: datasource=go depName=golang.org/x/vuln/cmd/govulncheck
 GOVULNCHECK_VERSION ?= v1.8.0
 # renovate: datasource=go depName=github.com/sqlc-dev/sqlc/cmd/sqlc
