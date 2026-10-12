@@ -123,7 +123,7 @@ GOSEC_VERSION ?= v2.29.0
 # renovate: datasource=go depName=golang.org/x/tools
 GOSEC_XTOOLS_VERSION ?= v0.51.0
 # renovate: datasource=go depName=golang.org/x/vuln/cmd/govulncheck
-GOVULNCHECK_VERSION ?= v1.8.0
+GOVULNCHECK_VERSION ?= v1.9.0
 # renovate: datasource=go depName=github.com/sqlc-dev/sqlc/cmd/sqlc
 SQLC_VERSION ?= v1.31.1
 # renovate: datasource=go depName=github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
