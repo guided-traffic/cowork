@@ -360,7 +360,7 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v5
         with:
-          version: v4.3.0
+          version: v4.3.1
 
       # kubeconform installs with go install, and the CRDs become schemas
       # through backend/tools/crdschema.
