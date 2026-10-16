@@ -67,7 +67,7 @@ TEST_DATABASE_TLS_URL ?= postgres://postgres:postgres@localhost:$(POSTGRES_TLS_P
 # runs `silo server /data` for the command `server /data`. The keys are
 # development values.
 # renovate: datasource=docker depName=docker.io/pgsty/silo
-MINIO_IMAGE ?= docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z@sha256:635197cb9f36d01bee221d34d1c7d7960f6a95c48b0b6c01d99cd13bdae51a46
+MINIO_IMAGE ?= docker.io/pgsty/silo:RELEASE.2026-10-15T00-00-00Z@sha256:aaac6bce13eb99316b3c88bd20143fc3c38ab607585256a411a095c44ee57f62
 MINIO_CONTAINER ?= cowork-minio
 MINIO_PORT ?= 9000
 MINIO_ACCESS_KEY ?= cowork
