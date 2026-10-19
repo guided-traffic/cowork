@@ -141,7 +141,7 @@ KUBECONFORM_VERSION ?= v0.8.0
 # renovate: datasource=github-releases depName=cloudnative-pg/cloudnative-pg
 CNPG_VERSION ?= v1.30.1
 # renovate: datasource=github-releases depName=pgsty/silo
-SILO_VERSION ?= RELEASE.2026-09-16T00-00-00Z
+SILO_VERSION ?= RELEASE.2026-10-18T00-00-00Z
 EXAMPLES_DIR = deploy/examples
 EXAMPLES_SCHEMAS = $(LOCALBIN)/examples-schemas
 SILO_CHART = $(LOCALBIN)/silo-chart-$(SILO_VERSION)
