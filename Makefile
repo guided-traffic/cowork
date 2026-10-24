@@ -115,7 +115,7 @@ GOLANGCI_LINT_VERSION ?= v2.14.0
 # renovate: datasource=go depName=github.com/fzipp/gocyclo/cmd/gocyclo
 GOCYCLO_VERSION ?= v0.6.0
 # renovate: datasource=go depName=github.com/securego/gosec/v2/cmd/gosec
-GOSEC_VERSION ?= v2.29.0
+GOSEC_VERSION ?= v2.30.0
 # gosec v2.29.0 is built against a golang.org/x/tools that cannot read the
 # export data of Go 1.27.2 ("export data version 5 is greater than maximum
 # supported version 4"), so every package fails to type-check; it is built
