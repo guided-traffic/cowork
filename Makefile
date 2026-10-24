@@ -127,7 +127,7 @@ GOVULNCHECK_VERSION ?= v1.8.0
 # renovate: datasource=go depName=github.com/sqlc-dev/sqlc/cmd/sqlc
 SQLC_VERSION ?= v1.31.1
 # renovate: datasource=go depName=github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
-OAPI_CODEGEN_VERSION ?= v2.8.0
+OAPI_CODEGEN_VERSION ?= v2.8.1
 # renovate: datasource=go depName=github.com/yannh/kubeconform/cmd/kubeconform
 KUBECONFORM_VERSION ?= v0.8.0
 
