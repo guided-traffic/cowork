@@ -4,7 +4,7 @@ go 1.27.2
 
 require (
 	github.com/coreos/go-oidc/v3 v3.21.0
-	github.com/getkin/kin-openapi v0.149.0
+	github.com/getkin/kin-openapi v0.153.0
 	github.com/go-jose/go-jose/v4 v4.1.5
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/google/jsonschema-go v0.4.3
@@ -45,8 +45,6 @@ require (
 	github.com/minio/crc64nvme v1.1.1 // indirect
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
-	github.com/oasdiff/yaml v0.1.1 // indirect
-	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/prometheus/common v0.72.1 // indirect
 	github.com/prometheus/procfs v0.22.0 // indirect
@@ -57,6 +55,7 @@ require (
 	github.com/tinylib/msgp v1.6.5 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
+	go.yaml.in/yaml/v4 v4.0.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/time v0.16.0 // indirect
