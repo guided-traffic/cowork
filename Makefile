@@ -139,7 +139,7 @@ KUBECONFORM_VERSION ?= v0.8.0
 # example names another release, so a version Renovate moves is the moment to
 # update the example or to say it is stale.
 # renovate: datasource=github-releases depName=cloudnative-pg/cloudnative-pg
-CNPG_VERSION ?= v1.30.1
+CNPG_VERSION ?= v1.30.2
 # renovate: datasource=github-releases depName=pgsty/silo
 SILO_VERSION ?= RELEASE.2026-09-16T00-00-00Z
 EXAMPLES_DIR = deploy/examples
